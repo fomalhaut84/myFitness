@@ -1,37 +1,63 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
+import { formatDate, startOfDay } from "../utils";
+
+const WEIGHT_URL =
+  "https://connectapi.garmin.com/weight-service/weight/dateRange";
+
+interface WeightEntry {
+  date: number; // epoch ms
+  weight: number; // gram
+  bmi: number | null;
+  bodyFat: number | null;
+  muscleMass: number | null;
+  sourceType: string;
+  [key: string]: unknown;
+}
+
+interface WeightResponse {
+  dateWeightList: WeightEntry[];
+  [key: string]: unknown;
+}
 
 export async function syncBodyComposition(
   client: GarminConnect,
   startDate: Date,
   endDate: Date
 ): Promise<number> {
+  const startStr = formatDate(startDate);
+  const endStr = formatDate(endDate);
+
+  let response: WeightResponse;
+  try {
+    response = await client.get<WeightResponse>(
+      `${WEIGHT_URL}?startDate=${startStr}&endDate=${endStr}`
+    );
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.warn(`[body-composition] 조회 실패:`, msg);
+    return 0;
+  }
+
+  if (!response?.dateWeightList?.length) return 0;
+
   let synced = 0;
-  const dates = dateRange(startDate, endDate);
 
-  for (const date of dates) {
+  for (const entry of response.dateWeightList) {
     try {
-      const weightData = await withRateLimit(() =>
-        client.getDailyWeightData(date)
-      );
-
-      if (!weightData) continue;
-
-      const raw = weightData as unknown as Record<string, unknown>;
-      const weight = extractWeight(raw);
+      const entryDate = new Date(entry.date);
+      const dayDate = startOfDay(entryDate);
+      const weight = gramToKg(entry.weight);
 
       if (weight === null) continue;
 
-      const dayDate = startOfDay(date);
-
       const data = {
         weight,
-        bmi: toFloat(raw.bmi),
-        bodyFat: toFloat(raw.bodyFat),
-        muscleMass: toFloat(raw.muscleMass),
-        rawData: raw as Prisma.InputJsonValue,
+        bmi: toFloat(entry.bmi),
+        bodyFat: toFloat(entry.bodyFat),
+        muscleMass: toFloat(entry.muscleMass),
+        rawData: entry as unknown as Prisma.InputJsonValue,
       };
 
       await prisma.bodyComposition.upsert({
@@ -42,8 +68,8 @@ export async function syncBodyComposition(
 
       synced++;
     } catch (error) {
-      if (isNoDataError(error)) continue;
-      throw error;
+      const msg = error instanceof Error ? error.message : String(error);
+      console.warn(`[body-composition] 항목 저장 실패:`, msg);
     }
   }
 
@@ -56,11 +82,7 @@ function toFloat(val: unknown): number | null {
   return isNaN(n) ? null : n;
 }
 
-function extractWeight(raw: Record<string, unknown>): number | null {
-  const w = raw.weight as number | undefined;
-  if (w === null || w === undefined) return null;
-
-  // 1000 이상이면 gram → kg 변환
-  if (w > 1000) return Math.round((w / 1000) * 10) / 10;
-  return Math.round(w * 10) / 10;
+function gramToKg(gram: number | null | undefined): number | null {
+  if (gram === null || gram === undefined) return null;
+  return Math.round((gram / 1000) * 10) / 10;
 }
