@@ -76,6 +76,17 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "AI 어드바이저",
+    href: "/ai",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M10 2a6 6 0 0 1 6 6v1a6 6 0 0 1-12 0V8a6 6 0 0 1 6-6z" />
+        <path d="M8 18h4" />
+        <path d="M10 15v3" />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {
