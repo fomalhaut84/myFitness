@@ -2,6 +2,8 @@
 
 import { useState } from "react";
 import ActivityCard from "@/components/activity/ActivityCard";
+import RunningAnalysis from "@/components/activity/RunningAnalysis";
+import TrainingLoad from "@/components/activity/TrainingLoad";
 import { formatDistance, formatPace, formatDuration } from "@/lib/format";
 
 interface Activity {
@@ -23,9 +25,35 @@ interface MonthSummary {
   avgPace: number | null;
 }
 
+interface RunningRecord {
+  date: string;
+  avgPace: number | null;
+  avgHR: number | null;
+  maxHR: number | null;
+  distance: number | null;
+  trainingEffect: number | null;
+  vo2maxEstimate: number | null;
+}
+
+interface WeekVolume {
+  weekLabel: string;
+  distanceKm: number;
+  count: number;
+}
+
+interface OvertrainingRisk {
+  hrRising: boolean;
+  hrvDropping: boolean;
+  sleepDeclining: boolean;
+  riskLevel: "low" | "moderate" | "high";
+}
+
 interface ActivitiesClientProps {
   activities: Activity[];
   monthSummary: MonthSummary;
+  runningRecords: RunningRecord[];
+  weeklyVolumes: WeekVolume[];
+  overtrainingRisk: OvertrainingRisk;
 }
 
 const FILTERS = [
@@ -38,6 +66,9 @@ const FILTERS = [
 export default function ActivitiesClient({
   activities,
   monthSummary,
+  runningRecords,
+  weeklyVolumes,
+  overtrainingRisk,
 }: ActivitiesClientProps) {
   const [filter, setFilter] = useState("all");
 
@@ -136,6 +167,20 @@ export default function ActivitiesClient({
       ) : (
         <div className="text-center py-12 text-dim text-[13px]">
           활동 기록 없음
+        </div>
+      )}
+
+      {/* 러닝 분석 + 트레이닝 로드 */}
+      {runningRecords.length > 0 && (
+        <div className="mt-10 space-y-10">
+          <RunningAnalysis
+            records={runningRecords}
+            estimatedMaxHR={190}
+          />
+          <TrainingLoad
+            weeklyVolumes={weeklyVolumes}
+            overtrainingRisk={overtrainingRisk}
+          />
         </div>
       )}
     </div>
