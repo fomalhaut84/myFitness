@@ -5,7 +5,7 @@
   "scripts": {
     "dev": "next dev",
     "build": "next build && npm run build:mcp",
-    "build:mcp": "esbuild src/mcp/server.ts --bundle --platform=node --target=node20 --outfile=dist/mcp/server.cjs --alias:@=./src --external:@prisma/client --external:@modelcontextprotocol/sdk",
+    "build:mcp": "esbuild src/mcp/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp/server.mjs --external:@modelcontextprotocol/sdk",
     "start": "next start",
     "lint": "next lint"
   },

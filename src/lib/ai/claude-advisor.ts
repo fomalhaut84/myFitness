@@ -3,7 +3,7 @@ import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
-const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.cjs");
+const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 

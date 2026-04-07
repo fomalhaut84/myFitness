@@ -1,4 +1,4 @@
-import prisma from "../../lib/prisma";
+import prisma from "../prisma";
 
 function daysAgo(n: number): Date {
   const d = new Date();
