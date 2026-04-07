@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import DashboardClient from "./dashboard-client";
 
 function todayLocal(): Date {
@@ -20,6 +21,7 @@ export default async function DashboardPage() {
   const today = todayLocal();
   const yesterday = daysAgoLocal(1);
   const weekAgo = daysAgoLocal(6);
+  const thirtyDaysAgo = daysAgoLocal(30);
 
   const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
     await Promise.all([
@@ -41,6 +43,19 @@ export default async function DashboardPage() {
       orderBy: { date: "asc" },
     }),
   ]);
+
+  // 30일 추세 데이터
+  const monthlyStats = await prisma.dailySummary.findMany({
+    where: { date: { gte: thirtyDaysAgo, lte: today } },
+    select: {
+      date: true,
+      steps: true,
+      activeCalories: true,
+      avgStress: true,
+      bodyBattery: true,
+    },
+    orderBy: { date: "asc" },
+  });
 
   const recentActivities = await prisma.activity.findMany({
     take: 5,
@@ -76,11 +91,11 @@ export default async function DashboardPage() {
       today={todayData}
       yesterday={yesterdayData}
       weeklySteps={weeklySteps.map((d) => ({
-        date: d.date.toISOString().split("T")[0],
+        date: formatDateLocal(d.date),
         value: d.steps,
       }))}
       weeklyHR={weeklyHR.map((d) => ({
-        date: d.date.toISOString().split("T")[0],
+        date: formatDateLocal(d.date),
         value: d.restingHR,
       }))}
       recentActivities={recentActivities.map((a) => ({
@@ -92,6 +107,22 @@ export default async function DashboardPage() {
         distance: a.distance,
         avgPace: a.avgPace,
         calories: a.calories,
+      }))}
+      monthlySteps={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        value: d.steps,
+      }))}
+      monthlyCalories={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        value: d.activeCalories,
+      }))}
+      monthlyStress={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        value: d.avgStress,
+      }))}
+      monthlyBodyBattery={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        value: d.bodyBattery,
       }))}
     />
   );
