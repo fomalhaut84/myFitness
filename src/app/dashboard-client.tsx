@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import SummaryCard from "@/components/dashboard/SummaryCard";
 import WeeklyChart from "@/components/dashboard/WeeklyChart";
 import RecentActivities from "@/components/dashboard/RecentActivities";
@@ -68,13 +69,64 @@ export default function DashboardClient({
   const avgStress = calcAvg(monthlyStress);
   const avgBattery = calcAvg(monthlyBodyBattery);
 
+  const [syncing, setSyncing] = useState(false);
+  const [syncResult, setSyncResult] = useState<string | null>(null);
+
+  async function handleSync() {
+    if (syncing) return;
+    setSyncing(true);
+    setSyncResult(null);
+    try {
+      const res = await fetch("/api/sync", { method: "POST" });
+      const data = await res.json();
+      if (data.results) {
+        const total = data.results.reduce((s: number, r: { synced: number }) => s + r.synced, 0);
+        setSyncResult(`${total}건 싱크 완료`);
+        // 2초 후 페이지 새로고침
+        setTimeout(() => window.location.reload(), 2000);
+      }
+    } catch {
+      setSyncResult("싱크 실패");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold mb-1">대시보드</h1>
-        <p className="text-dim text-sm">
-          {dateStr} {dayNames[now.getDay()]}
-        </p>
+      <div className="mb-8 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">대시보드</h1>
+          <p className="text-dim text-sm">
+            {dateStr} {dayNames[now.getDay()]}
+          </p>
+        </div>
+        <div className="flex items-center gap-2">
+          {syncResult && (
+            <span className="text-[11px] text-accent">{syncResult}</span>
+          )}
+          <button
+            onClick={handleSync}
+            disabled={syncing}
+            className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg text-[12px] text-sub border border-border hover:text-bright hover:border-border-hover transition-colors disabled:opacity-50"
+          >
+            <svg
+              width="14"
+              height="14"
+              viewBox="0 0 14 14"
+              fill="none"
+              stroke="currentColor"
+              strokeWidth="1.5"
+              strokeLinecap="round"
+              strokeLinejoin="round"
+              className={syncing ? "animate-spin" : ""}
+            >
+              <path d="M1 7a6 6 0 0 1 10.2-4.2M13 7a6 6 0 0 1-10.2 4.2" />
+              <path d="M11.2 1v2.8H8.4M2.8 13v-2.8h2.8" />
+            </svg>
+            {syncing ? "싱크 중..." : "데이터 싱크"}
+          </button>
+        </div>
       </div>
 
       {/* 오늘 요약 카드 */}
