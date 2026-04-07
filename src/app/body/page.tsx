@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import BodyClient from "./body-client";
 
 export const dynamic = "force-dynamic";
@@ -44,15 +45,15 @@ export default async function BodyPage() {
       latestBMI={latest?.bmi ?? null}
       latestBodyFat={latest?.bodyFat ?? null}
       weightTrend={weightTrend.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         value: r.weight,
       }))}
       fatTrend={fatTrend.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         value: r.bodyFat,
       }))}
       recentRecords={recentRecords.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         weight: r.weight,
         bmi: r.bmi,
         bodyFat: r.bodyFat,

@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import HeartClient from "./heart-client";
 
 export const dynamic = "force-dynamic";
@@ -47,15 +48,15 @@ export default async function HeartPage() {
       todayRestingHR={todayHR?.restingHR ?? null}
       todayHRV={todayHR?.hrvStatus ?? null}
       hrTrend={hrTrend.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         value: r.restingHR,
       }))}
       hrvTrend={hrvTrend.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         value: r.hrvStatus ? Math.round(r.hrvStatus) : null,
       }))}
       recentRecords={recentRecords.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         restingHR: r.restingHR,
         avgHR: r.avgHR,
         maxHR: r.maxHR,
