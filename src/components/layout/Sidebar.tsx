@@ -1,6 +1,7 @@
 "use client";
 
 import Link from "next/link";
+import { useEffect, useRef } from "react";
 import { usePathname } from "next/navigation";
 
 interface NavItem {
@@ -74,6 +75,28 @@ interface SidebarProps {
 
 export default function Sidebar({ isOpen, onClose }: SidebarProps) {
   const pathname = usePathname();
+  const sidebarRef = useRef<HTMLElement>(null);
+
+  // 모바일에서 닫힌 상태일 때 inert로 포커스 차단
+  useEffect(() => {
+    const el = sidebarRef.current;
+    if (!el) return;
+
+    const mql = window.matchMedia("(min-width: 768px)");
+
+    function update() {
+      if (!el) return;
+      if (mql.matches || isOpen) {
+        el.removeAttribute("inert");
+      } else {
+        el.setAttribute("inert", "");
+      }
+    }
+
+    update();
+    mql.addEventListener("change", update);
+    return () => mql.removeEventListener("change", update);
+  }, [isOpen]);
 
   return (
     <>
@@ -87,6 +110,7 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
 
       {/* 사이드바 */}
       <aside
+        ref={sidebarRef}
         className={`
           fixed top-0 left-0 z-50 h-full w-60
           bg-[#0a0a0a] border-r border-[#1e1e1e]
