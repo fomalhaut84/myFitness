@@ -1,10 +1,8 @@
-export default function Home() {
+export default function DashboardPage() {
   return (
-    <div className="flex min-h-screen items-center justify-center">
-      <div className="text-center">
-        <h1 className="text-4xl font-bold text-bright">myFitness</h1>
-        <p className="mt-2 text-sub">개인 피트니스 AI 어드바이저</p>
-      </div>
+    <div>
+      <h1 className="text-2xl font-medium mb-2">대시보드</h1>
+      <p className="text-sub text-sm">오늘의 피트니스 요약</p>
     </div>
   );
 }
