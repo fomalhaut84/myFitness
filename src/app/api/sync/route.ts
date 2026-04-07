@@ -46,8 +46,8 @@ export async function POST(request: Request) {
       }
       endDate = parsed;
     } else {
+      // 오늘까지 싱크 (불완전해도 최신 데이터 우선)
       const d = new Date();
-      d.setDate(d.getDate() - 1);
       d.setHours(0, 0, 0, 0);
       endDate = d;
     }

@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
-import { SYSTEM_PROMPT } from "./system-prompt";
+import { buildSystemPrompt } from "./system-prompt";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
@@ -42,7 +42,8 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
   }
 
   const mcpConfigPath = ensureMcpConfig();
-  const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n사용자 질문: ${prompt}`;
+  const systemPrompt = await buildSystemPrompt();
+  const fullPrompt = `${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}`;
 
   return new Promise((resolve, reject) => {
     const args = [

@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
-import { daysAgo, formatDate, yesterday } from "./utils";
+import { daysAgo, formatDate } from "./utils";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -123,7 +123,12 @@ export async function syncAll(
     dataTypes?: DataType[];
   }
 ): Promise<SyncResult[]> {
-  const endDate = options?.endDate ?? yesterday();
+  // 기본 endDate를 오늘로 변경 (불완전해도 최신 데이터 우선)
+  const endDate = options?.endDate ?? (() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  })();
   const dataTypes = options?.dataTypes ?? SYNC_ORDER;
   const results: SyncResult[] = [];
 
