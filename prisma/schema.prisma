@@ -7,3 +7,126 @@ datasource db {
   provider = "postgresql"
   url      = env("DATABASE_URL")
 }
+
+model UserProfile {
+  id            String    @id @default(cuid())
+  name          String
+  birthDate     DateTime?
+  height        Float?              // cm
+  targetWeight  Float?              // kg
+  restingHRBase Int?                // 기준 안정시 심박수
+  createdAt     DateTime  @default(now())
+  updatedAt     DateTime  @updatedAt
+}
+
+model SyncMetadata {
+  id            String   @id @default(cuid())
+  dataType      String   @unique     // "activities", "sleep", "daily_stats", "heart_rate", "body_composition"
+  lastSyncAt    DateTime
+  lastSyncDate  DateTime             // 마지막으로 싱크한 날짜
+  syncCount     Int      @default(0)
+  status        String   @default("idle") // "idle", "syncing", "error"
+  errorMessage  String?
+  updatedAt     DateTime @updatedAt
+}
+
+model Activity {
+  id              String   @id @default(cuid())
+  garminId        BigInt   @unique
+  activityType    String              // "running", "cycling", "strength", "walking" 등
+  name            String
+  startTime       DateTime
+  duration        Int                 // seconds
+  distance        Float?              // meters
+  calories        Int?
+  avgHR           Int?                // bpm
+  maxHR           Int?                // bpm
+  avgPace         Float?              // sec/km (러닝)
+  avgSpeed        Float?              // km/h
+  elevationGain   Float?              // meters
+  trainingEffect  Float?              // 1.0-5.0
+  vo2maxEstimate  Float?
+  rawData         Json?               // 전체 Garmin 응답 보존
+  createdAt       DateTime @default(now())
+
+  @@index([activityType, startTime])
+  @@index([startTime])
+}
+
+model DailySummary {
+  id              String   @id @default(cuid())
+  date            DateTime @unique     // 날짜 (midnight)
+  steps           Int?
+  totalCalories   Int?                 // 총 kcal
+  activeCalories  Int?
+  restingHR       Int?                 // bpm
+  avgStress       Int?                 // 1-100
+  bodyBattery     Int?                 // 5-100 (하루 끝)
+  bodyBatteryHigh Int?
+  bodyBatteryLow  Int?
+  intensityMin    Int?                 // 활동 강도 분
+  floorsClimbed   Int?
+  rawData         Json?
+  createdAt       DateTime @default(now())
+}
+
+model SleepRecord {
+  id            String   @id @default(cuid())
+  date          DateTime @unique       // 수면 날짜 (밤 기준)
+  sleepStart    DateTime
+  sleepEnd      DateTime
+  totalSleep    Int                    // minutes
+  deepSleep     Int?                   // minutes
+  lightSleep    Int?                   // minutes
+  remSleep      Int?                   // minutes
+  awakeDuration Int?                   // minutes
+  sleepScore    Int?                   // 0-100
+  avgSpO2       Float?
+  rawData       Json?
+  createdAt     DateTime @default(now())
+}
+
+model HeartRateRecord {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  restingHR   Int?                     // bpm
+  avgHR       Int?
+  maxHR       Int?
+  minHR       Int?
+  hrvStatus   Float?                   // ms (HRV 값)
+  hrvBaseline Float?                   // ms
+  rawData     Json?
+  createdAt   DateTime @default(now())
+}
+
+model BodyComposition {
+  id         String   @id @default(cuid())
+  date       DateTime @unique
+  weight     Float                     // kg
+  bmi        Float?
+  bodyFat    Float?                    // %
+  muscleMass Float?                    // kg
+  rawData    Json?
+  createdAt  DateTime @default(now())
+}
+
+model AIAdvice {
+  id        String   @id @default(cuid())
+  category  String                     // "exercise", "sleep", "heart", "diet", "lifestyle", "weekly_report"
+  prompt    String
+  response  String                     // markdown
+  createdAt DateTime @default(now())
+
+  @@index([category, createdAt])
+}
+
+model FoodLog {
+  id            String   @id @default(cuid())
+  date          DateTime
+  description   String                 // 자유 텍스트, AI가 칼로리 추정
+  estimatedKcal Int?
+  mealType      String?                // "breakfast", "lunch", "dinner", "snack"
+  createdAt     DateTime @default(now())
+
+  @@index([date])
+}
