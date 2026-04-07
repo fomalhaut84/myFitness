@@ -44,7 +44,7 @@ export default function WeeklyActivitySummary({ thisWeek, lastWeek }: WeeklyActi
           <div className="text-[11px] text-dim mb-1">총 거리</div>
           <div className="text-xl font-semibold font-[family-name:var(--font-geist-mono)]">
             {formatDistance(thisWeek.totalDistance)}<span className="text-sm text-dim font-normal ml-1">km</span>
-            <Delta current={Math.round(thisWeek.totalDistance / 100)} prev={Math.round(lastWeek.totalDistance / 100)} />
+            <Delta current={Math.round(thisWeek.totalDistance / 1000)} prev={Math.round(lastWeek.totalDistance / 1000)} unit="km" />
           </div>
         </div>
         <div>

@@ -15,7 +15,9 @@ function startOfWeek(date: Date): Date {
   const d = new Date(date);
   d.setHours(0, 0, 0, 0);
   const day = d.getDay(); // 0=일
-  d.setDate(d.getDate() - day + 1); // 월요일 시작
+  // 일요일(0)이면 6일 전, 나머지는 (day-1)일 전 → 월요일 시작
+  const diff = day === 0 ? 6 : day - 1;
+  d.setDate(d.getDate() - diff);
   return d;
 }
 
@@ -24,7 +26,7 @@ export default async function LifestylePage() {
   const thisWeekStart = startOfWeek(now);
   const lastWeekStart = new Date(thisWeekStart);
   lastWeekStart.setDate(lastWeekStart.getDate() - 7);
-  const twentyEightDaysAgo = daysAgoLocal(28);
+  const twentyEightDaysAgo = daysAgoLocal(27);
   const fourteenDaysAgo = daysAgoLocal(14);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
 
