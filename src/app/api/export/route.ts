@@ -4,19 +4,29 @@ import { formatDateLocal } from "@/lib/format";
 
 function formatPaceCsv(secPerKm: number | null): string {
   if (secPerKm === null) return "";
-  const min = Math.floor(secPerKm / 60);
-  const sec = Math.round(secPerKm % 60);
+  const totalSec = Math.round(secPerKm);
+  const min = Math.floor(totalSec / 60);
+  const sec = totalSec % 60;
   return `${min}:${sec.toString().padStart(2, "0")}`;
+}
+
+/** CSV injection 방지: =, +, -, @ 로 시작하는 셀에 ' 접두 */
+function sanitizeCell(cell: string): string {
+  if (/^[=+\-@]/.test(cell)) {
+    return `'${cell}`;
+  }
+  return cell;
 }
 
 function toCsv(headers: string[], rows: string[][]): string {
   const headerLine = headers.join(",");
   const dataLines = rows.map((row) =>
     row.map((cell) => {
-      if (cell.includes(",") || cell.includes('"')) {
-        return `"${cell.replace(/"/g, '""')}"`;
+      const safe = sanitizeCell(cell);
+      if (safe.includes(",") || safe.includes('"') || safe.includes("'")) {
+        return `"${safe.replace(/"/g, '""')}"`;
       }
-      return cell;
+      return safe;
     }).join(",")
   );
   return [headerLine, ...dataLines].join("\n");
