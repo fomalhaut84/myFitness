@@ -40,13 +40,11 @@ export default async function ActivitiesPage() {
     count: monthlyRunning.length,
     totalDistance: monthlyRunning.reduce((sum, a) => sum + (a.distance ?? 0), 0),
     totalDuration: monthlyRunning.reduce((sum, a) => sum + a.duration, 0),
-    avgPace:
-      monthlyRunning.length > 0
-        ? monthlyRunning
-            .filter((a) => a.avgPace !== null)
-            .reduce((sum, a) => sum + (a.avgPace ?? 0), 0) /
-          monthlyRunning.filter((a) => a.avgPace !== null).length
-        : null,
+    avgPace: (() => {
+      const withPace = monthlyRunning.filter((a) => a.avgPace !== null);
+      if (withPace.length === 0) return null;
+      return withPace.reduce((sum, a) => sum + (a.avgPace ?? 0), 0) / withPace.length;
+    })(),
   };
 
   return (

@@ -51,7 +51,13 @@ export default function ActivitiesClient({
               !a.activityType.includes("strength") &&
               !a.activityType.includes("fitness")
           )
-        : activities.filter((a) => a.activityType.includes(filter));
+        : filter === "strength"
+          ? activities.filter(
+              (a) =>
+                a.activityType.includes("strength") ||
+                a.activityType.includes("fitness")
+            )
+          : activities.filter((a) => a.activityType.includes(filter));
 
   const now = new Date();
   const monthLabel = `${now.getFullYear()}년 ${now.getMonth() + 1}월`;
