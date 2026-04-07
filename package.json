@@ -9,6 +9,7 @@
     "lint": "next lint"
   },
   "dependencies": {
+    "@flow-js/garmin-connect": "^1.6.16",
     "@prisma/client": "^6.19.3",
     "date-fns": "^4.1.0",
     "marked": "^17.0.6",
