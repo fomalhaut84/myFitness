@@ -19,7 +19,7 @@ export const dynamic = "force-dynamic";
 export default async function DashboardPage() {
   const today = todayLocal();
   const yesterday = daysAgoLocal(1);
-  const weekAgo = daysAgoLocal(7);
+  const weekAgo = daysAgoLocal(6);
 
   const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
     await Promise.all([

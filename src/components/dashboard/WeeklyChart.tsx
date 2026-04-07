@@ -31,10 +31,12 @@ export default function WeeklyChart({
   data,
   color = "#22c55e",
 }: WeeklyChartProps) {
-  const chartData = data.map((d, i) => ({
+  const todayStr = new Date().toISOString().split("T")[0];
+
+  const chartData = data.map((d) => ({
     day: getDayLabel(d.date),
     value: d.value ?? 0,
-    isToday: i === data.length - 1,
+    isToday: d.date === todayStr,
   }));
 
   if (chartData.length === 0) {
