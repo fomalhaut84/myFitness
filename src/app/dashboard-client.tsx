@@ -3,6 +3,7 @@
 import SummaryCard from "@/components/dashboard/SummaryCard";
 import WeeklyChart from "@/components/dashboard/WeeklyChart";
 import RecentActivities from "@/components/dashboard/RecentActivities";
+import TrendLineChart from "@/components/ui/TrendLineChart";
 
 interface DaySummary {
   steps: number | null;
@@ -33,6 +34,18 @@ interface DashboardClientProps {
   weeklySteps: DataPoint[];
   weeklyHR: DataPoint[];
   recentActivities: Activity[];
+  monthlySteps: DataPoint[];
+  monthlyCalories: DataPoint[];
+  monthlyStress: DataPoint[];
+  monthlyBodyBattery: DataPoint[];
+}
+
+function calcAvg(data: DataPoint[]): number | null {
+  const valid = data.filter((d) => d.value !== null);
+  if (valid.length === 0) return null;
+  return Math.round(
+    valid.reduce((sum, d) => sum + (d.value ?? 0), 0) / valid.length
+  );
 }
 
 export default function DashboardClient({
@@ -41,10 +54,19 @@ export default function DashboardClient({
   weeklySteps,
   weeklyHR,
   recentActivities,
+  monthlySteps,
+  monthlyCalories,
+  monthlyStress,
+  monthlyBodyBattery,
 }: DashboardClientProps) {
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
   const dayNames = ["일요일", "월요일", "화요일", "수요일", "목요일", "금요일", "토요일"];
+
+  const avgSteps = calcAvg(monthlySteps);
+  const avgCalories = calcAvg(monthlyCalories);
+  const avgStress = calcAvg(monthlyStress);
+  const avgBattery = calcAvg(monthlyBodyBattery);
 
   return (
     <div>
@@ -110,7 +132,43 @@ export default function DashboardClient({
       </div>
 
       {/* 최근 활동 */}
-      <RecentActivities activities={recentActivities} />
+      <div className="mb-8">
+        <RecentActivities activities={recentActivities} />
+      </div>
+
+      {/* 30일 추세 */}
+      <div className="mb-6">
+        <h2 className="text-lg font-semibold mb-1">30일 추세</h2>
+        <p className="text-dim text-[12px] mb-4">일일 통계 추이</p>
+      </div>
+
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
+        <TrendLineChart
+          title={`걸음 수${avgSteps !== null ? ` — 평균 ${avgSteps.toLocaleString("ko-KR")}` : ""}`}
+          data={monthlySteps}
+          color="#22c55e"
+        />
+        <TrendLineChart
+          title={`활동 칼로리${avgCalories !== null ? ` — 평균 ${avgCalories.toLocaleString("ko-KR")} kcal` : ""}`}
+          data={monthlyCalories}
+          color="#f59e0b"
+          unit="kcal"
+        />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+        <TrendLineChart
+          title={`스트레스${avgStress !== null ? ` — 평균 ${avgStress}` : ""}`}
+          data={monthlyStress}
+          color="#ef4444"
+          domain={[0, 100]}
+        />
+        <TrendLineChart
+          title={`바디배터리${avgBattery !== null ? ` — 평균 ${avgBattery}` : ""}`}
+          data={monthlyBodyBattery}
+          color="#60a5fa"
+          domain={[0, 100]}
+        />
+      </div>
     </div>
   );
 }
