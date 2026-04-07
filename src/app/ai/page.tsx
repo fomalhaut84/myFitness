@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import DOMPurify from "dompurify";
+import { marked } from "marked";
 
 const PRESETS = [
   { label: "이번 주 러닝 분석", prompt: "이번 주 러닝 활동을 분석해줘. 거리, 페이스, 심박 데이터를 기반으로 평가해줘.", category: "exercise" },
@@ -101,7 +103,11 @@ export default function AIPage() {
               {msg.role === "assistant" ? (
                 <div
                   className="prose prose-invert prose-sm max-w-none"
-                  dangerouslySetInnerHTML={{ __html: msg.content }}
+                  dangerouslySetInnerHTML={{
+                    __html: DOMPurify.sanitize(
+                      marked.parse(msg.content, { async: false }) as string
+                    ),
+                  }}
                 />
               ) : (
                 msg.content

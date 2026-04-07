@@ -1,4 +1,5 @@
 import { spawn } from "child_process";
+import { existsSync } from "fs";
 import path from "path";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
@@ -6,6 +7,8 @@ const MCP_CONFIG_PATH = path.resolve(
   process.cwd(),
   "src/lib/ai/mcp-config.json"
 );
+
+const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.cjs");
 
 const TIMEOUT_MS = 180_000;
 
@@ -16,6 +19,12 @@ interface ClaudeResponse {
 }
 
 export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
+  if (!existsSync(MCP_SERVER_PATH)) {
+    throw new Error(
+      "MCP 서버 빌드가 필요합니다. `npm run build:mcp`를 먼저 실행하세요."
+    );
+  }
+
   const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n사용자 질문: ${prompt}`;
 
   return new Promise((resolve, reject) => {
