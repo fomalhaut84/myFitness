@@ -4,7 +4,7 @@ import prisma from "@/lib/prisma";
 import { dateRange, formatDate, startOfDay, withRateLimit } from "../utils";
 
 const DAILY_SUMMARY_URL =
-  "https://connect.garmin.com/modern/proxy/usersummary-service/usersummary/daily";
+  "https://connectapi.garmin.com/usersummary-service/usersummary/daily";
 
 export async function syncDailySummaries(
   client: GarminConnect,
@@ -19,11 +19,11 @@ export async function syncDailySummaries(
       const dateStr = formatDate(date);
       const summary = await withRateLimit(() =>
         client.get<Record<string, unknown>>(
-          `${DAILY_SUMMARY_URL}/${dateStr}`
+          `${DAILY_SUMMARY_URL}?calendarDate=${dateStr}`
         )
       );
 
-      if (!summary) continue;
+      if (!summary || !summary.calendarDate) continue;
 
       const dayDate = startOfDay(date);
       const moderate = toInt(summary.moderateIntensityMinutes);
@@ -55,11 +55,10 @@ export async function syncDailySummaries(
 
       synced++;
     } catch (error) {
-      // 404/데이터 없음은 건너뜀, 그 외 에러는 로깅 후 건너뜀 (날짜별 독립)
+      // 404/데이터 없음은 건너뜀, 그 외(401/403/네트워크)는 상위로 전파
       const msg = error instanceof Error ? error.message : String(error);
-      if (!msg.includes("404") && !msg.includes("not found")) {
-        console.warn(`[daily-summary] ${formatDate(date)} 싱크 실패:`, msg);
-      }
+      if (msg.includes("404") || msg.includes("not found")) continue;
+      throw error;
     }
   }
 
