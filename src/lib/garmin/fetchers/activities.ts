@@ -1,5 +1,5 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { withRateLimit } from "../utils";
 
@@ -65,7 +65,9 @@ export async function syncActivities(
         anaerobicTE: toFloat(summaryDTO?.anaerobicTrainingEffect),
         avgRespirationRate: toFloat(raw.avgRespirationRate),
         lapCount: toInt(raw.lapCount),
-        splitSummaries: (a.splitSummaries ?? null) as Prisma.InputJsonValue,
+        splitSummaries: a.splitSummaries
+          ? (a.splitSummaries as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         rawData: raw as Prisma.InputJsonValue,
       };
 

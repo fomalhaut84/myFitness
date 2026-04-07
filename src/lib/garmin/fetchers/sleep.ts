@@ -1,5 +1,5 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, withRateLimit } from "../utils";
 
@@ -80,7 +80,9 @@ export async function syncSleep(
         bodyBatteryChange: toInt(sleepData.bodyBatteryChange),
         restingHR: toInt(sleepData.restingHeartRate),
         hrvOvernight: toFloat(sleepData.avgOvernightHrv),
-        sleepScoreDetails: sleepScoreDetails as Prisma.InputJsonValue,
+        sleepScoreDetails: sleepScoreDetails
+          ? (sleepScoreDetails as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         rawData: sleepData as unknown as Prisma.InputJsonValue,
       };
 
