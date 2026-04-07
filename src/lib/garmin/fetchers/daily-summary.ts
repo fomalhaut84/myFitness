@@ -55,8 +55,10 @@ export async function syncDailySummaries(
 
       synced++;
     } catch (error) {
+      // 404/데이터 없음은 건너뜀, 그 외(401/403/네트워크)는 상위로 전파
       const msg = error instanceof Error ? error.message : String(error);
-      console.warn(`[daily-summary] ${formatDate(date)} 싱크 실패:`, msg);
+      if (msg.includes("404") || msg.includes("not found")) continue;
+      throw error;
     }
   }
 

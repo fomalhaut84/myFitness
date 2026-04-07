@@ -35,9 +35,10 @@ export async function syncBodyComposition(
       `${WEIGHT_URL}?startDate=${startStr}&endDate=${endStr}`
     );
   } catch (error) {
+    // 404는 데이터 없음으로 처리, 그 외(401/403/네트워크)는 상위로 전파
     const msg = error instanceof Error ? error.message : String(error);
-    console.warn(`[body-composition] 조회 실패:`, msg);
-    return 0;
+    if (msg.includes("404")) return 0;
+    throw error;
   }
 
   if (!response?.dateWeightList?.length) return 0;
