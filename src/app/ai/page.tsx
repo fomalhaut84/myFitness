@@ -60,11 +60,31 @@ export default function AIPage() {
     }
   }
 
+  async function handleResetSession() {
+    await fetch("/api/ai", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ action: "reset" }),
+    });
+    setMessages([]);
+  }
+
   return (
     <div className="flex flex-col h-[calc(100vh-3rem)] md:h-screen">
-      <div className="p-5 md:p-8 pb-0">
-        <h1 className="text-2xl font-semibold mb-1">AI 어드바이저</h1>
-        <p className="text-dim text-sm">Garmin 데이터 기반 맞춤 분석</p>
+      <div className="p-5 md:p-8 pb-0 flex items-start justify-between">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">AI 어드바이저</h1>
+          <p className="text-dim text-sm">Garmin 데이터 기반 맞춤 분석</p>
+        </div>
+        {messages.length > 0 && (
+          <button
+            onClick={handleResetSession}
+            disabled={loading}
+            className="px-3 py-1.5 rounded-lg text-[12px] text-sub border border-border hover:text-bright hover:border-border-hover transition-colors disabled:opacity-50"
+          >
+            새 대화
+          </button>
+        )}
       </div>
 
       {/* 메시지 영역 */}

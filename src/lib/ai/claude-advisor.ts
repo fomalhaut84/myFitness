@@ -9,13 +9,16 @@ const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
 const TIMEOUT_MS = 180_000;
 
+// 세션 ID 관리 (프로세스 메모리에 유지)
+let currentSessionId: string | null = null;
+
 interface ClaudeResponse {
   result: string;
+  sessionId: string | null;
   duration_ms?: number;
 }
 
 function ensureMcpConfig(): string {
-  // 런타임에 실제 DATABASE_URL로 MCP config 생성
   mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
 
   const config = {
@@ -34,6 +37,14 @@ function ensureMcpConfig(): string {
   return RUNTIME_MCP_CONFIG;
 }
 
+export function resetSession(): void {
+  currentSessionId = null;
+}
+
+export function getSessionId(): string | null {
+  return currentSessionId;
+}
+
 export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
   if (!existsSync(MCP_SERVER_PATH)) {
     throw new Error(
@@ -42,25 +53,32 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
   }
 
   const mcpConfigPath = ensureMcpConfig();
-  const systemPrompt = await buildSystemPrompt();
-  const fullPrompt = `${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}`;
+
+  const args = [
+    "-p",
+    prompt,
+    "--output-format",
+    "json",
+    "--mcp-config",
+    mcpConfigPath,
+    "--model",
+    "haiku",
+    "--max-turns",
+    "10",
+    "--allowedTools",
+    "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends",
+  ];
+
+  // 기존 세션이 있으면 --resume, 없으면 시스템 프롬프트와 함께 새 세션
+  if (currentSessionId) {
+    args.push("--resume", currentSessionId);
+  } else {
+    const systemPrompt = await buildSystemPrompt();
+    // 첫 메시지에 시스템 프롬프트 포함
+    args[1] = `${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}`;
+  }
 
   return new Promise((resolve, reject) => {
-    const args = [
-      "-p",
-      fullPrompt,
-      "--output-format",
-      "json",
-      "--mcp-config",
-      mcpConfigPath,
-      "--model",
-      "haiku",
-      "--max-turns",
-      "10",
-      "--allowedTools",
-      "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends",
-    ];
-
     const startTime = Date.now();
     const child = spawn("claude", args, {
       timeout: TIMEOUT_MS,
@@ -68,7 +86,6 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
       stdio: ["pipe", "pipe", "pipe"],
     });
 
-    // stdin을 즉시 닫아 대기 방지
     child.stdin.end();
 
     let stdout = "";
@@ -94,13 +111,21 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
 
       try {
         const parsed = JSON.parse(stdout);
+
+        // 세션 ID 저장
+        if (parsed.session_id) {
+          currentSessionId = parsed.session_id;
+        }
+
         resolve({
           result: parsed.result ?? parsed.text ?? stdout,
+          sessionId: currentSessionId,
           duration_ms: durationMs,
         });
       } catch {
         resolve({
           result: stdout.trim(),
+          sessionId: currentSessionId,
           duration_ms: durationMs,
         });
       }

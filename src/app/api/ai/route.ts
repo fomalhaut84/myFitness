@@ -1,11 +1,17 @@
 import { NextResponse } from "next/server";
-import { askAdvisor } from "@/lib/ai/claude-advisor";
+import { askAdvisor, resetSession, getSessionId } from "@/lib/ai/claude-advisor";
 import prisma from "@/lib/prisma";
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
     const prompt = body.prompt;
+
+    // 세션 초기화 명령
+    if (body.action === "reset") {
+      resetSession();
+      return NextResponse.json({ result: "세션이 초기화되었습니다.", sessionId: null });
+    }
 
     if (!prompt || typeof prompt !== "string") {
       return NextResponse.json(
@@ -14,7 +20,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { result, duration_ms } = await askAdvisor(prompt);
+    const { result, sessionId, duration_ms } = await askAdvisor(prompt);
 
     // AI 조언 이력 저장
     await prisma.aIAdvice.create({
@@ -27,10 +33,15 @@ export async function POST(request: Request) {
 
     return NextResponse.json({
       result,
+      sessionId,
       duration_ms,
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+export async function GET() {
+  return NextResponse.json({ sessionId: getSessionId() });
 }
