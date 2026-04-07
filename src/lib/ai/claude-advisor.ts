@@ -62,7 +62,11 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
     const child = spawn("claude", args, {
       timeout: TIMEOUT_MS,
       cwd: process.cwd(),
+      stdio: ["pipe", "pipe", "pipe"],
     });
+
+    // stdin을 즉시 닫아 대기 방지
+    child.stdin.end();
 
     let stdout = "";
     let stderr = "";
