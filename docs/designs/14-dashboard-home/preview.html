@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>myFitness — 대시보드 프리뷰</title>
+<script src="https://cdn.tailwindcss.com"></script>
+<style>
+  @import url('https://fonts.googleapis.com/css2?family=JetBrains+Mono:wght@400;500&family=Inter:wght@400;500;600&display=swap');
+  body { font-family: 'Inter', sans-serif; }
+  .font-mono { font-family: 'JetBrains Mono', monospace; }
+</style>
+</head>
+<body class="bg-[#0a0a0a] text-[#ededed]">
+
+<!-- 사이드바 영역 (간소화) -->
+<div class="hidden md:block fixed top-0 left-0 w-60 h-full bg-[#0a0a0a] border-r border-[#1e1e1e]">
+  <div class="px-5 pt-7 pb-8">
+    <div class="flex items-center gap-2.5">
+      <div class="w-7 h-7 rounded-md bg-[#22c55e]/10 border border-[#22c55e]/20 flex items-center justify-center">
+        <svg width="14" height="14" viewBox="0 0 14 14" fill="none"><path d="M2 8l3 3 7-8" stroke="#22c55e" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"/></svg>
+      </div>
+      <span class="text-[15px] tracking-[0.08em] font-mono">myFitness</span>
+    </div>
+  </div>
+  <nav class="px-3">
+    <a href="#" class="relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-[13px] tracking-wide text-[#ededed] bg-[#161616]">
+      <span class="absolute left-0 top-2 bottom-2 w-[2px] rounded-full bg-[#22c55e]"></span>
+      <span class="text-[#22c55e]"><svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" stroke-width="1.5"><rect x="2" y="2" width="7" height="8" rx="1"/><rect x="11" y="2" width="7" height="5" rx="1"/><rect x="2" y="12" width="7" height="6" rx="1"/><rect x="11" y="9" width="7" height="9" rx="1"/></svg></span>
+      <span>대시보드</span>
+    </a>
+  </nav>
+</div>
+
+<!-- 메인 콘텐츠 -->
+<main class="md:ml-60 min-h-screen p-5 md:p-8 max-w-6xl">
+
+  <!-- 헤더 -->
+  <div class="mb-8">
+    <h1 class="text-2xl font-semibold mb-1">대시보드</h1>
+    <p class="text-[#525252] text-sm">2026년 4월 7일 월요일</p>
+  </div>
+
+  <!-- 오늘 요약 카드 4개 -->
+  <div class="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">
+
+    <!-- 걸음 수 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-4">
+      <div class="flex items-center gap-1.5 mb-3">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#525252" stroke-width="1.5"><circle cx="10" cy="3.5" r="2"/><path d="M7 8.5l3 2 3-2M10 10.5v4M7 18l3-3.5 3 3.5"/></svg>
+        <span class="text-[11px] text-[#525252] tracking-wider uppercase">걸음 수</span>
+      </div>
+      <div class="text-2xl font-semibold font-mono tracking-tight">8,432</div>
+      <div class="flex items-center gap-1 mt-2">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M6 3l3 3M6 3L3 6" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="text-[11px] text-[#22c55e]">+1,204</span>
+        <span class="text-[11px] text-[#525252]">전일 대비</span>
+      </div>
+    </div>
+
+    <!-- 안정시 심박 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-4">
+      <div class="flex items-center gap-1.5 mb-3">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#525252" stroke-width="1.5"><path d="M10 17s-7-4.35-7-8.5A4 4 0 0 1 10 5.5a4 4 0 0 1 7 3c0 4.15-7 8.5-7 8.5z"/></svg>
+        <span class="text-[11px] text-[#525252] tracking-wider uppercase">안정시 심박</span>
+      </div>
+      <div class="text-2xl font-semibold font-mono tracking-tight">58 <span class="text-sm text-[#525252] font-normal">bpm</span></div>
+      <div class="flex items-center gap-1 mt-2">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3V9M6 9l3-3M6 9L3 6" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="text-[11px] text-[#22c55e]">-2</span>
+        <span class="text-[11px] text-[#525252]">전일 대비</span>
+      </div>
+    </div>
+
+    <!-- 수면 점수 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-4">
+      <div class="flex items-center gap-1.5 mb-3">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#525252" stroke-width="1.5"><path d="M16.5 11a7 7 0 1 1-8.5-6.8A5.5 5.5 0 0 0 16.5 11z"/></svg>
+        <span class="text-[11px] text-[#525252] tracking-wider uppercase">수면 점수</span>
+      </div>
+      <div class="text-2xl font-semibold font-mono tracking-tight">82</div>
+      <div class="flex items-center gap-1 mt-2">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 9V3M6 3l3 3M6 3L3 6" stroke="#22c55e" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="text-[11px] text-[#22c55e]">+5</span>
+        <span class="text-[11px] text-[#525252]">전일 대비</span>
+      </div>
+    </div>
+
+    <!-- 바디배터리 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-4">
+      <div class="flex items-center gap-1.5 mb-3">
+        <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#525252" stroke-width="1.5"><rect x="3" y="6" width="12" height="8" rx="1.5"/><path d="M15 9v2h2V9h-2z"/><rect x="5" y="8" width="4" height="4" rx="0.5" fill="#22c55e" opacity="0.3"/></svg>
+        <span class="text-[11px] text-[#525252] tracking-wider uppercase">바디배터리</span>
+      </div>
+      <div class="text-2xl font-semibold font-mono tracking-tight">67</div>
+      <div class="flex items-center gap-1 mt-2">
+        <svg width="12" height="12" viewBox="0 0 12 12" fill="none"><path d="M6 3V9M6 9l3-3M6 9L3 6" stroke="#ef4444" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round"/></svg>
+        <span class="text-[11px] text-[#ef4444]">-12</span>
+        <span class="text-[11px] text-[#525252]">전일 대비</span>
+      </div>
+    </div>
+  </div>
+
+  <!-- 주간 차트 + 최근 활동 -->
+  <div class="grid grid-cols-1 md:grid-cols-2 gap-3">
+
+    <!-- 주간 걸음 수 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-5">
+      <div class="text-[11px] text-[#525252] tracking-wider uppercase mb-4">주간 걸음 수</div>
+      <div class="flex items-end gap-1.5 h-20">
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/20 rounded-sm" style="height: 45%"></div>
+          <span class="text-[9px] text-[#525252]">월</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/20 rounded-sm" style="height: 62%"></div>
+          <span class="text-[9px] text-[#525252]">화</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/20 rounded-sm" style="height: 38%"></div>
+          <span class="text-[9px] text-[#525252]">수</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/30 rounded-sm" style="height: 78%"></div>
+          <span class="text-[9px] text-[#525252]">목</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/20 rounded-sm" style="height: 55%"></div>
+          <span class="text-[9px] text-[#525252]">금</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e]/40 rounded-sm" style="height: 92%"></div>
+          <span class="text-[9px] text-[#525252]">토</span>
+        </div>
+        <div class="flex-1 flex flex-col items-center gap-1">
+          <div class="w-full bg-[#22c55e] rounded-sm" style="height: 70%"></div>
+          <span class="text-[9px] text-[#ededed]">일</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- 최근 활동 -->
+    <div class="bg-[#161616] border border-[#262626] rounded-xl p-5">
+      <div class="text-[11px] text-[#525252] tracking-wider uppercase mb-4">최근 활동</div>
+      <div class="space-y-3">
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-[#22c55e]/10 flex items-center justify-center">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#22c55e" stroke-width="1.5"><circle cx="10" cy="3.5" r="2"/><path d="M7 8.5l3 2 3-2M10 10.5v4M7 18l3-3.5 3 3.5"/></svg>
+            </div>
+            <div>
+              <div class="text-[13px]">오전 러닝</div>
+              <div class="text-[11px] text-[#525252]">오늘 06:30 · 42분</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[13px] font-mono">5.82 <span class="text-[11px] text-[#525252]">km</span></div>
+            <div class="text-[11px] text-[#525252] font-mono">7'12"</div>
+          </div>
+        </div>
+
+        <div class="border-t border-[#262626]"></div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-[#60a5fa]/10 flex items-center justify-center">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#60a5fa" stroke-width="1.5"><rect x="3" y="5" width="14" height="12" rx="2"/><path d="M7 1v4M13 1v4"/><circle cx="10" cy="11" r="2.5"/></svg>
+            </div>
+            <div>
+              <div class="text-[13px]">근력 운동</div>
+              <div class="text-[11px] text-[#525252]">어제 18:00 · 55분</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[13px] font-mono">312 <span class="text-[11px] text-[#525252]">kcal</span></div>
+          </div>
+        </div>
+
+        <div class="border-t border-[#262626]"></div>
+
+        <div class="flex items-center justify-between">
+          <div class="flex items-center gap-3">
+            <div class="w-8 h-8 rounded-lg bg-[#22c55e]/10 flex items-center justify-center">
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="#22c55e" stroke-width="1.5"><circle cx="10" cy="3.5" r="2"/><path d="M7 8.5l3 2 3-2M10 10.5v4M7 18l3-3.5 3 3.5"/></svg>
+            </div>
+            <div>
+              <div class="text-[13px]">인터벌 러닝</div>
+              <div class="text-[11px] text-[#525252]">4월 5일 · 35분</div>
+            </div>
+          </div>
+          <div class="text-right">
+            <div class="text-[13px] font-mono">4.21 <span class="text-[11px] text-[#525252]">km</span></div>
+            <div class="text-[11px] text-[#525252] font-mono">6'48"</div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</main>
+</body>
+</html>
