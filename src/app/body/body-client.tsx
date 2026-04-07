@@ -1,5 +1,6 @@
 "use client";
 
+import { useState } from "react";
 import TrendLineChart from "@/components/ui/TrendLineChart";
 
 interface DataPoint {
@@ -131,6 +132,94 @@ export default function BodyClient({
           </div>
         )}
       </div>
+
+      {/* 식단 기록 */}
+      <div className="mt-10">
+        <h2 className="text-lg font-semibold mb-1">식단 기록</h2>
+        <p className="text-dim text-[12px] mb-4">간단히 기록하면 칼로리를 추정합니다</p>
+        <FoodInput />
+      </div>
+    </div>
+  );
+}
+
+function FoodInput() {
+  const [desc, setDesc] = useState("");
+  const [meal, setMeal] = useState("lunch");
+  const [loading, setLoading] = useState(false);
+  const [logs, setLogs] = useState<{ description: string; estimatedKcal: number; mealType: string }[]>([]);
+
+  async function submit(e: React.FormEvent) {
+    e.preventDefault();
+    if (!desc.trim() || loading) return;
+    setLoading(true);
+
+    try {
+      const res = await fetch("/api/food", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ description: desc, mealType: meal }),
+      });
+      const data = await res.json();
+      if (data.data) {
+        setLogs((prev) => [data.data, ...prev]);
+        setDesc("");
+      }
+    } finally {
+      setLoading(false);
+    }
+  }
+
+  const mealLabels: Record<string, string> = {
+    breakfast: "아침",
+    lunch: "점심",
+    dinner: "저녁",
+    snack: "간식",
+  };
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <form onSubmit={submit} className="flex gap-2 mb-4">
+        <select
+          value={meal}
+          onChange={(e) => setMeal(e.target.value)}
+          className="bg-surface border border-border rounded-lg px-3 py-2 text-[13px] text-bright"
+        >
+          <option value="breakfast">아침</option>
+          <option value="lunch">점심</option>
+          <option value="dinner">저녁</option>
+          <option value="snack">간식</option>
+        </select>
+        <input
+          value={desc}
+          onChange={(e) => setDesc(e.target.value)}
+          placeholder="먹은 것을 입력하세요 (예: 김치찌개, 밥, 계란후라이)"
+          className="flex-1 bg-surface border border-border rounded-lg px-4 py-2 text-[13px] text-bright placeholder:text-dim focus:outline-none focus:border-accent/50"
+        />
+        <button
+          type="submit"
+          disabled={loading || !desc.trim()}
+          className="px-4 py-2 rounded-lg bg-accent text-[#0a0a0a] text-[12px] font-medium hover:bg-accent-hover transition-colors disabled:opacity-50"
+        >
+          기록
+        </button>
+      </form>
+
+      {logs.length > 0 && (
+        <div className="space-y-2">
+          {logs.map((l, i) => (
+            <div key={i} className="flex items-center justify-between text-[13px]">
+              <div>
+                <span className="text-dim mr-2">{mealLabels[l.mealType] ?? l.mealType}</span>
+                <span>{l.description}</span>
+              </div>
+              <span className="font-[family-name:var(--font-geist-mono)]">
+                ~{l.estimatedKcal} <span className="text-dim">kcal</span>
+              </span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
