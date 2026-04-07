@@ -103,6 +103,9 @@ function SleepStagesBar({
     { value: awakeDuration ?? 0, color: "#525252" },
   ].filter((s) => s.value > 0);
 
+  const totalDuration = segments.reduce((sum, s) => sum + s.value, 0);
+  if (totalDuration === 0) return null;
+
   return (
     <div className="flex h-3 rounded-full overflow-hidden bg-surface">
       {segments.map((seg, i) => (
@@ -110,7 +113,7 @@ function SleepStagesBar({
           key={i}
           className="h-full"
           style={{
-            width: `${(seg.value / totalSleep) * 100}%`,
+            width: `${(seg.value / totalDuration) * 100}%`,
             backgroundColor: seg.color,
           }}
         />
