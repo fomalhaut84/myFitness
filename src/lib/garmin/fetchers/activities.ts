@@ -36,7 +36,6 @@ export async function syncActivities(
         continue;
       }
 
-      // IActivity 타입에 없는 필드는 any 캐스팅
       const raw = a as unknown as Record<string, unknown>;
       const summaryDTO = raw.summaryDTO as Record<string, unknown> | undefined;
 
@@ -57,6 +56,16 @@ export async function syncActivities(
         elevationGain: a.elevationGain ?? null,
         trainingEffect: (summaryDTO?.trainingEffect as number) ?? null,
         vo2maxEstimate: (raw.vO2MaxValue as number) ?? null,
+        // M2: 러닝 다이나믹스
+        avgCadence: toInt(summaryDTO?.averageRunCadence),
+        avgStrideLength: toFloat(summaryDTO?.strideLength),
+        avgVerticalOscillation: toFloat(summaryDTO?.verticalOscillation),
+        avgGroundContactTime: toFloat(summaryDTO?.groundContactTime),
+        aerobicTE: toFloat(summaryDTO?.trainingEffect),
+        anaerobicTE: toFloat(summaryDTO?.anaerobicTrainingEffect),
+        avgRespirationRate: toFloat(raw.avgRespirationRate),
+        lapCount: toInt(raw.lapCount),
+        splitSummaries: (a.splitSummaries ?? null) as Prisma.InputJsonValue,
         rawData: raw as Prisma.InputJsonValue,
       };
 
@@ -73,4 +82,16 @@ export async function syncActivities(
   }
 
   return synced;
+}
+
+function toInt(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : Math.round(n);
+}
+
+function toFloat(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
 }

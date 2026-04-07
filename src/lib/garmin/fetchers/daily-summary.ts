@@ -44,6 +44,15 @@ export async function syncDailySummaries(
         bodyBatteryLow: toInt(summary.bodyBatteryLowestValue),
         intensityMin,
         floorsClimbed: toInt(summary.floorsAscended),
+        // M2: 추가 지표
+        avgSpo2: toFloat(summary.averageSpo2),
+        lowestSpo2: toFloat(summary.lowestSpo2),
+        avgRespiration: toFloat(summary.avgWakingRespirationValue),
+        stressHighDuration: toMinutes(summary.highStressDuration),
+        stressMediumDuration: toMinutes(summary.mediumStressDuration),
+        stressLowDuration: toMinutes(summary.lowStressDuration),
+        bodyBatteryCharged: toInt(summary.bodyBatteryChargedValue),
+        bodyBatteryDrained: toInt(summary.bodyBatteryDrainedValue),
         rawData: summary as Prisma.InputJsonValue,
       };
 
@@ -55,7 +64,6 @@ export async function syncDailySummaries(
 
       synced++;
     } catch (error) {
-      // 404/데이터 없음은 건너뜀, 그 외(401/403/네트워크)는 상위로 전파
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes("404") || msg.includes("not found")) continue;
       throw error;
@@ -69,4 +77,17 @@ function toInt(val: unknown): number | null {
   if (val === null || val === undefined) return null;
   const n = Number(val);
   return isNaN(n) ? null : Math.round(n);
+}
+
+function toFloat(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
+}
+
+/** Garmin은 스트레스 시간을 초 단위로 반환 → 분으로 변환 */
+function toMinutes(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : Math.round(n / 60);
 }

@@ -21,11 +21,11 @@ model UserProfile {
 
 model SyncMetadata {
   id            String   @id @default(cuid())
-  dataType      String   @unique     // "activities", "sleep", "daily_stats", "heart_rate", "body_composition"
+  dataType      String   @unique
   lastSyncAt    DateTime
-  lastSyncDate  DateTime             // 마지막으로 싱크한 날짜
+  lastSyncDate  DateTime
   syncCount     Int      @default(0)
-  status        String   @default("idle") // "idle", "syncing", "error"
+  status        String   @default("idle")
   errorMessage  String?
   updatedAt     DateTime @updatedAt
 }
@@ -33,7 +33,7 @@ model SyncMetadata {
 model Activity {
   id              String   @id @default(cuid())
   garminId        BigInt   @unique
-  activityType    String              // "running", "cycling", "strength", "walking" 등
+  activityType    String
   name            String
   startTime       DateTime
   duration        Int                 // seconds
@@ -41,12 +41,22 @@ model Activity {
   calories        Int?
   avgHR           Int?                // bpm
   maxHR           Int?                // bpm
-  avgPace         Float?              // sec/km (러닝)
+  avgPace         Float?              // sec/km
   avgSpeed        Float?              // km/h
   elevationGain   Float?              // meters
   trainingEffect  Float?              // 1.0-5.0
   vo2maxEstimate  Float?
-  rawData         Json?               // 전체 Garmin 응답 보존
+  // M2: 러닝 다이나믹스
+  avgCadence      Int?                // spm (steps per minute)
+  avgStrideLength Float?              // meters
+  avgVerticalOscillation Float?       // cm
+  avgGroundContactTime   Float?       // ms
+  aerobicTE       Float?              // 유산소 트레이닝 이펙트
+  anaerobicTE     Float?              // 무산소 트레이닝 이펙트
+  avgRespirationRate Float?           // breaths/min
+  lapCount        Int?
+  splitSummaries  Json?               // km별 스플릿 데이터
+  rawData         Json?
   createdAt       DateTime @default(now())
 
   @@index([activityType, startTime])
@@ -55,33 +65,51 @@ model Activity {
 
 model DailySummary {
   id              String   @id @default(cuid())
-  date            DateTime @unique     // 날짜 (midnight)
+  date            DateTime @unique
   steps           Int?
-  totalCalories   Int?                 // 총 kcal
+  totalCalories   Int?
   activeCalories  Int?
-  restingHR       Int?                 // bpm
+  restingHR       Int?
   avgStress       Int?                 // 1-100
   bodyBattery     Int?                 // 5-100 (하루 끝)
   bodyBatteryHigh Int?
   bodyBatteryLow  Int?
-  intensityMin    Int?                 // 활동 강도 분
+  intensityMin    Int?
   floorsClimbed   Int?
+  // M2: 추가 지표
+  avgSpo2         Float?               // %
+  lowestSpo2      Float?               // %
+  avgRespiration  Float?               // breaths/min
+  stressHighDuration  Int?             // minutes
+  stressMediumDuration Int?            // minutes
+  stressLowDuration   Int?             // minutes
+  bodyBatteryCharged  Int?             // 충전량
+  bodyBatteryDrained  Int?             // 소모량
   rawData         Json?
   createdAt       DateTime @default(now())
 }
 
 model SleepRecord {
   id            String   @id @default(cuid())
-  date          DateTime @unique       // 수면 날짜 (밤 기준)
+  date          DateTime @unique
   sleepStart    DateTime
   sleepEnd      DateTime
   totalSleep    Int                    // minutes
-  deepSleep     Int?                   // minutes
-  lightSleep    Int?                   // minutes
-  remSleep      Int?                   // minutes
-  awakeDuration Int?                   // minutes
+  deepSleep     Int?
+  lightSleep    Int?
+  remSleep      Int?
+  awakeDuration Int?
   sleepScore    Int?                   // 0-100
   avgSpO2       Float?
+  // M2: 추가 지표
+  avgRespiration    Float?             // breaths/min
+  lowestRespiration Float?
+  highestRespiration Float?
+  avgSleepStress    Float?             // 수면 중 스트레스
+  bodyBatteryChange Int?               // 수면 중 배터리 변화량
+  restingHR         Int?               // 수면 중 안정시 심박
+  hrvOvernight      Float?             // ms, 야간 HRV
+  sleepScoreDetails Json?              // 점수 세부 (duration/stress/rem/deep/light/restlessness)
   rawData       Json?
   createdAt     DateTime @default(now())
 }
@@ -89,11 +117,11 @@ model SleepRecord {
 model HeartRateRecord {
   id          String   @id @default(cuid())
   date        DateTime @unique
-  restingHR   Int?                     // bpm
+  restingHR   Int?
   avgHR       Int?
   maxHR       Int?
   minHR       Int?
-  hrvStatus   Float?                   // ms (HRV 값)
+  hrvStatus   Float?                   // ms
   hrvBaseline Float?                   // ms
   rawData     Json?
   createdAt   DateTime @default(now())
@@ -112,9 +140,9 @@ model BodyComposition {
 
 model AIAdvice {
   id        String   @id @default(cuid())
-  category  String                     // "exercise", "sleep", "heart", "diet", "lifestyle", "weekly_report"
+  category  String
   prompt    String
-  response  String                     // markdown
+  response  String
   createdAt DateTime @default(now())
 
   @@index([category, createdAt])
@@ -123,9 +151,9 @@ model AIAdvice {
 model FoodLog {
   id            String   @id @default(cuid())
   date          DateTime
-  description   String                 // 자유 텍스트, AI가 칼로리 추정
+  description   String
   estimatedKcal Int?
-  mealType      String?                // "breakfast", "lunch", "dinner", "snack"
+  mealType      String?
   createdAt     DateTime @default(now())
 
   @@index([date])
