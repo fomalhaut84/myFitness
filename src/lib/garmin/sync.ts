@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
-import { daysAgo, yesterday } from "./utils";
+import { daysAgo, formatDate, yesterday } from "./utils";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -86,6 +86,23 @@ async function updateSyncMetadata(
   });
 }
 
+async function markError(
+  dataType: DataType,
+  errorMessage: string
+): Promise<void> {
+  await prisma.syncMetadata.upsert({
+    where: { dataType },
+    update: { status: "error", errorMessage },
+    create: {
+      dataType,
+      lastSyncAt: new Date(),
+      lastSyncDate: new Date(0),
+      status: "error",
+      errorMessage,
+    },
+  });
+}
+
 async function markSyncing(dataType: DataType): Promise<void> {
   await prisma.syncMetadata.upsert({
     where: { dataType },
@@ -114,13 +131,13 @@ export async function syncAll(
     const startDate = options?.startDate ?? (await getStartDate(dataType));
 
     if (startDate > endDate) {
-      console.log(`[${dataType}] 이미 최신 상태 (${startDate.toISOString().split("T")[0]}까지 싱크 완료)`);
+      console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
       results.push({ dataType, synced: 0 });
       continue;
     }
 
     console.log(
-      `[${dataType}] 싱크 시작: ${startDate.toISOString().split("T")[0]} ~ ${endDate.toISOString().split("T")[0]}`
+      `[${dataType}] 싱크 시작: ${formatDate(startDate)} ~ ${formatDate(endDate)}`
     );
 
     await markSyncing(dataType);
@@ -136,7 +153,8 @@ export async function syncAll(
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
-      await updateSyncMetadata(dataType, endDate, 0, message);
+      // 실패 시 lastSyncDate를 업데이트하지 않음 → 다음 싱크에서 같은 범위 재시도
+      await markError(dataType, message);
       console.error(`[${dataType}] 싱크 실패:`, message);
       results.push({ dataType, synced: 0, error: message });
       // 하나 실패해도 나머지 진행

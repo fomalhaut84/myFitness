@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, startOfDay, withRateLimit } from "../utils";
+import { dateRange, formatDate, isNoDataError, startOfDay, withRateLimit } from "../utils";
 
 export async function syncDailySummaries(
   client: GarminConnect,
@@ -13,7 +13,7 @@ export async function syncDailySummaries(
 
   for (const date of dates) {
     try {
-      const dateStr = date.toISOString().split("T")[0];
+      const dateStr = formatDate(date);
       const summary = await withRateLimit(() =>
         client.get<Record<string, unknown>>(
           `https://connect.garmin.com/usersummary-service/usersummary/daily/${dateStr}`
@@ -51,8 +51,9 @@ export async function syncDailySummaries(
       });
 
       synced++;
-    } catch {
-      // 해당 날짜 데이터 없음 → 건너뜀
+    } catch (error) {
+      if (isNoDataError(error)) continue;
+      throw error;
     }
   }
 

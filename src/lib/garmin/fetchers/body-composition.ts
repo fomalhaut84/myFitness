@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, startOfDay, withRateLimit } from "../utils";
+import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
 
 export async function syncBodyComposition(
   client: GarminConnect,
@@ -41,8 +41,9 @@ export async function syncBodyComposition(
       });
 
       synced++;
-    } catch {
-      // 해당 날짜 체중 데이터 없음 → 건너뜀
+    } catch (error) {
+      if (isNoDataError(error)) continue;
+      throw error;
     }
   }
 
