@@ -1,21 +1,37 @@
 import { spawn } from "child_process";
-import { existsSync } from "fs";
+import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import { SYSTEM_PROMPT } from "./system-prompt";
 
-const MCP_CONFIG_PATH = path.resolve(
-  process.cwd(),
-  "src/lib/ai/mcp-config.json"
-);
-
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.cjs");
+const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
+const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
 const TIMEOUT_MS = 180_000;
 
 interface ClaudeResponse {
   result: string;
-  cost_usd?: number;
   duration_ms?: number;
+}
+
+function ensureMcpConfig(): string {
+  // 런타임에 실제 DATABASE_URL로 MCP config 생성
+  mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
+
+  const config = {
+    mcpServers: {
+      myfitness: {
+        command: "node",
+        args: [MCP_SERVER_PATH],
+        env: {
+          DATABASE_URL: process.env.DATABASE_URL ?? "",
+        },
+      },
+    },
+  };
+
+  writeFileSync(RUNTIME_MCP_CONFIG, JSON.stringify(config, null, 2));
+  return RUNTIME_MCP_CONFIG;
 }
 
 export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
@@ -25,6 +41,7 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
     );
   }
 
+  const mcpConfigPath = ensureMcpConfig();
   const fullPrompt = `${SYSTEM_PROMPT}\n\n---\n\n사용자 질문: ${prompt}`;
 
   return new Promise((resolve, reject) => {
@@ -34,17 +51,17 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
       "--output-format",
       "json",
       "--mcp-config",
-      MCP_CONFIG_PATH,
+      mcpConfigPath,
       "--model",
       "haiku",
       "--max-turns",
-      "5",
+      "10",
     ];
 
     const startTime = Date.now();
     const child = spawn("claude", args, {
       timeout: TIMEOUT_MS,
-      env: { ...process.env, CLAUDE_CODE_ENTRYPOINT: "mcp" },
+      cwd: process.cwd(),
     });
 
     let stdout = "";
@@ -75,7 +92,6 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
           duration_ms: durationMs,
         });
       } catch {
-        // JSON 파싱 실패 시 raw text 반환
         resolve({
           result: stdout.trim(),
           duration_ms: durationMs,
