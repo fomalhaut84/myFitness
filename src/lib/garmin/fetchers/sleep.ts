@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
+import { dateRange, isNoDataError, withRateLimit } from "../utils";
 
 export async function syncSleep(
   client: GarminConnect,
@@ -19,10 +19,15 @@ export async function syncSleep(
 
       const dto = sleepData.dailySleepDTO;
 
-      // GMT 타임스탬프 사용 (Local은 가짜 epoch이라 타임존 변환 시 틀어짐)
       if (!dto.sleepStartTimestampGMT || !dto.sleepEndTimestampGMT) continue;
 
-      const dayDate = startOfDay(date);
+      // Garmin의 calendarDate 사용 (기상일 기준, Garmin UI와 일치)
+      const calendarDate = dto.calendarDate;
+      if (!calendarDate) continue;
+
+      const [year, month, day] = calendarDate.split("-").map(Number);
+      const dayDate = new Date(year, month - 1, day);
+      dayDate.setHours(0, 0, 0, 0);
 
       const data = {
         sleepStart: new Date(dto.sleepStartTimestampGMT),
