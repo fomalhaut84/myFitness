@@ -42,7 +42,16 @@ export async function POST(request: Request) {
     // AI 칼로리 추정 (간단한 추정 — 향후 Claude로 대체 가능)
     const estimatedKcal = estimateCalories(description);
 
-    const foodDate = date ? new Date(date) : new Date();
+    let foodDate = new Date();
+    if (date) {
+      foodDate = new Date(date);
+      if (isNaN(foodDate.getTime())) {
+        return NextResponse.json(
+          { error: `유효하지 않은 날짜: ${date}` },
+          { status: 400 }
+        );
+      }
+    }
 
     const log = await prisma.foodLog.create({
       data: {

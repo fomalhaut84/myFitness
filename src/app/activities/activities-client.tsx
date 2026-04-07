@@ -170,13 +170,19 @@ export default function ActivitiesClient({
         </div>
       )}
 
-      {/* 러닝 분석 + 트레이닝 로드 */}
+      {/* 러닝 분석 */}
       {runningRecords.length > 0 && (
-        <div className="mt-10 space-y-10">
+        <div className="mt-10">
           <RunningAnalysis
             records={runningRecords}
             estimatedMaxHR={190}
           />
+        </div>
+      )}
+
+      {/* 트레이닝 로드 */}
+      {weeklyVolumes.some((w) => w.count > 0) && (
+        <div className="mt-10">
           <TrainingLoad
             weeklyVolumes={weeklyVolumes}
             overtrainingRisk={overtrainingRisk}
