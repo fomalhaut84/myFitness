@@ -1,5 +1,5 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
-import type { Prisma } from "@/generated/prisma/client";
+import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, withRateLimit } from "../utils";
 
@@ -21,13 +21,35 @@ export async function syncSleep(
 
       if (!dto.sleepStartTimestampGMT || !dto.sleepEndTimestampGMT) continue;
 
-      // Garmin의 calendarDate 사용 (기상일 기준, Garmin UI와 일치)
       const calendarDate = dto.calendarDate;
       if (!calendarDate) continue;
 
       const [year, month, day] = calendarDate.split("-").map(Number);
       const dayDate = new Date(year, month - 1, day);
       dayDate.setHours(0, 0, 0, 0);
+
+      // 수면 점수 세부
+      const sleepScoreDetails = dto.sleepScores
+        ? {
+            overall: dto.sleepScores.overall?.value ?? null,
+            duration: dto.sleepScores.totalDuration?.qualifierKey ?? null,
+            stress: dto.sleepScores.stress?.qualifierKey ?? null,
+            awakeCount: dto.sleepScores.awakeCount?.qualifierKey ?? null,
+            remPercentage: {
+              value: dto.sleepScores.remPercentage?.value ?? null,
+              qualifier: dto.sleepScores.remPercentage?.qualifierKey ?? null,
+            },
+            deepPercentage: {
+              value: dto.sleepScores.deepPercentage?.value ?? null,
+              qualifier: dto.sleepScores.deepPercentage?.qualifierKey ?? null,
+            },
+            lightPercentage: {
+              value: dto.sleepScores.lightPercentage?.value ?? null,
+              qualifier: dto.sleepScores.lightPercentage?.qualifierKey ?? null,
+            },
+            restlessness: dto.sleepScores.restlessness?.qualifierKey ?? null,
+          }
+        : null;
 
       const data = {
         sleepStart: new Date(dto.sleepStartTimestampGMT),
@@ -46,7 +68,21 @@ export async function syncSleep(
           ? Math.round(dto.awakeSleepSeconds / 60)
           : null,
         sleepScore: dto.sleepScores?.overall?.value ?? null,
-        avgSpO2: null as number | null,
+        // M2: 추가 지표
+        avgSpO2: toFloat(
+          (sleepData as unknown as Record<string, unknown>).averageSpo2 ??
+          (dto as unknown as Record<string, unknown>).averageSpo2
+        ),
+        avgRespiration: toFloat(dto.averageRespirationValue),
+        lowestRespiration: toFloat(dto.lowestRespirationValue),
+        highestRespiration: toFloat(dto.highestRespirationValue),
+        avgSleepStress: toFloat(dto.avgSleepStress),
+        bodyBatteryChange: toInt(sleepData.bodyBatteryChange),
+        restingHR: toInt(sleepData.restingHeartRate),
+        hrvOvernight: toFloat(sleepData.avgOvernightHrv),
+        sleepScoreDetails: sleepScoreDetails
+          ? (sleepScoreDetails as Prisma.InputJsonValue)
+          : Prisma.DbNull,
         rawData: sleepData as unknown as Prisma.InputJsonValue,
       };
 
@@ -64,4 +100,16 @@ export async function syncSleep(
   }
 
   return synced;
+}
+
+function toInt(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : Math.round(n);
+}
+
+function toFloat(val: unknown): number | null {
+  if (val === null || val === undefined) return null;
+  const n = Number(val);
+  return isNaN(n) ? null : n;
 }
