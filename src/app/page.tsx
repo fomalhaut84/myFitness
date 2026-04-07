@@ -21,7 +21,7 @@ export default async function DashboardPage() {
   const today = todayLocal();
   const yesterday = daysAgoLocal(1);
   const weekAgo = daysAgoLocal(6);
-  const thirtyDaysAgo = daysAgoLocal(30);
+  const thirtyDaysAgo = daysAgoLocal(29);
 
   const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
     await Promise.all([
