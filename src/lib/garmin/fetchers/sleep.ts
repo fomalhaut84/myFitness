@@ -19,13 +19,14 @@ export async function syncSleep(
 
       const dto = sleepData.dailySleepDTO;
 
-      if (!dto.sleepStartTimestampLocal || !dto.sleepEndTimestampLocal) continue;
+      // GMT 타임스탬프 사용 (Local은 가짜 epoch이라 타임존 변환 시 틀어짐)
+      if (!dto.sleepStartTimestampGMT || !dto.sleepEndTimestampGMT) continue;
 
       const dayDate = startOfDay(date);
 
       const data = {
-        sleepStart: new Date(dto.sleepStartTimestampLocal),
-        sleepEnd: new Date(dto.sleepEndTimestampLocal),
+        sleepStart: new Date(dto.sleepStartTimestampGMT),
+        sleepEnd: new Date(dto.sleepEndTimestampGMT),
         totalSleep: Math.round(dto.sleepTimeSeconds / 60),
         deepSleep: dto.deepSleepSeconds
           ? Math.round(dto.deepSleepSeconds / 60)
