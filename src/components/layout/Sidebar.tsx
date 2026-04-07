@@ -66,6 +66,16 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "생활 패턴",
+    href: "/lifestyle",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 17V7l4-4 4 4 4-4v10" />
+        <path d="M3 17h14" />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {
