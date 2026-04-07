@@ -56,6 +56,8 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
       "haiku",
       "--max-turns",
       "10",
+      "--allowedTools",
+      "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends",
     ];
 
     const startTime = Date.now();
