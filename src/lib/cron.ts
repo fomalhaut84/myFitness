@@ -24,7 +24,22 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        const results = await syncAll();
+        // KST 기준 어제 날짜 계산 (UTC 서버에서도 정확하도록)
+        const nowKST = new Date(
+          new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" })
+        );
+        const yesterdayKST = new Date(nowKST);
+        yesterdayKST.setDate(yesterdayKST.getDate() - 1);
+        yesterdayKST.setHours(0, 0, 0, 0);
+
+        const threeDaysAgoKST = new Date(nowKST);
+        threeDaysAgoKST.setDate(threeDaysAgoKST.getDate() - 3);
+        threeDaysAgoKST.setHours(0, 0, 0, 0);
+
+        const results = await syncAll({
+          startDate: threeDaysAgoKST,
+          endDate: yesterdayKST,
+        });
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;
         console.log(`[cron] 싱크 완료: ${total}건, 실패 ${failed}건`);
