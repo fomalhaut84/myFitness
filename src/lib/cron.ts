@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
+import { generateWeeklyReport } from "@/lib/weekly-report";
 
 let isSyncing = false;
 let isRegistered = false;
@@ -8,12 +9,12 @@ export function startCronJobs() {
   if (isRegistered) return;
   isRegistered = true;
 
-  const schedule = process.env.SYNC_CRON ?? "0 6 * * *";
-
-  console.log(`[cron] Garmin 자동 싱크 등록: ${schedule} (Asia/Seoul)`);
+  // 일일 싱크
+  const syncSchedule = process.env.SYNC_CRON ?? "0 6 * * *";
+  console.log(`[cron] Garmin 자동 싱크 등록: ${syncSchedule} (Asia/Seoul)`);
 
   cron.schedule(
-    schedule,
+    syncSchedule,
     async () => {
       if (isSyncing) {
         console.log("[cron] 싱크 이미 실행 중 — 건너뜀");
@@ -24,7 +25,6 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        // KST 기준 어제 날짜 계산 (UTC 서버에서도 정확하도록)
         const nowKST = new Date(
           new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" })
         );
@@ -47,6 +47,23 @@ export function startCronJobs() {
         console.error("[cron] 싱크 에러:", error);
       } finally {
         isSyncing = false;
+      }
+    },
+    { timezone: "Asia/Seoul" }
+  );
+
+  // 주간 AI 리포트 (매주 월요일 07:00 KST)
+  const reportSchedule = process.env.REPORT_CRON ?? "0 7 * * 1";
+  console.log(`[cron] 주간 AI 리포트 등록: ${reportSchedule} (Asia/Seoul)`);
+
+  cron.schedule(
+    reportSchedule,
+    async () => {
+      console.log("[cron] 주간 AI 리포트 생성 시작");
+      try {
+        await generateWeeklyReport();
+      } catch (error) {
+        console.error("[cron] 리포트 생성 에러:", error);
       }
     },
     { timezone: "Asia/Seoul" }

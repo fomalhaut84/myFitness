@@ -1,4 +1,4 @@
-import type { Metadata } from "next";
+import type { Metadata, Viewport } from "next";
 import localFont from "next/font/local";
 import MainLayout from "@/components/layout/MainLayout";
 import "./globals.css";
@@ -17,6 +17,19 @@ const geistMono = localFont({
 export const metadata: Metadata = {
   title: "myFitness",
   description: "개인 피트니스 AI 어드바이저 — Garmin 데이터 분석 + 맞춤 조언",
+  manifest: "/manifest.json",
+  appleWebApp: {
+    capable: true,
+    statusBarStyle: "black-translucent",
+    title: "myFitness",
+  },
+};
+
+export const viewport: Viewport = {
+  themeColor: "#22c55e",
+  width: "device-width",
+  initialScale: 1,
+  maximumScale: 1,
 };
 
 export default function RootLayout({
