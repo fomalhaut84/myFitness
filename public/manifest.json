@@ -1,0 +1,17 @@
+{
+  "name": "myFitness",
+  "short_name": "myFitness",
+  "description": "개인 피트니스 AI 어드바이저",
+  "start_url": "/",
+  "display": "standalone",
+  "background_color": "#0a0a0a",
+  "theme_color": "#22c55e",
+  "orientation": "portrait-primary",
+  "icons": [
+    {
+      "src": "/favicon.ico",
+      "sizes": "any",
+      "type": "image/x-icon"
+    }
+  ]
+}
