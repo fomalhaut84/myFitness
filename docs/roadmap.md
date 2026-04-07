@@ -7,7 +7,7 @@
 - [x] #1 프로젝트 초기화 + PM2 배포 설정
 - [x] #2 DB 스키마 설계 + Prisma 마이그레이션
 - [x] #3 Garmin Connect 연동 + 인증
-- [ ] #4 Garmin 데이터 싱크 엔진 (365일 히스토리)
+- [x] #4 Garmin 데이터 싱크 엔진 (365일 히스토리)
 - [ ] #5 수동 싱크 API + 싱크 상태 관리
 
 ## Phase 2: Dashboard & Visualization (이슈 #6~#10)
