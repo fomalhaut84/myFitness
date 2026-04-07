@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import { syncAll, type DataType } from "@/lib/garmin/sync";
 
-const DEFAULT_DAYS = 3;
+const DEFAULT_DAYS = 1;
 
 const VALID_DATA_TYPES: DataType[] = [
   "daily_stats",
