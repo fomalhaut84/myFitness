@@ -66,8 +66,8 @@ export default function ActivityDetailClient({ activity }: Props) {
     (s) => s.splitType === "INTERVAL_ACTIVE" || s.splitType === "RWD_ACTIVE"
   ) ?? [];
 
-  const hasDynamics = activity.avgCadence || activity.avgStrideLength ||
-    activity.avgVerticalOscillation || activity.avgGroundContactTime;
+  const hasDynamics = activity.avgCadence != null || activity.avgStrideLength != null ||
+    activity.avgVerticalOscillation != null || activity.avgGroundContactTime != null;
 
   async function requestAiEval() {
     setAiLoading(true);
@@ -104,16 +104,16 @@ export default function ActivityDetailClient({ activity }: Props) {
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-3">러닝 다이나믹스</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {activity.avgCadence && (
+            {activity.avgCadence != null && (
               <Stat label="케이던스" value={String(activity.avgCadence)} unit="spm" />
             )}
-            {activity.avgStrideLength && (
+            {activity.avgStrideLength != null && (
               <Stat label="보폭" value={(activity.avgStrideLength * 100).toFixed(0)} unit="cm" />
             )}
-            {activity.avgVerticalOscillation && (
+            {activity.avgVerticalOscillation != null && (
               <Stat label="수직 진동" value={activity.avgVerticalOscillation.toFixed(1)} unit="cm" />
             )}
-            {activity.avgGroundContactTime && (
+            {activity.avgGroundContactTime != null && (
               <Stat label="지면접촉시간" value={activity.avgGroundContactTime.toFixed(0)} unit="ms" />
             )}
           </div>
@@ -121,20 +121,20 @@ export default function ActivityDetailClient({ activity }: Props) {
       )}
 
       {/* 추가 지표 */}
-      {(activity.aerobicTE || activity.anaerobicTE || activity.avgRespirationRate) && (
+      {(activity.aerobicTE != null || activity.anaerobicTE != null || activity.avgRespirationRate != null || activity.lapCount != null) && (
         <div className="mt-6">
           <h2 className="text-lg font-semibold mb-3">추가 지표</h2>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
-            {activity.aerobicTE && (
+            {activity.aerobicTE != null && (
               <Stat label="유산소 TE" value={activity.aerobicTE.toFixed(1)} />
             )}
-            {activity.anaerobicTE && (
+            {activity.anaerobicTE != null && (
               <Stat label="무산소 TE" value={activity.anaerobicTE.toFixed(1)} />
             )}
-            {activity.avgRespirationRate && (
+            {activity.avgRespirationRate != null && (
               <Stat label="평균 호흡수" value={activity.avgRespirationRate.toFixed(0)} unit="회/분" />
             )}
-            {activity.lapCount && (
+            {activity.lapCount != null && (
               <Stat label="랩" value={String(activity.lapCount)} unit="개" />
             )}
           </div>
