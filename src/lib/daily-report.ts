@@ -35,55 +35,49 @@ const EVENING_PROMPT = `이브닝 리포트를 작성해줘.
 
 간결한 마크다운으로 작성.`;
 
-export async function generateMorningReport(): Promise<string> {
+async function generateReport(
+  category: string,
+  prompt: string
+): Promise<string> {
   const dateStr = todayKSTString();
 
-  // 중복 방지
+  // 중복 방지: 이미 존재하면 기존 리포트 반환
   const existing = await prisma.aIAdvice.findFirst({
-    where: { category: "morning_report", reportDate: dateStr },
+    where: { category, reportDate: dateStr },
   });
   if (existing) {
-    console.log(`[morning-report] ${dateStr} 이미 존재, 건너뜀`);
+    console.log(`[${category}] ${dateStr} 이미 존재, 건너뜀`);
     return existing.response;
   }
 
-  const { result } = await askAdvisor(MORNING_PROMPT);
+  const { result } = await askAdvisor(prompt);
 
-  await prisma.aIAdvice.create({
-    data: {
-      category: "morning_report",
-      reportDate: dateStr,
-      prompt: MORNING_PROMPT,
-      response: result,
-    },
-  });
+  // race condition 대비: create 실패 시 기존 리포트 반환
+  try {
+    await prisma.aIAdvice.create({
+      data: {
+        category,
+        reportDate: dateStr,
+        prompt,
+        response: result,
+      },
+    });
+    console.log(`[${category}] ${dateStr} 생성 완료`);
+  } catch {
+    console.log(`[${category}] ${dateStr} 중복 생성 시도, 기존 리포트 사용`);
+    const fallback = await prisma.aIAdvice.findFirst({
+      where: { category, reportDate: dateStr },
+    });
+    if (fallback) return fallback.response;
+  }
 
-  console.log(`[morning-report] ${dateStr} 생성 완료`);
   return result;
 }
 
+export async function generateMorningReport(): Promise<string> {
+  return generateReport("morning_report", MORNING_PROMPT);
+}
+
 export async function generateEveningReport(): Promise<string> {
-  const dateStr = todayKSTString();
-
-  const existing = await prisma.aIAdvice.findFirst({
-    where: { category: "evening_report", reportDate: dateStr },
-  });
-  if (existing) {
-    console.log(`[evening-report] ${dateStr} 이미 존재, 건너뜀`);
-    return existing.response;
-  }
-
-  const { result } = await askAdvisor(EVENING_PROMPT);
-
-  await prisma.aIAdvice.create({
-    data: {
-      category: "evening_report",
-      reportDate: dateStr,
-      prompt: EVENING_PROMPT,
-      response: result,
-    },
-  });
-
-  console.log(`[evening-report] ${dateStr} 생성 완료`);
-  return result;
+  return generateReport("evening_report", EVENING_PROMPT);
 }
