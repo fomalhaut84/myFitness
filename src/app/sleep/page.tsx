@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import SleepClient from "./sleep-client";
 
 export const dynamic = "force-dynamic";
@@ -11,11 +12,10 @@ function daysAgoLocal(n: number): Date {
 }
 
 export default async function SleepPage() {
-  const yesterday = daysAgoLocal(1);
   const thirtyDaysAgo = daysAgoLocal(30);
 
   const [lastNight, scoreHistory, recentRecords] = await Promise.all([
-    prisma.sleepRecord.findUnique({ where: { date: yesterday } }),
+    prisma.sleepRecord.findFirst({ orderBy: { date: "desc" } }),
     prisma.sleepRecord.findMany({
       where: { date: { gte: thirtyDaysAgo } },
       select: { date: true, sleepScore: true },
@@ -54,11 +54,11 @@ export default async function SleepPage() {
           : null
       }
       scoreHistory={scoreHistory.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         score: r.sleepScore,
       }))}
       recentRecords={recentRecords.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         totalSleep: r.totalSleep,
         sleepScore: r.sleepScore,
         deepSleep: r.deepSleep,
