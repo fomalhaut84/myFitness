@@ -12,11 +12,10 @@ function daysAgoLocal(n: number): Date {
 }
 
 export default async function SleepPage() {
-  const yesterday = daysAgoLocal(1);
   const thirtyDaysAgo = daysAgoLocal(30);
 
   const [lastNight, scoreHistory, recentRecords] = await Promise.all([
-    prisma.sleepRecord.findUnique({ where: { date: yesterday } }),
+    prisma.sleepRecord.findFirst({ orderBy: { date: "desc" } }),
     prisma.sleepRecord.findMany({
       where: { date: { gte: thirtyDaysAgo } },
       select: { date: true, sleepScore: true },
