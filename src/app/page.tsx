@@ -53,6 +53,10 @@ export default async function DashboardPage() {
       activeCalories: true,
       avgStress: true,
       bodyBattery: true,
+      avgSpo2: true,
+      stressHighDuration: true,
+      stressMediumDuration: true,
+      stressLowDuration: true,
     },
     orderBy: { date: "asc" },
   });
@@ -77,6 +81,7 @@ export default async function DashboardPage() {
     restingHR: todaySummary?.restingHR ?? null,
     sleepScore: todaySleep?.sleepScore ?? null,
     bodyBattery: todaySummary?.bodyBattery ?? null,
+    spo2: todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2 ?? null,
   };
 
   const yesterdayData = {
@@ -84,6 +89,7 @@ export default async function DashboardPage() {
     restingHR: yesterdaySummary?.restingHR ?? null,
     sleepScore: yesterdaySleep?.sleepScore ?? null,
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
+    spo2: yesterdaySleep?.avgSpO2 ?? yesterdaySummary?.avgSpo2 ?? null,
   };
 
   // 오늘 최신 리포트 (KST 기준, daily-report.ts와 동일 방식)
@@ -140,6 +146,16 @@ export default async function DashboardPage() {
       monthlyBodyBattery={monthlyStats.map((d) => ({
         date: formatDateLocal(d.date),
         value: d.bodyBattery,
+      }))}
+      monthlySpo2={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        value: d.avgSpo2,
+      }))}
+      monthlyStressDetail={monthlyStats.map((d) => ({
+        date: formatDateLocal(d.date),
+        high: d.stressHighDuration,
+        medium: d.stressMediumDuration,
+        low: d.stressLowDuration,
       }))}
     />
   );

@@ -11,6 +11,7 @@ interface DaySummary {
   restingHR: number | null;
   sleepScore: number | null;
   bodyBattery: number | null;
+  spo2: number | null;
 }
 
 interface DataPoint {
@@ -39,6 +40,8 @@ interface DashboardClientProps {
   monthlyCalories: DataPoint[];
   monthlyStress: DataPoint[];
   monthlyBodyBattery: DataPoint[];
+  monthlySpo2: DataPoint[];
+  monthlyStressDetail: { date: string; high: number | null; medium: number | null; low: number | null }[];
   latestReport: {
     category: string;
     response: string;
@@ -64,6 +67,8 @@ export default function DashboardClient({
   monthlyCalories,
   monthlyStress,
   monthlyBodyBattery,
+  monthlySpo2,
+  monthlyStressDetail,
   latestReport,
 }: DashboardClientProps) {
   const now = new Date();
@@ -74,6 +79,7 @@ export default function DashboardClient({
   const avgCalories = calcAvg(monthlyCalories);
   const avgStress = calcAvg(monthlyStress);
   const avgBattery = calcAvg(monthlyBodyBattery);
+  const avgSpo2 = calcAvg(monthlySpo2);
 
   const [syncing, setSyncing] = useState(false);
   const [syncResult, setSyncResult] = useState<string | null>(null);
@@ -212,6 +218,20 @@ export default function DashboardClient({
             </svg>
           }
         />
+        {today.spo2 != null && (
+          <SummaryCard
+            label="SpO2"
+            value={today.spo2 ? Math.round(today.spo2) : null}
+            unit="%"
+            prevValue={yesterday.spo2 ? Math.round(yesterday.spo2) : null}
+            icon={
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="10" cy="10" r="7" />
+                <path d="M10 6v4l2.5 2.5" />
+              </svg>
+            }
+          />
+        )}
       </div>
 
       {/* 주간 차트 */}
@@ -257,6 +277,60 @@ export default function DashboardClient({
           color="#60a5fa"
           domain={[0, 100]}
         />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
+        <TrendLineChart
+          title={`SpO2${avgSpo2 !== null ? ` — 평균 ${avgSpo2}%` : ""}`}
+          data={monthlySpo2}
+          color="#a78bfa"
+          unit="%"
+          domain={[85, 100]}
+        />
+        <StressDetailChart data={monthlyStressDetail} />
+      </div>
+    </div>
+  );
+}
+
+function StressDetailChart({ data }: { data: { date: string; high: number | null; medium: number | null; low: number | null }[] }) {
+  const hasData = data.some((d) => ((d.high ?? 0) + (d.medium ?? 0) + (d.low ?? 0)) > 0);
+
+  if (!hasData) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">스트레스 세부 (30일)</div>
+        <div className="h-40 flex items-center justify-center text-[13px] text-dim">데이터 없음</div>
+      </div>
+    );
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5">
+      <div className="text-[11px] text-dim tracking-wider uppercase mb-4">스트레스 세부 (30일)</div>
+      <div className="space-y-1">
+        {data.map((d) => {
+          const total = (d.high ?? 0) + (d.medium ?? 0) + (d.low ?? 0);
+          if (total === 0) return null;
+          const hPct = ((d.high ?? 0) / total) * 100;
+          const mPct = ((d.medium ?? 0) / total) * 100;
+          const lPct = ((d.low ?? 0) / total) * 100;
+          const dateShort = d.date.slice(5); // MM-DD
+          return (
+            <div key={d.date} className="flex items-center gap-2">
+              <span className="text-[9px] text-dim w-10">{dateShort}</span>
+              <div className="flex-1 flex h-3 rounded-sm overflow-hidden">
+                {lPct > 0 && <div style={{ width: `${lPct}%`, backgroundColor: "#22c55e" }} />}
+                {mPct > 0 && <div style={{ width: `${mPct}%`, backgroundColor: "#f59e0b" }} />}
+                {hPct > 0 && <div style={{ width: `${hPct}%`, backgroundColor: "#ef4444" }} />}
+              </div>
+            </div>
+          );
+        })}
+      </div>
+      <div className="flex gap-3 mt-2 text-[9px] text-dim">
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#22c55e]" />저</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#f59e0b]" />중</span>
+        <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-sm bg-[#ef4444]" />고</span>
       </div>
     </div>
   );
