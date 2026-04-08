@@ -20,6 +20,11 @@ export default async function SleepDetailPage({ params }: PageProps) {
   const targetDate = new Date(y, m - 1, d);
   targetDate.setHours(0, 0, 0, 0);
 
+  // 2월 31일 등 무효 날짜 방지
+  if (targetDate.getFullYear() !== y || targetDate.getMonth() !== m - 1 || targetDate.getDate() !== d) {
+    notFound();
+  }
+
   const record = await prisma.sleepRecord.findUnique({
     where: { date: targetDate },
   });
