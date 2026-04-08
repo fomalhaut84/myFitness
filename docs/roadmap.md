@@ -72,10 +72,11 @@
 
 > M2-1에서 추출한 데이터를 활동 상세에 시각화.
 
-- [ ] 킬로미터 스플릿 테이블 + 페이스 바 차트
-- [ ] 러닝 다이나믹스 (케이던스, 보폭, 수직진동, 지면접촉시간)
-- [ ] 유산소/무산소 TE, 호흡수 표시
-- [ ] AI 평가 버튼 (M2-2 의존)
+- [x] 러닝 다이나믹스 (케이던스, 보폭, 수직진동, 지면접촉시간)
+- [x] 유산소/무산소 TE, 호흡수 표시
+- [x] AI 평가 버튼
+- [x] rawData backfill 스크립트
+- [ ] km별 스플릿 차트 (활동 상세 API 추가 호출 필요 — 별도 이슈)
 
 ## M2-4: 수면 상세 페이지 신규 — 우선순위 ★★
 
@@ -100,9 +101,9 @@
 > 모바일에서 빠른 조회 + 리포트 자동 수신의 핵심 채널.
 > M2-2 리포트 시스템과 연동.
 
-- [ ] grammY + 별도 PM2 프로세스 (long polling)
-- [ ] 커맨드: /today, /run, /sleep, /weight, /sync, /report, /ai, /reset
-- [ ] 자연어: 식단 입력, AI 질문 감지
-- [ ] 모닝/이브닝/주간 리포트 자동 전송 (M2-2 의존)
-- [ ] 미들웨어 인증 (TELEGRAM_ALLOWED_CHAT_IDS)
+- [x] grammY + 별도 PM2 프로세스 (long polling)
+- [x] 커맨드: /today, /run, /sleep, /weight, /sync, /report, /ai, /reset
+- [x] 자연어: 식단 입력, AI 질문 감지
+- [x] 모닝/이브닝/주간 리포트 자동 전송 (M2-2 의존)
+- [x] 미들웨어 인증 (TELEGRAM_ALLOWED_CHAT_IDS)
 - 스펙: `docs/specs/m2-telegram-bot.md`

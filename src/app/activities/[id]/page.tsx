@@ -1,6 +1,6 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
-import ActivityDetail from "@/components/activity/ActivityDetail";
+import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -28,6 +28,15 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       elevationGain: true,
       trainingEffect: true,
       vo2maxEstimate: true,
+      avgCadence: true,
+      avgStrideLength: true,
+      avgVerticalOscillation: true,
+      avgGroundContactTime: true,
+      aerobicTE: true,
+      anaerobicTE: true,
+      avgRespirationRate: true,
+      lapCount: true,
+      splitSummaries: true,
     },
   });
 
@@ -47,10 +56,24 @@ export default async function ActivityDetailPage({ params }: PageProps) {
         활동 목록
       </Link>
 
-      <ActivityDetail
-        {...activity}
-        startTime={activity.startTime.toISOString()}
+      <ActivityDetailClient
+        activity={{
+          ...activity,
+          startTime: activity.startTime.toISOString(),
+          splitSummaries: activity.splitSummaries as unknown as SplitSummary[] | null,
+        }}
       />
     </div>
   );
+}
+
+interface SplitSummary {
+  distance: number;
+  duration: number;
+  elevationGain: number;
+  averageSpeed: number;
+  averageHR: number;
+  maxHR: number;
+  averageRunCadence: number;
+  splitType: string;
 }
