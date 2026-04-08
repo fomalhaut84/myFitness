@@ -86,8 +86,9 @@ export default async function DashboardPage() {
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
   };
 
-  // 오늘 최신 리포트
-  const todayDateStr = formatDateLocal(today);
+  // 오늘 최신 리포트 (KST 기준, daily-report.ts와 동일 방식)
+  const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const todayDateStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, "0")}-${String(kstNow.getDate()).padStart(2, "0")}`;
   const latestReport = await prisma.aIAdvice.findFirst({
     where: {
       category: { in: ["morning_report", "evening_report"] },
