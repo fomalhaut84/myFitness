@@ -105,7 +105,9 @@ export default function SplitChart({ activityId }: SplitChartProps) {
             />
             <YAxis hide />
             <Tooltip
-              contentStyle={{ backgroundColor: "#161616", border: "1px solid #262626", borderRadius: 8, fontSize: 12 }}
+              contentStyle={{ backgroundColor: "#1e1e1e", border: "1px solid #333333", borderRadius: 8, fontSize: 13, color: "#ededed" }}
+              itemStyle={{ color: "#ededed" }}
+              labelStyle={{ color: "#a3a3a3", marginBottom: 4 }}
               formatter={(_value, _name, props) => [formatPace(props.payload.originalPace), "페이스"]}
               labelFormatter={(label) => `${label} km`}
             />
