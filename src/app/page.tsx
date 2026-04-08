@@ -86,10 +86,27 @@ export default async function DashboardPage() {
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
   };
 
+  // 오늘 최신 리포트 (KST 기준, daily-report.ts와 동일 방식)
+  const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const todayDateStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, "0")}-${String(kstNow.getDate()).padStart(2, "0")}`;
+  const latestReport = await prisma.aIAdvice.findFirst({
+    where: {
+      category: { in: ["morning_report", "evening_report"] },
+      reportDate: todayDateStr,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { category: true, response: true, createdAt: true },
+  });
+
   return (
     <DashboardClient
       today={todayData}
       yesterday={yesterdayData}
+      latestReport={latestReport ? {
+        category: latestReport.category,
+        response: latestReport.response,
+        createdAt: latestReport.createdAt.toISOString(),
+      } : null}
       weeklySteps={weeklySteps.map((d) => ({
         date: formatDateLocal(d.date),
         value: d.steps,
