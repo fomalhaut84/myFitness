@@ -31,6 +31,7 @@ npm run build
 
 echo "=== 6. PM2 Restart ==="
 pm2 startOrReload ecosystem.config.js --only myfitness
+pm2 startOrReload ecosystem.config.js --only myfitness-bot
 
 echo ""
 echo "=== Deploy complete: $TARGET ==="
