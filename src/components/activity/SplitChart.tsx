@@ -82,9 +82,12 @@ export default function SplitChart({ activityId }: SplitChartProps) {
   const minPace = Math.min(...paces);
 
   // 반전: 빠른 페이스(낮은 값)가 높은 막대가 되도록
+  // 기준선을 maxPace(가장 느린)로 잡고, 차이를 막대 높이로 사용
+  // 최소 높이 보장으로 모든 막대가 보이도록
+  const range = maxPace - minPace || 1;
   const barData = chartData.map((d) => ({
     ...d,
-    barHeight: maxPace + minPace - d.pace,
+    barHeight: ((maxPace - d.pace) / range) * 100 + 15, // 15~115 범위
     originalPace: d.pace,
   }));
 
