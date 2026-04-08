@@ -39,6 +39,11 @@ interface DashboardClientProps {
   monthlyCalories: DataPoint[];
   monthlyStress: DataPoint[];
   monthlyBodyBattery: DataPoint[];
+  latestReport: {
+    category: string;
+    response: string;
+    createdAt: string;
+  } | null;
 }
 
 function calcAvg(data: DataPoint[]): number | null {
@@ -59,6 +64,7 @@ export default function DashboardClient({
   monthlyCalories,
   monthlyStress,
   monthlyBodyBattery,
+  latestReport,
 }: DashboardClientProps) {
   const now = new Date();
   const dateStr = `${now.getFullYear()}년 ${now.getMonth() + 1}월 ${now.getDate()}일`;
@@ -128,6 +134,37 @@ export default function DashboardClient({
           </button>
         </div>
       </div>
+
+      {/* 오늘 리포트 요약 */}
+      {latestReport && (
+        <a
+          href="/reports"
+          className="block bg-card border border-border rounded-xl p-4 mb-6 hover:border-border-hover transition-colors"
+        >
+          <div className="flex items-center gap-2 mb-2">
+            <span
+              className="w-2 h-2 rounded-full"
+              style={{
+                backgroundColor:
+                  latestReport.category === "morning_report"
+                    ? "#f59e0b"
+                    : "#a78bfa",
+              }}
+            />
+            <span className="text-[11px] text-dim tracking-wider uppercase">
+              {latestReport.category === "morning_report"
+                ? "모닝 리포트"
+                : "이브닝 리포트"}
+            </span>
+            <span className="text-[11px] text-dim ml-auto">
+              자세히 보기 →
+            </span>
+          </div>
+          <p className="text-[13px] text-muted line-clamp-2">
+            {latestReport.response.replace(/[#*_`]/g, "").slice(0, 150)}...
+          </p>
+        </a>
+      )}
 
       {/* 오늘 요약 카드 */}
       <div className="grid grid-cols-2 md:grid-cols-4 gap-3 mb-8">

@@ -86,10 +86,26 @@ export default async function DashboardPage() {
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
   };
 
+  // 오늘 최신 리포트
+  const todayDateStr = formatDateLocal(today);
+  const latestReport = await prisma.aIAdvice.findFirst({
+    where: {
+      category: { in: ["morning_report", "evening_report"] },
+      reportDate: todayDateStr,
+    },
+    orderBy: { createdAt: "desc" },
+    select: { category: true, response: true, createdAt: true },
+  });
+
   return (
     <DashboardClient
       today={todayData}
       yesterday={yesterdayData}
+      latestReport={latestReport ? {
+        category: latestReport.category,
+        response: latestReport.response,
+        createdAt: latestReport.createdAt.toISOString(),
+      } : null}
       weeklySteps={weeklySteps.map((d) => ({
         date: formatDateLocal(d.date),
         value: d.steps,
