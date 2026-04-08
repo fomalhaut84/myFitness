@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import SleepClient from "./sleep-client";
 
 export const dynamic = "force-dynamic";
@@ -54,11 +55,11 @@ export default async function SleepPage() {
           : null
       }
       scoreHistory={scoreHistory.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         score: r.sleepScore,
       }))}
       recentRecords={recentRecords.map((r) => ({
-        date: r.date.toISOString().split("T")[0],
+        date: formatDateLocal(r.date),
         totalSleep: r.totalSleep,
         sleepScore: r.sleepScore,
         deepSleep: r.deepSleep,
