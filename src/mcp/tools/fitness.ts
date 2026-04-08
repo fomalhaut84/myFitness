@@ -76,6 +76,14 @@ export async function getSleep(args: { days?: number }) {
       sleepScore: true,
       sleepStart: true,
       sleepEnd: true,
+      avgSpO2: true,
+      avgRespiration: true,
+      lowestRespiration: true,
+      highestRespiration: true,
+      avgSleepStress: true,
+      bodyBatteryChange: true,
+      restingHR: true,
+      hrvOvernight: true,
     },
   });
 
@@ -84,13 +92,22 @@ export async function getSleep(args: { days?: number }) {
       {
         type: "text" as const,
         text: JSON.stringify(
-          records.map((r) => ({
-            ...r,
-            date: fmt(r.date),
-            sleepStart: r.sleepStart.toISOString(),
-            sleepEnd: r.sleepEnd.toISOString(),
-            totalSleepHours: (r.totalSleep / 60).toFixed(1),
-          })),
+          {
+            records: records.map((r) => ({
+              ...r,
+              date: fmt(r.date),
+              sleepStart: r.sleepStart.toISOString(),
+              sleepEnd: r.sleepEnd.toISOString(),
+              totalSleepHours: (r.totalSleep / 60).toFixed(1),
+            })),
+            _context: {
+              bodyBatteryChange: "수면 중 충전량. 30+ 양호한 회복, 20-30 보통, 20 미만 회복 부족.",
+              hrvOvernight: "야간 HRV. 절대값보다 7일 추세가 중요. 하락 추세 = 피로 누적, 상승 추세 = 회복 양호.",
+              restingHR: "수면 중 안정시 심박. DailySummary보다 정확. 7일 평균 대비 5bpm+ 상승 시 피로/질병 의심.",
+              avgSpO2: "수면 중 SpO2가 기준값. 95%+ 정상, 90% 미만 주의.",
+              sleepScore: "0-100 점수. 80+ 양호, 60-80 보통, 60 미만 부족.",
+            },
+          },
           null,
           2
         ),
@@ -143,8 +160,16 @@ export async function getDailyStats(args: { days?: number }) {
       bodyBattery: true,
       bodyBatteryHigh: true,
       bodyBatteryLow: true,
+      bodyBatteryCharged: true,
+      bodyBatteryDrained: true,
       intensityMin: true,
       floorsClimbed: true,
+      avgSpo2: true,
+      lowestSpo2: true,
+      avgRespiration: true,
+      stressHighDuration: true,
+      stressMediumDuration: true,
+      stressLowDuration: true,
     },
   });
 
@@ -153,7 +178,15 @@ export async function getDailyStats(args: { days?: number }) {
       {
         type: "text" as const,
         text: JSON.stringify(
-          records.map((r) => ({ ...r, date: fmt(r.date) })),
+          {
+            records: records.map((r) => ({ ...r, date: fmt(r.date) })),
+            _context: {
+              bodyBattery: "bodyBattery(현재값)는 하루 중 자연 소모 결과이므로 저녁에 낮은 것은 정상. 컨디션 판단은 bodyBatteryHigh(기상 시 충전값) 기준: 70+ 양호, 40-70 보통, 40 미만 피로. 회복 판단은 bodyBatteryCharged(충전량) 기준: 40+ 양호한 회복.",
+              stress: "avgStress는 운동 포함 하루 평균이므로 높을 수 있음. 실제 스트레스 수준은 stressHighDuration(고스트레스 시간)과 stressLowDuration(저스트레스 시간) 비율로 판단. 운동 중 고스트레스는 정상.",
+              restingHR: "DailySummary.restingHR은 주간 활동 영향을 받음. 수면 중 측정값(SleepRecord.restingHR)이 더 정확. 추세가 중요: 7일 평균 대비 5bpm 이상 상승 시 피로/질병 의심.",
+              spo2: "주간 SpO2는 측정 환경에 따라 변동이 큼. 수면 중 SpO2(SleepRecord.avgSpO2)가 기준값. 95%+ 정상, 90% 미만 주의.",
+            },
+          },
           null,
           2
         ),

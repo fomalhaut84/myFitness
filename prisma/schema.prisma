@@ -139,13 +139,15 @@ model BodyComposition {
 }
 
 model AIAdvice {
-  id        String   @id @default(cuid())
-  category  String
-  prompt    String
-  response  String
-  createdAt DateTime @default(now())
+  id         String   @id @default(cuid())
+  category   String                     // "morning_report", "evening_report", "weekly_report", "general"
+  reportDate String?                    // "YYYY-MM-DD" (리포트 대상 날짜)
+  prompt     String
+  response   String
+  createdAt  DateTime @default(now())
 
   @@index([category, createdAt])
+  @@index([reportDate])
 }
 
 model FoodLog {
