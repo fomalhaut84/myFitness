@@ -65,12 +65,14 @@ export default function SleepScoreChart({ data }: SleepScoreChartProps) {
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#161616",
-              border: "1px solid #262626",
+              backgroundColor: "#1e1e1e",
+              border: "1px solid #333333",
               borderRadius: 8,
-              fontSize: 12,
+              fontSize: 13,
+              color: "#ededed",
             }}
-            labelStyle={{ color: "#737373" }}
+            itemStyle={{ color: "#ededed" }}
+            labelStyle={{ color: "#a3a3a3" }}
           />
           <Line
             type="monotone"

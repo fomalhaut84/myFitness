@@ -31,7 +31,8 @@ function fmtSleep(min: number): string {
 
 function fmtTime(iso: string): string {
   const d = new Date(iso);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCHours().toString().padStart(2, "0")}:${kst.getUTCMinutes().toString().padStart(2, "0")}`;
 }
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -120,7 +121,7 @@ export default function SleepDetailClient({ record }: { record: SleepData }) {
           )}
           {record.bodyBatteryChange != null && (
             <span className="text-sm text-dim">
-              🔋 +{record.bodyBatteryChange}
+              🔋 {record.bodyBatteryChange > 0 ? `+${record.bodyBatteryChange}` : record.bodyBatteryChange}
             </span>
           )}
         </div>

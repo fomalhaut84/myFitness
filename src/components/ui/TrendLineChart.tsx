@@ -80,11 +80,13 @@ export default function TrendLineChart({
           />
           <Tooltip
             contentStyle={{
-              backgroundColor: "#161616",
-              border: "1px solid #262626",
+              backgroundColor: "#1e1e1e",
+              border: "1px solid #333333",
               borderRadius: 8,
-              fontSize: 12,
+              fontSize: 13,
+              color: "#ededed",
             }}
+            itemStyle={{ color: "#ededed" }}
             labelStyle={{ color: "#737373" }}
             formatter={(value) =>
               unit ? [`${value} ${unit}`, ""] : [`${value}`, ""]

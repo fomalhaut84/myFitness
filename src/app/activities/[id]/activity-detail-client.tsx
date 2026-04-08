@@ -6,18 +6,8 @@ import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
 import SplitChart from "@/components/activity/SplitChart";
 
-interface SplitSummary {
-  distance: number;
-  duration: number;
-  elevationGain: number;
-  averageSpeed: number;
-  averageHR: number;
-  maxHR: number;
-  averageRunCadence: number;
-  splitType: string;
-}
-
 interface ActivityData {
+  id: string;
   name: string;
   activityType: string;
   startTime: string;
@@ -39,7 +29,6 @@ interface ActivityData {
   anaerobicTE: number | null;
   avgRespirationRate: number | null;
   lapCount: number | null;
-  splitSummaries: SplitSummary[] | null;
 }
 
 interface Props {
@@ -61,10 +50,6 @@ function Stat({ label, value, unit }: { label: string; value: string; unit?: str
 export default function ActivityDetailClient({ activity }: Props) {
   const [aiEval, setAiEval] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
-
-  const splits = activity.splitSummaries?.filter(
-    (s) => s.splitType === "INTERVAL_ACTIVE" || s.splitType === "RWD_ACTIVE"
-  ) ?? [];
 
   const hasDynamics = activity.avgCadence != null || activity.avgStrideLength != null ||
     activity.avgVerticalOscillation != null || activity.avgGroundContactTime != null;
@@ -141,11 +126,10 @@ export default function ActivityDetailClient({ activity }: Props) {
         </div>
       )}
 
-      {/* 스플릿 */}
-      {splits.length > 0 && (
+      {/* km별 스플릿 (on-demand 조회) */}
+      {activity.activityType.includes("running") && (
         <div className="mt-6">
-          <h2 className="text-lg font-semibold mb-3">킬로미터 스플릿</h2>
-          <SplitChart splits={splits} />
+          <SplitChart activityId={activity.id} />
         </div>
       )}
 

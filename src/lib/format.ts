@@ -6,6 +6,13 @@ export function formatDateLocal(date: Date): string {
   return `${y}-${m}-${d}`;
 }
 
+/** ISO/UTC 시간을 KST(+9)로 변환하여 HH:MM 표시 */
+export function formatTimeKST(isoStr: string): string {
+  const d = new Date(isoStr);
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCHours().toString().padStart(2, "0")}:${kst.getUTCMinutes().toString().padStart(2, "0")}`;
+}
+
 /** 미터 → km (소수점 2자리) */
 export function formatDistance(meters: number): string {
   return (meters / 1000).toFixed(2);

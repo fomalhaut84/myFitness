@@ -68,7 +68,9 @@ export default function TrainingLoad({
                   width={30}
                 />
                 <Tooltip
-                  contentStyle={{ backgroundColor: "#161616", border: "1px solid #262626", borderRadius: 8, fontSize: 12 }}
+                  contentStyle={{ backgroundColor: "#1e1e1e", border: "1px solid #333333", borderRadius: 8, fontSize: 13, color: "#ededed" }}
+                  itemStyle={{ color: "#ededed" }}
+                  labelStyle={{ color: "#a3a3a3" }}
                   formatter={(value) => [`${Number(value).toFixed(1)} km`, ""]}
                 />
                 <Bar dataKey="distanceKm" radius={[2, 2, 0, 0]}>

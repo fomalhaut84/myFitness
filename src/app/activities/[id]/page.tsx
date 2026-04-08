@@ -36,7 +36,6 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       anaerobicTE: true,
       avgRespirationRate: true,
       lapCount: true,
-      splitSummaries: true,
     },
   });
 
@@ -58,22 +57,12 @@ export default async function ActivityDetailPage({ params }: PageProps) {
 
       <ActivityDetailClient
         activity={{
+          id,
           ...activity,
           startTime: activity.startTime.toISOString(),
-          splitSummaries: activity.splitSummaries as unknown as SplitSummary[] | null,
         }}
       />
     </div>
   );
 }
 
-interface SplitSummary {
-  distance: number;
-  duration: number;
-  elevationGain: number;
-  averageSpeed: number;
-  averageHR: number;
-  maxHR: number;
-  averageRunCadence: number;
-  splitType: string;
-}
