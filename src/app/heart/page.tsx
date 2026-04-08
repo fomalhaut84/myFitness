@@ -17,7 +17,7 @@ export default async function HeartPage() {
   const thirtyDaysAgo = daysAgoLocal(30);
   const fourteenDaysAgo = daysAgoLocal(14);
 
-  const [todayHR, hrTrend, hrvTrend, recentRecords] = await Promise.all([
+  const [todayHR, hrTrend, hrvTrend, respirationTrend, recentRecords] = await Promise.all([
     prisma.heartRateRecord.findUnique({ where: { date: today } }),
     prisma.heartRateRecord.findMany({
       where: { date: { gte: thirtyDaysAgo } },
@@ -27,6 +27,11 @@ export default async function HeartPage() {
     prisma.heartRateRecord.findMany({
       where: { date: { gte: thirtyDaysAgo } },
       select: { date: true, hrvStatus: true },
+      orderBy: { date: "asc" },
+    }),
+    prisma.dailySummary.findMany({
+      where: { date: { gte: thirtyDaysAgo } },
+      select: { date: true, avgRespiration: true },
       orderBy: { date: "asc" },
     }),
     prisma.heartRateRecord.findMany({
@@ -54,6 +59,10 @@ export default async function HeartPage() {
       hrvTrend={hrvTrend.map((r) => ({
         date: formatDateLocal(r.date),
         value: r.hrvStatus ? Math.round(r.hrvStatus) : null,
+      }))}
+      respirationTrend={respirationTrend.map((r) => ({
+        date: formatDateLocal(r.date),
+        value: r.avgRespiration,
       }))}
       recentRecords={recentRecords.map((r) => ({
         date: formatDateLocal(r.date),

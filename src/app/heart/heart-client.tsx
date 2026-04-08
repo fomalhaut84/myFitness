@@ -21,6 +21,7 @@ interface HeartClientProps {
   todayHRV: number | null;
   hrTrend: DataPoint[];
   hrvTrend: DataPoint[];
+  respirationTrend: DataPoint[];
   recentRecords: HRRecord[];
 }
 
@@ -29,6 +30,7 @@ export default function HeartClient({
   todayHRV,
   hrTrend,
   hrvTrend,
+  respirationTrend,
   recentRecords,
 }: HeartClientProps) {
   return (
@@ -77,6 +79,14 @@ export default function HeartClient({
           data={hrvTrend}
           color="#f59e0b"
           unit="ms"
+        />
+      </div>
+      <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-6">
+        <TrendLineChart
+          title="호흡수 추세 (30일)"
+          data={respirationTrend}
+          color="#22c55e"
+          unit="회/분"
         />
       </div>
 
