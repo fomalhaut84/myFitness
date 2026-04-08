@@ -11,6 +11,7 @@ interface DaySummary {
   restingHR: number | null;
   sleepScore: number | null;
   bodyBattery: number | null;
+  spo2: number | null;
 }
 
 interface DataPoint {
@@ -217,6 +218,20 @@ export default function DashboardClient({
             </svg>
           }
         />
+        {today.spo2 != null && (
+          <SummaryCard
+            label="SpO2"
+            value={today.spo2 ? Math.round(today.spo2) : null}
+            unit="%"
+            prevValue={yesterday.spo2 ? Math.round(yesterday.spo2) : null}
+            icon={
+              <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+                <circle cx="10" cy="10" r="7" />
+                <path d="M10 6v4l2.5 2.5" />
+              </svg>
+            }
+          />
+        )}
       </div>
 
       {/* 주간 차트 */}

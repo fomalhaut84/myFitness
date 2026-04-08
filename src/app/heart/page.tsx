@@ -14,7 +14,7 @@ function daysAgoLocal(n: number): Date {
 export default async function HeartPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const thirtyDaysAgo = daysAgoLocal(30);
+  const thirtyDaysAgo = daysAgoLocal(29);
   const fourteenDaysAgo = daysAgoLocal(14);
 
   const [todayHR, hrTrend, hrvTrend, respirationTrend, recentRecords] = await Promise.all([

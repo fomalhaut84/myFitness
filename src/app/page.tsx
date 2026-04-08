@@ -81,6 +81,7 @@ export default async function DashboardPage() {
     restingHR: todaySummary?.restingHR ?? null,
     sleepScore: todaySleep?.sleepScore ?? null,
     bodyBattery: todaySummary?.bodyBattery ?? null,
+    spo2: todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2 ?? null,
   };
 
   const yesterdayData = {
@@ -88,6 +89,7 @@ export default async function DashboardPage() {
     restingHR: yesterdaySummary?.restingHR ?? null,
     sleepScore: yesterdaySleep?.sleepScore ?? null,
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
+    spo2: yesterdaySleep?.avgSpO2 ?? yesterdaySummary?.avgSpo2 ?? null,
   };
 
   // 오늘 최신 리포트 (KST 기준, daily-report.ts와 동일 방식)
