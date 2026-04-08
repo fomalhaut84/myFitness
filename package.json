@@ -6,7 +6,7 @@
     "dev": "next dev",
     "build": "next build && npm run build:mcp && npm run build:bot",
     "build:mcp": "esbuild src/mcp/server.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/mcp/server.mjs --external:@modelcontextprotocol/sdk",
-    "build:bot": "esbuild src/bot/standalone.ts --bundle --platform=node --target=node20 --outfile=dist/bot/standalone.cjs --alias:@=./src --external:grammy --external:node-cron --external:dotenv --external:@prisma/client",
+    "build:bot": "esbuild src/bot/standalone.ts --bundle --platform=node --target=node20 --format=esm --outfile=dist/bot/standalone.mjs --alias:@=./src --external:grammy --external:node-cron --external:dotenv",
     "start": "next start",
     "lint": "next lint"
   },
