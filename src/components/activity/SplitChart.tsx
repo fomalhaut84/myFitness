@@ -78,40 +78,42 @@ export default function SplitChart({ activityId }: SplitChartProps) {
 
   const paces = chartData.map((d) => d.pace).filter((p) => p > 0);
   const avgPace = paces.length > 0 ? paces.reduce((s, p) => s + p, 0) / paces.length : 0;
+  const maxPace = Math.max(...paces);
+  const minPace = Math.min(...paces);
+
+  // 반전: 빠른 페이스(낮은 값)가 높은 막대가 되도록
+  const barData = chartData.map((d) => ({
+    ...d,
+    barHeight: maxPace + minPace - d.pace,
+    originalPace: d.pace,
+  }));
 
   return (
     <div className="space-y-4">
       {/* 페이스 바 차트 */}
       <div className="bg-card border border-border rounded-xl p-5">
         <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
-          킬로미터 스플릿 ({laps.length}km)
+          킬로미터 스플릿 ({activeLaps.length}km) — 평균 {formatPace(avgPace)}
         </div>
         <ResponsiveContainer width="100%" height={150}>
-          <BarChart data={chartData} barCategoryGap="15%">
+          <BarChart data={barData} barCategoryGap="15%">
             <XAxis
               dataKey="km"
               axisLine={false}
               tickLine={false}
               tick={{ fontSize: 10, fill: "#525252" }}
             />
-            <YAxis
-              reversed
-              axisLine={false}
-              tickLine={false}
-              tick={{ fontSize: 9, fill: "#525252" }}
-              width={40}
-              tickFormatter={(v) => formatPace(v)}
-            />
+            <YAxis hide />
             <Tooltip
               contentStyle={{ backgroundColor: "#161616", border: "1px solid #262626", borderRadius: 8, fontSize: 12 }}
-              formatter={(value) => [formatPace(Number(value)), "페이스"]}
+              formatter={(_value, _name, props) => [formatPace(props.payload.originalPace), "페이스"]}
               labelFormatter={(label) => `${label} km`}
             />
-            <Bar dataKey="pace" radius={[2, 2, 0, 0]}>
-              {chartData.map((entry, i) => (
+            <Bar dataKey="barHeight" radius={[2, 2, 0, 0]}>
+              {barData.map((entry, i) => (
                 <Cell
                   key={i}
-                  fill={entry.pace < avgPace ? "#22c55e" : entry.pace > avgPace * 1.05 ? "#ef4444" : "#60a5fa"}
+                  fill={entry.originalPace < avgPace ? "#22c55e" : entry.originalPace > avgPace * 1.05 ? "#ef4444" : "#60a5fa"}
                 />
               ))}
             </Bar>
