@@ -65,7 +65,7 @@
 - [x] Cron 모닝/이브닝 스케줄
 - [x] Reports API 확장 (type/date 필터, 수동 생성)
 - [x] /reports 페이지 신규 (이력 + 수동 생성)
-- [ ] 대시보드 상단 리포트 요약 카드
+- [x] 대시보드 상단 리포트 요약 카드
 - 스펙: `docs/specs/m2-daily-reports.md`
 
 ## M2-3: 활동 상세 페이지 강화 — 우선순위 ★★
