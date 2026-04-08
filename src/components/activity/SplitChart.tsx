@@ -1,31 +1,78 @@
 "use client";
 
+import { useState, useEffect } from "react";
 import { BarChart, Bar, XAxis, YAxis, ResponsiveContainer, Cell, Tooltip } from "recharts";
 import { formatPace } from "@/lib/format";
 
-interface Split {
+interface LapDTO {
   distance: number;
   duration: number;
-  elevationGain: number;
   averageSpeed: number;
   averageHR: number;
   maxHR: number;
   averageRunCadence: number;
+  elevationGain: number;
+  averagePower?: number;
 }
 
 interface SplitChartProps {
-  splits: Split[];
+  activityId: string;
 }
 
-export default function SplitChart({ splits }: SplitChartProps) {
-  const chartData = splits.map((s, i) => {
-    const paceSecKm = s.averageSpeed > 0 ? 1000 / s.averageSpeed : 0;
+export default function SplitChart({ activityId }: SplitChartProps) {
+  const [laps, setLaps] = useState<LapDTO[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState<string | null>(null);
+
+  useEffect(() => {
+    fetch(`/api/activities/${activityId}/splits`)
+      .then((r) => r.json())
+      .then((data) => {
+        if (data.error) {
+          setError(data.error);
+        } else {
+          setLaps(data.data ?? []);
+        }
+      })
+      .catch(() => setError("스플릿 데이터를 불러올 수 없습니다"))
+      .finally(() => setLoading(false));
+  }, [activityId]);
+
+  if (loading) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">킬로미터 스플릿</div>
+        <div className="h-40 flex items-center justify-center text-[13px] text-dim">로딩 중...</div>
+      </div>
+    );
+  }
+
+  if (error) {
+    return (
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">킬로미터 스플릿</div>
+        <div className="h-20 flex items-center justify-center text-[13px] text-dim">스플릿 데이터를 불러올 수 없습니다</div>
+      </div>
+    );
+  }
+
+  if (laps.length === 0) return null;
+
+  // km 랩만 필터 (워킹/비활성 구간 제외)
+  const activeLaps = laps.filter((l) =>
+    l.distance >= 900 && l.distance <= 1100
+  );
+  if (activeLaps.length === 0) return null;
+
+  const chartData = activeLaps.map((lap, i) => {
+    const paceSecKm = lap.averageSpeed > 0 ? 1000 / lap.averageSpeed : 0;
     return {
       km: `${i + 1}`,
       pace: Math.round(paceSecKm),
-      hr: Math.round(s.averageHR),
-      cadence: Math.round(s.averageRunCadence || 0),
-      elevation: Math.round(s.elevationGain || 0),
+      hr: Math.round(lap.averageHR || 0),
+      cadence: Math.round(lap.averageRunCadence || 0),
+      elevation: Math.round(lap.elevationGain || 0),
+      power: Math.round(lap.averagePower || 0),
     };
   });
 
@@ -37,7 +84,7 @@ export default function SplitChart({ splits }: SplitChartProps) {
       {/* 페이스 바 차트 */}
       <div className="bg-card border border-border rounded-xl p-5">
         <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
-          스플릿 페이스
+          킬로미터 스플릿 ({laps.length}km)
         </div>
         <ResponsiveContainer width="100%" height={150}>
           <BarChart data={chartData} barCategoryGap="15%">
@@ -74,9 +121,7 @@ export default function SplitChart({ splits }: SplitChartProps) {
 
       {/* 스플릿 테이블 */}
       <div className="bg-card border border-border rounded-xl p-5">
-        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
-          스플릿 상세
-        </div>
+        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">스플릿 상세</div>
         <div className="overflow-x-auto">
           <table className="w-full text-[12px]">
             <thead>

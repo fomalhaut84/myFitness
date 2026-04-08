@@ -22,8 +22,16 @@ function startOfWeek(date: Date): Date {
 
 export default async function ActivitiesPage() {
   const now = new Date();
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // KST 기준 월 시작 (UTC로 저장된 DB와 비교 가능하도록)
+  const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+  const monthStart = new Date(Date.UTC(kstNow.getFullYear(), kstNow.getMonth(), 1) - 9 * 60 * 60 * 1000);
   const eightWeeksAgo = weeksAgo(8);
+
+  // 최대 심박수 추정 (UserProfile 나이 기반 또는 실측 maxHR)
+  const userProfile = await prisma.userProfile.findFirst();
+  const estimatedMaxHR = userProfile?.birthDate
+    ? 220 - Math.floor((Date.now() - userProfile.birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
+    : 190;
 
   const activities = await prisma.activity.findMany({
     orderBy: { startTime: "desc" },
@@ -55,9 +63,12 @@ export default async function ActivitiesPage() {
     totalDistance: monthlyRunning.reduce((sum, a) => sum + (a.distance ?? 0), 0),
     totalDuration: monthlyRunning.reduce((sum, a) => sum + a.duration, 0),
     avgPace: (() => {
-      const withPace = monthlyRunning.filter((a) => a.avgPace !== null);
-      if (withPace.length === 0) return null;
-      return withPace.reduce((sum, a) => sum + (a.avgPace ?? 0), 0) / withPace.length;
+      const withBoth = monthlyRunning.filter((a) => a.avgPace !== null && (a.distance ?? 0) > 0);
+      if (withBoth.length === 0) return null;
+      // 거리 가중 평균 페이스
+      const totalDist = withBoth.reduce((s, a) => s + (a.distance ?? 0), 0);
+      const totalTime = withBoth.reduce((s, a) => s + (a.avgPace! * ((a.distance ?? 0) / 1000)), 0);
+      return totalTime / (totalDist / 1000);
     })(),
   };
 
@@ -157,6 +168,7 @@ export default async function ActivitiesPage() {
         startTime: a.startTime.toISOString(),
       }))}
       monthSummary={monthSummary}
+      estimatedMaxHR={estimatedMaxHR}
       runningRecords={runningRecords.map((r) => ({
         date: formatDateLocal(r.startTime),
         avgPace: r.avgPace,

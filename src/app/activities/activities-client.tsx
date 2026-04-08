@@ -51,6 +51,7 @@ interface OvertrainingRisk {
 interface ActivitiesClientProps {
   activities: Activity[];
   monthSummary: MonthSummary;
+  estimatedMaxHR: number;
   runningRecords: RunningRecord[];
   weeklyVolumes: WeekVolume[];
   overtrainingRisk: OvertrainingRisk;
@@ -66,6 +67,7 @@ const FILTERS = [
 export default function ActivitiesClient({
   activities,
   monthSummary,
+  estimatedMaxHR,
   runningRecords,
   weeklyVolumes,
   overtrainingRisk,
@@ -175,7 +177,7 @@ export default function ActivitiesClient({
         <div className="mt-10">
           <RunningAnalysis
             records={runningRecords}
-            estimatedMaxHR={190}
+            estimatedMaxHR={estimatedMaxHR}
           />
         </div>
       )}

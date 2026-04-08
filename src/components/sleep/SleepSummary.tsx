@@ -17,7 +17,8 @@ function formatSleepTime(minutes: number): string {
 
 function formatTime(isoStr: string): string {
   const d = new Date(isoStr);
-  return `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  const kst = new Date(d.getTime() + 9 * 60 * 60 * 1000);
+  return `${kst.getUTCHours().toString().padStart(2, "0")}:${kst.getUTCMinutes().toString().padStart(2, "0")}`;
 }
 
 const STAGES = [
