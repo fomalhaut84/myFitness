@@ -96,7 +96,6 @@ export default function TrendLineChart({
             stroke={color}
             strokeWidth={2}
             dot={false}
-            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>

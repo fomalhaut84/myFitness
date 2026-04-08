@@ -78,7 +78,6 @@ export default function SleepScoreChart({ data }: SleepScoreChartProps) {
             stroke="#a78bfa"
             strokeWidth={2}
             dot={false}
-            connectNulls
           />
         </LineChart>
       </ResponsiveContainer>
