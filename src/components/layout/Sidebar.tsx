@@ -87,6 +87,17 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "리포트",
+    href: "/reports",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M4 2h8l4 4v12a1 1 0 0 1-1 1H4a1 1 0 0 1-1-1V3a1 1 0 0 1 1-1z" />
+        <path d="M12 2v4h4" />
+        <path d="M7 10h6M7 14h4" />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {
