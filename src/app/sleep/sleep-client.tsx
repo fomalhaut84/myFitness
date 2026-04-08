@@ -85,7 +85,10 @@ export default function SleepClient({
             {recentRecords.map((r, i) => (
               <div key={r.date}>
                 {i > 0 && <div className="border-t border-border mb-3" />}
-                <div className="flex items-center justify-between">
+                <a
+                  href={`/sleep/${r.date}`}
+                  className="flex items-center justify-between hover:bg-surface/50 rounded-lg -mx-2 px-2 py-1 transition-colors"
+                >
                   <div>
                     <div className="text-[13px]">{r.date}</div>
                     <div className="text-[11px] text-dim">
@@ -105,7 +108,7 @@ export default function SleepClient({
                       </span>
                     )}
                   </div>
-                </div>
+                </a>
               </div>
             ))}
           </div>
