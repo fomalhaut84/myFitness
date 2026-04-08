@@ -278,7 +278,7 @@ export default function DashboardClient({
 }
 
 function StressDetailChart({ data }: { data: { date: string; high: number | null; medium: number | null; low: number | null }[] }) {
-  const hasData = data.some((d) => d.high != null || d.medium != null || d.low != null);
+  const hasData = data.some((d) => ((d.high ?? 0) + (d.medium ?? 0) + (d.low ?? 0)) > 0);
 
   if (!hasData) {
     return (
@@ -293,7 +293,7 @@ function StressDetailChart({ data }: { data: { date: string; high: number | null
     <div className="bg-card border border-border rounded-xl p-5">
       <div className="text-[11px] text-dim tracking-wider uppercase mb-4">스트레스 세부 (30일)</div>
       <div className="space-y-1">
-        {data.slice(-14).map((d) => {
+        {data.map((d) => {
           const total = (d.high ?? 0) + (d.medium ?? 0) + (d.low ?? 0);
           if (total === 0) return null;
           const hPct = ((d.high ?? 0) / total) * 100;

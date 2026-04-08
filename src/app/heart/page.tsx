@@ -30,7 +30,7 @@ export default async function HeartPage() {
       orderBy: { date: "asc" },
     }),
     prisma.dailySummary.findMany({
-      where: { date: { gte: thirtyDaysAgo } },
+      where: { date: { gte: thirtyDaysAgo, lte: today } },
       select: { date: true, avgRespiration: true },
       orderBy: { date: "asc" },
     }),
