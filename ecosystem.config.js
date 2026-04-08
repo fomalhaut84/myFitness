@@ -17,7 +17,7 @@ module.exports = {
     },
     {
       name: 'myfitness-bot',
-      script: 'dist/bot/standalone.mjs',
+      script: 'dist/bot/standalone.cjs',
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',

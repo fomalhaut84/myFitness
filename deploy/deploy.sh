@@ -23,8 +23,9 @@ fi
 echo "=== 3. Install dependencies ==="
 npm ci
 
-echo "=== 4. DB Migrate ==="
+echo "=== 4. DB Migrate + Generate ==="
 npx prisma migrate deploy
+npx prisma generate
 
 echo "=== 5. Build ==="
 npm run build
