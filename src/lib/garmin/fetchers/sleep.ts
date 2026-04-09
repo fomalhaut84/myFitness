@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, isNoDataError, withRateLimit } from "../utils";
+import { dateRange, isNoDataError, todayKSTString, withRateLimit } from "../utils";
 
 export async function syncSleep(
   client: GarminConnect,
@@ -23,6 +23,9 @@ export async function syncSleep(
 
       const calendarDate = dto.calendarDate;
       if (!calendarDate) continue;
+
+      // Garmin calendarDate가 오늘(KST) 이후면 건너뛰기 (미래 날짜 방지)
+      if (calendarDate > todayKSTString()) continue;
 
       const [year, month, day] = calendarDate.split("-").map(Number);
       const dayDate = new Date(year, month - 1, day);

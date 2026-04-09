@@ -113,7 +113,19 @@
 > 활동 상세에서 킬로미터별 페이스/HR/케이던스 시각화.
 > 현재 splitSummaries는 구간 요약이라 km별 데이터 별도 조회 필요.
 
-- [ ] Garmin 개별 활동 API(getActivity) 조사 — km별 splits 포함 여부
-- [ ] 활동 상세 접속 시 on-demand 조회 또는 싱크 시 추가 호출
-- [ ] km별 페이스 바 차트 + 상세 테이블
+- [x] Garmin 개별 활동 API(getActivity) 조사 — /splits 엔드포인트에서 lapDTOs 제공
+- [x] 활동 상세 접속 시 on-demand 조회 (GET /api/activities/[id]/splits)
+- [x] km별 페이스 바 차트 + 상세 테이블
+- [x] 백로그 코드 리뷰 이슈 P2 2건 + P1 4건 수정
 - 스펙: `docs/specs/backlog-km-splits.md`
+
+## M2-8: 날짜/타임존 정합성 + 리포트 안정화 — 우선순위 ★★★
+
+> 싱크 시 미래 날짜 데이터 + 모닝 리포트 데이터 부정확 문제 해결.
+
+- [ ] 자동 싱크 endDate → 어제(KST), 수동 싱크는 오늘(KST)까지
+- [ ] cron 싱크 범위: 2일 전 ~ 어제(KST)
+- [ ] garmin/utils.ts KST 날짜 유틸 통일
+- [ ] 모닝/이브닝 리포트 전 데이터 싱크 수행
+- [ ] 리포트 재생성 기능 (force 옵션, 재생성 버튼, 텔레그램 커맨드)
+- 스펙: `docs/specs/m2-8-date-fix.md`
