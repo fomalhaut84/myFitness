@@ -55,13 +55,14 @@ export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
     const type = body.type ?? "morning";
+    const force = body.force === true;
 
     let result: string;
 
     if (type === "morning") {
-      result = await generateMorningReport();
+      result = await generateMorningReport(force);
     } else if (type === "evening") {
-      result = await generateEveningReport();
+      result = await generateEveningReport(force);
     } else if (type === "weekly") {
       result = await generateWeeklyReport();
     } else {

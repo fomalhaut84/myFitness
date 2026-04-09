@@ -31,21 +31,52 @@ export function startOfDay(date: Date): Date {
   return d;
 }
 
+// --- KST 기준 날짜 함수 ---
+
+/** 현재 시간의 KST Date 객체 반환 */
+export function nowKST(): Date {
+  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+}
+
+/** KST 기준 오늘 midnight */
+export function todayKST(): Date {
+  const kst = nowKST();
+  kst.setHours(0, 0, 0, 0);
+  return kst;
+}
+
+/** KST 기준 어제 midnight */
+export function yesterdayKST(): Date {
+  const kst = nowKST();
+  kst.setDate(kst.getDate() - 1);
+  kst.setHours(0, 0, 0, 0);
+  return kst;
+}
+
+/** KST 기준 N일 전 midnight */
+export function daysAgoKST(n: number): Date {
+  const kst = nowKST();
+  kst.setDate(kst.getDate() - n);
+  kst.setHours(0, 0, 0, 0);
+  return kst;
+}
+
+/** KST 기준 오늘 날짜 문자열 YYYY-MM-DD */
+export function todayKSTString(): string {
+  return formatDate(todayKST());
+}
+
+// --- Legacy (하위 호환) ---
+
 export function yesterday(): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - 1);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return yesterdayKST();
 }
 
 export function daysAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
+  return daysAgoKST(n);
 }
 
-/** 데이터 없음 에러인지 판단. 404/204 또는 "not found"/"empty" 메시지 */
+/** 데이터 없음 에러인지 판단 */
 export function isNoDataError(error: unknown): boolean {
   if (error instanceof Error) {
     const msg = error.message.toLowerCase();

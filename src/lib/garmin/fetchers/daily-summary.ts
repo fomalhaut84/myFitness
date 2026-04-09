@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, formatDate, startOfDay, withRateLimit } from "../utils";
+import { dateRange, formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
 
 const DAILY_SUMMARY_URL =
   "https://connectapi.garmin.com/usersummary-service/usersummary/daily";
@@ -24,6 +24,9 @@ export async function syncDailySummaries(
       );
 
       if (!summary || !summary.calendarDate) continue;
+
+      // Garmin calendarDate가 오늘(KST) 이후면 건너뛰기 (미래 날짜 방지)
+      if (String(summary.calendarDate) > todayKSTString()) continue;
 
       const dayDate = startOfDay(date);
       const moderate = toInt(summary.moderateIntensityMinutes);

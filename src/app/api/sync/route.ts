@@ -46,10 +46,10 @@ export async function POST(request: Request) {
       }
       endDate = parsed;
     } else {
-      // 오늘까지 싱크 (불완전해도 최신 데이터 우선)
-      const d = new Date();
-      d.setHours(0, 0, 0, 0);
-      endDate = d;
+      // 수동 싱크: 오늘(KST)까지 (불완전해도 최신 데이터 우선)
+      const kst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+      kst.setHours(0, 0, 0, 0);
+      endDate = kst;
     }
 
     let startDate: Date;
@@ -63,10 +63,11 @@ export async function POST(request: Request) {
       }
       startDate = parsed;
     } else {
-      const d = new Date();
-      d.setDate(d.getDate() - DEFAULT_DAYS);
-      d.setHours(0, 0, 0, 0);
-      startDate = d;
+      // KST 기준 (endDate와 동일 기준)
+      const kst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+      kst.setDate(kst.getDate() - DEFAULT_DAYS);
+      kst.setHours(0, 0, 0, 0);
+      startDate = kst;
     }
 
     const dataTypes = body.dataTypes

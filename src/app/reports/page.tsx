@@ -36,13 +36,13 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function generate(type: string) {
+  async function generate(type: string, force = false) {
     setGenerating(type);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type }),
+        body: JSON.stringify({ type, force }),
       });
       const data = await res.json();
       if (data.result) {
@@ -103,6 +103,13 @@ export default function ReportsPage() {
                 <span className="text-[11px] text-dim">
                   {r.reportDate ?? new Date(r.createdAt).toLocaleDateString("ko-KR")}
                 </span>
+                <button
+                  onClick={() => generate(r.category.replace("_report", ""), true)}
+                  disabled={generating !== null}
+                  className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
+                >
+                  재생성
+                </button>
               </div>
               <div
                 className="prose prose-invert prose-sm max-w-none"

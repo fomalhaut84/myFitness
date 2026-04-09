@@ -24,19 +24,11 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        const nowKST = new Date(
-          new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" })
-        );
-        const todayKST = new Date(nowKST);
-        todayKST.setHours(0, 0, 0, 0);
-
-        const twoDaysAgoKST = new Date(nowKST);
-        twoDaysAgoKST.setDate(twoDaysAgoKST.getDate() - 2);
-        twoDaysAgoKST.setHours(0, 0, 0, 0);
-
+        // KST 기준 2일 전 ~ 어제 (당일 데이터 제외 → 미래 날짜 방지)
+        const { daysAgoKST, todayKST } = await import("@/lib/garmin/utils");
         const results = await syncAll({
-          startDate: twoDaysAgoKST,
-          endDate: todayKST,
+          startDate: daysAgoKST(2),
+          endDate: todayKST(),
         });
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;

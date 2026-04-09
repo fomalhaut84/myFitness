@@ -32,7 +32,9 @@ export async function syncActivities(
         break;
       }
 
-      if (activityDate > endDate) {
+      // endDate는 해당 날짜 자정이므로, 하루 끝(+24h)까지 포함
+      const endOfDay = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+      if (activityDate > endOfDay) {
         continue;
       }
 

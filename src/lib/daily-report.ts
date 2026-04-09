@@ -1,15 +1,7 @@
 import { askAdvisor } from "@/lib/ai/claude-advisor";
+import { syncAll } from "@/lib/garmin/sync";
+import { daysAgoKST, todayKST, todayKSTString as kstDateStr } from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
-
-function todayKSTString(): string {
-  const kst = new Date(
-    new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" })
-  );
-  const y = kst.getFullYear();
-  const m = String(kst.getMonth() + 1).padStart(2, "0");
-  const d = String(kst.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
-}
 
 const MORNING_PROMPT = `모닝 리포트를 작성해줘.
 
@@ -35,36 +27,61 @@ const EVENING_PROMPT = `이브닝 리포트를 작성해줘.
 
 간결한 마크다운으로 작성.`;
 
+/** 리포트 생성 전 최신 데이터 싱크 */
+async function preSyncForReport(): Promise<void> {
+  try {
+    console.log("[report] 리포트 전 데이터 싱크 시작");
+    await syncAll({
+      startDate: daysAgoKST(1),
+      endDate: todayKST(),
+      dataTypes: ["sleep", "daily_stats", "heart_rate", "activities"],
+    });
+    console.log("[report] 리포트 전 데이터 싱크 완료");
+  } catch (error) {
+    console.warn("[report] 리포트 전 싱크 실패, 기존 데이터로 진행:", error);
+  }
+}
+
 async function generateReport(
   category: string,
-  prompt: string
+  prompt: string,
+  force = false
 ): Promise<string> {
-  const dateStr = todayKSTString();
+  const dateStr = kstDateStr();
 
-  // 중복 방지: 이미 존재하면 기존 리포트 반환
-  const existing = await prisma.aIAdvice.findFirst({
-    where: { category, reportDate: dateStr },
-  });
-  if (existing) {
-    console.log(`[${category}] ${dateStr} 이미 존재, 건너뜀`);
-    return existing.response;
+  // force가 아니면 기존 리포트 반환
+  if (!force) {
+    const existing = await prisma.aIAdvice.findFirst({
+      where: { category, reportDate: dateStr },
+    });
+    if (existing) {
+      console.log(`[${category}] ${dateStr} 이미 존재, 건너뜀`);
+      return existing.response;
+    }
   }
+
+  // 리포트 전 데이터 최신화
+  await preSyncForReport();
 
   const { result } = await askAdvisor(prompt);
 
-  // race condition 대비: create 실패 시 기존 리포트 반환
   try {
-    await prisma.aIAdvice.create({
-      data: {
-        category,
-        reportDate: dateStr,
-        prompt,
-        response: result,
-      },
-    });
-    console.log(`[${category}] ${dateStr} 생성 완료`);
+    if (force) {
+      // 트랜잭션으로 삭제+생성을 원자적으로 (유실 방지)
+      await prisma.$transaction([
+        prisma.aIAdvice.deleteMany({ where: { category, reportDate: dateStr } }),
+        prisma.aIAdvice.create({
+          data: { category, reportDate: dateStr, prompt, response: result },
+        }),
+      ]);
+    } else {
+      await prisma.aIAdvice.create({
+        data: { category, reportDate: dateStr, prompt, response: result },
+      });
+    }
+    console.log(`[${category}] ${dateStr} ${force ? "재생성" : "생성"} 완료`);
   } catch {
-    console.log(`[${category}] ${dateStr} 중복 생성 시도, 기존 리포트 사용`);
+    console.log(`[${category}] ${dateStr} 중복, 기존 리포트 사용`);
     const fallback = await prisma.aIAdvice.findFirst({
       where: { category, reportDate: dateStr },
     });
@@ -74,10 +91,10 @@ async function generateReport(
   return result;
 }
 
-export async function generateMorningReport(): Promise<string> {
-  return generateReport("morning_report", MORNING_PROMPT);
+export async function generateMorningReport(force = false): Promise<string> {
+  return generateReport("morning_report", MORNING_PROMPT, force);
 }
 
-export async function generateEveningReport(): Promise<string> {
-  return generateReport("evening_report", EVENING_PROMPT);
+export async function generateEveningReport(force = false): Promise<string> {
+  return generateReport("evening_report", EVENING_PROMPT, force);
 }
