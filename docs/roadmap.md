@@ -123,9 +123,101 @@
 
 > 싱크 시 미래 날짜 데이터 + 모닝 리포트 데이터 부정확 문제 해결.
 
-- [ ] 자동 싱크 endDate → 어제(KST), 수동 싱크는 오늘(KST)까지
-- [ ] cron 싱크 범위: 2일 전 ~ 어제(KST)
-- [ ] garmin/utils.ts KST 날짜 유틸 통일
-- [ ] 모닝/이브닝 리포트 전 데이터 싱크 수행
-- [ ] 리포트 재생성 기능 (force 옵션, 재생성 버튼, 텔레그램 커맨드)
+- [x] 자동/수동 싱크 endDate → 오늘(KST), fetcher에서 미래 날짜 가드
+- [x] garmin/utils.ts KST 날짜 유틸 통일 (nowKST, todayKST, yesterdayKST, daysAgoKST)
+- [x] 모닝/이브닝 리포트 전 데이터 싱크 수행
+- [x] 리포트 재생성 기능 (force 옵션, 재생성 버튼, 텔레그램 /report regenerate)
 - 스펙: `docs/specs/m2-8-date-fix.md`
+
+---
+
+# 마일스톤 3: 체중감량 + 정확한 강도 분석
+
+## 배경
+- 사용자: 칼로리 목표 1890kcal/일, 최대심박 176, LTHR 157, 체중감량 진행 중
+- 현재 문제: 최대심박/LTHR 미저장 → Zone 분석 부정확, 식단 데이터 없음 → 칼로리 밸런스 불가
+
+## M3-1: 최대심박수/LTHR 저장 및 활용 — 우선순위 ★★★ (긴급)
+
+- [ ] UserProfile에 maxHR, lthr, lthrPace 필드 추가
+- [ ] 프로필 편집 UI (maxHR, LTHR 입력)
+- [ ] Zone 계산 로직 LTHR 기반으로 변경
+- [ ] 리포트 프롬프트에 개인 Zone 정보 주입
+- 효과: 모든 리포트 강도 분석 정확화
+- 스펙: `docs/specs/m3-1-maxhr-lthr.md`
+
+## M3-2: 칼로리 밸런스 필드 추가 — 우선순위 ★★★ (긴급)
+
+- [ ] DailySummary에 estimatedIntakeCalories, availableCalories, calorieBalance 추가
+- [ ] 계산 로직: 섭취가능 = 목표(1890) + 활성칼로리
+- [ ] UserProfile에 targetCalories 필드 추가
+- 효과: 체중감량 진행도 명확화
+- 스펙: `docs/specs/m3-2-calorie-balance.md`
+
+## M3-3: 식단 데이터 연동 (Garmin 경유 조사) — 우선순위 ★★★ (긴급)
+
+- [ ] Garmin Connect API에 식단/영양 데이터 존재 여부 조사
+- [ ] MFP 연동 시 Garmin에 데이터 내려오는지 테스트 스크립트
+- [ ] 데이터 있으면 fetcher 추가, FoodLog 활용
+- [ ] 데이터 없으면 백로그로 이관 (비공식 MFP API 검토)
+- 스펙: `docs/specs/m3-3-diet-sync.md`
+
+## M3-4: Split/Lap 데이터 MCP 도구화 — 우선순위 ★★ (권장)
+
+- [ ] get_activity_splits MCP 도구 추가
+- [ ] Lap별 거리, 시간, 페이스, 심박, 케이던스, 강도 타입 반환
+- [ ] AI 러닝 분석 시 스플릿 수준 분석 가능
+- 스펙: `docs/specs/m3-4-splits-mcp.md`
+
+## M3-5: 운동 강도 자동 분류 — 우선순위 ★★ (권장)
+
+- [ ] Activity에 zoneDistribution, estimatedZone, intensityScore 필드 추가
+- [ ] LTHR 기반 자동 분류 로직 (M3-1 의존)
+- [ ] rawData 시계열에서 HR zone 분포 계산
+- [ ] 리포트에 자동 반영
+- 스펙: `docs/specs/m3-5-intensity-classification.md`
+
+## M3-6: 체중감량 진행 대시보드 — 우선순위 ★★ (권장)
+
+- [ ] 신규 페이지 `/weight-loss` 또는 기존 `/body` 확장
+- [ ] 체중 7일 이동평균 차트
+- [ ] 칼로리 밸런스 차트 (섭취 vs 소모) — M3-2, M3-3 의존
+- [ ] 운동량 추세, 목표 대비 진행도
+- 스펙: `docs/specs/m3-6-weight-loss-dashboard.md`
+
+## M3-7: 체지방률 트래킹 — 우선순위 ★ (중간)
+
+- [ ] BodyComposition.bodyFat 수동 입력 UI
+- [ ] 스마트 스케일 연동 조사 (선택)
+
+## M3-8: 영양소 상세 분석 — 우선순위 ★ (중간, M3-3 의존)
+
+- [ ] 단백질/탄수화물/지방 일일 추적
+- [ ] 매크로 밸런스 시각화
+- [ ] 근손실 방지 경고 (단백질 부족 시)
+
+## M3-9: AI 리포트 고도화 — 우선순위 ★ (중간)
+
+- [ ] 식단 + 운동 + 수면 통합 평가
+- [ ] 칼로리 부족 + 고강도 운동 조합 시 근손실 위험 경고
+- [ ] LTHR 기반 강도 피드백 (M3-1 의존)
+
+## M3-10: 활동 상세 페이지 고도화 — 우선순위 ★ (중간)
+
+- [ ] Split 데이터 시각화 강화
+- [ ] 러닝 다이나믹스 그래프
+- [ ] HR Zone 분포 도넛/바 차트 (M3-5 의존)
+
+---
+
+### 권장 진행 순서
+
+```
+1. M3-1 (LTHR 저장) — 빠른 승리, 30-45분
+2. M3-2 (칼로리 밸런스 필드) — 30분
+3. M3-3 (식단 연동 조사) — 2-3시간, 복잡도 높음
+4. M3-4 (Split MCP) — 1시간
+5. M3-5 (강도 분류) — 1-2시간
+6. M3-6 (대시보드) — 복잡도 높음
+7. M3-7 ~ M3-10 — 순차 진행
+```
