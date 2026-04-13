@@ -1,14 +1,14 @@
-# [M3-10] 활동 상세 페이지 고도화
+# [M4-10] 활동 상세 페이지 고도화
 
 ## 목적
 
 활동 상세(`/activities/[id]`)에 Zone 분포·러닝 다이나믹스 그래프·스플릿 시각화 강화.
 
-의존: M3-4 (splits MCP 선행 시 데이터 캐싱 재사용), M3-5 (Zone 분포 데이터)
+의존: M4-4 (splits MCP 선행 시 데이터 캐싱 재사용), M4-5 (Zone 분포 데이터)
 
 ## 요구사항
 
-- [ ] HR Zone 분포 도넛/스택바 차트 (M3-5의 zoneDistribution 사용)
+- [ ] HR Zone 분포 도넛/스택바 차트 (M4-5의 zoneDistribution 사용)
 - [ ] km별 페이스 + HR 라인 오버레이 차트 (M2-7 바 차트 확장)
 - [ ] 러닝 다이나믹스 시계열 그래프
   - 케이던스, 수직진동, 지면접촉시간, 보폭
@@ -52,7 +52,7 @@ const similar = await prisma.activity.findMany({
 
 ## 테스트 계획
 
-- [ ] Zone 도넛 렌더링 (M3-5 데이터 필요)
+- [ ] Zone 도넛 렌더링 (M4-5 데이터 필요)
 - [ ] 시계열 차트 모바일 반응형
 - [ ] 비교 데이터 없을 때 빈 상태 UI
 - [ ] `npm run lint && npx tsc --noEmit && npm run build` 통과

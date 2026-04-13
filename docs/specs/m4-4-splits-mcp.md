@@ -1,4 +1,4 @@
-# [M3-4] Split/Lap 데이터 MCP 도구화
+# [M4-4] Split/Lap 데이터 MCP 도구화
 
 ## 목적
 

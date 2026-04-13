@@ -1,4 +1,4 @@
-# [M3-2] 칼로리 밸런스 필드 추가
+# [M4-2] 칼로리 밸런스 필드 추가
 
 ## 목적
 
@@ -16,7 +16,7 @@
 
 ## 요구사항
 
-- [ ] UserProfile.targetCalories 필드 (M3-1에 포함)
+- [ ] UserProfile.targetCalories 필드 (M4-1에 포함)
 - [ ] DailySummary 확장:
   - `estimatedIntakeCalories Int?` — 섭취 칼로리 (FoodLog 합계 또는 MFP)
   - `availableCalories Int?` — 목표 + 활성
