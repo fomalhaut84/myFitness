@@ -1,21 +1,34 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
+import { resolveMaxHR } from "@/lib/fitness/zones";
+
+/** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
+const birthDateSchema = z
+  .string()
+  .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식")
+  .refine((s) => {
+    const [y, m, d] = s.split("-").map(Number);
+    const date = new Date(Date.UTC(y, m - 1, d));
+    return (
+      date.getUTCFullYear() === y &&
+      date.getUTCMonth() === m - 1 &&
+      date.getUTCDate() === d
+    );
+  }, "유효하지 않은 날짜")
+  .nullable()
+  .optional();
 
 const PATCH_SCHEMA = z.object({
   name: z.string().trim().min(1).max(100).optional(),
-  birthDate: z
-    .string()
-    .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식")
-    .nullable()
-    .optional(),
+  birthDate: birthDateSchema,
   height: z.number().positive().max(300).nullable().optional(),
   targetWeight: z.number().positive().max(500).nullable().optional(),
   restingHRBase: z.number().int().min(20).max(150).nullable().optional(),
-  maxHR: z.number().int().min(100).max(230).nullable().optional(),
-  lthr: z.number().int().min(60).max(220).nullable().optional(),
+  maxHR: z.number().int().min(100).max(220).nullable().optional(),
+  lthr: z.number().int().min(80).max(220).nullable().optional(),
   lthrPace: z.number().positive().max(1200).nullable().optional(), // sec/km
-  targetCalories: z.number().int().min(500).max(8000).nullable().optional(),
+  targetCalories: z.number().int().min(500).max(5000).nullable().optional(),
 });
 
 const DEFAULT_NAME = "사용자";
@@ -50,20 +63,32 @@ export async function PATCH(request: Request) {
 
     const existing = await prisma.userProfile.findFirst();
 
-    // lthr은 maxHR을 초과할 수 없음 (현재 값 또는 업데이트 후 값 기준)
-    const effectiveMaxHR =
+    // 업데이트 후 예상 상태로 LTHR ≤ maxHR 검증.
+    // maxHR 미설정 시 resolveMaxHR fallback(220-age 또는 190)과도 비교.
+    const nextMaxHR =
       data.maxHR !== undefined ? data.maxHR : (existing?.maxHR ?? null);
-    const effectiveLthr =
+    const nextLthr =
       data.lthr !== undefined ? data.lthr : (existing?.lthr ?? null);
-    if (
-      effectiveMaxHR !== null &&
-      effectiveLthr !== null &&
-      effectiveLthr > effectiveMaxHR
-    ) {
-      return NextResponse.json(
-        { error: "LTHR은 최대심박수보다 작아야 합니다" },
-        { status: 400 }
-      );
+    const nextBirthDate =
+      data.birthDate !== undefined
+        ? data.birthDate
+          ? new Date(data.birthDate)
+          : null
+        : (existing?.birthDate ?? null);
+    if (nextLthr !== null) {
+      const compareMaxHR =
+        nextMaxHR ??
+        resolveMaxHR({ maxHR: null, birthDate: nextBirthDate ?? undefined });
+      if (nextLthr > compareMaxHR) {
+        return NextResponse.json(
+          {
+            error: `LTHR(${nextLthr})은 최대심박수(${compareMaxHR}${
+              nextMaxHR === null ? " — 추정값" : ""
+            })보다 작아야 합니다`,
+          },
+          { status: 400 }
+        );
+      }
     }
 
     const updatePayload: Record<string, unknown> = {};

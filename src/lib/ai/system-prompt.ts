@@ -83,8 +83,9 @@ async function buildUserProfileSection(): Promise<string> {
   if (profile.maxHR) lines.push(`- 최대 심박: ${profile.maxHR} bpm (실측)`);
   if (profile.lthr) lines.push(`- LTHR: ${profile.lthr} bpm (실측)`);
   if (profile.lthrPace) {
-    const min = Math.floor(profile.lthrPace / 60);
-    const sec = Math.round(profile.lthrPace - min * 60);
+    const totalSec = Math.round(profile.lthrPace);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
     lines.push(`- LTHR 페이스: ${min}:${String(sec).padStart(2, "0")}/km`);
   }
   if (profile.targetCalories)
@@ -92,24 +93,25 @@ async function buildUserProfileSection(): Promise<string> {
   if (profile.targetWeight)
     lines.push(`- 목표 체중: ${profile.targetWeight} kg`);
 
-  // 개인 Zone 기준 (LTHR 있을 때만)
-  if (profile.lthr) {
-    const maxHR = resolveMaxHR(profile);
-    const lthr = resolveLTHR(profile);
-    const zones = getZoneRanges(lthr, maxHR);
-    lines.push("");
-    lines.push(
-      "## 개인 HR Zone (LTHR 기반, 러닝 분석 시 아래 값 우선)"
-    );
-    for (const z of zones) {
-      const range =
-        z.min === null
-          ? `<${(z.max ?? 0) + 1} bpm`
-          : z.max === null
-            ? `${z.min}+ bpm`
-            : `${z.min}-${z.max} bpm`;
-      lines.push(`- Zone ${z.zone} (${z.label}): ${range}`);
-    }
+  // 개인 Zone: 실측 LTHR 우선, 없으면 나이/maxHR 기반 fallback
+  const maxHR = resolveMaxHR(profile);
+  const lthr = resolveLTHR(profile);
+  const isMeasuredLthr = Boolean(profile.lthr && profile.lthr > 0);
+  const zones = getZoneRanges(lthr, maxHR);
+  lines.push("");
+  lines.push(
+    `## 개인 HR Zone (${
+      isMeasuredLthr ? "LTHR 실측 기반" : "추정값, 참고용"
+    }, 러닝 분석 시 아래 값 우선)`
+  );
+  for (const z of zones) {
+    const range =
+      z.min === null
+        ? `<${(z.max ?? 0) + 1} bpm`
+        : z.max === null
+          ? `${z.min}+ bpm`
+          : `${z.min}-${z.max} bpm`;
+    lines.push(`- Zone ${z.zone} (${z.label}): ${range}`);
   }
 
   return lines.join("\n") + "\n";

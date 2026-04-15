@@ -30,11 +30,12 @@ function parsePace(input: string): number | null {
   return min * 60 + sec;
 }
 
-/** sec → "M:SS" */
+/** sec → "M:SS" (반올림으로 60초 발생 방지) */
 function formatPace(sec: number | null): string {
   if (sec === null || !Number.isFinite(sec) || sec <= 0) return "";
-  const min = Math.floor(sec / 60);
-  const s = Math.round(sec - min * 60);
+  const total = Math.round(sec);
+  const min = Math.floor(total / 60);
+  const s = total % 60;
   return `${min}:${String(s).padStart(2, "0")}`;
 }
 
@@ -200,7 +201,7 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
                 onChange={(e) => setField("maxHR", e.target.value)}
                 className={INPUT_CLASS}
                 min={100}
-                max={230}
+                max={220}
               />
             </Field>
             <Field
@@ -228,7 +229,7 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
                 value={values.lthr}
                 onChange={(e) => setField("lthr", e.target.value)}
                 className={INPUT_CLASS}
-                min={60}
+                min={80}
                 max={220}
               />
             </Field>
@@ -260,7 +261,7 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
               onChange={(e) => setField("targetCalories", e.target.value)}
               className={INPUT_CLASS}
               min={500}
-              max={8000}
+              max={5000}
             />
           </Field>
         </section>
