@@ -137,12 +137,12 @@
 - 사용자: 칼로리 목표 1890kcal/일, 최대심박 176, LTHR 157, 체중감량 진행 중
 - 현재 문제: 최대심박/LTHR 미저장 → Zone 분석 부정확, 식단 데이터 없음 → 칼로리 밸런스 불가
 
-## M4-1: 최대심박수/LTHR 저장 및 활용 — 우선순위 ★★★ (긴급)
+## M4-1: 최대심박수/LTHR 저장 및 활용 ✅
 
-- [ ] UserProfile에 maxHR, lthr, lthrPace 필드 추가
-- [ ] 프로필 편집 UI (maxHR, LTHR 입력)
-- [ ] Zone 계산 로직 LTHR 기반으로 변경
-- [ ] 리포트 프롬프트에 개인 Zone 정보 주입
+- [x] UserProfile에 maxHR, lthr, lthrPace 필드 추가
+- [x] 프로필 편집 UI (maxHR, LTHR 입력)
+- [x] Zone 계산 로직 LTHR 기반으로 변경
+- [x] 리포트 프롬프트에 개인 Zone 정보 주입
 - 효과: 모든 리포트 강도 분석 정확화
 - 스펙: `docs/specs/m4-1-maxhr-lthr.md`
 
