@@ -75,28 +75,36 @@ function formatKSTDateTime(): string {
 }
 
 async function buildUserProfileSection(): Promise<string> {
+  // 프로필 row가 없어도 fallback Zone(190 bpm 기본)을 출력해야 함.
+  // 신규 DB에서 /api/profile 호출 전이라도 AI가 Zone 인지 응답을 하도록.
   const profile = await prisma.userProfile.findFirst();
-  if (!profile) return "";
 
   const lines: string[] = ["## 사용자 프로필"];
 
-  if (profile.maxHR) lines.push(`- 최대 심박: ${profile.maxHR} bpm (실측)`);
-  if (profile.lthr) lines.push(`- LTHR: ${profile.lthr} bpm (실측)`);
-  if (profile.lthrPace) {
+  if (profile?.maxHR) lines.push(`- 최대 심박: ${profile.maxHR} bpm (실측)`);
+  if (profile?.lthr) lines.push(`- LTHR: ${profile.lthr} bpm (실측)`);
+  if (profile?.lthrPace) {
     const totalSec = Math.round(profile.lthrPace);
     const min = Math.floor(totalSec / 60);
     const sec = totalSec % 60;
     lines.push(`- LTHR 페이스: ${min}:${String(sec).padStart(2, "0")}/km`);
   }
-  if (profile.targetCalories)
+  if (profile?.targetCalories)
     lines.push(`- 일일 칼로리 목표: ${profile.targetCalories} kcal`);
-  if (profile.targetWeight)
+  if (profile?.targetWeight)
     lines.push(`- 목표 체중: ${profile.targetWeight} kg`);
 
-  // 개인 Zone: 실측 LTHR 우선, 없으면 나이/maxHR 기반 fallback
-  const maxHR = resolveMaxHR(profile);
-  const lthr = resolveLTHR(profile);
-  const isMeasuredLthr = Boolean(profile.lthr && profile.lthr > 0);
+  // 프로필 정보가 하나도 없으면 안내 추가
+  if (lines.length === 1) {
+    lines.push(
+      "- (프로필 미설정 — /settings/profile 에서 maxHR, LTHR 등을 입력하면 정확도가 향상됩니다)"
+    );
+  }
+
+  // 개인 Zone: 실측 LTHR 우선, 없으면 나이/maxHR 기반 fallback (190 bpm 기본)
+  const maxHR = resolveMaxHR(profile ?? {});
+  const lthr = resolveLTHR(profile ?? {});
+  const isMeasuredLthr = Boolean(profile?.lthr && profile.lthr > 0);
   const zones = getZoneRanges(lthr, maxHR);
   lines.push("");
   lines.push(
