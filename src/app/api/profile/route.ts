@@ -33,14 +33,21 @@ const PATCH_SCHEMA = z.object({
 
 const DEFAULT_NAME = "사용자";
 
+/**
+ * 싱글톤 UserProfile 조회 또는 생성.
+ * `singleton` unique 제약으로 동시 요청 시에도 중복 row 생성 불가.
+ */
+async function getOrCreateProfile() {
+  return prisma.userProfile.upsert({
+    where: { singleton: true },
+    update: {},
+    create: { singleton: true, name: DEFAULT_NAME },
+  });
+}
+
 export async function GET() {
   try {
-    let profile = await prisma.userProfile.findFirst();
-    if (!profile) {
-      profile = await prisma.userProfile.create({
-        data: { name: DEFAULT_NAME },
-      });
-    }
+    const profile = await getOrCreateProfile();
     return NextResponse.json({ profile });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
@@ -61,20 +68,21 @@ export async function PATCH(request: Request) {
 
     const data = parsed.data;
 
-    const existing = await prisma.userProfile.findFirst();
+    // 싱글톤 보장: 없으면 생성, 있으면 그대로 (update/create는 아래에서 결정)
+    const existing = await getOrCreateProfile();
 
     // 업데이트 후 예상 상태로 LTHR ≤ maxHR 검증.
     // maxHR 미설정 시 resolveMaxHR fallback(220-age 또는 190)과도 비교.
     const nextMaxHR =
-      data.maxHR !== undefined ? data.maxHR : (existing?.maxHR ?? null);
+      data.maxHR !== undefined ? data.maxHR : existing.maxHR;
     const nextLthr =
-      data.lthr !== undefined ? data.lthr : (existing?.lthr ?? null);
+      data.lthr !== undefined ? data.lthr : existing.lthr;
     const nextBirthDate =
       data.birthDate !== undefined
         ? data.birthDate
           ? new Date(data.birthDate)
           : null
-        : (existing?.birthDate ?? null);
+        : existing.birthDate;
     if (nextLthr !== null) {
       const compareMaxHR =
         nextMaxHR ??
@@ -108,17 +116,10 @@ export async function PATCH(request: Request) {
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
 
-    const profile = existing
-      ? await prisma.userProfile.update({
-          where: { id: existing.id },
-          data: updatePayload,
-        })
-      : await prisma.userProfile.create({
-          data: {
-            name: data.name ?? DEFAULT_NAME,
-            ...updatePayload,
-          },
-        });
+    const profile = await prisma.userProfile.update({
+      where: { id: existing.id },
+      data: updatePayload,
+    });
 
     return NextResponse.json({ profile });
   } catch (error) {

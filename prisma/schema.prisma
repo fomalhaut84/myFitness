@@ -10,6 +10,8 @@ datasource db {
 
 model UserProfile {
   id             String    @id @default(cuid())
+  // 싱글톤 보장용 sentinel. 항상 true로 설정되며 unique 제약으로 중복 row 생성을 차단.
+  singleton      Boolean   @default(true) @unique
   name           String
   birthDate      DateTime?
   height         Float?              // cm
