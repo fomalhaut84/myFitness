@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+import { resolveMaxHR } from "@/lib/fitness/zones";
 import ActivitiesClient from "./activities-client";
 
 export const dynamic = "force-dynamic";
@@ -27,11 +28,10 @@ export default async function ActivitiesPage() {
   const monthStart = new Date(Date.UTC(kstNow.getFullYear(), kstNow.getMonth(), 1) - 9 * 60 * 60 * 1000);
   const eightWeeksAgo = weeksAgo(8);
 
-  // 최대 심박수 추정 (UserProfile 나이 기반 또는 실측 maxHR)
+  // 최대 심박수/LTHR: UserProfile 실측값 → 나이 기반 fallback
   const userProfile = await prisma.userProfile.findFirst();
-  const estimatedMaxHR = userProfile?.birthDate
-    ? 220 - Math.floor((Date.now() - userProfile.birthDate.getTime()) / (365.25 * 24 * 60 * 60 * 1000))
-    : 190;
+  const estimatedMaxHR = resolveMaxHR(userProfile ?? {});
+  const userLTHR = userProfile?.lthr ?? null;
 
   const activities = await prisma.activity.findMany({
     orderBy: { startTime: "desc" },
@@ -169,6 +169,7 @@ export default async function ActivitiesPage() {
       }))}
       monthSummary={monthSummary}
       estimatedMaxHR={estimatedMaxHR}
+      userLTHR={userLTHR}
       runningRecords={runningRecords.map((r) => ({
         date: formatDateLocal(r.startTime),
         avgPace: r.avgPace,

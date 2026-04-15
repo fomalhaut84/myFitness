@@ -1,3 +1,6 @@
+import prisma from "@/lib/prisma";
+import { getZoneRanges, resolveLTHR, resolveMaxHR } from "@/lib/fitness/zones";
+
 const BASE_PROMPT = `당신은 개인 피트니스 AI 어드바이저입니다.
 
 ## 역할
@@ -71,6 +74,58 @@ function formatKSTDateTime(): string {
   return `${y}년 ${m}월 ${d}일 ${dayName}요일 ${h}:${min} KST`;
 }
 
+async function buildUserProfileSection(): Promise<string> {
+  // 프로필 row가 없어도 fallback Zone(190 bpm 기본)을 출력해야 함.
+  // 신규 DB에서 /api/profile 호출 전이라도 AI가 Zone 인지 응답을 하도록.
+  const profile = await prisma.userProfile.findFirst();
+
+  const lines: string[] = ["## 사용자 프로필"];
+
+  if (profile?.maxHR) lines.push(`- 최대 심박: ${profile.maxHR} bpm (실측)`);
+  if (profile?.lthr) lines.push(`- LTHR: ${profile.lthr} bpm (실측)`);
+  if (profile?.lthrPace) {
+    const totalSec = Math.round(profile.lthrPace);
+    const min = Math.floor(totalSec / 60);
+    const sec = totalSec % 60;
+    lines.push(`- LTHR 페이스: ${min}:${String(sec).padStart(2, "0")}/km`);
+  }
+  if (profile?.targetCalories)
+    lines.push(`- 일일 칼로리 목표: ${profile.targetCalories} kcal`);
+  if (profile?.targetWeight)
+    lines.push(`- 목표 체중: ${profile.targetWeight} kg`);
+
+  // 프로필 정보가 하나도 없으면 안내 추가
+  if (lines.length === 1) {
+    lines.push(
+      "- (프로필 미설정 — /settings/profile 에서 maxHR, LTHR 등을 입력하면 정확도가 향상됩니다)"
+    );
+  }
+
+  // 개인 Zone: 실측 LTHR 우선, 없으면 나이/maxHR 기반 fallback (190 bpm 기본)
+  const maxHR = resolveMaxHR(profile ?? {});
+  const lthr = resolveLTHR(profile ?? {});
+  const isMeasuredLthr = Boolean(profile?.lthr && profile.lthr > 0);
+  const zones = getZoneRanges(lthr, maxHR);
+  lines.push("");
+  lines.push(
+    `## 개인 HR Zone (${
+      isMeasuredLthr ? "LTHR 실측 기반" : "추정값, 참고용"
+    }, 러닝 분석 시 아래 값 우선)`
+  );
+  for (const z of zones) {
+    const range =
+      z.min === null
+        ? `<${(z.max ?? 0) + 1} bpm`
+        : z.max === null
+          ? `${z.min}+ bpm`
+          : `${z.min}-${z.max} bpm`;
+    lines.push(`- Zone ${z.zone} (${z.label}): ${range}`);
+  }
+
+  return lines.join("\n") + "\n";
+}
+
 export async function buildSystemPrompt(): Promise<string> {
-  return `${BASE_PROMPT}\n## 현재 시간\n${formatKSTDateTime()}\n`;
+  const profileSection = await buildUserProfileSection();
+  return `${BASE_PROMPT}\n${profileSection}## 현재 시간\n${formatKSTDateTime()}\n`;
 }
