@@ -98,6 +98,16 @@ const NAV_ITEMS: NavItem[] = [
       </svg>
     ),
   },
+  {
+    label: "설정",
+    href: "/settings/profile",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <circle cx="10" cy="10" r="2.5" />
+        <path d="M10 1v2M10 17v2M4.2 4.2l1.4 1.4M14.4 14.4l1.4 1.4M1 10h2M17 10h2M4.2 15.8l1.4-1.4M14.4 5.6l1.4-1.4" />
+      </svg>
+    ),
+  },
 ];
 
 interface SidebarProps {

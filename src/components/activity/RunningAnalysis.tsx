@@ -2,6 +2,7 @@
 
 import TrendLineChart from "@/components/ui/TrendLineChart";
 import { formatPace } from "@/lib/format";
+import { calculateHRZone } from "@/lib/fitness/zones";
 
 interface RunningRecord {
   date: string;
@@ -16,36 +17,33 @@ interface RunningRecord {
 interface RunningAnalysisProps {
   records: RunningRecord[];
   estimatedMaxHR: number;
+  /** 사용자 실측 LTHR. 있으면 LTHR 기반, 없으면 maxHR × 0.9 근사. */
+  userLTHR?: number | null;
 }
 
-const HR_ZONES = [
-  { zone: 1, label: "회복", range: [0.5, 0.6], color: "#a3a3a3" },
-  { zone: 2, label: "이지", range: [0.6, 0.7], color: "#22c55e" },
-  { zone: 3, label: "에어로빅", range: [0.7, 0.8], color: "#60a5fa" },
-  { zone: 4, label: "템포", range: [0.8, 0.9], color: "#f59e0b" },
-  { zone: 5, label: "인터벌", range: [0.9, 1.0], color: "#ef4444" },
+const HR_ZONE_META = [
+  { zone: 1, label: "회복", color: "#a3a3a3" },
+  { zone: 2, label: "이지", color: "#22c55e" },
+  { zone: 3, label: "에어로빅", color: "#60a5fa" },
+  { zone: 4, label: "역치", color: "#f59e0b" },
+  { zone: 5, label: "VO2max", color: "#ef4444" },
 ];
-
-function getZone(hr: number, maxHR: number): number {
-  const pct = hr / maxHR;
-  if (pct >= 0.9) return 5;
-  if (pct >= 0.8) return 4;
-  if (pct >= 0.7) return 3;
-  if (pct >= 0.6) return 2;
-  return 1;
-}
 
 export default function RunningAnalysis({
   records,
   estimatedMaxHR,
+  userLTHR,
 }: RunningAnalysisProps) {
+  // LTHR 결정: 사용자 실측 → maxHR × 0.9 근사
+  const lthr = userLTHR && userLTHR > 0 ? userLTHR : Math.round(estimatedMaxHR * 0.9);
+  const isMeasured = Boolean(userLTHR && userLTHR > 0);
   if (records.length === 0) return null;
 
-  // HR존 분포
+  // HR존 분포 (LTHR 기반)
   const zoneCounts = [0, 0, 0, 0, 0];
   const withHR = records.filter((r) => r.avgHR !== null);
   for (const r of withHR) {
-    const z = getZone(r.avgHR!, estimatedMaxHR);
+    const z = calculateHRZone(r.avgHR!, lthr);
     zoneCounts[z - 1]++;
   }
   const totalWithHR = withHR.length || 1;
@@ -79,7 +77,7 @@ export default function RunningAnalysis({
           HR존 분포 ({withHR.length}회 러닝)
         </div>
         <div className="space-y-2">
-          {HR_ZONES.map((z, i) => {
+          {HR_ZONE_META.map((z, i) => {
             const pct = Math.round((zoneCounts[i] / totalWithHR) * 100);
             return (
               <div key={z.zone} className="flex items-center gap-3">
@@ -103,7 +101,10 @@ export default function RunningAnalysis({
           })}
         </div>
         <div className="text-[10px] text-dim mt-3">
-          추정 최대 심박: {estimatedMaxHR} bpm
+          {isMeasured
+            ? `LTHR ${lthr} bpm (실측)`
+            : `LTHR ${lthr} bpm (최대심박 × 0.9 추정)`}
+          {" · "}최대 심박 {estimatedMaxHR} bpm
         </div>
       </div>
 

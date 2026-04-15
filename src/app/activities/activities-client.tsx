@@ -52,6 +52,7 @@ interface ActivitiesClientProps {
   activities: Activity[];
   monthSummary: MonthSummary;
   estimatedMaxHR: number;
+  userLTHR: number | null;
   runningRecords: RunningRecord[];
   weeklyVolumes: WeekVolume[];
   overtrainingRisk: OvertrainingRisk;
@@ -68,6 +69,7 @@ export default function ActivitiesClient({
   activities,
   monthSummary,
   estimatedMaxHR,
+  userLTHR,
   runningRecords,
   weeklyVolumes,
   overtrainingRisk,
@@ -178,6 +180,7 @@ export default function ActivitiesClient({
           <RunningAnalysis
             records={runningRecords}
             estimatedMaxHR={estimatedMaxHR}
+            userLTHR={userLTHR}
           />
         </div>
       )}

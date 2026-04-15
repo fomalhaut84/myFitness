@@ -9,14 +9,18 @@ datasource db {
 }
 
 model UserProfile {
-  id            String    @id @default(cuid())
-  name          String
-  birthDate     DateTime?
-  height        Float?              // cm
-  targetWeight  Float?              // kg
-  restingHRBase Int?                // 기준 안정시 심박수
-  createdAt     DateTime  @default(now())
-  updatedAt     DateTime  @updatedAt
+  id             String    @id @default(cuid())
+  name           String
+  birthDate      DateTime?
+  height         Float?              // cm
+  targetWeight   Float?              // kg
+  restingHRBase  Int?                // 기준 안정시 심박수
+  maxHR          Int?                // 실측 최대 심박 (bpm)
+  lthr           Int?                // 젖산역치 심박 (bpm)
+  lthrPace       Float?              // LTHR 페이스 (sec/km)
+  targetCalories Int?                // 일일 칼로리 목표 (kcal)
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
 }
 
 model SyncMetadata {
