@@ -97,12 +97,13 @@ export async function syncDailySummaries(
   // 반영 후 싱크된 날짜들의 칼로리 밸런스를 재계산 (targetCalories가 null→값으로 바뀌었으므로).
   if (latestCalorieGoal !== null) {
     try {
-      const profile = await prisma.userProfile.findFirst();
-      if (profile && profile.targetCalories === null) {
-        await prisma.userProfile.update({
-          where: { id: profile.id },
-          data: { targetCalories: latestCalorieGoal },
-        });
+      // 원자적 조건부 업데이트: targetCalories가 null인 경우에만 덮어쓰기.
+      // read-then-write race를 방지 (사용자가 동시에 수동 설정해도 수동값 보호).
+      const updated = await prisma.userProfile.updateMany({
+        where: { targetCalories: null },
+        data: { targetCalories: latestCalorieGoal },
+      });
+      if (updated.count > 0) {
         // targetCalories가 방금 세팅됨 → 이번 싱크 중 계산된 밸런스가 stale.
         // 싱크된 날짜들에 대해 재계산.
         for (const date of dates) {
