@@ -12,6 +12,10 @@ interface DaySummary {
   sleepScore: number | null;
   bodyBattery: number | null;
   spo2: number | null;
+  intakeCalories: number | null;
+  availableCalories: number | null;
+  calorieBalance: number | null;
+  activeCalories: number | null;
 }
 
 interface DataPoint {
@@ -234,6 +238,13 @@ export default function DashboardClient({
         )}
       </div>
 
+      {/* 칼로리 밸런스 (M4-2) */}
+      {(today.calorieBalance !== null ||
+        today.intakeCalories !== null ||
+        today.availableCalories !== null) && (
+        <CalorieBalanceCard today={today} yesterday={yesterday} />
+      )}
+
       {/* 주간 차트 */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mb-3">
         <WeeklyChart title="주간 걸음 수" data={weeklySteps} color="#22c55e" />
@@ -288,6 +299,98 @@ export default function DashboardClient({
         />
         <StressDetailChart data={monthlyStressDetail} />
       </div>
+    </div>
+  );
+}
+
+function CalorieBalanceCard({
+  today,
+  yesterday,
+}: {
+  today: DaySummary;
+  yesterday: DaySummary;
+}) {
+  const balance = today.calorieBalance;
+  const intake = today.intakeCalories;
+  const available = today.availableCalories;
+  const active = today.activeCalories;
+
+  // 결손(음수)은 감량 페이스 → 초록, 잉여(양수)는 빨강
+  const balanceColor =
+    balance === null
+      ? "text-dim"
+      : balance <= -1000
+        ? "text-yellow-400"
+        : balance < 0
+          ? "text-accent"
+          : "text-red-400";
+
+  const balanceText =
+    balance === null
+      ? "—"
+      : balance < 0
+        ? `${balance.toLocaleString("ko-KR")} kcal 결손`
+        : balance === 0
+          ? "균형"
+          : `+${balance.toLocaleString("ko-KR")} kcal 잉여`;
+
+  const yBalance = yesterday.calorieBalance;
+  const yBalanceText =
+    yBalance === null
+      ? null
+      : yBalance < 0
+        ? `어제 ${yBalance.toLocaleString("ko-KR")} kcal`
+        : `어제 +${yBalance.toLocaleString("ko-KR")} kcal`;
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 mb-3">
+      <div className="flex items-center justify-between mb-3">
+        <div className="text-[11px] text-dim tracking-wider uppercase">
+          칼로리 밸런스
+        </div>
+        {yBalanceText && (
+          <div className="text-[10px] text-dim">{yBalanceText}</div>
+        )}
+      </div>
+
+      <div className={`text-2xl font-semibold mb-4 ${balanceColor}`}>
+        {balanceText}
+      </div>
+
+      <div className="grid grid-cols-3 gap-3 text-[11px]">
+        <div>
+          <div className="text-dim mb-1">섭취</div>
+          <div className="font-[family-name:var(--font-geist-mono)] text-bright">
+            {intake !== null
+              ? `${intake.toLocaleString("ko-KR")} kcal`
+              : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-dim mb-1">섭취가능 (목표+활성)</div>
+          <div className="font-[family-name:var(--font-geist-mono)] text-bright">
+            {available !== null
+              ? `${available.toLocaleString("ko-KR")} kcal`
+              : "—"}
+          </div>
+        </div>
+        <div>
+          <div className="text-dim mb-1">활성</div>
+          <div className="font-[family-name:var(--font-geist-mono)] text-bright">
+            {active !== null
+              ? `${active.toLocaleString("ko-KR")} kcal`
+              : "—"}
+          </div>
+        </div>
+      </div>
+
+      {(intake === null || available === null) && (
+        <div className="text-[10px] text-dim mt-3">
+          {available === null && "목표 칼로리 미설정 — /settings/profile 에서 입력하면 밸런스가 계산됩니다"}
+          {available === null && intake === null && " · "}
+          {intake === null && "오늘 식단 기록 없음"}
+        </div>
+      )}
     </div>
   );
 }

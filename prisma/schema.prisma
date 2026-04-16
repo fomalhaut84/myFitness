@@ -91,6 +91,10 @@ model DailySummary {
   stressLowDuration   Int?             // minutes
   bodyBatteryCharged  Int?             // 충전량
   bodyBatteryDrained  Int?             // 소모량
+  // M4-2: 칼로리 밸런스
+  estimatedIntakeCalories Int?         // 섭취 칼로리 (FoodLog 합계 또는 MFP)
+  availableCalories       Int?         // 목표 + 활성
+  calorieBalance          Int?         // 섭취 - 섭취가능 (음수 = 결손/감량)
   rawData         Json?
   createdAt       DateTime @default(now())
 }

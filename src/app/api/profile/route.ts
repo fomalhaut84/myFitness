@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { resolveMaxHR } from "@/lib/fitness/zones";
+import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 
 /** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
 const birthDateSchema = z
@@ -120,6 +121,27 @@ export async function PATCH(request: Request) {
       where: { id: existing.id },
       data: updatePayload,
     });
+
+    // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산.
+    // 히스토리가 수백 건이면 수 초 이상 걸릴 수 있으므로 fire-and-forget으로 백그라운드 실행.
+    // (Node 런타임에서 프로세스가 계속 살아있으므로 완료 보장, 실패해도 다음 싱크/수동 재계산으로 복구)
+    const targetCaloriesChanged =
+      data.targetCalories !== undefined &&
+      data.targetCalories !== existing.targetCalories;
+    if (targetCaloriesChanged) {
+      recalculateAllCalorieBalances()
+        .then(({ processed, failed }) => {
+          console.log(
+            `[profile] targetCalories 변경 → 백그라운드 재계산: ${processed}건 성공, ${failed}건 실패`
+          );
+        })
+        .catch((err) => {
+          console.error(
+            "[profile] 프로필 변경 후 칼로리 재계산 실패:",
+            err instanceof Error ? err.message : String(err)
+          );
+        });
+    }
 
     return NextResponse.json({ profile });
   } catch (error) {
