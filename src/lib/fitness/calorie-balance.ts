@@ -2,17 +2,17 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 
 /**
- * reference Date에서 "KST 벽시계 기준 해당 날짜"의 [시작, 끝) UTC instant를 산출.
+ * reference Date에서 다음 3가지 시각값을 산출:
  *
- * - KST 날짜(Y-M-D)는 Intl.DateTimeFormat으로 서버 TZ와 무관하게 추출.
- * - 경계는 진짜 KST 00:00의 UTC instant(= Date.UTC(Y,M,D) - 9h)로 구성.
- *   → FoodLog.date(실제 UTC instant 저장)의 집계가 서버 TZ와 무관하게 정확.
- *   → DailySummary.date는 코드베이스 관례(server TZ = KST)에서 KST midnight UTC instant와
- *     동일하므로 lookup도 일치.
+ * 1. `summaryKey` — DailySummary 조회용 key. sync 파이프라인의 저장 관례와 정합.
+ *    `startOfDay(date)` = 서버 로컬 midnight of (KST wall-clock 날짜). 서버 TZ에 의존.
+ * 2. `kstDayStart` / `kstDayEnd` — FoodLog.date(실제 UTC instant) 집계용 경계.
+ *    진짜 KST 00:00 UTC instant(= Date.UTC(Y,M,D) - 9h)로 서버 TZ와 무관하게 정확.
  */
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function kstDayBoundary(referenceDate: Date): {
+  summaryKey: Date;
   kstDayStart: Date;
   kstDayEnd: Date;
 } {
@@ -26,10 +26,15 @@ function kstDayBoundary(referenceDate: Date): {
   const m = Number(parts.find((p) => p.type === "month")!.value);
   const d = Number(parts.find((p) => p.type === "day")!.value);
 
+  // DailySummary.date 저장 관례: 서버 로컬 midnight of KST 날짜
+  const summaryKey = new Date(y, m - 1, d, 0, 0, 0, 0);
+
+  // FoodLog 집계 경계: 진짜 KST 00:00 UTC instant
   const kstMidnightUTCms = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
   const kstDayStart = new Date(kstMidnightUTCms);
   const kstDayEnd = new Date(kstMidnightUTCms + 24 * 60 * 60 * 1000);
-  return { kstDayStart, kstDayEnd };
+
+  return { summaryKey, kstDayStart, kstDayEnd };
 }
 
 type TxClient = Prisma.TransactionClient;
@@ -61,10 +66,10 @@ export async function recalculateCalorieBalance(
 }
 
 async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
-  const { kstDayStart, kstDayEnd } = kstDayBoundary(referenceDate);
+  const { summaryKey, kstDayStart, kstDayEnd } = kstDayBoundary(referenceDate);
 
   const [summary, profile, intakeAgg] = await Promise.all([
-    tx.dailySummary.findUnique({ where: { date: kstDayStart } }),
+    tx.dailySummary.findUnique({ where: { date: summaryKey } }),
     tx.userProfile.findFirst(),
     // estimatedKcal이 있는 로그만 집계. null인 로그(예: 봇 미추정)는 섭취 계산에서 제외.
     tx.foodLog.aggregate({
