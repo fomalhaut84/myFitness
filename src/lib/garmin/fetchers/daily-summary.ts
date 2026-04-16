@@ -60,6 +60,23 @@ export async function syncDailySummaries(
         rawData: summary as Prisma.InputJsonValue,
       };
 
+      // M4-3: Garmin의 netCalorieGoal을 UserProfile.targetCalories에 자동 반영.
+      // 사용자가 프로필에서 직접 설정한 값이 없을 때만 싱크 (수동값 우선).
+      const garminGoal = toInt(summary.netCalorieGoal);
+      if (garminGoal && garminGoal > 0) {
+        try {
+          const profile = await prisma.userProfile.findFirst();
+          if (profile && profile.targetCalories === null) {
+            await prisma.userProfile.update({
+              where: { id: profile.id },
+              data: { targetCalories: garminGoal },
+            });
+          }
+        } catch {
+          // 프로필 업데이트 실패는 싱크를 중단하지 않음
+        }
+      }
+
       await prisma.dailySummary.upsert({
         where: { date: dayDate },
         update: data,

@@ -154,12 +154,13 @@
 - 효과: 체중감량 진행도 명확화
 - 스펙: `docs/specs/m4-2-calorie-balance.md`
 
-## M4-3: 식단 데이터 연동 (Garmin 경유 조사) — 우선순위 ★★★ (긴급)
+## M4-3: 식단 데이터 연동 (Garmin 경유 조사) ✅
 
-- [ ] Garmin Connect API에 식단/영양 데이터 존재 여부 조사
-- [ ] MFP 연동 시 Garmin에 데이터 내려오는지 테스트 스크립트
-- [ ] 데이터 있으면 fetcher 추가, FoodLog 활용
-- [ ] 데이터 없으면 백로그로 이관 (비공식 MFP API 검토)
+- [x] Garmin Connect API에 식단/영양 데이터 존재 여부 조사
+- [x] MFP 연동 시 Garmin에 데이터 내려오는지 테스트 스크립트
+- [x] 결과: consumedKilocalories=null, includesCalorieConsumedData=false (MFP 미연동)
+- [x] 보너스: netCalorieGoal(1890) 발견 → targetCalories 자동 싱크 구현
+- [ ] 사용자 확인: MFP ↔ Garmin 연동 활성화 후 재조사 (백로그)
 - 스펙: `docs/specs/m4-3-diet-sync.md`
 
 ## M4-4: Split/Lap 데이터 MCP 도구화 — 우선순위 ★★ (권장)
