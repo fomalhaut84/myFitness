@@ -10,6 +10,7 @@ import {
   getBodyComposition,
   getTrends,
 } from "./tools/fitness";
+import { getActivitySplits } from "./tools/splits";
 
 const server = new McpServer({
   name: "myfitness",
@@ -69,6 +70,17 @@ server.tool(
     period: z.enum(["week", "month"]).describe("집계 기간 (week 또는 month)"),
   },
   async (args) => getTrends(args)
+);
+
+server.tool(
+  "get_activity_splits",
+  "특정 활동의 km별(lap별) 구간 데이터 조회 (페이스/심박/케이던스/고도/강도 타입). 한계치 런·인터벌 분석에 사용.",
+  {
+    activityId: z
+      .string()
+      .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열"),
+  },
+  async (args) => getActivitySplits(args)
 );
 
 async function main() {
