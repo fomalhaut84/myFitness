@@ -66,8 +66,16 @@ export async function syncDailySummaries(
         create: { date: dayDate, ...data },
       });
 
-      // M4-2: 칼로리 밸런스 재계산 (targetCalories + activeCalories, 섭취와 비교)
-      await recalculateCalorieBalance(dayDate);
+      // M4-2: 칼로리 밸런스 재계산 (targetCalories + activeCalories, 섭취와 비교).
+      // 재계산 실패는 싱크 전체를 실패시키지 않음 (다음 싱크에서 자연 복구).
+      try {
+        await recalculateCalorieBalance(dayDate);
+      } catch (err) {
+        console.error(
+          `[daily-summary] 칼로리 밸런스 재계산 실패 (${formatDate(dayDate)}):`,
+          err instanceof Error ? err.message : String(err)
+        );
+      }
 
       synced++;
     } catch (error) {

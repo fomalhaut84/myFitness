@@ -54,17 +54,23 @@ export async function POST(request: Request) {
       }
     }
 
-    const log = await prisma.foodLog.create({
-      data: {
-        date: foodDate,
-        description,
-        estimatedKcal,
-        mealType: mealType ?? null,
+    // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.
+    // 재계산 실패 시 create도 롤백되어 클라이언트 재시도 시 중복 입력을 방지.
+    const log = await prisma.$transaction(
+      async (tx) => {
+        const created = await tx.foodLog.create({
+          data: {
+            date: foodDate,
+            description,
+            estimatedKcal,
+            mealType: mealType ?? null,
+          },
+        });
+        await recalculateCalorieBalance(foodDate, tx);
+        return created;
       },
-    });
-
-    // M4-2: 칼로리 밸런스 재계산 (섭취 칼로리 변화 반영)
-    await recalculateCalorieBalance(foodDate);
+      { isolationLevel: "Serializable" }
+    );
 
     return NextResponse.json({
       data: {
