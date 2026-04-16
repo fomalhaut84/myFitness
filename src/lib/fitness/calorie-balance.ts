@@ -2,13 +2,16 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 
 /**
- * reference Date에서 "KST 벽시계 기준 해당 날짜"의 [시작, 끝) 경계를 산출.
+ * reference Date에서 "KST 벽시계 기준 해당 날짜"의 [시작, 끝) UTC instant를 산출.
  *
  * - KST 날짜(Y-M-D)는 Intl.DateTimeFormat으로 서버 TZ와 무관하게 추출.
- * - 경계 Date 객체는 "서버 로컬 타임존의 해당 날짜 midnight"으로 구성하여
- *   DailySummary.date(= `startOfDay(date)`, 서버 로컬 midnight) 저장 관례와 일치.
- *   (코드베이스 전반이 server TZ = KST를 가정. 서버가 KST면 KST midnight UTC instant와 동일.)
+ * - 경계는 진짜 KST 00:00의 UTC instant(= Date.UTC(Y,M,D) - 9h)로 구성.
+ *   → FoodLog.date(실제 UTC instant 저장)의 집계가 서버 TZ와 무관하게 정확.
+ *   → DailySummary.date는 코드베이스 관례(server TZ = KST)에서 KST midnight UTC instant와
+ *     동일하므로 lookup도 일치.
  */
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+
 function kstDayBoundary(referenceDate: Date): {
   kstDayStart: Date;
   kstDayEnd: Date;
@@ -23,8 +26,9 @@ function kstDayBoundary(referenceDate: Date): {
   const m = Number(parts.find((p) => p.type === "month")!.value);
   const d = Number(parts.find((p) => p.type === "day")!.value);
 
-  const kstDayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
-  const kstDayEnd = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
+  const kstMidnightUTCms = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
+  const kstDayStart = new Date(kstMidnightUTCms);
+  const kstDayEnd = new Date(kstMidnightUTCms + 24 * 60 * 60 * 1000);
   return { kstDayStart, kstDayEnd };
 }
 
