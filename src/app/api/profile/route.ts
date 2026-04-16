@@ -125,7 +125,11 @@ export async function PATCH(request: Request) {
       updatePayload.targetWeight = data.targetWeight;
     if (data.targetDate !== undefined)
       updatePayload.targetDate = data.targetDate
-        ? new Date(data.targetDate)
+        ? // 서버 로컬 타임존의 midnight으로 저장 (formatDateLocal 표시와 정합)
+          (() => {
+            const [y, m, d] = data.targetDate.split("-").map(Number);
+            return new Date(y, m - 1, d);
+          })()
         : null;
     if (data.restingHRBase !== undefined)
       updatePayload.restingHRBase = data.restingHRBase;

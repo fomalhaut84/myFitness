@@ -413,10 +413,6 @@ function CalorieBalanceChart({ data }: { data: CaloriePoint[] }) {
             <span className="w-2 h-2 rounded-sm bg-[#ef4444]" />
             잉여
           </span>
-          <span className="flex items-center gap-1">
-            <span className="w-3 h-0.5 bg-[#f59e0b]" />
-            섭취가능
-          </span>
         </div>
       </div>
       <ResponsiveContainer width="100%" height={200}>

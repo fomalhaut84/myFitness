@@ -21,7 +21,7 @@ export default async function BodyPage() {
   const thirtyDaysAgo = daysAgoLocal(30);
   const sixtyDaysAgo = daysAgoLocal(60);
 
-  const [latest, weightRecent, fatTrend, recentRecords, profile, balances, weeklyRuns, earliestWeight] =
+  const [latest, weightRecent, fatTrend, recentRecords, profile, balances, weeklyRuns, maxWeightRecord] =
     await Promise.all([
       prisma.bodyComposition.findFirst({ orderBy: { date: "desc" } }),
       prisma.bodyComposition.findMany({
@@ -65,8 +65,9 @@ export default async function BodyPage() {
         select: { startTime: true, distance: true },
         orderBy: { startTime: "asc" },
       }),
+      // 감량 시작점: 전 기간 중 가장 높았던 체중 (earliest가 아닌 max)
       prisma.bodyComposition.findFirst({
-        orderBy: { date: "asc" },
+        orderBy: { weight: "desc" },
         select: { weight: true, date: true },
       }),
     ]);
@@ -103,15 +104,15 @@ export default async function BodyPage() {
     );
   }
 
-  // 주간 러닝 거리 (최근 8주)
+  // 주간 러닝 거리 (최근 8주). weekStart(inclusive) ~ weekEnd(exclusive)로 경계 중복 방지.
   const weeklyDistances: { weekLabel: string; distanceKm: number }[] = [];
   for (let i = 7; i >= 0; i--) {
     const weekStart = daysAgoLocal(i * 7 + 6);
-    const weekEnd = daysAgoLocal(i * 7 - 1);
+    const weekEndExclusive = daysAgoLocal(i * 7 - 1); // 다음 주 시작 (미포함)
     const weekRuns = weeklyRuns.filter(
       (r) =>
         r.startTime.getTime() >= weekStart.getTime() &&
-        r.startTime.getTime() <= weekEnd.getTime()
+        r.startTime.getTime() < weekEndExclusive.getTime()
     );
     const totalMeters = weekRuns.reduce((s, r) => s + (r.distance ?? 0), 0);
     weeklyDistances.push({
@@ -120,10 +121,10 @@ export default async function BodyPage() {
     });
   }
 
-  // 목표 진행도
+  // 목표 진행도 (startWeight = 전 기간 최고 체중을 감량 시작점으로 사용)
   const goalProgress = computeGoalProgress({
     currentWeight: latest?.weight ?? null,
-    startWeight: earliestWeight?.weight ?? null,
+    startWeight: maxWeightRecord?.weight ?? null,
     targetWeight: profile?.targetWeight ?? null,
   });
 

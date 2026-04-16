@@ -122,7 +122,7 @@ export function summarizeWeek(args: {
 /** 목표 진행도 계산 (백분율 0~100) */
 export function computeGoalProgress(args: {
   currentWeight: number | null;
-  startWeight: number | null; // 감량 시작 시점 체중 (첫 기록 등)
+  startWeight: number | null; // 감량 시작 시점 체중 (현재보다 이전의 최대 체중)
   targetWeight: number | null;
 }): {
   remainingKg: number | null;
@@ -134,18 +134,18 @@ export function computeGoalProgress(args: {
     return { remainingKg: null, lostKg: null, percentComplete: null };
   }
   const remaining = Number((currentWeight - targetWeight).toFixed(2));
-  if (startWeight === null) {
+
+  // startWeight가 없거나, currentWeight보다 작거나 같거나, targetWeight보다 작으면
+  // 감량 시작점으로 볼 수 없어 진행률 계산 불가 (remaining만 표시).
+  if (
+    startWeight === null ||
+    startWeight <= currentWeight ||
+    startWeight <= targetWeight
+  ) {
     return { remainingKg: remaining, lostKg: null, percentComplete: null };
   }
+
   const totalToLose = startWeight - targetWeight;
-  if (totalToLose <= 0) {
-    // 이미 목표 달성 또는 역방향
-    return {
-      remainingKg: remaining,
-      lostKg: Number((startWeight - currentWeight).toFixed(2)),
-      percentComplete: remaining <= 0 ? 100 : 0,
-    };
-  }
   const lost = startWeight - currentWeight;
   const percent = Math.max(0, Math.min(100, (lost / totalToLose) * 100));
   return {
