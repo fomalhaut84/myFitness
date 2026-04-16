@@ -118,8 +118,12 @@ export async function syncDailySummaries(
           );
         });
       }
-    } catch {
-      // 프로필 업데이트 실패는 싱크를 중단하지 않음
+    } catch (err) {
+      // 프로필 업데이트 실패는 싱크를 중단하지 않지만 로그는 남김
+      console.error(
+        "[daily-summary] Garmin netCalorieGoal → targetCalories 자동 반영 실패:",
+        err instanceof Error ? err.message : String(err)
+      );
     }
   }
 
