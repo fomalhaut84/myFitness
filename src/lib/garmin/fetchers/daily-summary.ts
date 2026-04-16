@@ -62,8 +62,9 @@ export async function syncDailySummaries(
       };
 
       // M4-3: 최신 날짜의 netCalorieGoal을 기억 (루프 후 한 번만 프로필에 반영)
+      // 프로필 API와 동일한 범위(500~5000 kcal)를 적용하여 비정상 값 차단.
       const garminGoal = toInt(summary.netCalorieGoal);
-      if (garminGoal && garminGoal > 0) {
+      if (garminGoal && garminGoal >= 500 && garminGoal <= 5000) {
         latestCalorieGoal = garminGoal;
       }
 
