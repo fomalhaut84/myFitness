@@ -78,6 +78,8 @@ server.tool(
   {
     activityId: z
       .string()
+      .trim()
+      .min(1)
       .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열"),
   },
   async (args) => getActivitySplits(args)

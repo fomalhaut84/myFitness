@@ -18,9 +18,9 @@ interface LapResponse {
   lapIndex: number;
   distanceKm: number | null;
   durationSec: number | null;
-  durationMin: string | null;
+  durationFormatted: string | null; // "M:SS"
   paceSecPerKm: number | null;
-  paceMinKm: string | null;
+  paceFormatted: string | null; // "M:SS/km"
   avgHR: number | null;
   maxHR: number | null;
   avgCadence: number | null;
@@ -31,6 +31,13 @@ interface LapResponse {
 
 function formatPace(secPerKm: number): string {
   const total = Math.round(secPerKm);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
+  return `${min}:${String(sec).padStart(2, "0")}`;
+}
+
+function formatDuration(totalSec: number): string {
+  const total = Math.round(totalSec);
   const min = Math.floor(total / 60);
   const sec = total % 60;
   return `${min}:${String(sec).padStart(2, "0")}`;
@@ -47,14 +54,11 @@ function toLapResponse(lap: RawLapDTO, index: number): LapResponse {
         ? Number((lap.distance / 1000).toFixed(3))
         : null,
     durationSec: lap.duration ?? null,
-    durationMin:
-      lap.duration !== undefined
-        ? `${Math.floor(lap.duration / 60)}:${String(
-            Math.round(lap.duration % 60)
-          ).padStart(2, "0")}`
-        : null,
+    durationFormatted:
+      lap.duration !== undefined ? formatDuration(lap.duration) : null,
     paceSecPerKm,
-    paceMinKm: paceSecPerKm !== null ? formatPace(paceSecPerKm) + "/km" : null,
+    paceFormatted:
+      paceSecPerKm !== null ? formatPace(paceSecPerKm) + "/km" : null,
     avgHR: lap.averageHR ?? null,
     maxHR: lap.maxHR ?? null,
     avgCadence:
@@ -68,37 +72,59 @@ function toLapResponse(lap: RawLapDTO, index: number): LapResponse {
   };
 }
 
+// PostgreSQL bigint 범위 (signed 64-bit)
+const BIGINT_MAX = BigInt("9223372036854775807");
+const BIGINT_ZERO = BigInt(0);
+
+/** activityId 문자열을 BigInt garminId로 안전 변환 (범위 초과/포맷 오류 시 null) */
+function tryParseGarminId(activityId: string): bigint | null {
+  if (!/^\d+$/.test(activityId)) return null;
+  try {
+    const value = BigInt(activityId);
+    if (value > BIGINT_MAX || value < BIGINT_ZERO) return null;
+    return value;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 특정 활동의 km별(lap별) 상세 데이터 조회.
  * activityId는 DB id(cuid) 또는 Garmin garminId 문자열 허용.
  */
 export async function getActivitySplits(args: { activityId: string }) {
-  const { activityId } = args;
+  const activityId = args.activityId?.trim();
   if (!activityId) {
     return errorPayload("activityId가 필요합니다");
   }
 
-  // DB에서 Activity 조회 (cuid 또는 garminId)
-  const activity = await prisma.activity.findFirst({
-    where: {
-      OR: [
-        { id: activityId },
-        // garminId는 BigInt. 숫자로 파싱 가능할 때만 시도.
-        ...(/^\d+$/.test(activityId)
-          ? [{ garminId: BigInt(activityId) }]
-          : []),
-      ],
-    },
-    select: {
-      id: true,
-      garminId: true,
-      activityType: true,
-      name: true,
-      startTime: true,
-      distance: true,
-      duration: true,
-    },
-  });
+  const garminIdCandidate = tryParseGarminId(activityId);
+  const orClauses: Array<{ id: string } | { garminId: bigint }> = [
+    { id: activityId },
+  ];
+  if (garminIdCandidate !== null) {
+    orClauses.push({ garminId: garminIdCandidate });
+  }
+
+  // DB에서 Activity 조회 (cuid 또는 garminId). Prisma 예외는 errorPayload로 변환.
+  let activity;
+  try {
+    activity = await prisma.activity.findFirst({
+      where: { OR: orClauses },
+      select: {
+        id: true,
+        garminId: true,
+        activityType: true,
+        name: true,
+        startTime: true,
+        distance: true,
+        duration: true,
+      },
+    });
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    return errorPayload(`활동 조회 실패: ${message}`);
+  }
 
   if (!activity) {
     return errorPayload(`활동을 찾을 수 없습니다: ${activityId}`);
@@ -142,12 +168,13 @@ export async function getActivitySplits(args: { activityId: string }) {
       activity.distance !== null
         ? Number((activity.distance / 1000).toFixed(2))
         : null,
-    totalDurationMin: Math.round(activity.duration / 60),
+    totalDurationSec: activity.duration,
+    totalDurationFormatted: formatDuration(activity.duration),
     lapCount: laps.length,
     kmLapCount: activeKmLaps.length,
-    paceRangeMinKm: minPace !== null ? formatPace(minPace) + "/km" : null,
-    paceRangeMaxKm: maxPace !== null ? formatPace(maxPace) + "/km" : null,
-    avgPaceMinKm: avgPace !== null ? formatPace(avgPace) + "/km" : null,
+    paceMinFormatted: minPace !== null ? formatPace(minPace) + "/km" : null,
+    paceMaxFormatted: maxPace !== null ? formatPace(maxPace) + "/km" : null,
+    paceAvgFormatted: avgPace !== null ? formatPace(avgPace) + "/km" : null,
   };
 
   const response = {
