@@ -2,16 +2,16 @@ import prisma from "../prisma";
 import { withReauth } from "@/lib/garmin/client";
 
 interface RawLapDTO {
-  distance?: number; // meters
-  duration?: number; // seconds
-  averageSpeed?: number; // m/s
-  averageHR?: number;
-  maxHR?: number;
-  averageRunCadence?: number;
-  elevationGain?: number;
-  averagePower?: number;
-  intensityType?: string; // ACTIVE / WARMUP / COOLDOWN / INTERVAL / REST
-  lapIndex?: number;
+  distance?: number | null; // meters
+  duration?: number | null; // seconds
+  averageSpeed?: number | null; // m/s
+  averageHR?: number | null;
+  maxHR?: number | null;
+  averageRunCadence?: number | null;
+  elevationGain?: number | null;
+  averagePower?: number | null;
+  intensityType?: string | null; // ACTIVE / WARMUP / COOLDOWN / INTERVAL / REST
+  lapIndex?: number | null;
 }
 
 interface LapResponse {
@@ -44,30 +44,32 @@ function formatDuration(totalSec: number): string {
 }
 
 function toLapResponse(lap: RawLapDTO, index: number): LapResponse {
-  const speed = lap.averageSpeed ?? null;
+  // Garmin 페이로드는 null 또는 undefined로 누락된 값을 반환할 수 있음.
+  // `!= null` 로 null/undefined 모두 누락으로 처리 (0으로 강제 변환 방지).
+  const speed = lap.averageSpeed;
   const paceSecPerKm =
-    speed !== null && speed > 0 ? Math.round(1000 / speed) : null;
+    speed != null && speed > 0 ? Math.round(1000 / speed) : null;
   return {
     lapIndex: lap.lapIndex ?? index + 1,
     distanceKm:
-      lap.distance !== undefined
+      lap.distance != null
         ? Number((lap.distance / 1000).toFixed(3))
         : null,
     durationSec: lap.duration ?? null,
     durationFormatted:
-      lap.duration !== undefined ? formatDuration(lap.duration) : null,
+      lap.duration != null ? formatDuration(lap.duration) : null,
     paceSecPerKm,
     paceFormatted:
       paceSecPerKm !== null ? formatPace(paceSecPerKm) + "/km" : null,
     avgHR: lap.averageHR ?? null,
     maxHR: lap.maxHR ?? null,
     avgCadence:
-      lap.averageRunCadence !== undefined
+      lap.averageRunCadence != null
         ? Math.round(lap.averageRunCadence)
         : null,
     elevationGain:
-      lap.elevationGain !== undefined ? Math.round(lap.elevationGain) : null,
-    avgPower: lap.averagePower !== undefined ? Math.round(lap.averagePower) : null,
+      lap.elevationGain != null ? Math.round(lap.elevationGain) : null,
+    avgPower: lap.averagePower != null ? Math.round(lap.averagePower) : null,
     intensityType: lap.intensityType ?? null,
   };
 }
