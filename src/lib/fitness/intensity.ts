@@ -45,12 +45,12 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
-/** 분포 기반 분류가 의미 있는 최소 zone 시간(초). 이하면 null 처리. */
+/** 분포 기반 분류에 필요한 최소 zone 시간(초). 이하면 null 처리(경계값 포함). */
 export const MIN_ZONE_TOTAL_SEC = 60;
 
 /**
  * Garmin rawData에서 HR Zone 시간 분포를 추출.
- * 모든 zone이 0이거나 총합이 MIN_ZONE_TOTAL_SEC 미만이면 null 반환.
+ * 모든 zone이 0이거나 총합이 MIN_ZONE_TOTAL_SEC 이하이면 null 반환.
  */
 export function extractZoneDistribution(
   rawData: Record<string, unknown> | null | undefined
@@ -64,7 +64,7 @@ export function extractZoneDistribution(
     z5: toNum(rawData.hrTimeInZone_5),
   };
   const total = dist.z1 + dist.z2 + dist.z3 + dist.z4 + dist.z5;
-  if (total < MIN_ZONE_TOTAL_SEC) return null;
+  if (total <= MIN_ZONE_TOTAL_SEC) return null;
   return dist;
 }
 
