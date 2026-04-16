@@ -1,6 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
 import { withRateLimit } from "../utils";
 
 const PAGE_SIZE = 20;
@@ -13,6 +14,11 @@ export async function syncActivities(
   let synced = 0;
   let start = 0;
   let hasMore = true;
+
+  // M4-5: 강도 분류 시 사용할 실측 LTHR (프로필에서 1회 조회).
+  // 실측값이 없으면 LTHR 기반 보정은 건너뛰고 분포만으로 분류.
+  const profile = await prisma.userProfile.findFirst();
+  const lthr = profile?.lthr ?? null;
 
   while (hasMore) {
     const activities = await withRateLimit(() =>
@@ -73,10 +79,35 @@ export async function syncActivities(
         rawData: raw as Prisma.InputJsonValue,
       };
 
+      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 기반).
+      // 분포 추출 실패 시 기존 값을 덮어쓰지 않도록 update/create 동작을 분리.
+      const intensity = computeIntensityFromRawData({
+        rawData: raw,
+        avgHR: data.avgHR,
+        lthr,
+      });
+      const intensityData: Record<string, unknown> = intensity
+        ? {
+            zoneDistribution: intensity.zoneDistribution as unknown as Prisma.InputJsonValue,
+            estimatedZone: intensity.estimatedZone,
+            intensityScore: intensity.intensityScore,
+            intensityLabel: intensity.intensityLabel,
+          }
+        : {};
+      // create 시에만 빈 값 명시 (upsert update에서는 생략하여 기존 값 유지)
+      const intensityDataCreate: Record<string, unknown> = intensity
+        ? intensityData
+        : {
+            zoneDistribution: Prisma.DbNull,
+            estimatedZone: null,
+            intensityScore: null,
+            intensityLabel: null,
+          };
+
       await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
-        update: data,
-        create: { garminId: BigInt(a.activityId), ...data },
+        update: { ...data, ...intensityData },
+        create: { garminId: BigInt(a.activityId), ...data, ...intensityDataCreate },
       });
 
       synced++;

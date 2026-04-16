@@ -38,6 +38,10 @@ export async function getActivities(args: { days?: number; type?: string }) {
       elevationGain: true,
       trainingEffect: true,
       vo2maxEstimate: true,
+      // M4-5: 강도 자동 분류
+      estimatedZone: true,
+      intensityLabel: true,
+      intensityScore: true,
     },
   });
 

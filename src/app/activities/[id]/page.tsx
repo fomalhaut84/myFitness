@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
+import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
@@ -36,6 +37,11 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       anaerobicTE: true,
       avgRespirationRate: true,
       lapCount: true,
+      // M4-5: 강도 자동 분류
+      zoneDistribution: true,
+      estimatedZone: true,
+      intensityScore: true,
+      intensityLabel: true,
     },
   });
 
@@ -60,6 +66,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           id,
           ...activity,
           startTime: activity.startTime.toISOString(),
+          zoneDistribution: parseZoneDistribution(activity.zoneDistribution),
         }}
       />
     </div>
