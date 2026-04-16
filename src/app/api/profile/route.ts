@@ -48,6 +48,12 @@ const PATCH_SCHEMA = z.object({
 
 const DEFAULT_NAME = "사용자";
 
+/** "YYYY-MM-DD" 문자열을 서버 로컬 midnight Date로 파싱 (저장/검증 통일 경로). */
+function parseLocalDate(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
+
 /**
  * 싱글톤 UserProfile 조회 또는 생성.
  * `singleton` unique 제약으로 동시 요청 시에도 중복 row 생성 불가.
@@ -95,7 +101,7 @@ export async function PATCH(request: Request) {
     const nextBirthDate =
       data.birthDate !== undefined
         ? data.birthDate
-          ? new Date(data.birthDate)
+          ? parseLocalDate(data.birthDate)
           : null
         : existing.birthDate;
     if (nextLthr !== null) {
@@ -118,22 +124,14 @@ export async function PATCH(request: Request) {
     if (data.name !== undefined) updatePayload.name = data.name;
     if (data.birthDate !== undefined)
       updatePayload.birthDate = data.birthDate
-        ? // 서버 로컬 타임존의 midnight으로 저장 (formatDateLocal 표시와 정합)
-          (() => {
-            const [y, m, d] = data.birthDate.split("-").map(Number);
-            return new Date(y, m - 1, d);
-          })()
+        ? parseLocalDate(data.birthDate)
         : null;
     if (data.height !== undefined) updatePayload.height = data.height;
     if (data.targetWeight !== undefined)
       updatePayload.targetWeight = data.targetWeight;
     if (data.targetDate !== undefined)
       updatePayload.targetDate = data.targetDate
-        ? // 서버 로컬 타임존의 midnight으로 저장 (formatDateLocal 표시와 정합)
-          (() => {
-            const [y, m, d] = data.targetDate.split("-").map(Number);
-            return new Date(y, m - 1, d);
-          })()
+        ? parseLocalDate(data.targetDate)
         : null;
     if (data.restingHRBase !== undefined)
       updatePayload.restingHRBase = data.restingHRBase;
