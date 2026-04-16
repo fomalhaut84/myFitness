@@ -2,15 +2,17 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 
 /**
- * 주어진 reference Date에서 KST 기준 일(day)의 [시작, 끝) UTC 경계를 산출.
- * 서버 타임존과 독립적으로 동작하도록 Intl.DateTimeFormat + Date.UTC를 사용.
- * DailySummary.date 및 FoodLog.date 집계 기준으로 사용.
+ * reference Date에서 "KST 벽시계 기준 해당 날짜"의 [시작, 끝) 경계를 산출.
+ *
+ * - KST 날짜(Y-M-D)는 Intl.DateTimeFormat으로 서버 TZ와 무관하게 추출.
+ * - 경계 Date 객체는 "서버 로컬 타임존의 해당 날짜 midnight"으로 구성하여
+ *   DailySummary.date(= `startOfDay(date)`, 서버 로컬 midnight) 저장 관례와 일치.
+ *   (코드베이스 전반이 server TZ = KST를 가정. 서버가 KST면 KST midnight UTC instant와 동일.)
  */
 function kstDayBoundary(referenceDate: Date): {
   kstDayStart: Date;
   kstDayEnd: Date;
 } {
-  // Asia/Seoul 벽시계 기준 연/월/일 추출 (서버 TZ 무관)
   const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
     year: "numeric",
@@ -21,11 +23,8 @@ function kstDayBoundary(referenceDate: Date): {
   const m = Number(parts.find((p) => p.type === "month")!.value);
   const d = Number(parts.find((p) => p.type === "day")!.value);
 
-  // KST(=UTC+9) 00:00의 UTC 타임스탬프
-  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-  const kstDayStartMs = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
-  const kstDayStart = new Date(kstDayStartMs);
-  const kstDayEnd = new Date(kstDayStartMs + 24 * 60 * 60 * 1000);
+  const kstDayStart = new Date(y, m - 1, d, 0, 0, 0, 0);
+  const kstDayEnd = new Date(y, m - 1, d + 1, 0, 0, 0, 0);
   return { kstDayStart, kstDayEnd };
 }
 
@@ -63,8 +62,12 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
   const [summary, profile, intakeAgg] = await Promise.all([
     tx.dailySummary.findUnique({ where: { date: kstDayStart } }),
     tx.userProfile.findFirst(),
+    // estimatedKcal이 있는 로그만 집계. null인 로그(예: 봇 미추정)는 섭취 계산에서 제외.
     tx.foodLog.aggregate({
-      where: { date: { gte: kstDayStart, lt: kstDayEnd } },
+      where: {
+        date: { gte: kstDayStart, lt: kstDayEnd },
+        estimatedKcal: { not: null },
+      },
       _sum: { estimatedKcal: true },
       _count: { _all: true },
     }),
@@ -77,8 +80,9 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
   const availableCalories =
     target !== null && active !== null ? target + active : null;
 
-  const hasFoodLogs = intakeAgg._count._all > 0;
-  const estimatedIntakeCalories = hasFoodLogs
+  // kcal이 집계된 로그가 하나도 없으면 intake = null (0 kcal로 표시하지 않음)
+  const hasCountedLogs = intakeAgg._count._all > 0;
+  const estimatedIntakeCalories = hasCountedLogs
     ? (intakeAgg._sum.estimatedKcal ?? 0)
     : null;
 
