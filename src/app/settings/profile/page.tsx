@@ -14,6 +14,9 @@ export default async function ProfilePage() {
           : "",
         height: profile?.height ?? null,
         targetWeight: profile?.targetWeight ?? null,
+        targetDate: profile?.targetDate
+          ? profile.targetDate.toISOString().slice(0, 10)
+          : "",
         restingHRBase: profile?.restingHRBase ?? null,
         maxHR: profile?.maxHR ?? null,
         lthr: profile?.lthr ?? null,

@@ -21,6 +21,7 @@ model UserProfile {
   lthr           Int?                // 젖산역치 심박 (bpm)
   lthrPace       Float?              // LTHR 페이스 (sec/km)
   targetCalories Int?                // 일일 칼로리 목표 (kcal)
+  targetDate     DateTime?           // M4-6: 목표 체중 도달 목표일
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
