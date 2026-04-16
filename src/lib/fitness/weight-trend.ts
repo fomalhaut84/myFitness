@@ -18,9 +18,13 @@ export interface MovingAvgPoint {
   avg: number;
 }
 
+const DAY_MS = 24 * 60 * 60 * 1000;
+
 /**
  * 단말(trailing) 기준 N일 이동평균.
- * 창 내 최소 1개 데이터가 있어야 산출.
+ * 각 레코드 D의 이동평균 = [D - (N-1)일, D] 범위에 속한 모든 기록의 평균.
+ * 창은 레코드 개수가 아닌 "달력상 일수" 기준이므로, 기록이 드문드문 있어도
+ * 의미 있는 N일 평균을 반환.
  */
 export function movingAverage(
   records: readonly WeightRecord[],
@@ -32,13 +36,19 @@ export function movingAverage(
   );
   const result: MovingAvgPoint[] = [];
   for (let i = 0; i < sorted.length; i++) {
-    const start = Math.max(0, i - window + 1);
-    const slice = sorted.slice(start, i + 1);
-    if (slice.length === 0) continue;
-    const sum = slice.reduce((s, r) => s + r.weight, 0);
+    const currentDate = sorted[i].date;
+    const windowStartMs = currentDate.getTime() - (window - 1) * DAY_MS;
+    // 달력 일수 기준 창: windowStartMs 이상, currentDate 이하
+    const inWindow = sorted.filter(
+      (r) =>
+        r.date.getTime() >= windowStartMs &&
+        r.date.getTime() <= currentDate.getTime()
+    );
+    if (inWindow.length === 0) continue;
+    const sum = inWindow.reduce((s, r) => s + r.weight, 0);
     result.push({
-      date: sorted[i].date,
-      avg: Number((sum / slice.length).toFixed(2)),
+      date: currentDate,
+      avg: Number((sum / inWindow.length).toFixed(2)),
     });
   }
   return result;
@@ -135,17 +145,23 @@ export function computeGoalProgress(args: {
   }
   const remaining = Number((currentWeight - targetWeight).toFixed(2));
 
-  // startWeight가 없거나, currentWeight보다 작거나 같거나, targetWeight보다 작으면
-  // 감량 시작점으로 볼 수 없어 진행률 계산 불가 (remaining만 표시).
-  if (
-    startWeight === null ||
-    startWeight <= currentWeight ||
-    startWeight <= targetWeight
-  ) {
+  // startWeight가 없거나 targetWeight보다 작으면 감량 방향이 성립하지 않음.
+  if (startWeight === null || startWeight < targetWeight) {
     return { remainingKg: remaining, lostKg: null, percentComplete: null };
   }
 
+  // 이미 목표 도달(startWeight === targetWeight)은 100%
   const totalToLose = startWeight - targetWeight;
+  if (totalToLose === 0) {
+    return {
+      remainingKg: remaining,
+      lostKg: 0,
+      percentComplete: 100,
+    };
+  }
+
+  // 일반 케이스. 감량 시작 = 진행 중 = 감량 완료 전 구간을 포함.
+  // startWeight === currentWeight이면 lost=0 → 0% (초기 상태 표시).
   const lost = startWeight - currentWeight;
   const percent = Math.max(0, Math.min(100, (lost / totalToLose) * 100));
   return {
