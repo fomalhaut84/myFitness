@@ -13,6 +13,7 @@ export async function syncDailySummaries(
   endDate: Date
 ): Promise<number> {
   let synced = 0;
+  let latestCalorieGoal: number | null = null;
   const dates = dateRange(startDate, endDate);
 
   for (const date of dates) {
@@ -60,21 +61,10 @@ export async function syncDailySummaries(
         rawData: summary as Prisma.InputJsonValue,
       };
 
-      // M4-3: Garmin의 netCalorieGoal을 UserProfile.targetCalories에 자동 반영.
-      // 사용자가 프로필에서 직접 설정한 값이 없을 때만 싱크 (수동값 우선).
+      // M4-3: 최신 날짜의 netCalorieGoal을 기억 (루프 후 한 번만 프로필에 반영)
       const garminGoal = toInt(summary.netCalorieGoal);
       if (garminGoal && garminGoal > 0) {
-        try {
-          const profile = await prisma.userProfile.findFirst();
-          if (profile && profile.targetCalories === null) {
-            await prisma.userProfile.update({
-              where: { id: profile.id },
-              data: { targetCalories: garminGoal },
-            });
-          }
-        } catch {
-          // 프로필 업데이트 실패는 싱크를 중단하지 않음
-        }
+        latestCalorieGoal = garminGoal;
       }
 
       await prisma.dailySummary.upsert({
@@ -99,6 +89,22 @@ export async function syncDailySummaries(
       const msg = error instanceof Error ? error.message : String(error);
       if (msg.includes("404") || msg.includes("not found")) continue;
       throw error;
+    }
+  }
+
+  // M4-3: 싱크 완료 후, 최신 날짜의 netCalorieGoal을 UserProfile.targetCalories에 반영.
+  // 사용자가 프로필에서 직접 설정한 값이 없을 때만 (수동값 우선).
+  if (latestCalorieGoal !== null) {
+    try {
+      const profile = await prisma.userProfile.findFirst();
+      if (profile && profile.targetCalories === null) {
+        await prisma.userProfile.update({
+          where: { id: profile.id },
+          data: { targetCalories: latestCalorieGoal },
+        });
+      }
+    } catch {
+      // 프로필 업데이트 실패는 싱크를 중단하지 않음
     }
   }
 
