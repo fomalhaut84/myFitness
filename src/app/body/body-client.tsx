@@ -548,7 +548,8 @@ function WeeklySummaryTable({ rows }: { rows: WeeklySummaryRow[] }) {
                   </td>
                   <td className="text-right font-[family-name:var(--font-geist-mono)] text-sub">
                     {r.weightChangeKg !== null
-                      ? `${r.weightChangeKg > 0 ? "-" : "+"}${Math.abs(r.weightChangeKg).toFixed(2)} kg`
+                      ? // weightChangeKg > 0 = 감량 → "1.50 kg", < 0 = 증가 → "-1.50 kg"
+                        `${r.weightChangeKg >= 0 ? "" : "-"}${Math.abs(r.weightChangeKg).toFixed(2)} kg`
                       : "—"}
                   </td>
                   <td className="text-right text-dim">
