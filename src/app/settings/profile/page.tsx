@@ -1,4 +1,5 @@
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import ProfileClient from "./profile-client";
 
 export const dynamic = "force-dynamic";
@@ -9,13 +10,12 @@ export default async function ProfilePage() {
     <ProfileClient
       initial={{
         name: profile?.name ?? "사용자",
-        birthDate: profile?.birthDate
-          ? profile.birthDate.toISOString().slice(0, 10)
-          : "",
+        // 서버 로컬 midnight으로 저장된 값 → 로컬 타임존 기준 YYYY-MM-DD 추출
+        birthDate: profile?.birthDate ? formatDateLocal(profile.birthDate) : "",
         height: profile?.height ?? null,
         targetWeight: profile?.targetWeight ?? null,
         targetDate: profile?.targetDate
-          ? profile.targetDate.toISOString().slice(0, 10)
+          ? formatDateLocal(profile.targetDate)
           : "",
         restingHRBase: profile?.restingHRBase ?? null,
         maxHR: profile?.maxHR ?? null,

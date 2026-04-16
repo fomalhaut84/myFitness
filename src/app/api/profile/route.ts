@@ -118,7 +118,11 @@ export async function PATCH(request: Request) {
     if (data.name !== undefined) updatePayload.name = data.name;
     if (data.birthDate !== undefined)
       updatePayload.birthDate = data.birthDate
-        ? new Date(data.birthDate)
+        ? // 서버 로컬 타임존의 midnight으로 저장 (formatDateLocal 표시와 정합)
+          (() => {
+            const [y, m, d] = data.birthDate.split("-").map(Number);
+            return new Date(y, m - 1, d);
+          })()
         : null;
     if (data.height !== undefined) updatePayload.height = data.height;
     if (data.targetWeight !== undefined)
