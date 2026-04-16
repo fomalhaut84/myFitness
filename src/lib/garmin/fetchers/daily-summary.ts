@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { recalculateCalorieBalance, recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import { dateRange, formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
 
 const DAILY_SUMMARY_URL =
@@ -97,22 +97,26 @@ export async function syncDailySummaries(
   // 반영 후 싱크된 날짜들의 칼로리 밸런스를 재계산 (targetCalories가 null→값으로 바뀌었으므로).
   if (latestCalorieGoal !== null) {
     try {
+      // 프로필 row가 없으면 생성 (singleton upsert).
+      await prisma.userProfile.upsert({
+        where: { singleton: true },
+        update: {},
+        create: { singleton: true, name: "사용자" },
+      });
       // 원자적 조건부 업데이트: targetCalories가 null인 경우에만 덮어쓰기.
-      // read-then-write race를 방지 (사용자가 동시에 수동 설정해도 수동값 보호).
       const updated = await prisma.userProfile.updateMany({
         where: { targetCalories: null },
         data: { targetCalories: latestCalorieGoal },
       });
       if (updated.count > 0) {
-        // targetCalories가 방금 세팅됨 → 이번 싱크 중 계산된 밸런스가 stale.
-        // 싱크된 날짜들에 대해 재계산.
-        for (const date of dates) {
-          try {
-            await recalculateCalorieBalance(date);
-          } catch {
-            // 개별 실패는 무시
-          }
-        }
+        // targetCalories가 방금 세팅됨 → 모든 DailySummary의 밸런스가 stale.
+        // fire-and-forget으로 전체 히스토리 재계산 (프로필 PATCH와 동일 전략).
+        recalculateAllCalorieBalances().catch((err) => {
+          console.error(
+            "[daily-summary] targetCalories 자동 설정 후 재계산 실패:",
+            err instanceof Error ? err.message : String(err)
+          );
+        });
       }
     } catch {
       // 프로필 업데이트 실패는 싱크를 중단하지 않음
