@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 
 export async function GET(request: Request) {
   try {
@@ -61,6 +62,9 @@ export async function POST(request: Request) {
         mealType: mealType ?? null,
       },
     });
+
+    // M4-2: 칼로리 밸런스 재계산 (섭취 칼로리 변화 반영)
+    await recalculateCalorieBalance(foodDate);
 
     return NextResponse.json({
       data: {

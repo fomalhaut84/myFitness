@@ -1,6 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { dateRange, formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
 
 const DAILY_SUMMARY_URL =
@@ -64,6 +65,9 @@ export async function syncDailySummaries(
         update: data,
         create: { date: dayDate, ...data },
       });
+
+      // M4-2: 칼로리 밸런스 재계산 (targetCalories + activeCalories, 섭취와 비교)
+      await recalculateCalorieBalance(dayDate);
 
       synced++;
     } catch (error) {
