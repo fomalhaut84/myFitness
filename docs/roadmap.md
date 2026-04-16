@@ -163,11 +163,12 @@
 - [ ] 사용자 확인: MFP ↔ Garmin 연동 활성화 후 재조사 (백로그)
 - 스펙: `docs/specs/m4-3-diet-sync.md`
 
-## M4-4: Split/Lap 데이터 MCP 도구화 — 우선순위 ★★ (권장)
+## M4-4: Split/Lap 데이터 MCP 도구화 ✅
 
-- [ ] get_activity_splits MCP 도구 추가
-- [ ] Lap별 거리, 시간, 페이스, 심박, 케이던스, 강도 타입 반환
-- [ ] AI 러닝 분석 시 스플릿 수준 분석 가능
+- [x] get_activity_splits MCP 도구 추가
+- [x] Lap별 거리, 시간, 페이스, 심박, 케이던스, 강도 타입 반환
+- [x] AI 러닝 분석 시 스플릿 수준 분석 가능
+- [x] Claude allowedTools + get_activities에 ID 노출 (AI 실제 사용 가능)
 - 스펙: `docs/specs/m4-4-splits-mcp.md`
 
 ## M4-5: 운동 강도 자동 분류 — 우선순위 ★★ (권장)
