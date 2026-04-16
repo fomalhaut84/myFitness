@@ -1,6 +1,28 @@
 import { NextResponse } from "next/server";
+import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+
+const MAX_RETRY = 3;
+const RETRY_DELAY_MS = 50;
+
+async function withSerializableRetry<T>(
+  fn: (tx: Prisma.TransactionClient) => Promise<T>
+): Promise<T> {
+  for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    try {
+      return await prisma.$transaction(fn, {
+        isolationLevel: "Serializable",
+      });
+    } catch (err) {
+      const isSerializationFailure =
+        err instanceof Error && err.message.includes("P2034");
+      if (!isSerializationFailure || attempt === MAX_RETRY) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+    }
+  }
+  throw new Error("Serializable retry exhausted");
+}
 
 export async function GET(request: Request) {
   try {
@@ -55,22 +77,19 @@ export async function POST(request: Request) {
     }
 
     // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.
-    // 재계산 실패 시 create도 롤백되어 클라이언트 재시도 시 중복 입력을 방지.
-    const log = await prisma.$transaction(
-      async (tx) => {
-        const created = await tx.foodLog.create({
-          data: {
-            date: foodDate,
-            description,
-            estimatedKcal,
-            mealType: mealType ?? null,
-          },
-        });
-        await recalculateCalorieBalance(foodDate, tx);
-        return created;
-      },
-      { isolationLevel: "Serializable" }
-    );
+    // 직렬화 충돌(P2034) 시 자동 재시도로 동시 요청 안전 보장.
+    const log = await withSerializableRetry(async (tx) => {
+      const created = await tx.foodLog.create({
+        data: {
+          date: foodDate,
+          description,
+          estimatedKcal,
+          mealType: mealType ?? null,
+        },
+      });
+      await recalculateCalorieBalance(foodDate, tx);
+      return created;
+    });
 
     return NextResponse.json({
       data: {

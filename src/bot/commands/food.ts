@@ -35,9 +35,9 @@ export async function handleFoodInput(
     },
   });
 
-  // M4-2: 섭취 기록 후 칼로리 밸런스 재계산 (실패해도 봇 응답은 계속)
+  // M4-2: 섭취 기록 후 칼로리 밸런스 재계산 (봇 prisma client 전달, 실패해도 봇 응답은 계속)
   try {
-    await recalculateCalorieBalance(now);
+    await recalculateCalorieBalance(now, undefined, prisma);
   } catch (err) {
     console.error(
       "[bot/food] 칼로리 밸런스 재계산 실패:",

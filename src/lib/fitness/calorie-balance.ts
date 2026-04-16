@@ -1,5 +1,9 @@
-import type { Prisma } from "@/generated/prisma/client";
-import prisma from "@/lib/prisma";
+import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import defaultPrisma from "@/lib/prisma";
+
+/** Serializable 트랜잭션 재시도 상수 */
+const MAX_RETRY = 3;
+const RETRY_DELAY_MS = 50;
 
 /**
  * reference Date에서 다음 3가지 시각값을 산출:
@@ -49,20 +53,45 @@ type TxClient = Prisma.TransactionClient;
  *
  * 동시성 보호:
  *   - Serializable 트랜잭션으로 aggregate-then-update 간 race(lost update) 차단.
+ *   - 직렬화 충돌(P2034) 시 자동 재시도 (최대 MAX_RETRY 회).
  *   - 호출자가 이미 트랜잭션에 있으면 `tx`로 동일 트랜잭션 내 실행.
+ *
+ * @param client — 사용할 PrismaClient. 봇 등 별도 client가 있는 프로세스에서 전달.
  */
 export async function recalculateCalorieBalance(
   referenceDate: Date,
-  tx?: TxClient
+  tx?: TxClient,
+  client?: PrismaClient
 ): Promise<void> {
   if (tx) {
     await doRecalc(referenceDate, tx);
     return;
   }
-  await prisma.$transaction(
-    async (innerTx) => doRecalc(referenceDate, innerTx),
-    { isolationLevel: "Serializable" }
+  const db = client ?? defaultPrisma;
+  await withSerializableRetry(db, (innerTx) =>
+    doRecalc(referenceDate, innerTx)
   );
+}
+
+/** Serializable 트랜잭션 + 직렬화 충돌(P2034) 자동 재시도 */
+async function withSerializableRetry(
+  db: PrismaClient,
+  fn: (tx: TxClient) => Promise<void>
+): Promise<void> {
+  for (let attempt = 1; attempt <= MAX_RETRY; attempt++) {
+    try {
+      await (db as unknown as typeof defaultPrisma).$transaction(
+        async (tx) => fn(tx),
+        { isolationLevel: "Serializable" }
+      );
+      return;
+    } catch (err) {
+      const isSerializationFailure =
+        err instanceof Error && err.message.includes("P2034");
+      if (!isSerializationFailure || attempt === MAX_RETRY) throw err;
+      await new Promise((r) => setTimeout(r, RETRY_DELAY_MS * attempt));
+    }
+  }
 }
 
 async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
@@ -115,11 +144,14 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
  * UserProfile.targetCalories 변경 등 전역 파라미터가 바뀌었을 때 호출.
  * 각 날짜별로 독립 트랜잭션으로 실행하여 부분 실패 시 전체 중단되지 않음.
  */
-export async function recalculateAllCalorieBalances(): Promise<{
+export async function recalculateAllCalorieBalances(
+  client?: PrismaClient
+): Promise<{
   processed: number;
   failed: number;
 }> {
-  const summaries = await prisma.dailySummary.findMany({
+  const db = client ?? defaultPrisma;
+  const summaries = await db.dailySummary.findMany({
     select: { date: true },
     orderBy: { date: "desc" },
   });
@@ -128,7 +160,7 @@ export async function recalculateAllCalorieBalances(): Promise<{
   let failed = 0;
   for (const s of summaries) {
     try {
-      await recalculateCalorieBalance(s.date);
+      await recalculateCalorieBalance(s.date, undefined, db);
       processed++;
     } catch (err) {
       failed++;
