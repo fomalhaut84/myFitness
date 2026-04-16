@@ -6,25 +6,43 @@
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
 import { computeIntensityFromRawData } from "../src/lib/fitness/intensity";
-import { resolveLTHR } from "../src/lib/fitness/zones";
 
+/**
+ * 옵션:
+ *   --force: 이미 분류된 활동도 재분류 (기본: 이미 값 있으면 skip)
+ */
 async function main() {
+  const force = process.argv.includes("--force");
   const profile = await prisma.userProfile.findFirst();
-  const lthr = profile ? resolveLTHR(profile) : null;
-  console.log(`LTHR: ${lthr ?? "없음 (분포 기반 분류만 사용)"}`);
+  const lthr = profile?.lthr ?? null;
+  console.log(
+    `LTHR(실측): ${lthr ?? "없음 (분포 기반 분류만 사용)"} | force=${force}`
+  );
 
   const activities = await prisma.activity.findMany({
-    select: { id: true, garminId: true, avgHR: true, rawData: true, name: true },
+    select: {
+      id: true,
+      garminId: true,
+      avgHR: true,
+      rawData: true,
+      name: true,
+      intensityLabel: true,
+    },
     orderBy: { startTime: "desc" },
   });
 
   console.log(`총 ${activities.length}개 활동 처리 시작...\n`);
 
-  let processed = 0;
   let withData = 0;
   let skipped = 0;
+  let alreadyClassified = 0;
 
   for (const a of activities) {
+    if (!force && a.intensityLabel !== null) {
+      alreadyClassified++;
+      continue;
+    }
+
     const intensity = computeIntensityFromRawData({
       rawData: a.rawData as Record<string, unknown> | null,
       avgHR: a.avgHR,
@@ -45,7 +63,6 @@ async function main() {
         intensityLabel: intensity.intensityLabel,
       },
     });
-    processed++;
     withData++;
 
     console.log(
@@ -55,7 +72,8 @@ async function main() {
   }
 
   console.log(
-    `\n완료: 총 ${activities.length}개 중 ${withData}개 분류, ${skipped}개 skip(분포 데이터 없음)`
+    `\n완료: 총 ${activities.length}개 중 ${withData}개 분류, ` +
+      `${alreadyClassified}개 기존 분류(skip), ${skipped}개 skip(분포 데이터 없음)`
   );
 }
 

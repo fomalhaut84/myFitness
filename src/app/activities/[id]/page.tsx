@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
+import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
@@ -65,10 +66,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           id,
           ...activity,
           startTime: activity.startTime.toISOString(),
-          zoneDistribution:
-            activity.zoneDistribution as
-              | { z1: number; z2: number; z3: number; z4: number; z5: number }
-              | null,
+          zoneDistribution: parseZoneDistribution(activity.zoneDistribution),
         }}
       />
     </div>

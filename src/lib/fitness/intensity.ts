@@ -45,9 +45,12 @@ function toNum(v: unknown): number {
   return Number.isFinite(n) && n > 0 ? n : 0;
 }
 
+/** 분포 기반 분류가 의미 있는 최소 zone 시간(초). 이하면 null 처리. */
+export const MIN_ZONE_TOTAL_SEC = 60;
+
 /**
  * Garmin rawData에서 HR Zone 시간 분포를 추출.
- * 모든 zone이 0이면 null 반환 (분포 데이터 없음).
+ * 모든 zone이 0이거나 총합이 MIN_ZONE_TOTAL_SEC 미만이면 null 반환.
  */
 export function extractZoneDistribution(
   rawData: Record<string, unknown> | null | undefined
@@ -61,8 +64,31 @@ export function extractZoneDistribution(
     z5: toNum(rawData.hrTimeInZone_5),
   };
   const total = dist.z1 + dist.z2 + dist.z3 + dist.z4 + dist.z5;
-  if (total <= 0) return null;
+  if (total < MIN_ZONE_TOTAL_SEC) return null;
   return dist;
+}
+
+/** Prisma Json 값이 ZoneDistribution 형태인지 검증 후 타입 안전 캐스팅 */
+export function parseZoneDistribution(
+  value: unknown
+): ZoneDistribution | null {
+  if (!value || typeof value !== "object") return null;
+  const obj = value as Record<string, unknown>;
+  const z1 = Number(obj.z1);
+  const z2 = Number(obj.z2);
+  const z3 = Number(obj.z3);
+  const z4 = Number(obj.z4);
+  const z5 = Number(obj.z5);
+  if (
+    !Number.isFinite(z1) ||
+    !Number.isFinite(z2) ||
+    !Number.isFinite(z3) ||
+    !Number.isFinite(z4) ||
+    !Number.isFinite(z5)
+  ) {
+    return null;
+  }
+  return { z1, z2, z3, z4, z5 };
 }
 
 /** 가중 평균 Zone과 퍼센트 계산 */
@@ -108,12 +134,15 @@ export function classifyIntensity(args: {
   // 강도 점수 (TRIMP 유사): 가중 평균 × 20 → 0~100
   const intensityScore = total > 0 ? Math.min(100, weighted * 20) : 0;
 
-  // 라벨 분류 (분포 기반 우선, avgHR+LTHR 보조)
+  // 라벨 분류 (분포 기반 우선, avgHR+LTHR 보조).
+  // 순서가 중요: 더 구체적인 조건부터 매칭.
   let label: IntensityLabel = "easy";
-  if (pct.z5 > 0.15 && pct.z4 + pct.z5 > 0.3) {
-    label = "interval";
-  } else if (pct.z5 > 0.05) {
+  if (pct.z5 > 0.3) {
+    // Z5에 오래 머무름 → VO2max/무산소 최대치
     label = "max";
+  } else if (pct.z5 > 0.1 && pct.z4 + pct.z5 > 0.3) {
+    // Z4+Z5 반복(인터벌 특유 분포)
+    label = "interval";
   } else if (pct.z4 > 0.3) {
     label = "threshold";
   } else if (pct.z3 > 0.3) {
