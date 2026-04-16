@@ -36,6 +36,11 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       anaerobicTE: true,
       avgRespirationRate: true,
       lapCount: true,
+      // M4-5: 강도 자동 분류
+      zoneDistribution: true,
+      estimatedZone: true,
+      intensityScore: true,
+      intensityLabel: true,
     },
   });
 
@@ -60,6 +65,10 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           id,
           ...activity,
           startTime: activity.startTime.toISOString(),
+          zoneDistribution:
+            activity.zoneDistribution as
+              | { z1: number; z2: number; z3: number; z4: number; z5: number }
+              | null,
         }}
       />
     </div>

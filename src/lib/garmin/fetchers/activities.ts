@@ -1,6 +1,8 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
+import { resolveLTHR } from "@/lib/fitness/zones";
 import { withRateLimit } from "../utils";
 
 const PAGE_SIZE = 20;
@@ -13,6 +15,10 @@ export async function syncActivities(
   let synced = 0;
   let start = 0;
   let hasMore = true;
+
+  // M4-5: 강도 분류 시 사용할 LTHR (프로필에서 1회 조회, 없으면 추정)
+  const profile = await prisma.userProfile.findFirst();
+  const lthr = profile ? resolveLTHR(profile) : null;
 
   while (hasMore) {
     const activities = await withRateLimit(() =>
@@ -73,10 +79,30 @@ export async function syncActivities(
         rawData: raw as Prisma.InputJsonValue,
       };
 
+      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 기반)
+      const intensity = computeIntensityFromRawData({
+        rawData: raw,
+        avgHR: data.avgHR,
+        lthr,
+      });
+      const intensityData = intensity
+        ? {
+            zoneDistribution: intensity.zoneDistribution as unknown as Prisma.InputJsonValue,
+            estimatedZone: intensity.estimatedZone,
+            intensityScore: intensity.intensityScore,
+            intensityLabel: intensity.intensityLabel,
+          }
+        : {
+            zoneDistribution: Prisma.DbNull,
+            estimatedZone: null,
+            intensityScore: null,
+            intensityLabel: null,
+          };
+
       await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
-        update: data,
-        create: { garminId: BigInt(a.activityId), ...data },
+        update: { ...data, ...intensityData },
+        create: { garminId: BigInt(a.activityId), ...data, ...intensityData },
       });
 
       synced++;
