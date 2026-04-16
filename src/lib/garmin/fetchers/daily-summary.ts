@@ -94,6 +94,7 @@ export async function syncDailySummaries(
 
   // M4-3: 싱크 완료 후, 최신 날짜의 netCalorieGoal을 UserProfile.targetCalories에 반영.
   // 사용자가 프로필에서 직접 설정한 값이 없을 때만 (수동값 우선).
+  // 반영 후 싱크된 날짜들의 칼로리 밸런스를 재계산 (targetCalories가 null→값으로 바뀌었으므로).
   if (latestCalorieGoal !== null) {
     try {
       const profile = await prisma.userProfile.findFirst();
@@ -102,6 +103,15 @@ export async function syncDailySummaries(
           where: { id: profile.id },
           data: { targetCalories: latestCalorieGoal },
         });
+        // targetCalories가 방금 세팅됨 → 이번 싱크 중 계산된 밸런스가 stale.
+        // 싱크된 날짜들에 대해 재계산.
+        for (const date of dates) {
+          try {
+            await recalculateCalorieBalance(date);
+          } catch {
+            // 개별 실패는 무시
+          }
+        }
       }
     } catch {
       // 프로필 업데이트 실패는 싱크를 중단하지 않음
