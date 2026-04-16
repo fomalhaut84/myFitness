@@ -24,6 +24,8 @@ export async function getActivities(args: { days?: number; type?: string }) {
     where,
     orderBy: { startTime: "desc" },
     select: {
+      id: true,
+      garminId: true,
       name: true,
       activityType: true,
       startTime: true,
@@ -46,6 +48,8 @@ export async function getActivities(args: { days?: number; type?: string }) {
         text: JSON.stringify(
           activities.map((a) => ({
             ...a,
+            // get_activity_splits 호출 시 사용할 ID (cuid 또는 garminId 문자열)
+            garminId: a.garminId.toString(),
             startTime: a.startTime.toISOString(),
             distanceKm: a.distance ? (a.distance / 1000).toFixed(2) : null,
             paceMinKm: a.avgPace
