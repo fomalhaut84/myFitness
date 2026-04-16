@@ -146,11 +146,11 @@
 - 효과: 모든 리포트 강도 분석 정확화
 - 스펙: `docs/specs/m4-1-maxhr-lthr.md`
 
-## M4-2: 칼로리 밸런스 필드 추가 — 우선순위 ★★★ (긴급)
+## M4-2: 칼로리 밸런스 필드 추가 ✅
 
-- [ ] DailySummary에 estimatedIntakeCalories, availableCalories, calorieBalance 추가
-- [ ] 계산 로직: 섭취가능 = 목표(1890) + 활성칼로리
-- [ ] UserProfile에 targetCalories 필드 추가
+- [x] DailySummary에 estimatedIntakeCalories, availableCalories, calorieBalance 추가
+- [x] 계산 로직: 섭취가능 = 목표(1890) + 활성칼로리
+- [x] UserProfile에 targetCalories 필드 추가 (M4-1에서 완료)
 - 효과: 체중감량 진행도 명확화
 - 스펙: `docs/specs/m4-2-calorie-balance.md`
 
