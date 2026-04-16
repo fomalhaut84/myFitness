@@ -171,12 +171,12 @@
 - [x] Claude allowedTools + get_activities에 ID 노출 (AI 실제 사용 가능)
 - 스펙: `docs/specs/m4-4-splits-mcp.md`
 
-## M4-5: 운동 강도 자동 분류 — 우선순위 ★★ (권장)
+## M4-5: 운동 강도 자동 분류 ✅
 
-- [ ] Activity에 zoneDistribution, estimatedZone, intensityScore 필드 추가
-- [ ] LTHR 기반 자동 분류 로직 (M4-1 의존)
-- [ ] rawData 시계열에서 HR zone 분포 계산
-- [ ] 리포트에 자동 반영
+- [x] Activity에 zoneDistribution, estimatedZone, intensityScore, intensityLabel 필드 추가
+- [x] LTHR 기반 자동 분류 로직 (실측 LTHR 있을 때 보정)
+- [x] Garmin hrTimeInZone_1~5 (rawData)에서 HR zone 분포 직접 추출
+- [x] 활동 상세 UI + MCP get_activities 응답에 반영
 - 스펙: `docs/specs/m4-5-intensity-classification.md`
 
 ## M4-6: 체중감량 진행 대시보드 — 우선순위 ★★ (권장)
