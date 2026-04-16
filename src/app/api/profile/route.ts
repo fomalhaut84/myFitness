@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { resolveMaxHR } from "@/lib/fitness/zones";
+import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 
 /** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
 const birthDateSchema = z
@@ -120,6 +121,23 @@ export async function PATCH(request: Request) {
       where: { id: existing.id },
       data: updatePayload,
     });
+
+    // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산
+    // (stale availableCalories/calorieBalance 방지)
+    const targetCaloriesChanged =
+      data.targetCalories !== undefined &&
+      data.targetCalories !== existing.targetCalories;
+    if (targetCaloriesChanged) {
+      try {
+        await recalculateAllCalorieBalances();
+      } catch (err) {
+        // 재계산 실패는 프로필 저장을 실패시키지 않음 (cron에서 자연 복구)
+        console.error(
+          "[profile] 프로필 변경 후 칼로리 재계산 실패:",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+    }
 
     return NextResponse.json({ profile });
   } catch (error) {

@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 
 const MEAL_PATTERNS = [
   { pattern: /^(아침|조식)/, type: "breakfast" },
@@ -24,14 +25,25 @@ export async function handleFoodInput(
     return;
   }
 
+  const now = new Date();
   await prisma.foodLog.create({
     data: {
-      date: new Date(),
+      date: now,
       description,
       mealType,
       estimatedKcal: null,
     },
   });
+
+  // M4-2: 섭취 기록 후 칼로리 밸런스 재계산 (실패해도 봇 응답은 계속)
+  try {
+    await recalculateCalorieBalance(now);
+  } catch (err) {
+    console.error(
+      "[bot/food] 칼로리 밸런스 재계산 실패:",
+      err instanceof Error ? err.message : String(err)
+    );
+  }
 
   const mealLabels: Record<string, string> = {
     breakfast: "아침", lunch: "점심", dinner: "저녁", snack: "간식",

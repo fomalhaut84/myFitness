@@ -3,21 +3,29 @@ import prisma from "@/lib/prisma";
 
 /**
  * 주어진 reference Date에서 KST 기준 일(day)의 [시작, 끝) UTC 경계를 산출.
+ * 서버 타임존과 독립적으로 동작하도록 Intl.DateTimeFormat + Date.UTC를 사용.
  * DailySummary.date 및 FoodLog.date 집계 기준으로 사용.
  */
 function kstDayBoundary(referenceDate: Date): {
   kstDayStart: Date;
   kstDayEnd: Date;
 } {
-  // Asia/Seoul 벽시계(wall-clock) 기준 yyyy-mm-dd
-  const seoulStr = referenceDate.toLocaleString("en-US", {
+  // Asia/Seoul 벽시계 기준 연/월/일 추출 (서버 TZ 무관)
+  const parts = new Intl.DateTimeFormat("en-CA", {
     timeZone: "Asia/Seoul",
-  });
-  const seoul = new Date(seoulStr);
-  seoul.setHours(0, 0, 0, 0);
-  const kstDayStart = seoul;
-  const kstDayEnd = new Date(kstDayStart);
-  kstDayEnd.setDate(kstDayEnd.getDate() + 1);
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  }).formatToParts(referenceDate);
+  const y = Number(parts.find((p) => p.type === "year")!.value);
+  const m = Number(parts.find((p) => p.type === "month")!.value);
+  const d = Number(parts.find((p) => p.type === "day")!.value);
+
+  // KST(=UTC+9) 00:00의 UTC 타임스탬프
+  const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+  const kstDayStartMs = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
+  const kstDayStart = new Date(kstDayStartMs);
+  const kstDayEnd = new Date(kstDayStartMs + 24 * 60 * 60 * 1000);
   return { kstDayStart, kstDayEnd };
 }
 
@@ -87,4 +95,36 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
       calorieBalance,
     },
   });
+}
+
+/**
+ * 모든 DailySummary의 칼로리 밸런스를 재계산.
+ * UserProfile.targetCalories 변경 등 전역 파라미터가 바뀌었을 때 호출.
+ * 각 날짜별로 독립 트랜잭션으로 실행하여 부분 실패 시 전체 중단되지 않음.
+ */
+export async function recalculateAllCalorieBalances(): Promise<{
+  processed: number;
+  failed: number;
+}> {
+  const summaries = await prisma.dailySummary.findMany({
+    select: { date: true },
+    orderBy: { date: "desc" },
+  });
+
+  let processed = 0;
+  let failed = 0;
+  for (const s of summaries) {
+    try {
+      await recalculateCalorieBalance(s.date);
+      processed++;
+    } catch (err) {
+      failed++;
+      console.error(
+        "[calorie-balance] 재계산 실패",
+        s.date.toISOString(),
+        err instanceof Error ? err.message : String(err)
+      );
+    }
+  }
+  return { processed, failed };
 }
