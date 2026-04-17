@@ -28,6 +28,7 @@ function ensureMcpConfig(): string {
         args: [MCP_SERVER_PATH],
         env: {
           DATABASE_URL: process.env.DATABASE_URL ?? "",
+          APP_BASE_URL: `http://localhost:${process.env.PORT ?? "4200"}`,
         },
       },
     },

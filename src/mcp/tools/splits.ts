@@ -132,12 +132,12 @@ export async function getActivitySplits(args: { activityId: string }) {
   }
 
   // 내부 API 경유로 splits 조회 (MCP는 별도 프로세스라 Garmin client 직접 사용 불가).
-  // Next.js 서버의 /api/activities/[id]/splits 를 localhost로 호출.
-  const port = process.env.PORT ?? "4200";
+  // claude-advisor가 MCP env로 APP_BASE_URL을 전달.
+  const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:4200";
   let rawLaps: RawLapDTO[] = [];
   try {
     const res = await fetch(
-      `http://localhost:${port}/api/activities/${activity.id}/splits`
+      `${baseUrl}/api/activities/${activity.id}/splits`
     );
     if (!res.ok) {
       const body = await res.json().catch(() => ({ error: res.statusText }));
