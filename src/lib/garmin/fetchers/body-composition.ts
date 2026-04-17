@@ -58,8 +58,18 @@ export async function syncBodyComposition(
         bmi: toFloat(entry.bmi),
         bodyFat: toFloat(entry.bodyFat),
         muscleMass: toFloat(entry.muscleMass),
+        source: "garmin",
         rawData: entry as unknown as Prisma.InputJsonValue,
       };
+
+      // M4-7: source="manual"인 레코드는 Garmin 싱크로 덮어쓰지 않음 (수동 입력 보호).
+      const existing = await prisma.bodyComposition.findUnique({
+        where: { date: dayDate },
+        select: { source: true },
+      });
+      if (existing?.source === "manual") {
+        continue;
+      }
 
       await prisma.bodyComposition.upsert({
         where: { date: dayDate },
