@@ -58,24 +58,30 @@ export async function syncBodyComposition(
         bmi: toFloat(entry.bmi),
         bodyFat: toFloat(entry.bodyFat),
         muscleMass: toFloat(entry.muscleMass),
-        source: "garmin",
+        source: "garmin" as const,
         rawData: entry as unknown as Prisma.InputJsonValue,
       };
 
-      // M4-7: source="manual"인 레코드는 Garmin 싱크로 덮어쓰지 않음 (수동 입력 보호).
-      const existing = await prisma.bodyComposition.findUnique({
-        where: { date: dayDate },
-        select: { source: true },
+      // M4-7: 원자적 조건부 업데이트로 source="manual" 보호.
+      // 1) 비-manual 레코드만 업데이트 시도.
+      const updated = await prisma.bodyComposition.updateMany({
+        where: { date: dayDate, source: { not: "manual" } },
+        data,
       });
-      if (existing?.source === "manual") {
-        continue;
+      // 2) 업데이트된 게 없으면 → 레코드 자체가 없거나, manual 레코드가 있음.
+      //    manual이면 skip, 없으면 create.
+      if (updated.count === 0) {
+        const exists = await prisma.bodyComposition.findUnique({
+          where: { date: dayDate },
+          select: { id: true },
+        });
+        if (!exists) {
+          await prisma.bodyComposition.create({
+            data: { date: dayDate, ...data },
+          });
+        }
+        // exists = true → manual 레코드 → 보호 (skip)
       }
-
-      await prisma.bodyComposition.upsert({
-        where: { date: dayDate },
-        update: data,
-        create: { date: dayDate, ...data },
-      });
 
       synced++;
     } catch (error) {

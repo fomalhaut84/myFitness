@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -665,6 +666,7 @@ function FoodInput() {
 }
 
 function BodyRecordModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
   const today = new Date();
   const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
 
@@ -710,7 +712,7 @@ function BodyRecordModal({ onClose }: { onClose: () => void }) {
       setMessage({ type: "success", text: "저장되었습니다" });
       setTimeout(() => {
         onClose();
-        window.location.reload();
+        router.refresh();
       }, 600);
     } catch (err) {
       setMessage({
