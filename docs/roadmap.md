@@ -189,10 +189,11 @@
 - [x] UserProfile.targetDate 필드 + 프로필 UI 지원
 - 스펙: `docs/specs/m4-6-weight-loss-dashboard.md`
 
-## M4-7: 체지방률 트래킹 — 우선순위 ★ (중간)
+## M4-7: 체지방률 트래킹 ✅
 
-- [ ] BodyComposition.bodyFat 수동 입력 UI
-- [ ] 스마트 스케일 연동 조사 (선택)
+- [x] BodyComposition.source 필드 ("garmin" | "manual") + CHECK 제약
+- [x] 수동 입력 모달 UI (/body 페이지) + POST /api/body-composition
+- [x] Garmin 싱크 시 manual 레코드 원자적 보호 (updateMany + P2002 catch)
 
 ## M4-8: 영양소 상세 분석 — 우선순위 ★ (중간, M4-3 의존)
 
