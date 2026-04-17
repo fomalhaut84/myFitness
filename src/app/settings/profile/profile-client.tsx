@@ -7,6 +7,7 @@ interface ProfileValues {
   birthDate: string; // "YYYY-MM-DD" or ""
   height: number | null;
   targetWeight: number | null;
+  targetDate: string; // "YYYY-MM-DD" or ""
   restingHRBase: number | null;
   maxHR: number | null;
   lthr: number | null;
@@ -53,6 +54,7 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
     height: initial.height === null ? "" : String(initial.height),
     targetWeight:
       initial.targetWeight === null ? "" : String(initial.targetWeight),
+    targetDate: initial.targetDate,
     restingHRBase:
       initial.restingHRBase === null ? "" : String(initial.restingHRBase),
     maxHR: initial.maxHR === null ? "" : String(initial.maxHR),
@@ -89,6 +91,7 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
       birthDate: values.birthDate || null,
       height: toNumOrNull(values.height),
       targetWeight: toNumOrNull(values.targetWeight),
+      targetDate: values.targetDate || null,
       restingHRBase: toNumOrNull(values.restingHRBase),
       maxHR: toNumOrNull(values.maxHR),
       lthr: toNumOrNull(values.lthr),
@@ -177,6 +180,15 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
               />
             </Field>
           </div>
+
+          <Field label="목표 도달 예정일" hint="감량 진행도 계산에 사용">
+            <input
+              type="date"
+              value={values.targetDate}
+              onChange={(e) => setField("targetDate", e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </Field>
         </section>
 
         {/* 심박 Zone */}

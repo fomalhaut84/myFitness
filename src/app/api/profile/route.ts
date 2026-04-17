@@ -25,6 +25,20 @@ const PATCH_SCHEMA = z.object({
   birthDate: birthDateSchema,
   height: z.number().positive().max(300).nullable().optional(),
   targetWeight: z.number().positive().max(500).nullable().optional(),
+  targetDate: z
+    .string()
+    .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식")
+    .refine((s) => {
+      const [y, m, d] = s.split("-").map(Number);
+      const date = new Date(Date.UTC(y, m - 1, d));
+      return (
+        date.getUTCFullYear() === y &&
+        date.getUTCMonth() === m - 1 &&
+        date.getUTCDate() === d
+      );
+    }, "유효하지 않은 날짜")
+    .nullable()
+    .optional(),
   restingHRBase: z.number().int().min(20).max(150).nullable().optional(),
   maxHR: z.number().int().min(100).max(220).nullable().optional(),
   lthr: z.number().int().min(80).max(220).nullable().optional(),
@@ -33,6 +47,12 @@ const PATCH_SCHEMA = z.object({
 });
 
 const DEFAULT_NAME = "사용자";
+
+/** "YYYY-MM-DD" 문자열을 서버 로컬 midnight Date로 파싱 (저장/검증 통일 경로). */
+function parseLocalDate(isoDate: string): Date {
+  const [y, m, d] = isoDate.split("-").map(Number);
+  return new Date(y, m - 1, d);
+}
 
 /**
  * 싱글톤 UserProfile 조회 또는 생성.
@@ -81,7 +101,7 @@ export async function PATCH(request: Request) {
     const nextBirthDate =
       data.birthDate !== undefined
         ? data.birthDate
-          ? new Date(data.birthDate)
+          ? parseLocalDate(data.birthDate)
           : null
         : existing.birthDate;
     if (nextLthr !== null) {
@@ -104,11 +124,15 @@ export async function PATCH(request: Request) {
     if (data.name !== undefined) updatePayload.name = data.name;
     if (data.birthDate !== undefined)
       updatePayload.birthDate = data.birthDate
-        ? new Date(data.birthDate)
+        ? parseLocalDate(data.birthDate)
         : null;
     if (data.height !== undefined) updatePayload.height = data.height;
     if (data.targetWeight !== undefined)
       updatePayload.targetWeight = data.targetWeight;
+    if (data.targetDate !== undefined)
+      updatePayload.targetDate = data.targetDate
+        ? parseLocalDate(data.targetDate)
+        : null;
     if (data.restingHRBase !== undefined)
       updatePayload.restingHRBase = data.restingHRBase;
     if (data.maxHR !== undefined) updatePayload.maxHR = data.maxHR;
