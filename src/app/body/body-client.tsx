@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import {
   Bar,
   BarChart,
@@ -89,14 +90,28 @@ export default function BodyClient({
   weeklyDistances,
   goalProgress,
 }: BodyClientProps) {
+  const [showRecordModal, setShowRecordModal] = useState(false);
+
   return (
     <div>
-      <div className="mb-8">
-        <h1 className="text-2xl font-semibold mb-1">체성분 / 감량</h1>
-        <p className="text-dim text-sm">
-          체중 · 체지방 · 칼로리 밸런스 · 감량 진행도
-        </p>
+      <div className="flex items-center justify-between mb-8">
+        <div>
+          <h1 className="text-2xl font-semibold mb-1">체성분 / 감량</h1>
+          <p className="text-dim text-sm">
+            체중 · 체지방 · 칼로리 밸런스 · 감량 진행도
+          </p>
+        </div>
+        <button
+          onClick={() => setShowRecordModal(true)}
+          className="px-4 py-2 rounded-lg bg-accent text-[#0a0a0a] text-[12px] font-medium hover:bg-accent-hover transition-colors"
+        >
+          체성분 기록
+        </button>
       </div>
+
+      {showRecordModal && (
+        <BodyRecordModal onClose={() => setShowRecordModal(false)} />
+      )}
 
       {/* 목표 진행도 */}
       {goalProgress.targetWeight !== null && (
@@ -649,3 +664,163 @@ function FoodInput() {
     </div>
   );
 }
+
+function BodyRecordModal({ onClose }: { onClose: () => void }) {
+  const router = useRouter();
+  const today = new Date();
+  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
+
+  const [date, setDate] = useState(todayStr);
+  const [weight, setWeight] = useState("");
+  const [bodyFat, setBodyFat] = useState("");
+  const [muscleMass, setMuscleMass] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [message, setMessage] = useState<{
+    type: "success" | "error";
+    text: string;
+  } | null>(null);
+
+  async function handleSubmit(e: React.FormEvent) {
+    e.preventDefault();
+    setMessage(null);
+
+    const w = Number(weight);
+    if (!Number.isFinite(w) || w <= 0) {
+      setMessage({ type: "error", text: "체중을 입력하세요" });
+      return;
+    }
+
+    const payload = {
+      date,
+      weight: w,
+      bodyFat: bodyFat ? Number(bodyFat) : null,
+      muscleMass: muscleMass ? Number(muscleMass) : null,
+    };
+
+    setSaving(true);
+    try {
+      const res = await fetch("/api/body-composition", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage({ type: "error", text: data?.error ?? "저장 실패" });
+        return;
+      }
+      setMessage({ type: "success", text: "저장되었습니다" });
+      setTimeout(() => {
+        onClose();
+        router.refresh();
+      }, 600);
+    } catch (err) {
+      setMessage({
+        type: "error",
+        text: err instanceof Error ? err.message : "네트워크 오류",
+      });
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  return (
+    <div
+      className="fixed inset-0 z-50 flex items-center justify-center bg-black/60 backdrop-blur-sm"
+      onClick={(e) => e.target === e.currentTarget && onClose()}
+    >
+      <div className="bg-[#0a0a0a] border border-[#1e1e1e] rounded-xl p-6 w-full max-w-md mx-4">
+        <div className="flex items-center justify-between mb-5">
+          <h2 className="text-lg font-semibold">체성분 기록</h2>
+          <button
+            onClick={onClose}
+            className="text-dim hover:text-bright text-xl"
+          >
+            &times;
+          </button>
+        </div>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <label className="block">
+            <div className="text-xs text-sub mb-1.5">날짜</div>
+            <input
+              type="date"
+              value={date}
+              onChange={(e) => setDate(e.target.value)}
+              className={INPUT_CLASS}
+            />
+          </label>
+
+          <label className="block">
+            <div className="text-xs text-sub mb-1.5">
+              체중 (kg) <span className="text-red-400">*</span>
+            </div>
+            <input
+              type="number"
+              step="0.1"
+              value={weight}
+              onChange={(e) => setWeight(e.target.value)}
+              className={INPUT_CLASS}
+              placeholder="75.0"
+              required
+            />
+          </label>
+
+          <div className="grid grid-cols-2 gap-4">
+            <label className="block">
+              <div className="text-xs text-sub mb-1.5">체지방률 (%)</div>
+              <input
+                type="number"
+                step="0.1"
+                value={bodyFat}
+                onChange={(e) => setBodyFat(e.target.value)}
+                className={INPUT_CLASS}
+                placeholder="20.0"
+              />
+            </label>
+            <label className="block">
+              <div className="text-xs text-sub mb-1.5">근육량 (kg)</div>
+              <input
+                type="number"
+                step="0.1"
+                value={muscleMass}
+                onChange={(e) => setMuscleMass(e.target.value)}
+                className={INPUT_CLASS}
+                placeholder="30.0"
+              />
+            </label>
+          </div>
+
+          <div className="flex items-center gap-3 pt-2">
+            <button
+              type="submit"
+              disabled={saving}
+              className="px-5 py-2.5 rounded-md bg-accent text-black text-sm font-medium disabled:opacity-50 transition-opacity"
+            >
+              {saving ? "저장 중..." : "저장"}
+            </button>
+            <button
+              type="button"
+              onClick={onClose}
+              className="px-5 py-2.5 rounded-md border border-[#1e1e1e] text-sub text-sm hover:text-bright transition-colors"
+            >
+              취소
+            </button>
+            {message && (
+              <span
+                className={`text-sm ${
+                  message.type === "success" ? "text-accent" : "text-red-400"
+                }`}
+              >
+                {message.text}
+              </span>
+            )}
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
+const INPUT_CLASS =
+  "w-full px-3 py-2 rounded-md bg-card border border-[#1e1e1e] text-bright text-sm focus:outline-none focus:border-accent/60 transition-colors";

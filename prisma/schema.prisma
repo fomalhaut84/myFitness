@@ -150,6 +150,7 @@ model BodyComposition {
   bmi        Float?
   bodyFat    Float?                    // %
   muscleMass Float?                    // kg
+  source     String   @default("garmin") // "garmin" | "manual"
   rawData    Json?
   createdAt  DateTime @default(now())
 }

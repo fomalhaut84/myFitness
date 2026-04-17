@@ -58,16 +58,32 @@ export async function syncBodyComposition(
         bmi: toFloat(entry.bmi),
         bodyFat: toFloat(entry.bodyFat),
         muscleMass: toFloat(entry.muscleMass),
+        source: "garmin" as const,
         rawData: entry as unknown as Prisma.InputJsonValue,
       };
 
-      await prisma.bodyComposition.upsert({
-        where: { date: dayDate },
-        update: data,
-        create: { date: dayDate, ...data },
+      // M4-7: 원자적 조건부 업데이트 + create fallback으로 source="manual" 보호.
+      // 1) 비-manual 레코드만 업데이트 시도 (원자적).
+      const updated = await prisma.bodyComposition.updateMany({
+        where: { date: dayDate, source: { not: "manual" } },
+        data,
       });
-
-      synced++;
+      if (updated.count > 0) {
+        synced++;
+      } else {
+        // 2) 업데이트된 게 없으면 → 레코드 자체가 없거나, manual 레코드가 있음.
+        //    create 시도. unique 제약 위반(P2002)이면 manual 레코드 존재 → skip.
+        try {
+          await prisma.bodyComposition.create({
+            data: { date: dayDate, ...data },
+          });
+          synced++;
+        } catch (err) {
+          const code = (err as { code?: string })?.code;
+          if (code !== "P2002") throw err;
+          // manual 레코드 존재 → 보호 (skip, synced 미증가)
+        }
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.warn(`[body-composition] 항목 저장 실패:`, msg);
