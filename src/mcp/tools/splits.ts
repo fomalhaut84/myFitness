@@ -1,5 +1,4 @@
 import prisma from "../prisma";
-import { withReauth } from "@/lib/garmin/client";
 
 interface RawLapDTO {
   distance?: number | null; // meters
@@ -132,18 +131,25 @@ export async function getActivitySplits(args: { activityId: string }) {
     return errorPayload(`활동을 찾을 수 없습니다: ${activityId}`);
   }
 
-  // Garmin API로 splits 조회
+  // 내부 API 경유로 splits 조회 (MCP는 별도 프로세스라 Garmin client 직접 사용 불가).
+  // claude-advisor가 MCP env로 APP_BASE_URL을 전달.
+  const baseUrl = process.env.APP_BASE_URL ?? "http://localhost:4200";
   let rawLaps: RawLapDTO[] = [];
   try {
-    const splits = await withReauth(async (client) =>
-      client.get<{ lapDTOs?: RawLapDTO[] }>(
-        `https://connectapi.garmin.com/activity-service/activity/${activity.garminId}/splits`
-      )
+    const res = await fetch(
+      `${baseUrl}/api/activities/${activity.id}/splits`
     );
-    rawLaps = splits.lapDTOs ?? [];
+    if (!res.ok) {
+      const body = await res.json().catch(() => ({ error: res.statusText }));
+      return errorPayload(
+        `Splits 조회 실패 (${res.status}): ${body?.error ?? res.statusText}`
+      );
+    }
+    const body = await res.json();
+    rawLaps = (body.data as RawLapDTO[]) ?? [];
   } catch (err) {
     const message = err instanceof Error ? err.message : String(err);
-    return errorPayload(`Garmin splits 조회 실패: ${message}`);
+    return errorPayload(`Splits API 호출 실패: ${message}`);
   }
 
   const laps = rawLaps.map(toLapResponse);
