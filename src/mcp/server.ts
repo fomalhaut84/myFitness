@@ -11,6 +11,7 @@ import {
   getTrends,
 } from "./tools/fitness";
 import { getActivitySplits } from "./tools/splits";
+import { getWeightLossStatus } from "./tools/weight-loss";
 
 const server = new McpServer({
   name: "myfitness",
@@ -83,6 +84,13 @@ server.tool(
       .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열"),
   },
   async (args) => getActivitySplits(args)
+);
+
+server.tool(
+  "get_weight_loss_status",
+  "최근 7일 체중·칼로리·운동 통합 요약. 감량 진행도, 근손실 위험 평가, 리포트 작성에 사용.",
+  {},
+  async () => getWeightLossStatus()
 );
 
 async function main() {
