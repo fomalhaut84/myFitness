@@ -55,7 +55,7 @@ export async function getWeightLossStatus() {
       prisma.userProfile.findFirst(),
     ]);
 
-  // 칼로리 밸런스 요약
+  // 칼로리 밸런스 요약 (balances는 orderBy date asc로 조회됨 → 시간순 보장)
   const withBalance = balances.filter((b) => b.calorieBalance !== null) as {
     date: Date;
     calorieBalance: number;
@@ -80,7 +80,8 @@ export async function getWeightLossStatus() {
     }
   }
 
-  // 체중 변화
+  // 체중 변화 (recentWeights는 orderBy date asc → [0]=oldest, [last]=newest)
+  // changeKg > 0 = 감량, < 0 = 증가 (M4-6 convention과 동일)
   const weight7d =
     recentWeights.length >= 2
       ? {
