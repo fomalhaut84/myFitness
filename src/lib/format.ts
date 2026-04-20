@@ -18,10 +18,11 @@ export function formatDistance(meters: number): string {
   return (meters / 1000).toFixed(2);
 }
 
-/** sec/km → min'sec"/km */
+/** sec/km → min'sec"/km (반올림으로 60초 발생 방지) */
 export function formatPace(secPerKm: number): string {
-  const min = Math.floor(secPerKm / 60);
-  const sec = Math.round(secPerKm % 60);
+  const total = Math.round(secPerKm);
+  const min = Math.floor(total / 60);
+  const sec = total % 60;
   return `${min}'${sec.toString().padStart(2, "0")}"`;
 }
 

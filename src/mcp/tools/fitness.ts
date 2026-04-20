@@ -57,7 +57,7 @@ export async function getActivities(args: { days?: number; type?: string }) {
             startTime: a.startTime.toISOString(),
             distanceKm: a.distance ? (a.distance / 1000).toFixed(2) : null,
             paceMinKm: a.avgPace
-              ? `${Math.floor(a.avgPace / 60)}'${Math.round(a.avgPace % 60).toString().padStart(2, "0")}"`
+              ? (() => { const t = Math.round(a.avgPace!); return `${Math.floor(t / 60)}'${(t % 60).toString().padStart(2, "0")}"`; })()
               : null,
             durationMin: Math.round(a.duration / 60),
           })),

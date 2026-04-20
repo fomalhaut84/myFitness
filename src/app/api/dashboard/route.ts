@@ -1,24 +1,12 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-
-function todayLocal(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
+import { todayKST, daysAgoKST } from "@/lib/garmin/utils";
 
 export async function GET() {
   try {
-    const today = todayLocal();
-    const yesterday = daysAgoLocal(1);
-    const weekAgo = daysAgoLocal(6);
+    const today = todayKST();
+    const yesterday = daysAgoKST(1);
+    const weekAgo = daysAgoKST(6);
 
     const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
       await Promise.all([
