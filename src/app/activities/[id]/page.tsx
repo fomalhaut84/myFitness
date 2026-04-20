@@ -50,9 +50,10 @@ export default async function ActivityDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // M4-10: 이전 동일 유형 활동과 비교 (거리 ±10%, 최근 3개)
+  // M4-10: 이전 동일 유형 활동과 비교 (러닝만, 거리 ±10%, 최근 3개)
+  const isRunning = activity.activityType.includes("running");
   const similarActivities =
-    activity.distance && activity.distance > 0
+    isRunning && activity.distance && activity.distance > 0
       ? await prisma.activity.findMany({
           where: {
             activityType: activity.activityType,

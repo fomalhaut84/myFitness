@@ -165,13 +165,14 @@ export default function ActivityDetailClient({
         </div>
       )}
 
-      {/* M4-10: 이전 활동 비교 */}
-      {similarActivities.length > 0 && (
-        <PreviousComparison
-          current={activity}
-          similar={similarActivities}
-        />
-      )}
+      {/* M4-10: 이전 활동 비교 (러닝만) */}
+      {activity.activityType.includes("running") &&
+        similarActivities.length > 0 && (
+          <PreviousComparison
+            current={activity}
+            similar={similarActivities}
+          />
+        )}
 
       {/* AI 평가 */}
       <div className="mt-6">
