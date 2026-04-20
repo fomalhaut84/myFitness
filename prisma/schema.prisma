@@ -1,0 +1,179 @@
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+model UserProfile {
+  id             String    @id @default(cuid())
+  // 싱글톤 보장용 sentinel. 항상 true로 설정되며 unique 제약으로 중복 row 생성을 차단.
+  singleton      Boolean   @default(true) @unique
+  name           String
+  birthDate      DateTime?
+  height         Float?              // cm
+  targetWeight   Float?              // kg
+  restingHRBase  Int?                // 기준 안정시 심박수
+  maxHR          Int?                // 실측 최대 심박 (bpm)
+  lthr           Int?                // 젖산역치 심박 (bpm)
+  lthrPace       Float?              // LTHR 페이스 (sec/km)
+  targetCalories Int?                // 일일 칼로리 목표 (kcal)
+  targetDate     DateTime?           // M4-6: 목표 체중 도달 목표일
+  createdAt      DateTime  @default(now())
+  updatedAt      DateTime  @updatedAt
+}
+
+model SyncMetadata {
+  id            String   @id @default(cuid())
+  dataType      String   @unique
+  lastSyncAt    DateTime
+  lastSyncDate  DateTime
+  syncCount     Int      @default(0)
+  status        String   @default("idle")
+  errorMessage  String?
+  updatedAt     DateTime @updatedAt
+}
+
+model Activity {
+  id              String   @id @default(cuid())
+  garminId        BigInt   @unique
+  activityType    String
+  name            String
+  startTime       DateTime
+  duration        Int                 // seconds
+  distance        Float?              // meters
+  calories        Int?
+  avgHR           Int?                // bpm
+  maxHR           Int?                // bpm
+  avgPace         Float?              // sec/km
+  avgSpeed        Float?              // km/h
+  elevationGain   Float?              // meters
+  trainingEffect  Float?              // 1.0-5.0
+  vo2maxEstimate  Float?
+  // M2: 러닝 다이나믹스
+  avgCadence      Int?                // spm (steps per minute)
+  avgStrideLength Float?              // meters
+  avgVerticalOscillation Float?       // cm
+  avgGroundContactTime   Float?       // ms
+  aerobicTE       Float?              // 유산소 트레이닝 이펙트
+  anaerobicTE     Float?              // 무산소 트레이닝 이펙트
+  avgRespirationRate Float?           // breaths/min
+  lapCount        Int?
+  splitSummaries  Json?               // km별 스플릿 데이터
+  // M4-5: 강도 자동 분류
+  zoneDistribution Json?              // {z1, z2, z3, z4, z5} 초 단위 (Garmin hrTimeInZone_1~5)
+  estimatedZone   Int?                // 대표 Zone (1~5, 가중 평균)
+  intensityScore  Float?              // 강도 점수 (0~100, TRIMP 유사)
+  intensityLabel  String?             // recovery|easy|tempo|threshold|interval|max
+  rawData         Json?
+  createdAt       DateTime @default(now())
+
+  @@index([activityType, startTime])
+  @@index([startTime])
+}
+
+model DailySummary {
+  id              String   @id @default(cuid())
+  date            DateTime @unique
+  steps           Int?
+  totalCalories   Int?
+  activeCalories  Int?
+  restingHR       Int?
+  avgStress       Int?                 // 1-100
+  bodyBattery     Int?                 // 5-100 (하루 끝)
+  bodyBatteryHigh Int?
+  bodyBatteryLow  Int?
+  intensityMin    Int?
+  floorsClimbed   Int?
+  // M2: 추가 지표
+  avgSpo2         Float?               // %
+  lowestSpo2      Float?               // %
+  avgRespiration  Float?               // breaths/min
+  stressHighDuration  Int?             // minutes
+  stressMediumDuration Int?            // minutes
+  stressLowDuration   Int?             // minutes
+  bodyBatteryCharged  Int?             // 충전량
+  bodyBatteryDrained  Int?             // 소모량
+  // M4-2: 칼로리 밸런스
+  estimatedIntakeCalories Int?         // 섭취 칼로리 (FoodLog 합계 또는 MFP)
+  availableCalories       Int?         // 목표 + 활성
+  calorieBalance          Int?         // 섭취 - 섭취가능 (음수 = 결손/감량)
+  rawData         Json?
+  createdAt       DateTime @default(now())
+}
+
+model SleepRecord {
+  id            String   @id @default(cuid())
+  date          DateTime @unique
+  sleepStart    DateTime
+  sleepEnd      DateTime
+  totalSleep    Int                    // minutes
+  deepSleep     Int?
+  lightSleep    Int?
+  remSleep      Int?
+  awakeDuration Int?
+  sleepScore    Int?                   // 0-100
+  avgSpO2       Float?
+  // M2: 추가 지표
+  avgRespiration    Float?             // breaths/min
+  lowestRespiration Float?
+  highestRespiration Float?
+  avgSleepStress    Float?             // 수면 중 스트레스
+  bodyBatteryChange Int?               // 수면 중 배터리 변화량
+  restingHR         Int?               // 수면 중 안정시 심박
+  hrvOvernight      Float?             // ms, 야간 HRV
+  sleepScoreDetails Json?              // 점수 세부 (duration/stress/rem/deep/light/restlessness)
+  rawData       Json?
+  createdAt     DateTime @default(now())
+}
+
+model HeartRateRecord {
+  id          String   @id @default(cuid())
+  date        DateTime @unique
+  restingHR   Int?
+  avgHR       Int?
+  maxHR       Int?
+  minHR       Int?
+  hrvStatus   Float?                   // ms
+  hrvBaseline Float?                   // ms
+  rawData     Json?
+  createdAt   DateTime @default(now())
+}
+
+model BodyComposition {
+  id         String   @id @default(cuid())
+  date       DateTime @unique
+  weight     Float                     // kg
+  bmi        Float?
+  bodyFat    Float?                    // %
+  muscleMass Float?                    // kg
+  source     String   @default("garmin") // "garmin" | "manual"
+  rawData    Json?
+  createdAt  DateTime @default(now())
+}
+
+model AIAdvice {
+  id         String   @id @default(cuid())
+  category   String                     // "morning_report", "evening_report", "weekly_report", "general"
+  reportDate String?                    // "YYYY-MM-DD" (리포트 대상 날짜)
+  prompt     String
+  response   String
+  createdAt  DateTime @default(now())
+
+  @@index([category, createdAt])
+  @@index([reportDate])
+}
+
+model FoodLog {
+  id            String   @id @default(cuid())
+  date          DateTime
+  description   String
+  estimatedKcal Int?
+  mealType      String?
+  createdAt     DateTime @default(now())
+
+  @@index([date])
+}

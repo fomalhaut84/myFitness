@@ -34,6 +34,7 @@ yarn-error.log*
 # claude code
 .claude/
 CLAUDE.md
+.runtime/
 
 # ide
 .vscode/
@@ -43,7 +44,12 @@ CLAUDE.md
 *.tsbuildinfo
 next-env.d.ts
 
+# garmin tokens
+.garmin-tokens/
+
 # backups & logs & reports
 /backups/
 /logs/
 /reports/
+
+/src/generated/prisma
