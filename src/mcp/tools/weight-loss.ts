@@ -12,8 +12,9 @@ function daysAgo(n: number): Date {
  * 감량 진행도 평가, 근손실 위험 판단, 리포트 작성에 사용.
  */
 export async function getWeightLossStatus() {
-  const sevenDaysAgo = daysAgo(7);
-  const fourteenDaysAgo = daysAgo(14);
+  // 7일 = 오늘 포함 6일 전부터 (inclusive bounds → daysAgo(6)~today = 7일)
+  const sevenDaysAgo = daysAgo(6);
+  const fourteenDaysAgo = daysAgo(13);
 
   const [balances, weights, activities, profile] =
     await Promise.all([
@@ -51,10 +52,10 @@ export async function getWeightLossStatus() {
     ]);
 
   // 칼로리 밸런스 요약 (balances는 orderBy date asc로 조회됨 → 시간순 보장)
-  const withBalance = balances.filter((b) => b.calorieBalance !== null) as {
-    date: Date;
-    calorieBalance: number;
-  }[];
+  const withBalance = balances.filter(
+    (b): b is typeof b & { calorieBalance: number } =>
+      b.calorieBalance !== null
+  );
   const avgDailyBalance =
     withBalance.length > 0
       ? Math.round(
@@ -63,24 +64,19 @@ export async function getWeightLossStatus() {
         )
       : null;
 
-  // 연속 결손 일수 + 연속 심한 결손(>750) 일수 (최근부터 역순)
+  // 연속 결손/심한 결손 일수 (최근부터 역순).
+  // null(데이터 없는 날)은 연속 끊김으로 처리 — 건너뛰지 않음.
   let consecutiveDeficitDays = 0;
   let consecutiveOver750 = 0;
-  // 심한 결손 연속: 최근부터 < -750인 날만 카운트, 그 외(경미한 결손/잉여)에서 즉시 종료
-  for (let i = withBalance.length - 1; i >= 0; i--) {
-    if (withBalance[i].calorieBalance < -750) {
-      consecutiveOver750++;
-    } else {
-      break;
-    }
+  for (let i = balances.length - 1; i >= 0; i--) {
+    const bal = balances[i].calorieBalance;
+    if (bal === null || bal >= 0) break;
+    consecutiveDeficitDays++;
   }
-  // 결손 연속: 최근부터 < 0인 날 카운트
-  for (let i = withBalance.length - 1; i >= 0; i--) {
-    if (withBalance[i].calorieBalance < 0) {
-      consecutiveDeficitDays++;
-    } else {
-      break;
-    }
+  for (let i = balances.length - 1; i >= 0; i--) {
+    const bal = balances[i].calorieBalance;
+    if (bal === null || bal >= -750) break;
+    consecutiveOver750++;
   }
 
   // 체중 변화: 7일 이동평균 기반 (endpoint 노이즈 방지).
