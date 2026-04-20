@@ -15,7 +15,7 @@ export async function getWeightLossStatus() {
   const sevenDaysAgo = daysAgo(7);
   const fourteenDaysAgo = daysAgo(14);
 
-  const [balances, weights, , activities, profile] =
+  const [balances, weights, activities, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
         where: { date: { gte: sevenDaysAgo } },
@@ -30,11 +30,6 @@ export async function getWeightLossStatus() {
       }),
       prisma.bodyComposition.findMany({
         where: { date: { gte: fourteenDaysAgo } },
-        select: { date: true, weight: true },
-        orderBy: { date: "asc" },
-      }),
-      prisma.bodyComposition.findMany({
-        where: { date: { gte: sevenDaysAgo } },
         select: { date: true, weight: true },
         orderBy: { date: "asc" },
       }),
@@ -68,18 +63,21 @@ export async function getWeightLossStatus() {
         )
       : null;
 
-  // 연속 결손 일수 (최근부터 역순으로 카운트)
+  // 연속 결손 일수 + 연속 심한 결손(>750) 일수 (최근부터 역순)
   let consecutiveDeficitDays = 0;
   let consecutiveOver750 = 0;
+  // 심한 결손 연속: 최근부터 < -750인 날만 카운트, 그 외(경미한 결손/잉여)에서 즉시 종료
+  for (let i = withBalance.length - 1; i >= 0; i--) {
+    if (withBalance[i].calorieBalance < -750) {
+      consecutiveOver750++;
+    } else {
+      break;
+    }
+  }
+  // 결손 연속: 최근부터 < 0인 날 카운트
   for (let i = withBalance.length - 1; i >= 0; i--) {
     if (withBalance[i].calorieBalance < 0) {
       consecutiveDeficitDays++;
-      if (withBalance[i].calorieBalance < -750) {
-        consecutiveOver750++;
-      } else {
-        // 결손이지만 -750 미만이 아니면 "연속 심한 결손" 카운트 리셋
-        consecutiveOver750 = 0;
-      }
     } else {
       break;
     }
