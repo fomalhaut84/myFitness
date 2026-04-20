@@ -1,5 +1,6 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
+import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
@@ -49,6 +50,33 @@ export default async function ActivityDetailPage({ params }: PageProps) {
     notFound();
   }
 
+  // M4-10: 이전 동일 유형 활동과 비교 (러닝만, 거리 ±10%, 최근 3개)
+  const isRunning = activity.activityType.includes("running");
+  const similarActivities =
+    isRunning && activity.distance && activity.distance > 0
+      ? await prisma.activity.findMany({
+          where: {
+            activityType: activity.activityType,
+            distance: {
+              gte: activity.distance * 0.9,
+              lte: activity.distance * 1.1,
+            },
+            startTime: { lt: activity.startTime },
+          },
+          orderBy: { startTime: "desc" },
+          take: 3,
+          select: {
+            name: true,
+            startTime: true,
+            avgPace: true,
+            avgHR: true,
+            duration: true,
+            distance: true,
+            intensityLabel: true,
+          },
+        })
+      : [];
+
   return (
     <div>
       <Link
@@ -68,6 +96,17 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           startTime: activity.startTime.toISOString(),
           zoneDistribution: parseZoneDistribution(activity.zoneDistribution),
         }}
+        similarActivities={similarActivities.map((a) => ({
+          name: a.name,
+          date: formatDateLocal(a.startTime),
+          avgPace: a.avgPace,
+          avgHR: a.avgHR,
+          duration: a.duration,
+          distanceKm: a.distance
+            ? Number((a.distance / 1000).toFixed(2))
+            : null,
+          intensityLabel: a.intensityLabel,
+        }))}
       />
     </div>
   );

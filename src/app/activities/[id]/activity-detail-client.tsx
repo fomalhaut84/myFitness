@@ -5,6 +5,7 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
 import SplitChart from "@/components/activity/SplitChart";
+import { formatPace } from "@/lib/format";
 
 interface ActivityData {
   id: string;
@@ -36,8 +37,19 @@ interface ActivityData {
   intensityLabel: string | null;
 }
 
+interface SimilarActivity {
+  name: string;
+  date: string;
+  avgPace: number | null;
+  avgHR: number | null;
+  duration: number;
+  distanceKm: number | null;
+  intensityLabel: string | null;
+}
+
 interface Props {
   activity: ActivityData;
+  similarActivities?: SimilarActivity[];
 }
 
 function Stat({ label, value, unit }: { label: string; value: string; unit?: string }) {
@@ -52,7 +64,10 @@ function Stat({ label, value, unit }: { label: string; value: string; unit?: str
   );
 }
 
-export default function ActivityDetailClient({ activity }: Props) {
+export default function ActivityDetailClient({
+  activity,
+  similarActivities = [],
+}: Props) {
   const [aiEval, setAiEval] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -149,6 +164,15 @@ export default function ActivityDetailClient({ activity }: Props) {
           <SplitChart activityId={activity.id} />
         </div>
       )}
+
+      {/* M4-10: 이전 활동 비교 (러닝만) */}
+      {activity.activityType.includes("running") &&
+        similarActivities.length > 0 && (
+          <PreviousComparison
+            current={activity}
+            similar={similarActivities}
+          />
+        )}
 
       {/* AI 평가 */}
       <div className="mt-6">
@@ -286,6 +310,142 @@ function IntensityBreakdown({
               </div>
             );
           })}
+        </div>
+      </div>
+    </div>
+  );
+}
+
+function PreviousComparison({
+  current,
+  similar,
+}: {
+  current: ActivityData;
+  similar: SimilarActivity[];
+}) {
+  // 이전 활동 평균과 비교
+  const prevPaces = similar
+    .map((a) => a.avgPace)
+    .filter((p): p is number => p !== null);
+  const prevHRs = similar
+    .map((a) => a.avgHR)
+    .filter((h): h is number => h !== null);
+  const avgPrevPace =
+    prevPaces.length > 0
+      ? prevPaces.reduce((s, p) => s + p, 0) / prevPaces.length
+      : null;
+  const avgPrevHR =
+    prevHRs.length > 0
+      ? Math.round(prevHRs.reduce((s, h) => s + h, 0) / prevHRs.length)
+      : null;
+
+  const paceDelta =
+    current.avgPace !== null && avgPrevPace !== null
+      ? Math.round(current.avgPace - avgPrevPace)
+      : null;
+  const hrDelta =
+    current.avgHR !== null && avgPrevHR !== null
+      ? current.avgHR - avgPrevHR
+      : null;
+
+  return (
+    <div className="mt-6">
+      <h2 className="text-lg font-semibold mb-3">이전 활동 비교</h2>
+      <div className="bg-card border border-border rounded-xl p-5">
+        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
+          유사 거리 최근 {similar.length}회 대비
+        </div>
+
+        {/* 델타 카드 */}
+        {(paceDelta !== null || hrDelta !== null) && (
+          <div className="grid grid-cols-2 gap-3 mb-4">
+            {paceDelta !== null && (
+              <div className="bg-surface rounded-lg p-3 text-center">
+                <div className="text-[10px] text-dim mb-1">페이스 변화</div>
+                <div
+                  className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
+                    paceDelta < 0
+                      ? "text-accent"
+                      : paceDelta > 0
+                        ? "text-red-400"
+                        : "text-sub"
+                  }`}
+                >
+                  {paceDelta < 0 ? "" : "+"}
+                  {paceDelta}
+                  <span className="text-[11px] text-dim font-normal ml-1">
+                    초/km
+                  </span>
+                </div>
+                <div className="text-[10px] text-dim">
+                  {paceDelta < 0 ? "빨라짐" : paceDelta > 0 ? "느려짐" : "동일"}
+                </div>
+              </div>
+            )}
+            {hrDelta !== null && (
+              <div className="bg-surface rounded-lg p-3 text-center">
+                <div className="text-[10px] text-dim mb-1">심박 변화</div>
+                <div
+                  className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
+                    hrDelta < 0
+                      ? "text-accent"
+                      : hrDelta > 0
+                        ? "text-yellow-400"
+                        : "text-sub"
+                  }`}
+                >
+                  {hrDelta > 0 ? "+" : ""}
+                  {hrDelta}
+                  <span className="text-[11px] text-dim font-normal ml-1">
+                    bpm
+                  </span>
+                </div>
+                <div className="text-[10px] text-dim">
+                  {hrDelta < 0
+                    ? "심박 낮아짐"
+                    : hrDelta > 0
+                      ? "심박 높아짐"
+                      : "동일"}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
+
+        {/* 이전 활동 목록 */}
+        <div className="overflow-x-auto">
+          <table className="w-full text-[12px]">
+            <thead>
+              <tr className="text-dim border-b border-border">
+                <th className="text-left py-2 font-normal">날짜</th>
+                <th className="text-left py-2 font-normal">이름</th>
+                <th className="text-right py-2 font-normal">거리</th>
+                <th className="text-right py-2 font-normal">페이스</th>
+                <th className="text-right py-2 font-normal">HR</th>
+                <th className="text-right py-2 font-normal">강도</th>
+              </tr>
+            </thead>
+            <tbody>
+              {similar.map((a, i) => (
+                <tr key={`${a.date}-${i}`} className="border-b border-border/50">
+                  <td className="py-2 text-dim">{a.date.slice(5)}</td>
+                  <td className="py-2">{a.name}</td>
+                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                    {a.distanceKm ?? "—"}
+                  </td>
+                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                    {a.avgPace ? formatPace(a.avgPace) : "—"}
+                  </td>
+                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                    {a.avgHR ?? "—"}
+                  </td>
+                  <td className="text-right text-dim">
+                    {a.intensityLabel ?? "—"}
+                  </td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
         </div>
       </div>
     </div>
