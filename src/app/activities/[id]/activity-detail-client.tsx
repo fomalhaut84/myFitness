@@ -426,8 +426,8 @@ function PreviousComparison({
               </tr>
             </thead>
             <tbody>
-              {similar.map((a) => (
-                <tr key={a.date} className="border-b border-border/50">
+              {similar.map((a, i) => (
+                <tr key={`${a.date}-${i}`} className="border-b border-border/50">
                   <td className="py-2 text-dim">{a.date.slice(5)}</td>
                   <td className="py-2">{a.name}</td>
                   <td className="text-right font-[family-name:var(--font-geist-mono)]">

@@ -87,10 +87,10 @@ export default function SplitChart({ activityId }: SplitChartProps) {
     return {
       km: `${i + 1}`,
       pace: Math.round(paceSecKm),
-      hr: Math.round(lap.averageHR || 0),
-      cadence: Math.round(lap.averageRunCadence || 0),
-      elevation: Math.round(lap.elevationGain || 0),
-      power: Math.round(lap.averagePower || 0),
+      hr: lap.averageHR != null && lap.averageHR > 0 ? Math.round(lap.averageHR) : null,
+      cadence: lap.averageRunCadence != null ? Math.round(lap.averageRunCadence) : null,
+      elevation: lap.elevationGain != null ? Math.round(lap.elevationGain) : null,
+      power: lap.averagePower != null ? Math.round(lap.averagePower) : null,
     };
   });
 
@@ -107,7 +107,7 @@ export default function SplitChart({ activityId }: SplitChartProps) {
     originalPace: d.pace,
   }));
 
-  const hasHR = chartData.some((d) => d.hr > 0);
+  const hasHR = chartData.some((d) => d.hr !== null);
 
   return (
     <div className="space-y-4">
@@ -242,13 +242,13 @@ export default function SplitChart({ activityId }: SplitChartProps) {
                     </span>
                   </td>
                   <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {d.hr > 0 ? d.hr : "—"}
+                    {d.hr ?? "—"}
                   </td>
                   <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {d.cadence > 0 ? d.cadence : "—"}
+                    {d.cadence ?? "—"}
                   </td>
                   <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {d.elevation > 0 ? `+${d.elevation}m` : "—"}
+                    {d.elevation != null && d.elevation > 0 ? `+${d.elevation}m` : "—"}
                   </td>
                 </tr>
               ))}
