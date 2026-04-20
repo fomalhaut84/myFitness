@@ -15,7 +15,7 @@ export async function getWeightLossStatus() {
   const sevenDaysAgo = daysAgo(7);
   const fourteenDaysAgo = daysAgo(14);
 
-  const [balances, weights, recentWeights, activities, profile] =
+  const [balances, weights, , activities, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
         where: { date: { gte: sevenDaysAgo } },
@@ -74,29 +74,44 @@ export async function getWeightLossStatus() {
   for (let i = withBalance.length - 1; i >= 0; i--) {
     if (withBalance[i].calorieBalance < 0) {
       consecutiveDeficitDays++;
-      if (withBalance[i].calorieBalance < -750) consecutiveOver750++;
+      if (withBalance[i].calorieBalance < -750) {
+        consecutiveOver750++;
+      } else {
+        // 결손이지만 -750 미만이 아니면 "연속 심한 결손" 카운트 리셋
+        consecutiveOver750 = 0;
+      }
     } else {
       break;
     }
   }
 
-  // 체중 변화 (recentWeights는 orderBy date asc → [0]=oldest, [last]=newest)
-  // changeKg > 0 = 감량, < 0 = 증가 (M4-6 convention과 동일)
+  // 체중 변화: 7일 이동평균 기반 (endpoint 노이즈 방지).
+  // 14일 데이터에서 7일 이동평균 계산 → 7일 전 평균과 최신 평균 비교.
+  const DAY_MS = 24 * 60 * 60 * 1000;
+  function movingAvgAt(targetDate: Date, windowDays: number): number | null {
+    const startMs = targetDate.getTime() - (windowDays - 1) * DAY_MS;
+    const inWindow = weights.filter(
+      (w) =>
+        w.date.getTime() >= startMs && w.date.getTime() <= targetDate.getTime()
+    );
+    if (inWindow.length === 0) return null;
+    return inWindow.reduce((s, w) => s + w.weight, 0) / inWindow.length;
+  }
+
+  const now = new Date();
+  now.setHours(0, 0, 0, 0);
+  const sevenDaysAgoDate = new Date(now.getTime() - 7 * DAY_MS);
+  const maLatest = movingAvgAt(now, 7);
+  const maPrev = movingAvgAt(sevenDaysAgoDate, 7);
   const weight7d =
-    recentWeights.length >= 2
+    maLatest !== null && maPrev !== null
       ? {
-          first: recentWeights[0].weight,
-          last: recentWeights[recentWeights.length - 1].weight,
-          changeKg: Number(
-            (
-              recentWeights[0].weight -
-              recentWeights[recentWeights.length - 1].weight
-            ).toFixed(2)
-          ),
+          avgPrev: Number(maPrev.toFixed(2)),
+          avgLatest: Number(maLatest.toFixed(2)),
+          changeKg: Number((maPrev - maLatest).toFixed(2)), // 양수 = 감량
         }
       : null;
 
-  // 14일 체중으로 이동평균 계산
   const latestWeight = weights.length > 0 ? weights[weights.length - 1].weight : null;
 
   // 고강도 운동 (Z4+) 이번 주 시간
@@ -144,8 +159,11 @@ export async function getWeightLossStatus() {
       daysWithData: withBalance.length,
       consecutiveDeficitDays,
       consecutiveOver750Days: consecutiveOver750,
-      dailyBalances: withBalance.map((b) => ({
+      dailyBalances: balances.map((b) => ({
         date: b.date.toISOString().slice(0, 10),
+        intake: b.estimatedIntakeCalories,
+        available: b.availableCalories,
+        active: b.activeCalories,
         balance: b.calorieBalance,
       })),
     },
