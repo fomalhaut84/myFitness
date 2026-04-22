@@ -118,6 +118,24 @@ export default async function HeartPage() {
   });
 
   const latestBP = bpRecords.length > 0 ? bpRecords[bpRecords.length - 1] : null;
+  // 측정 1회면 high=low=정확값. 다회면 midpoint로 대표값 표시 (독립 극값 조합 방지).
+  const latestBPDisplay = latestBP
+    ? {
+        date: formatDateLocal(latestBP.date),
+        systolic:
+          latestBP.measureCount <= 1
+            ? latestBP.highSystolic
+            : Math.round((latestBP.highSystolic + latestBP.lowSystolic) / 2),
+        diastolic:
+          latestBP.measureCount <= 1
+            ? latestBP.highDiastolic
+            : Math.round(
+                (latestBP.highDiastolic + latestBP.lowDiastolic) / 2
+              ),
+        pulse: latestBP.avgPulse,
+        category: latestBP.category,
+      }
+    : null;
 
   return (
     <HeartClient
@@ -143,17 +161,7 @@ export default async function HeartPage() {
         minHR: r.minHR,
         hrvStatus: r.hrvStatus ? Math.round(r.hrvStatus) : null,
       }))}
-      latestBP={
-        latestBP
-          ? {
-              date: formatDateLocal(latestBP.date),
-              systolic: latestBP.highSystolic,
-              diastolic: latestBP.highDiastolic,
-              pulse: latestBP.avgPulse,
-              category: latestBP.category,
-            }
-          : null
-      }
+      latestBP={latestBPDisplay}
       bpTrend={bpRecords.map((r) => ({
         date: formatDateLocal(r.date),
         systolic: r.highSystolic,

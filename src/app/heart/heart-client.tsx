@@ -281,15 +281,15 @@ function BPTrendChart({ data }: { data: BPPoint[] }) {
           margin={{ top: 8, right: 8, bottom: 0, left: -10 }}
         >
           <CartesianGrid stroke="#1e1e1e" vertical={false} />
-          {/* 카테고리 밴드 */}
-          <ReferenceArea y1={0} y2={80} fill="#22c55e" fillOpacity={0.05} />
-          <ReferenceArea y1={80} y2={90} fill="#f59e0b" fillOpacity={0.05} />
-          <ReferenceArea y1={90} y2={100} fill="#f97316" fillOpacity={0.05} />
+          {/* 수축기 카테고리 밴드 (120~) */}
           <ReferenceArea y1={120} y2={130} fill="#f59e0b" fillOpacity={0.05} />
           <ReferenceArea y1={130} y2={140} fill="#f97316" fillOpacity={0.05} />
-          <ReferenceArea y1={140} y2={200} fill="#ef4444" fillOpacity={0.05} />
+          <ReferenceArea y1={140} y2={200} fill="#ef4444" fillOpacity={0.08} />
+          {/* 기준선: 정상 상한 120/80 + 2단계 상한 140/90 */}
           <ReferenceLine y={120} stroke="#333" strokeDasharray="3 3" />
           <ReferenceLine y={80} stroke="#333" strokeDasharray="3 3" />
+          <ReferenceLine y={140} stroke="#ef444466" strokeDasharray="3 3" />
+          <ReferenceLine y={90} stroke="#ef444466" strokeDasharray="3 3" />
           <XAxis
             dataKey="date"
             axisLine={false}
