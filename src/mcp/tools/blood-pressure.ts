@@ -16,9 +16,9 @@ const BP_CATEGORY_LABELS: Record<string, string> = {
 
 export async function getBloodPressure(args: { days?: number }) {
   const displayDays = args.days ?? 30;
-  // 경고 계산에는 최소 7일 필요 → 조회 윈도우는 max(displayDays, 7)
+  // daysAgo(N-1) + >= → 오늘 포함 정확히 N일. 경고용 최소 7일 보장.
   const queryDays = Math.max(displayDays, 7);
-  const since = daysAgo(queryDays);
+  const since = daysAgo(queryDays - 1);
 
   const records = await prisma.bloodPressure.findMany({
     where: { date: { gte: since } },
@@ -49,8 +49,8 @@ export async function getBloodPressure(args: { days?: number }) {
     };
   }
 
-  // 표시용 윈도우의 레코드 (summary 통계용)
-  const displaySince = daysAgo(displayDays);
+  // 표시용 윈도우: 오늘 포함 정확히 displayDays일
+  const displaySince = daysAgo(displayDays - 1);
   const displayRecords = records.filter(
     (r) => r.date.getTime() >= displaySince.getTime()
   );
@@ -76,6 +76,7 @@ export async function getBloodPressure(args: { days?: number }) {
       : null;
 
   // 7일 평균: 달력 기준 최근 7일 (측정 개수가 아닌 날짜 범위)
+  // 오늘 포함 정확히 7일 = daysAgo(6)
   const sevenDaysCutoff = daysAgo(6);
   const recent7 = records.filter(
     (r) => new Date(r.date).getTime() >= sevenDaysCutoff.getTime()
