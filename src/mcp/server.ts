@@ -12,6 +12,7 @@ import {
 } from "./tools/fitness";
 import { getActivitySplits } from "./tools/splits";
 import { getWeightLossStatus } from "./tools/weight-loss";
+import { getBloodPressure } from "./tools/blood-pressure";
 
 const server = new McpServer({
   name: "myfitness",
@@ -91,6 +92,21 @@ server.tool(
   "최근 7일 체중·칼로리·운동 통합 요약. 감량 진행도, 근손실 위험 평가, 리포트 작성에 사용.",
   {},
   async () => getWeightLossStatus()
+);
+
+server.tool(
+  "get_blood_pressure",
+  "혈압 추세 조회 (수축기/이완기/맥박, 카테고리 분류, 경고). 건강 지표 연계 분석에 사용.",
+  {
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(365)
+      .optional()
+      .describe("조회 일수 (기본 30)"),
+  },
+  async (args) => getBloodPressure(args)
 );
 
 async function main() {
