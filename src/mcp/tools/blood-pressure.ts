@@ -15,7 +15,10 @@ const BP_CATEGORY_LABELS: Record<string, string> = {
 };
 
 export async function getBloodPressure(args: { days?: number }) {
-  const since = daysAgo(args.days ?? 30);
+  const displayDays = args.days ?? 30;
+  // 경고 계산에는 최소 7일 필요 → 조회 윈도우는 max(displayDays, 7)
+  const queryDays = Math.max(displayDays, 7);
+  const since = daysAgo(queryDays);
 
   const records = await prisma.bloodPressure.findMany({
     where: { date: { gte: since } },
@@ -120,7 +123,7 @@ export async function getBloodPressure(args: { days?: number }) {
       "혈압 추세 데이터. 수축기 120 미만 + 이완기 80 미만이 정상. " +
       "수면 부족, 높은 스트레스, 운동 부족이 혈압 상승 원인일 수 있음. " +
       "warnings가 있으면 리포트에 반드시 포함하세요.",
-    period: `최근 ${args.days ?? 30}일`,
+    period: `최근 ${displayDays}일`,
     summary: {
       avgSystolic,
       avgDiastolic,
@@ -129,7 +132,8 @@ export async function getBloodPressure(args: { days?: number }) {
       totalRecords: records.length,
     },
     warnings,
-    records: records.map((r) => ({
+    // 응답에는 요청된 displayDays 범위만 포함
+    records: records.filter((r) => r.date.getTime() >= daysAgo(displayDays).getTime()).map((r) => ({
       date: r.date.toISOString().slice(0, 10),
       systolic: `${r.lowSystolic}-${r.highSystolic}`,
       diastolic: `${r.lowDiastolic}-${r.highDiastolic}`,
