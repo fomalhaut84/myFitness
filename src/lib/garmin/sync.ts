@@ -125,6 +125,12 @@ export async function syncAll(
     startDate?: Date;
     endDate?: Date;
     dataTypes?: DataType[];
+    /**
+     * true면 초기 싱크 안 된 타입에 대해 explicit startDate를 무시하고
+     * INITIAL_HISTORY_DAYS 강제 로드. cron이 2일 윈도우만 전달하는 상황에서
+     * 신규 타입(혈압 등)의 초기 히스토리를 놓치지 않도록. 기본 false.
+     */
+    bootstrapNewTypes?: boolean;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘
@@ -141,9 +147,21 @@ export async function syncAll(
     const hasSuccessfulSync = Boolean(
       meta && meta.lastSyncDate.getTime() > 0
     );
-    const startDate = hasSuccessfulSync
-      ? (options?.startDate ?? (await getStartDate(dataType)))
-      : daysAgo(INITIAL_HISTORY_DAYS);
+
+    let startDate: Date;
+    if (!hasSuccessfulSync && options?.bootstrapNewTypes) {
+      // 신규 타입 + bootstrap 모드 (cron): 365일 초기 로드
+      startDate = daysAgo(INITIAL_HISTORY_DAYS);
+    } else if (options?.startDate) {
+      // 명시 startDate 우선 (API 사용자 요청 등 의도된 범위 존중)
+      startDate = options.startDate;
+    } else if (hasSuccessfulSync) {
+      // 기본: 증분 싱크 (lastSyncDate + 1)
+      startDate = await getStartDate(dataType);
+    } else {
+      // 신규 타입 + 명시 없음: 365일
+      startDate = daysAgo(INITIAL_HISTORY_DAYS);
+    }
 
     if (startDate > endDate) {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
