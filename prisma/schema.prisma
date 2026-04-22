@@ -155,6 +155,21 @@ model BodyComposition {
   createdAt  DateTime @default(now())
 }
 
+model BloodPressure {
+  id            String   @id @default(cuid())
+  date          DateTime @unique
+  highSystolic  Int                         // 당일 최고 수축기 (mmHg)
+  lowSystolic   Int                         // 당일 최저 수축기
+  highDiastolic Int                         // 당일 최고 이완기
+  lowDiastolic  Int                         // 당일 최저 이완기
+  avgPulse      Int?                        // 평균 맥박 (bpm)
+  measureCount  Int      @default(1)        // 측정 횟수
+  category      String?                     // NORMAL, HIGH_NORMAL, STAGE_1_HIGH, STAGE_2_HIGH
+  measurements  Json?                       // 개별 측정값 배열
+  rawData       Json?
+  createdAt     DateTime @default(now())
+}
+
 model AIAdvice {
   id         String   @id @default(cuid())
   category   String                     // "morning_report", "evening_report", "weekly_report", "general"
