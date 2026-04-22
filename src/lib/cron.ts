@@ -29,6 +29,8 @@ export function startCronJobs() {
         const results = await syncAll({
           startDate: daysAgoKST(2),
           endDate: todayKST(),
+          // 신규 타입은 2일 윈도우 대신 365일 초기 히스토리 로드
+          bootstrapNewTypes: true,
         });
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;
