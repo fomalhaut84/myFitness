@@ -133,7 +133,13 @@ export async function syncAll(
   const results: SyncResult[] = [];
 
   for (const dataType of dataTypes) {
-    const startDate = options?.startDate ?? (await getStartDate(dataType));
+    // SyncMetadata가 없는 신규 데이터 타입은 explicit startDate를 무시하고
+    // 초기 히스토리 로드 (getStartDate가 INITIAL_HISTORY_DAYS 반환).
+    // 기존 타입은 explicit startDate(cron의 2일 윈도우 등) 우선.
+    const meta = await prisma.syncMetadata.findUnique({ where: { dataType } });
+    const startDate = meta
+      ? (options?.startDate ?? (await getStartDate(dataType)))
+      : await getStartDate(dataType);
 
     if (startDate > endDate) {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
