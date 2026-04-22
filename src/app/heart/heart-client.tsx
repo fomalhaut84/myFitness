@@ -241,7 +241,13 @@ function StatCard({
 
 function BPTrendChart({ data }: { data: BPPoint[] }) {
   const [range, setRange] = useState<30 | 90>(30);
-  const filtered = range === 30 ? data.slice(-30) : data;
+  // 날짜 기준 필터: data는 서버에서 90일 범위로 전달됨.
+  // 최신 데이터 기준으로 range일 이내만 표시.
+  const latest = data.length > 0 ? new Date(data[data.length - 1].date).getTime() : 0;
+  const cutoffMs = latest - range * 24 * 60 * 60 * 1000;
+  const filtered = data.filter(
+    (d) => new Date(d.date).getTime() >= cutoffMs
+  );
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 mb-6">

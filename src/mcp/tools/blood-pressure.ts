@@ -49,15 +49,31 @@ export async function getBloodPressure(args: { days?: number }) {
     };
   }
 
-  // 통계: 일별 대표값 = (high + low) / 2 로 편향 방지
-  const avgSystolic = Math.round(
-    records.reduce((s, r) => s + (r.highSystolic + r.lowSystolic) / 2, 0) /
-      records.length
+  // 표시용 윈도우의 레코드 (summary 통계용)
+  const displaySince = daysAgo(displayDays);
+  const displayRecords = records.filter(
+    (r) => r.date.getTime() >= displaySince.getTime()
   );
-  const avgDiastolic = Math.round(
-    records.reduce((s, r) => s + (r.highDiastolic + r.lowDiastolic) / 2, 0) /
-      records.length
-  );
+
+  // 통계: 표시 윈도우 기준, 일별 대표값 = (high + low) / 2
+  const avgSystolic =
+    displayRecords.length > 0
+      ? Math.round(
+          displayRecords.reduce(
+            (s, r) => s + (r.highSystolic + r.lowSystolic) / 2,
+            0
+          ) / displayRecords.length
+        )
+      : null;
+  const avgDiastolic =
+    displayRecords.length > 0
+      ? Math.round(
+          displayRecords.reduce(
+            (s, r) => s + (r.highDiastolic + r.lowDiastolic) / 2,
+            0
+          ) / displayRecords.length
+        )
+      : null;
 
   // 7일 평균: 달력 기준 최근 7일 (측정 개수가 아닌 날짜 범위)
   const sevenDaysCutoff = daysAgo(6);
@@ -129,11 +145,10 @@ export async function getBloodPressure(args: { days?: number }) {
       avgDiastolic,
       avg7Systolic,
       avg7Diastolic,
-      totalRecords: records.length,
+      totalRecords: displayRecords.length,
     },
     warnings,
-    // 응답에는 요청된 displayDays 범위만 포함
-    records: records.filter((r) => r.date.getTime() >= daysAgo(displayDays).getTime()).map((r) => ({
+    records: displayRecords.map((r) => ({
       date: r.date.toISOString().slice(0, 10),
       systolic: `${r.lowSystolic}-${r.highSystolic}`,
       diastolic: `${r.lowDiastolic}-${r.highDiastolic}`,
