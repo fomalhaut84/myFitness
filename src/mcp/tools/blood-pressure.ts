@@ -56,8 +56,11 @@ export async function getBloodPressure(args: { days?: number }) {
       records.length
   );
 
-  // 7일 평균 (동일 midpoint 방식)
-  const recent7 = records.slice(0, 7);
+  // 7일 평균: 달력 기준 최근 7일 (측정 개수가 아닌 날짜 범위)
+  const sevenDaysCutoff = daysAgo(6);
+  const recent7 = records.filter(
+    (r) => new Date(r.date).getTime() >= sevenDaysCutoff.getTime()
+  );
   const avg7Systolic =
     recent7.length > 0
       ? Math.round(
@@ -89,13 +92,23 @@ export async function getBloodPressure(args: { days?: number }) {
       `7일 평균 이완기 ${avg7Diastolic}mmHg (midpoint 기준) — 상승 추세`
     );
   }
-  // 3일 연속 STAGE_2_HIGH 체크
+  // 3일 연속 STAGE_2_HIGH 체크 (달력 기준 연속일만 카운트)
+  const DAY_MS = 24 * 60 * 60 * 1000;
   let consecutive2 = 0;
-  for (const r of records.slice(0, 7)) {
-    if (r.category === "STAGE_2_HIGH") {
-      consecutive2++;
+  for (let i = 0; i < records.length; i++) {
+    const r = records[i];
+    if (r.category !== "STAGE_2_HIGH") break;
+    if (i === 0) {
+      consecutive2 = 1;
     } else {
-      break;
+      const prevDate = new Date(records[i - 1].date).getTime();
+      const currDate = new Date(r.date).getTime();
+      // records는 desc 정렬 → prev가 더 최근. 차이가 1일이어야 연속.
+      if (prevDate - currDate >= DAY_MS - 1000 && prevDate - currDate <= DAY_MS + 1000) {
+        consecutive2++;
+      } else {
+        break;
+      }
     }
   }
   if (consecutive2 >= 3) {
