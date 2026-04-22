@@ -103,13 +103,14 @@ export default async function HeartPage() {
     ])
   );
 
+  // 차트/상관관계: midpoint로 대표값 (독립 극값 조합 방지)
   const bpCorrelation = bpRecords.map((bp) => {
     const dateStr = formatDateLocal(bp.date);
     const daily = dailyMap.get(dateStr);
     return {
       date: dateStr,
-      systolic: bp.highSystolic,
-      diastolic: bp.highDiastolic,
+      systolic: Math.round((bp.highSystolic + bp.lowSystolic) / 2),
+      diastolic: Math.round((bp.highDiastolic + bp.lowDiastolic) / 2),
       sleepScore: sleepMap.get(dateStr) ?? null,
       avgStress: daily?.stress ?? null,
       bodyBattery: daily?.battery ?? null,
@@ -164,8 +165,8 @@ export default async function HeartPage() {
       latestBP={latestBPDisplay}
       bpTrend={bpRecords.map((r) => ({
         date: formatDateLocal(r.date),
-        systolic: r.highSystolic,
-        diastolic: r.highDiastolic,
+        systolic: Math.round((r.highSystolic + r.lowSystolic) / 2),
+        diastolic: Math.round((r.highDiastolic + r.lowDiastolic) / 2),
         pulse: r.avgPulse,
         category: r.category,
       }))}

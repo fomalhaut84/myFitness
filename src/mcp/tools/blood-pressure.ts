@@ -108,17 +108,19 @@ export async function getBloodPressure(args: { days?: number }) {
         )
       : null;
 
-  // 경고
+  // 경고 (최소 3일 측정 있어야 평균 기반 경고 발동 — 희소 데이터 과민 방지)
   const warnings: string[] = [];
-  if (avg7Systolic !== null && avg7Systolic >= 135) {
-    warnings.push(
-      `7일 평균 수축기 ${avg7Systolic}mmHg (midpoint 기준) — 상승 추세`
-    );
-  }
-  if (avg7Diastolic !== null && avg7Diastolic >= 85) {
-    warnings.push(
-      `7일 평균 이완기 ${avg7Diastolic}mmHg (midpoint 기준) — 상승 추세`
-    );
+  if (recent7.length >= 3) {
+    if (avg7Systolic !== null && avg7Systolic >= 135) {
+      warnings.push(
+        `7일 평균 수축기 ${avg7Systolic}mmHg (${recent7.length}일 측정) — 상승 추세`
+      );
+    }
+    if (avg7Diastolic !== null && avg7Diastolic >= 85) {
+      warnings.push(
+        `7일 평균 이완기 ${avg7Diastolic}mmHg (${recent7.length}일 측정) — 상승 추세`
+      );
+    }
   }
   // 3일 연속 STAGE_2_HIGH 체크 (달력일 기준, DST 안전)
   let consecutive2 = 0;
