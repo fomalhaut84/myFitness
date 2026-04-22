@@ -4,7 +4,6 @@ import { useState } from "react";
 import {
   ComposedChart,
   Line,
-  Area,
   XAxis,
   YAxis,
   ResponsiveContainer,
@@ -316,14 +315,6 @@ function BPTrendChart({ data }: { data: BPPoint[] }) {
               fontSize: 12,
               borderRadius: 6,
             }}
-          />
-          <Area
-            type="monotone"
-            dataKey="systolic"
-            stroke="none"
-            fill="#ef4444"
-            fillOpacity={0.1}
-            name="수축기"
           />
           <Line
             type="monotone"
