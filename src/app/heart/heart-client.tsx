@@ -307,7 +307,7 @@ function BPTrendChart({ data }: { data: BPPoint[] }) {
             axisLine={false}
             tickLine={false}
             tick={{ fill: "#666", fontSize: 10 }}
-            domain={[60, "dataMax + 10"]}
+            domain={["dataMin - 5", "dataMax + 10"]}
           />
           <Tooltip
             contentStyle={{

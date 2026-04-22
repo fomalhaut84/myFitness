@@ -120,8 +120,7 @@ export async function getBloodPressure(args: { days?: number }) {
       `7일 평균 이완기 ${avg7Diastolic}mmHg (midpoint 기준) — 상승 추세`
     );
   }
-  // 3일 연속 STAGE_2_HIGH 체크 (달력 기준 연속일만 카운트)
-  const DAY_MS = 24 * 60 * 60 * 1000;
+  // 3일 연속 STAGE_2_HIGH 체크 (달력일 기준, DST 안전)
   let consecutive2 = 0;
   for (let i = 0; i < records.length; i++) {
     const r = records[i];
@@ -129,10 +128,12 @@ export async function getBloodPressure(args: { days?: number }) {
     if (i === 0) {
       consecutive2 = 1;
     } else {
-      const prevDate = new Date(records[i - 1].date).getTime();
-      const currDate = new Date(r.date).getTime();
-      // records는 desc 정렬 → prev가 더 최근. 차이가 1일이어야 연속.
-      if (prevDate - currDate >= DAY_MS - 1000 && prevDate - currDate <= DAY_MS + 1000) {
+      // 달력일 차이로 비교 (밀리초 대신, DST에 안전)
+      const prev = new Date(records[i - 1].date);
+      const curr = new Date(r.date);
+      const prevDay = Math.floor(prev.getTime() / 86400000);
+      const currDay = Math.floor(curr.getTime() / 86400000);
+      if (prevDay - currDay === 1) {
         consecutive2++;
       } else {
         break;
