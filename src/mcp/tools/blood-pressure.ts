@@ -46,38 +46,48 @@ export async function getBloodPressure(args: { days?: number }) {
     };
   }
 
-  // 통계
-  const systolics = records.map((r) => r.highSystolic);
-  const diastolics = records.map((r) => r.highDiastolic);
+  // 통계: 일별 대표값 = (high + low) / 2 로 편향 방지
   const avgSystolic = Math.round(
-    systolics.reduce((s, v) => s + v, 0) / systolics.length
+    records.reduce((s, r) => s + (r.highSystolic + r.lowSystolic) / 2, 0) /
+      records.length
   );
   const avgDiastolic = Math.round(
-    diastolics.reduce((s, v) => s + v, 0) / diastolics.length
+    records.reduce((s, r) => s + (r.highDiastolic + r.lowDiastolic) / 2, 0) /
+      records.length
   );
 
-  // 7일 평균
+  // 7일 평균 (동일 midpoint 방식)
   const recent7 = records.slice(0, 7);
   const avg7Systolic =
     recent7.length > 0
       ? Math.round(
-          recent7.reduce((s, r) => s + r.highSystolic, 0) / recent7.length
+          recent7.reduce(
+            (s, r) => s + (r.highSystolic + r.lowSystolic) / 2,
+            0
+          ) / recent7.length
         )
       : null;
   const avg7Diastolic =
     recent7.length > 0
       ? Math.round(
-          recent7.reduce((s, r) => s + r.highDiastolic, 0) / recent7.length
+          recent7.reduce(
+            (s, r) => s + (r.highDiastolic + r.lowDiastolic) / 2,
+            0
+          ) / recent7.length
         )
       : null;
 
   // 경고
   const warnings: string[] = [];
   if (avg7Systolic !== null && avg7Systolic >= 135) {
-    warnings.push(`7일 평균 수축기 ${avg7Systolic}mmHg — 상승 추세`);
+    warnings.push(
+      `7일 평균 수축기 ${avg7Systolic}mmHg (midpoint 기준) — 상승 추세`
+    );
   }
   if (avg7Diastolic !== null && avg7Diastolic >= 85) {
-    warnings.push(`7일 평균 이완기 ${avg7Diastolic}mmHg — 상승 추세`);
+    warnings.push(
+      `7일 평균 이완기 ${avg7Diastolic}mmHg (midpoint 기준) — 상승 추세`
+    );
   }
   // 3일 연속 STAGE_2_HIGH 체크
   let consecutive2 = 0;
