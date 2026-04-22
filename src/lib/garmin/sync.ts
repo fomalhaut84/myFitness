@@ -134,13 +134,14 @@ export async function syncAll(
 
   for (const dataType of dataTypes) {
     // 한 번도 성공적으로 싱크된 적 없는 타입은 explicit startDate를 무시하고
-    // 초기 히스토리 로드 (getStartDate가 INITIAL_HISTORY_DAYS 반환).
-    // markSyncing이 row를 미리 생성하므로 meta 존재 여부가 아닌 syncCount 확인.
+    // 직접 INITIAL_HISTORY_DAYS 만큼 거슬러 올라감.
+    // (markSyncing이 lastSyncDate=epoch 0으로 row를 미리 생성하므로
+    //  getStartDate가 1970-01-02를 반환할 위험 회피)
     const meta = await prisma.syncMetadata.findUnique({ where: { dataType } });
     const hasSuccessfulSync = Boolean(meta && meta.syncCount > 0);
     const startDate = hasSuccessfulSync
       ? (options?.startDate ?? (await getStartDate(dataType)))
-      : await getStartDate(dataType);
+      : daysAgo(INITIAL_HISTORY_DAYS);
 
     if (startDate > endDate) {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
