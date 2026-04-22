@@ -7,6 +7,14 @@ function daysAgo(n: number): Date {
   return d;
 }
 
+/** 서버 로컬 기준 YYYY-MM-DD (toISOString은 UTC 변환으로 날짜 어긋남 방지) */
+function fmtDate(date: Date): string {
+  const y = date.getFullYear();
+  const m = String(date.getMonth() + 1).padStart(2, "0");
+  const d = String(date.getDate()).padStart(2, "0");
+  return `${y}-${m}-${d}`;
+}
+
 const BP_CATEGORY_LABELS: Record<string, string> = {
   NORMAL: "정상",
   HIGH_NORMAL: "고정상",
@@ -150,7 +158,7 @@ export async function getBloodPressure(args: { days?: number }) {
     },
     warnings,
     records: displayRecords.map((r) => ({
-      date: r.date.toISOString().slice(0, 10),
+      date: fmtDate(r.date),
       systolic: `${r.lowSystolic}-${r.highSystolic}`,
       diastolic: `${r.lowDiastolic}-${r.highDiastolic}`,
       pulse: r.avgPulse,
