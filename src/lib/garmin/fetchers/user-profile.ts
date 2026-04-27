@@ -75,7 +75,7 @@ async function applyAutoSync(args: {
   const updates: Prisma.UserProfileUpdateInput = {
     garminSyncedAt: new Date(),
   };
-  const historyOps: Array<() => Promise<void>> = [];
+  const historyOps: Array<(tx: Prisma.TransactionClient) => Promise<void>> = [];
 
   // changeState 기반 reason 결정
   const reason: MetricReason =
@@ -102,14 +102,17 @@ async function applyAutoSync(args: {
   // maxHR
   if (args.garminMaxHR && canAutoUpdateMaxHR) {
     if (profile.maxHR !== args.garminMaxHR) {
-      historyOps.push(() =>
-        recordMetricChange({
-          field: "maxHR",
-          oldValue: profile.maxHR,
-          newValue: args.garminMaxHR,
-          source: "garmin",
-          reason,
-        })
+      historyOps.push((tx) =>
+        recordMetricChange(
+          {
+            field: "maxHR",
+            oldValue: profile.maxHR,
+            newValue: args.garminMaxHR,
+            source: "garmin",
+            reason,
+          },
+          tx
+        )
       );
       updates.maxHR = args.garminMaxHR;
     }
@@ -119,14 +122,17 @@ async function applyAutoSync(args: {
   // LTHR
   if (args.garminLthr && canAutoUpdateLthr) {
     if (profile.lthr !== args.garminLthr) {
-      historyOps.push(() =>
-        recordMetricChange({
-          field: "lthr",
-          oldValue: profile.lthr,
-          newValue: args.garminLthr,
-          source: "garmin",
-          reason,
-        })
+      historyOps.push((tx) =>
+        recordMetricChange(
+          {
+            field: "lthr",
+            oldValue: profile.lthr,
+            newValue: args.garminLthr,
+            source: "garmin",
+            reason,
+          },
+          tx
+        )
       );
       updates.lthr = args.garminLthr;
     }
@@ -139,14 +145,17 @@ async function applyAutoSync(args: {
   // LTHR Pace
   if (args.garminLthrPace) {
     if (profile.lthrPace !== args.garminLthrPace) {
-      historyOps.push(() =>
-        recordMetricChange({
-          field: "lthrPace",
-          oldValue: profile.lthrPace,
-          newValue: args.garminLthrPace,
-          source: "garmin",
-          reason,
-        })
+      historyOps.push((tx) =>
+        recordMetricChange(
+          {
+            field: "lthrPace",
+            oldValue: profile.lthrPace,
+            newValue: args.garminLthrPace,
+            source: "garmin",
+            reason,
+          },
+          tx
+        )
       );
       updates.lthrPace = args.garminLthrPace;
     }
@@ -154,14 +163,17 @@ async function applyAutoSync(args: {
 
   // VO2max
   if (args.garminVo2max && profile.vo2maxRunning !== args.garminVo2max) {
-    historyOps.push(() =>
-      recordMetricChange({
-        field: "vo2maxRunning",
-        oldValue: profile.vo2maxRunning,
-        newValue: args.garminVo2max,
-        source: "garmin",
-        reason,
-      })
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "vo2maxRunning",
+          oldValue: profile.vo2maxRunning,
+          newValue: args.garminVo2max,
+          source: "garmin",
+          reason,
+        },
+        tx
+      )
     );
     updates.vo2maxRunning = args.garminVo2max;
   }
@@ -169,14 +181,17 @@ async function applyAutoSync(args: {
   // 안정시 심박 (Garmin 자동 추정값. 사용자 수동 설정값은 maxHR/lthr와 달리
   // 별도 source 필드 없으므로 변경되면 그대로 갱신).
   if (args.garminRestingHR && profile.restingHRBase !== args.garminRestingHR) {
-    historyOps.push(() =>
-      recordMetricChange({
-        field: "restingHRBase",
-        oldValue: profile.restingHRBase,
-        newValue: args.garminRestingHR,
-        source: "garmin",
-        reason,
-      })
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "restingHRBase",
+          oldValue: profile.restingHRBase,
+          newValue: args.garminRestingHR,
+          source: "garmin",
+          reason,
+        },
+        tx
+      )
     );
     updates.restingHRBase = args.garminRestingHR;
   }
@@ -186,15 +201,17 @@ async function applyAutoSync(args: {
     updates.heartRateZonesRaw = args.zonesRaw as unknown as Prisma.InputJsonValue;
   }
 
-  await prisma.userProfile.update({
-    where: { id: profile.id },
-    data: updates,
+  // UserProfile update + MetricChange 기록을 원자적으로 처리.
+  // history 기록 실패 시 profile 변경도 롤백되어 다음 싱크에서 다시 delta 감지 가능.
+  await prisma.$transaction(async (tx) => {
+    await tx.userProfile.update({
+      where: { id: profile.id },
+      data: updates,
+    });
+    for (const op of historyOps) {
+      await op(tx);
+    }
   });
-
-  // 모든 history 기록
-  for (const op of historyOps) {
-    await op();
-  }
 }
 
 /**

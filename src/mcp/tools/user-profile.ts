@@ -2,7 +2,6 @@ import prisma from "../prisma";
 import {
   garminZoneRanges,
   getZoneRanges,
-  resolveLTHR,
   resolveMaxHR,
   type GarminZonesRaw,
 } from "@/lib/fitness/zones";
@@ -58,11 +57,15 @@ export async function getUserProfile() {
     maxHRSource = "estimated";
   }
 
-  // Zone (Garmin Floor 우선)
+  // Zone (Garmin Floor 우선). LTHR fallback은 위에서 결정한 maxHRValue 기반으로 일관성 유지.
   const garminZones = profile.heartRateZonesRaw
     ? garminZoneRanges(profile.heartRateZonesRaw as unknown as GarminZonesRaw)
     : null;
-  const zones = garminZones ?? getZoneRanges(resolveLTHR(profile), maxHRValue);
+  const lthrValue =
+    profile.lthr && profile.lthr > 0
+      ? profile.lthr
+      : Math.round(maxHRValue * 0.9);
+  const zones = garminZones ?? getZoneRanges(lthrValue, maxHRValue);
   const zoneSource: "garmin" | "calculated" = garminZones ? "garmin" : "calculated";
 
   const response = {

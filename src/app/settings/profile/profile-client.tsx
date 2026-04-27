@@ -393,6 +393,14 @@ function GarminSyncSection({ meta }: { meta: GarminMeta }) {
         setMessage(data?.error ?? "동기화 실패");
         return;
       }
+      // /api/sync는 200을 반환하면서 results[i].error로 개별 타입 실패를 보고.
+      // user_profile 결과를 명시적으로 확인.
+      const profileResult = (data?.results as Array<{ dataType: string; error?: string }> | undefined)
+        ?.find((r) => r.dataType === "user_profile");
+      if (profileResult?.error) {
+        setMessage(`동기화 실패: ${profileResult.error}`);
+        return;
+      }
       setMessage("동기화 완료");
       setTimeout(() => router.refresh(), 600);
     } catch (err) {
