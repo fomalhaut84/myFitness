@@ -134,12 +134,15 @@ async function applyAutoSync(args: {
     }
   }
 
-  // LTHR — heartRateZones 우선, user-settings fallback. 어느 endpoint든 성공해야 적용.
-  if (
-    (args.hrZonesOk || args.userSettingsOk) &&
-    canAutoUpdateLthr &&
-    profile.lthr !== args.garminLthr
-  ) {
+  // LTHR — heartRateZones 우선, user-settings fallback.
+  // null 쓰기(stale clear)는 양쪽 endpoint 모두 성공해야 — 한쪽 실패면 null이
+  // "Garmin이 비웠다"인지 "endpoint 실패 데이터 없음"인지 구분 불가.
+  const lthrAllSourcesOk = args.hrZonesOk && args.userSettingsOk;
+  const canWriteLthr =
+    args.garminLthr !== null
+      ? args.hrZonesOk || args.userSettingsOk
+      : lthrAllSourcesOk;
+  if (canWriteLthr && canAutoUpdateLthr && profile.lthr !== args.garminLthr) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -154,7 +157,7 @@ async function applyAutoSync(args: {
     );
     updates.lthr = args.garminLthr;
   }
-  if ((args.hrZonesOk || args.userSettingsOk) && canAutoUpdateLthr) {
+  if (canWriteLthr && canAutoUpdateLthr) {
     if (args.garminLthr !== null && profile.lthrSource !== "garmin") {
       updates.lthrSource = "garmin";
     } else if (args.garminLthr === null && profile.lthrSource === "garmin") {
@@ -283,10 +286,14 @@ export async function syncUserProfile(
     );
   }
 
-  const hrZonesOk = !errors.some((e) => e.source === "heartRateZones");
-  const userSettingsOk = !errors.some((e) => e.source === "user-settings");
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
+  // 빈 페이로드도 "데이터 없음"으로 처리하여 stale clear 방지
+  const hrZonesOk =
+    !errors.some((e) => e.source === "heartRateZones") &&
+    runningZones !== null;
+  const userSettingsOk =
+    !errors.some((e) => e.source === "user-settings") && settings !== null;
 
   await applyAutoSync({
     hrZonesOk,
