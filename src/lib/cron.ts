@@ -24,12 +24,12 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        // KST 기준 2일 전 ~ 어제 (당일 부분 데이터 제외 → 완전 데이터만 갱신).
-        // 오늘 데이터는 수동 싱크 / 모닝·이브닝 리포트 사전 싱크에서 별도 갱신.
-        const { daysAgoKST, yesterdayKST } = await import("@/lib/garmin/utils");
+        // KST 기준 2일 전 ~ 오늘. 오늘 부분 데이터(체중/혈압/걸음 등)도
+        // 자동 갱신 대상에 포함. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
+        const { daysAgoKST, todayKST } = await import("@/lib/garmin/utils");
         const results = await syncAll({
           startDate: daysAgoKST(2),
-          endDate: yesterdayKST(),
+          endDate: todayKST(),
           // 신규 타입은 2일 윈도우 대신 365일 초기 히스토리 로드
           bootstrapNewTypes: true,
         });
