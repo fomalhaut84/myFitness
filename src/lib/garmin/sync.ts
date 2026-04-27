@@ -167,7 +167,8 @@ export async function syncAll(
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
     }
 
-    if (startDate > endDate) {
+    // user_profile은 날짜 범위 무관 (스냅샷 동기화) → "이미 최신" skip 제외
+    if (startDate > endDate && dataType !== "user_profile") {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
       results.push({ dataType, synced: 0 });
       continue;

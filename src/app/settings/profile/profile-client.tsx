@@ -96,21 +96,35 @@ export default function ProfileClient({
   garminMeta,
   metricHistory = [],
 }: ProfileClientProps) {
-  const [values, setValues] = useState(() => ({
-    name: initial.name,
-    birthDate: initial.birthDate,
-    height: initial.height === null ? "" : String(initial.height),
+  const buildValues = (init: ProfileValues) => ({
+    name: init.name,
+    birthDate: init.birthDate,
+    height: init.height === null ? "" : String(init.height),
     targetWeight:
-      initial.targetWeight === null ? "" : String(initial.targetWeight),
-    targetDate: initial.targetDate,
+      init.targetWeight === null ? "" : String(init.targetWeight),
+    targetDate: init.targetDate,
     restingHRBase:
-      initial.restingHRBase === null ? "" : String(initial.restingHRBase),
-    maxHR: initial.maxHR === null ? "" : String(initial.maxHR),
-    lthr: initial.lthr === null ? "" : String(initial.lthr),
-    lthrPace: formatPace(initial.lthrPace),
+      init.restingHRBase === null ? "" : String(init.restingHRBase),
+    maxHR: init.maxHR === null ? "" : String(init.maxHR),
+    lthr: init.lthr === null ? "" : String(init.lthr),
+    lthrPace: formatPace(init.lthrPace),
     targetCalories:
-      initial.targetCalories === null ? "" : String(initial.targetCalories),
-  }));
+      init.targetCalories === null ? "" : String(init.targetCalories),
+  });
+  // initial 값이 바뀌면 (router.refresh 등) form 재초기화.
+  // initialKey로 변경 감지 → 렌더 중 setState (React 권장 derived state 패턴).
+  const [values, setValues] = useState(() => buildValues(initial));
+  const initialKey =
+    `${initial.maxHR}|${initial.lthr}|${initial.lthrPace}|` +
+    `${initial.restingHRBase}|${initial.targetCalories}|${initial.targetWeight}|` +
+    `${initial.targetDate}|${initial.birthDate}|${initial.height}|${initial.name}`;
+  const [prevKey, setPrevKey] = useState(initialKey);
+  if (prevKey !== initialKey) {
+    // 렌더 중 setState (React 권장 패턴: derived state from props change)
+    // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+    setPrevKey(initialKey);
+    setValues(buildValues(initial));
+  }
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
