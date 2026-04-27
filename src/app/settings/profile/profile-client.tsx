@@ -394,14 +394,15 @@ function GarminSyncSection({ meta }: { meta: GarminMeta }) {
         return;
       }
       // /api/sync는 200을 반환하면서 results[i].error로 개별 타입 실패를 보고.
-      // user_profile 결과를 명시적으로 확인.
+      // 단, syncUserProfile은 부분 실패 시 데이터를 apply한 후에 throw하므로
+      // 에러가 있어도 DB가 갱신될 수 있음 → 무조건 refresh.
       const profileResult = (data?.results as Array<{ dataType: string; error?: string }> | undefined)
         ?.find((r) => r.dataType === "user_profile");
       if (profileResult?.error) {
-        setMessage(`동기화 실패: ${profileResult.error}`);
-        return;
+        setMessage(`부분 실패 (일부 데이터 갱신): ${profileResult.error}`);
+      } else {
+        setMessage("동기화 완료");
       }
-      setMessage("동기화 완료");
       setTimeout(() => router.refresh(), 600);
     } catch (err) {
       setMessage(err instanceof Error ? err.message : "네트워크 오류");

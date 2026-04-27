@@ -153,7 +153,14 @@ export async function PATCH(request: Request) {
         updatePayload.lthrSource = data.lthr === null ? null : "manual";
       }
     }
-    if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
+    if (data.lthrPace !== undefined) {
+      updatePayload.lthrPace = data.lthrPace;
+      // LTHR pace는 LTHR과 한 쌍으로 측정되므로 source를 lthrSource에 묶음.
+      // 사용자가 pace를 수동 편집하면 sync에서 lthr/pace 모두 보호.
+      if (data.lthrPace !== existing.lthrPace && data.lthrPace !== null) {
+        updatePayload.lthrSource = "manual";
+      }
+    }
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
 

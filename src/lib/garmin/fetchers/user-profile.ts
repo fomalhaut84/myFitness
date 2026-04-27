@@ -142,8 +142,8 @@ async function applyAutoSync(args: {
     if (args.garminLthrMeasuredAt) updates.lthrMeasuredAt = args.garminLthrMeasuredAt;
   }
 
-  // LTHR Pace
-  if (args.garminLthrPace) {
+  // LTHR Pace — LTHR과 한 쌍으로 측정되므로 lthrSource를 따름 (수동 보호)
+  if (args.garminLthrPace && canAutoUpdateLthr) {
     if (profile.lthrPace !== args.garminLthrPace) {
       historyOps.push((tx) =>
         recordMetricChange(
