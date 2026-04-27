@@ -66,16 +66,6 @@ export function todayKSTString(): string {
   return formatDate(todayKST());
 }
 
-/** 임의의 Date(instant)를 KST 기준 YYYY-MM-DD로 변환. 서버 타임존 무관. */
-export function toKSTDateString(date: Date): string {
-  return new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).format(date);
-}
-
 // --- Legacy (하위 호환) ---
 
 export function yesterday(): Date {
