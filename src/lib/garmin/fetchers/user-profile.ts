@@ -53,7 +53,11 @@ function speedToPaceSec(speed: number | null | undefined): number | null {
   return Math.round(100 / speed); // sec/km
 }
 
-/** UserProfile 자동값 업데이트 (수동값은 보존) + 변경 시 history 기록 */
+/**
+ * UserProfile 자동값 업데이트 (수동값은 보존) + 변경 시 history 기록.
+ * endpoint별 성공 플래그로 부분 실패 시 해당 필드를 건드리지 않음 — null이
+ * "Garmin이 명시적으로 비웠다"인지 "endpoint 실패로 데이터 없음"인지 구분.
+ */
 async function applyAutoSync(args: {
   garminMaxHR: number | null;
   garminLthr: number | null;
@@ -64,6 +68,9 @@ async function applyAutoSync(args: {
   garminLthrMeasuredAt: Date | null;
   zonesRaw: GarminHRZone | null;
   changeState: string;
+  // endpoint 성공 여부
+  hrZonesOk: boolean;
+  userSettingsOk: boolean;
 }): Promise<void> {
   // 신규 사용자도 첫 싱크에서 자동 설정되도록 singleton upsert.
   const profile = await prisma.userProfile.upsert({
@@ -97,8 +104,14 @@ async function applyAutoSync(args: {
     profile.lthrSource === "garmin" ||
     (profile.lthrSource === null && profile.lthr === null);
 
-  // maxHR — Garmin이 null 반환 시 stale 값 클리어 (source가 garmin인 경우만)
-  if (canAutoUpdateMaxHR && profile.maxHR !== args.garminMaxHR) {
+  // 필드별 출처:
+  //  - heartRateZones: maxHR, lthr(RUNNING), restingHR, zonesRaw
+  //  - user-settings: lthr(fallback), lthrPace, vo2max, lthrAutoDetected, lthrMeasuredAt
+  //  실패한 endpoint 데이터는 적용하지 않음 (null이 "Garmin이 비웠다"와
+  //  "endpoint 실패로 데이터 없음"을 구분).
+
+  // maxHR — heartRateZones에서만 옴
+  if (args.hrZonesOk && canAutoUpdateMaxHR && profile.maxHR !== args.garminMaxHR) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -113,7 +126,7 @@ async function applyAutoSync(args: {
     );
     updates.maxHR = args.garminMaxHR;
   }
-  if (canAutoUpdateMaxHR) {
+  if (args.hrZonesOk && canAutoUpdateMaxHR) {
     if (args.garminMaxHR !== null && profile.maxHRSource !== "garmin") {
       updates.maxHRSource = "garmin";
     } else if (args.garminMaxHR === null && profile.maxHRSource === "garmin") {
@@ -121,8 +134,12 @@ async function applyAutoSync(args: {
     }
   }
 
-  // LTHR
-  if (canAutoUpdateLthr && profile.lthr !== args.garminLthr) {
+  // LTHR — heartRateZones 우선, user-settings fallback. 어느 endpoint든 성공해야 적용.
+  if (
+    (args.hrZonesOk || args.userSettingsOk) &&
+    canAutoUpdateLthr &&
+    profile.lthr !== args.garminLthr
+  ) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -137,20 +154,29 @@ async function applyAutoSync(args: {
     );
     updates.lthr = args.garminLthr;
   }
-  if (canAutoUpdateLthr) {
+  if ((args.hrZonesOk || args.userSettingsOk) && canAutoUpdateLthr) {
     if (args.garminLthr !== null && profile.lthrSource !== "garmin") {
       updates.lthrSource = "garmin";
     } else if (args.garminLthr === null && profile.lthrSource === "garmin") {
-      // lthr와 lthrPace 둘 다 null로 비워질 때만 source 해제
-      if (args.garminLthrPace === null) updates.lthrSource = null;
+      // lthr와 lthrPace 둘 다 null로 비워질 때만 source 해제 (lthrPace는 user-settings 성공 시에만 신뢰)
+      if (args.userSettingsOk && args.garminLthrPace === null)
+        updates.lthrSource = null;
     }
+  }
+
+  // lthrAutoDetected, lthrMeasuredAt — user-settings에서만 옴
+  if (args.userSettingsOk && canAutoUpdateLthr) {
     if (args.garminLthrAutoDetected !== null)
       updates.lthrAutoDetected = args.garminLthrAutoDetected;
     if (args.garminLthrMeasuredAt) updates.lthrMeasuredAt = args.garminLthrMeasuredAt;
   }
 
-  // LTHR Pace — LTHR과 한 쌍으로 측정되므로 lthrSource를 따름 (수동 보호)
-  if (canAutoUpdateLthr && profile.lthrPace !== args.garminLthrPace) {
+  // LTHR Pace — user-settings에서만 옴
+  if (
+    args.userSettingsOk &&
+    canAutoUpdateLthr &&
+    profile.lthrPace !== args.garminLthrPace
+  ) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -166,9 +192,8 @@ async function applyAutoSync(args: {
     updates.lthrPace = args.garminLthrPace;
   }
 
-  // VO2max
-  // VO2max — Garmin 전용 (manual source 필드 없음). null도 클리어 신호로 처리.
-  if (profile.vo2maxRunning !== args.garminVo2max) {
+  // VO2max — user-settings에서만 옴
+  if (args.userSettingsOk && profile.vo2maxRunning !== args.garminVo2max) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -184,9 +209,8 @@ async function applyAutoSync(args: {
     updates.vo2maxRunning = args.garminVo2max;
   }
 
-  // 안정시 심박 (Garmin 자동 추정값. 사용자 수동 설정값은 maxHR/lthr와 달리
-  // 별도 source 필드 없으므로 변경되면 그대로 갱신).
-  if (profile.restingHRBase !== args.garminRestingHR) {
+  // 안정시 심박 — heartRateZones에서만 옴
+  if (args.hrZonesOk && profile.restingHRBase !== args.garminRestingHR) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -202,8 +226,8 @@ async function applyAutoSync(args: {
     updates.restingHRBase = args.garminRestingHR;
   }
 
-  // Zone raw 데이터 보존
-  if (args.zonesRaw) {
+  // Zone raw 데이터 보존 — heartRateZones에서만 옴
+  if (args.hrZonesOk && args.zonesRaw) {
     updates.heartRateZonesRaw = args.zonesRaw as unknown as Prisma.InputJsonValue;
   }
 
@@ -259,10 +283,14 @@ export async function syncUserProfile(
     );
   }
 
+  const hrZonesOk = !errors.some((e) => e.source === "heartRateZones");
+  const userSettingsOk = !errors.some((e) => e.source === "user-settings");
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
 
   await applyAutoSync({
+    hrZonesOk,
+    userSettingsOk,
     garminMaxHR: runningZones?.maxHeartRateUsed ?? null,
     garminLthr:
       runningZones?.lactateThresholdHeartRateUsed ??
