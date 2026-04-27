@@ -85,17 +85,15 @@ async function applyAutoSync(args: {
         ? "garmin_auto_detect"
         : "garmin_initial";
 
-  // 자동 갱신 가능 여부:
+  // 자동 갱신 가능 여부 (source 우선 판정):
   // - source === "garmin" → 갱신 OK
   // - source === null + 값 없음 → 최초 자동 설정 OK
-  // - source === null + 값 있음 → manual로 간주 (마이그레이션 전 데이터 보호)
-  // - source === "manual" → 보호
+  // - source === "manual" → 보호 (값이 null이어도 — 사용자가 lthrPace만 편집한 경우 등)
+  // - source === null + 값 있음 → 마이그레이션 전 데이터 보호 (manual로 간주)
   const canAutoUpdateMaxHR =
-    profile.maxHR === null ||
     profile.maxHRSource === "garmin" ||
     (profile.maxHRSource === null && profile.maxHR === null);
   const canAutoUpdateLthr =
-    profile.lthr === null ||
     profile.lthrSource === "garmin" ||
     (profile.lthrSource === null && profile.lthr === null);
 
