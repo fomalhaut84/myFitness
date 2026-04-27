@@ -137,8 +137,13 @@ export async function PATCH(request: Request) {
       updatePayload.targetDate = data.targetDate
         ? parseLocalDate(data.targetDate)
         : null;
-    if (data.restingHRBase !== undefined)
+    if (data.restingHRBase !== undefined) {
       updatePayload.restingHRBase = data.restingHRBase;
+      if (data.restingHRBase !== existing.restingHRBase) {
+        updatePayload.restingHRBaseSource =
+          data.restingHRBase === null ? null : "manual";
+      }
+    }
     if (data.maxHR !== undefined) {
       updatePayload.maxHR = data.maxHR;
       // source는 값이 실제로 변경됐을 때만 갱신 (form 전송이 unchanged field도 포함하므로

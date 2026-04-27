@@ -103,6 +103,9 @@ async function applyAutoSync(args: {
   const canAutoUpdateLthr =
     profile.lthrSource === "garmin" ||
     (profile.lthrSource === null && profile.lthr === null);
+  const canAutoUpdateRestingHR =
+    profile.restingHRBaseSource === "garmin" ||
+    (profile.restingHRBaseSource === null && profile.restingHRBase === null);
 
   // 필드별 출처:
   //  - heartRateZones: maxHR, lthr(RUNNING), restingHR, zonesRaw
@@ -212,8 +215,12 @@ async function applyAutoSync(args: {
     updates.vo2maxRunning = args.garminVo2max;
   }
 
-  // 안정시 심박 — heartRateZones에서만 옴
-  if (args.hrZonesOk && profile.restingHRBase !== args.garminRestingHR) {
+  // 안정시 심박 — heartRateZones에서만 옴. 사용자가 수동 설정했으면 보호.
+  if (
+    args.hrZonesOk &&
+    canAutoUpdateRestingHR &&
+    profile.restingHRBase !== args.garminRestingHR
+  ) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -227,6 +234,19 @@ async function applyAutoSync(args: {
       )
     );
     updates.restingHRBase = args.garminRestingHR;
+  }
+  if (args.hrZonesOk && canAutoUpdateRestingHR) {
+    if (
+      args.garminRestingHR !== null &&
+      profile.restingHRBaseSource !== "garmin"
+    ) {
+      updates.restingHRBaseSource = "garmin";
+    } else if (
+      args.garminRestingHR === null &&
+      profile.restingHRBaseSource === "garmin"
+    ) {
+      updates.restingHRBaseSource = null;
+    }
   }
 
   // Zone raw 데이터 보존 — heartRateZones에서만 옴
@@ -288,12 +308,22 @@ export async function syncUserProfile(
 
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
-  // 빈 페이로드도 "데이터 없음"으로 처리하여 stale clear 방지
+  // 빈/누락 페이로드도 "데이터 없음"으로 처리하여 stale clear 방지.
+  // user-settings는 settings.userData 존재 + 핵심 필드 중 하나 이상 있을 때만 OK.
+  const ud = settings?.userData;
+  const hasUserData = Boolean(
+    ud &&
+      (ud.lactateThresholdHeartRate !== undefined ||
+        ud.lactateThresholdSpeed !== undefined ||
+        ud.vo2MaxRunning !== undefined ||
+        ud.thresholdHeartRateAutoDetected !== undefined ||
+        ud.firstbeatRunningLtTimestamp !== undefined)
+  );
   const hrZonesOk =
     !errors.some((e) => e.source === "heartRateZones") &&
     runningZones !== null;
   const userSettingsOk =
-    !errors.some((e) => e.source === "user-settings") && settings !== null;
+    !errors.some((e) => e.source === "user-settings") && hasUserData;
 
   await applyAutoSync({
     hrZonesOk,
