@@ -5,12 +5,18 @@ import ProfileClient from "./profile-client";
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const profile = await prisma.userProfile.findFirst();
+  const [profile, history] = await Promise.all([
+    prisma.userProfile.findFirst(),
+    prisma.metricChange.findMany({
+      orderBy: { changedAt: "desc" },
+      take: 50,
+    }),
+  ]);
+
   return (
     <ProfileClient
       initial={{
         name: profile?.name ?? "사용자",
-        // 서버 로컬 midnight으로 저장된 값 → 로컬 타임존 기준 YYYY-MM-DD 추출
         birthDate: profile?.birthDate ? formatDateLocal(profile.birthDate) : "",
         height: profile?.height ?? null,
         targetWeight: profile?.targetWeight ?? null,
@@ -23,6 +29,24 @@ export default async function ProfilePage() {
         lthrPace: profile?.lthrPace ?? null,
         targetCalories: profile?.targetCalories ?? null,
       }}
+      garminMeta={{
+        maxHRSource: profile?.maxHRSource ?? null,
+        lthrSource: profile?.lthrSource ?? null,
+        lthrAutoDetected: profile?.lthrAutoDetected ?? null,
+        vo2maxRunning: profile?.vo2maxRunning ?? null,
+        garminSyncedAt: profile?.garminSyncedAt
+          ? profile.garminSyncedAt.toISOString()
+          : null,
+      }}
+      metricHistory={history.map((h) => ({
+        id: h.id,
+        field: h.field,
+        oldValue: h.oldValue,
+        newValue: h.newValue,
+        source: h.source,
+        reason: h.reason,
+        changedAt: h.changedAt.toISOString(),
+      }))}
     />
   );
 }

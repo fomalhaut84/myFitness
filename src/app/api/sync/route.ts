@@ -10,6 +10,7 @@ const VALID_DATA_TYPES: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  "user_profile",
 ];
 
 /** "YYYY-MM-DD" 문자열을 로컬 midnight Date로 파싱. 무효하면 null. */
