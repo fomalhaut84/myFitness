@@ -60,13 +60,20 @@ export async function getUserProfile() {
 
   // Zone 결정:
   // - maxHR/lthr 둘 다 Garmin source일 때만 Garmin zone1~5Floor 사용
-  //   (manual override가 하나라도 있으면 Garmin zone과 inconsistent)
-  // - 그 외: 사용자 수동 값(or fallback)으로 직접 계산
+  // - manual override 또는 zonesRaw가 현재 maxHR/lthr와 불일치(stale)면 calculated로 fallback
+  //   (heartRateZones 실패 + user-settings 통한 lthr 갱신 등으로 zonesRaw가 뒤쳐진 경우)
   const bothGarminOwned =
     profile.maxHRSource === "garmin" && profile.lthrSource === "garmin";
+  const rawZones = profile.heartRateZonesRaw as unknown as
+    | (GarminZonesRaw & { lactateThresholdHeartRateUsed?: number | null })
+    | null;
+  const zonesRawFresh =
+    rawZones !== null &&
+    rawZones.maxHeartRateUsed === profile.maxHR &&
+    rawZones.lactateThresholdHeartRateUsed === profile.lthr;
   const garminZones =
-    bothGarminOwned && profile.heartRateZonesRaw
-      ? garminZoneRanges(profile.heartRateZonesRaw as unknown as GarminZonesRaw)
+    bothGarminOwned && zonesRawFresh && rawZones
+      ? garminZoneRanges(rawZones)
       : null;
   const lthrValue =
     profile.lthr && profile.lthr > 0
