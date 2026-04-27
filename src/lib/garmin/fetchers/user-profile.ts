@@ -178,6 +178,16 @@ async function applyAutoSync(args: {
   }
 
   // LTHR Pace — user-settings에서만 옴
+  // pace-only 갱신 (lthr는 null이지만 pace는 값) 케이스에서도 lthrSource를
+  // garmin으로 표시하기 위해 별도 조건 추가.
+  if (
+    args.userSettingsOk &&
+    canAutoUpdateLthr &&
+    args.garminLthrPace !== null &&
+    profile.lthrSource !== "garmin"
+  ) {
+    updates.lthrSource = "garmin";
+  }
   if (
     args.userSettingsOk &&
     canAutoUpdateLthr &&
