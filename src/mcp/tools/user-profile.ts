@@ -119,13 +119,16 @@ export async function getMetricHistory(args: {
   };
   if (args.field) where.field = args.field;
 
-  const changes = await prisma.metricChange.findMany({
+  // summary는 전체 결과로 계산해야 정확. groupBy로 메타 먼저 산출.
+  const grouped = await prisma.metricChange.groupBy({
+    by: ["field"],
     where,
-    orderBy: { changedAt: "desc" },
-    take: 100,
+    _count: { _all: true },
+    _min: { changedAt: true },
+    _max: { changedAt: true },
   });
 
-  if (changes.length === 0) {
+  if (grouped.length === 0) {
     return {
       content: [
         {
@@ -141,13 +144,30 @@ export async function getMetricHistory(args: {
     };
   }
 
-  // 필드별 그룹화하여 summary 계산
-  const byField = new Map<string, typeof changes>();
-  for (const c of changes) {
-    const list = byField.get(c.field) ?? [];
-    list.push(c);
-    byField.set(c.field, list);
-  }
+  // 필드별 first(가장 오래된)/latest(가장 최근) row 조회 → 정확한 summary
+  const summaryEntries = await Promise.all(
+    grouped.map(async (g) => {
+      const [first, latest] = await Promise.all([
+        prisma.metricChange.findFirst({
+          where: { ...where, field: g.field, changedAt: g._min.changedAt ?? since },
+          orderBy: { changedAt: "asc" },
+        }),
+        prisma.metricChange.findFirst({
+          where: { ...where, field: g.field, changedAt: g._max.changedAt ?? since },
+          orderBy: { changedAt: "desc" },
+        }),
+      ]);
+      return { field: g.field, count: g._count._all, first, latest };
+    })
+  );
+
+  // 표시용 changes는 최근 100개로 제한
+  const changes = await prisma.metricChange.findMany({
+    where,
+    orderBy: { changedAt: "desc" },
+    take: 100,
+  });
+
   const summaries: Record<
     string,
     {
@@ -158,17 +178,15 @@ export async function getMetricHistory(args: {
       netChange: number | null;
     }
   > = {};
-  for (const [field, list] of byField.entries()) {
-    // list는 changedAt desc → 첫 항목이 latest, 마지막이 first
-    const latest = list[0];
-    const earliest = list[list.length - 1];
-    const firstValue = earliest.oldValue ?? earliest.newValue;
-    const latestValue = latest.newValue;
-    summaries[field] = {
-      label: FIELD_LABELS[field] ?? field,
+  for (const entry of summaryEntries) {
+    const firstValue =
+      entry.first?.oldValue ?? entry.first?.newValue ?? null;
+    const latestValue = entry.latest?.newValue ?? null;
+    summaries[entry.field] = {
+      label: FIELD_LABELS[entry.field] ?? entry.field,
       firstValue,
       latestValue,
-      changeCount: list.length,
+      changeCount: entry.count,
       netChange:
         firstValue !== null && latestValue !== null
           ? Number((latestValue - firstValue).toFixed(2))

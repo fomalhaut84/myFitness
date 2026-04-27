@@ -166,8 +166,9 @@ async function applyAutoSync(args: {
     updates.vo2maxRunning = args.garminVo2max;
   }
 
-  // 안정시 심박 (수동 설정 없을 때만)
-  if (args.garminRestingHR && profile.restingHRBase === null) {
+  // 안정시 심박 (Garmin 자동 추정값. 사용자 수동 설정값은 maxHR/lthr와 달리
+  // 별도 source 필드 없으므로 변경되면 그대로 갱신).
+  if (args.garminRestingHR && profile.restingHRBase !== args.garminRestingHR) {
     historyOps.push(() =>
       recordMetricChange({
         field: "restingHRBase",
