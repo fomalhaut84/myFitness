@@ -89,6 +89,8 @@ export async function getUserProfile() {
       ? {
           value: profile.lthrPace,
           formatted: fmtPace(profile.lthrPace),
+          // pace는 LTHR과 한 쌍으로 측정되므로 lthrSource를 따름
+          source: profile.lthrSource ?? "manual",
         }
       : null,
     vo2maxRunning: profile.vo2maxRunning,
