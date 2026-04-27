@@ -1,7 +1,14 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
+import {
+  dateRange,
+  formatDate,
+  isNoDataError,
+  startOfDay,
+  todayKSTString,
+  withRateLimit,
+} from "../utils";
 
 export async function syncHeartRate(
   client: GarminConnect,
@@ -12,6 +19,9 @@ export async function syncHeartRate(
   const dates = dateRange(startDate, endDate);
 
   for (const date of dates) {
+    // 미래 날짜 방지 (오늘 KST 이후 skip) — 다른 fetcher와 일관성
+    if (formatDate(date) > todayKSTString()) continue;
+
     try {
       const hrData = await withRateLimit(() => client.getHeartRate(date));
 

@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { formatDate, startOfDay } from "../utils";
+import { formatDate, startOfDay, todayKSTString } from "../utils";
 
 const WEIGHT_URL =
   "https://connectapi.garmin.com/weight-service/weight/dateRange";
@@ -49,6 +49,10 @@ export async function syncBodyComposition(
     try {
       const entryDate = new Date(entry.date);
       const dayDate = startOfDay(entryDate);
+
+      // 미래 날짜 방지 (오늘 KST 이후 skip) — 다른 fetcher와 일관성
+      if (formatDate(dayDate) > todayKSTString()) continue;
+
       const weight = gramToKg(entry.weight);
 
       if (weight === null) continue;

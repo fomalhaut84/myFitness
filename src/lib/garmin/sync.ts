@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
-import { daysAgo, formatDate, todayKST } from "./utils";
+import { daysAgo, formatDate, yesterdayKST } from "./utils";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -137,8 +137,9 @@ export async function syncAll(
     bootstrapNewTypes?: boolean;
   }
 ): Promise<SyncResult[]> {
-  // 기본 endDate: KST 기준 오늘
-  const endDate = options?.endDate ?? todayKST();
+  // 기본 endDate: KST 기준 어제 (완전 데이터만 안전하게 갱신).
+  // 오늘 데이터가 필요하면 호출자(수동 싱크 / 리포트 사전 싱크)가 명시.
+  const endDate = options?.endDate ?? yesterdayKST();
   const dataTypes = options?.dataTypes ?? SYNC_ORDER;
   const results: SyncResult[] = [];
 
