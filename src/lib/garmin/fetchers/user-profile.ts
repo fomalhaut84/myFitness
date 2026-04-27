@@ -37,13 +37,13 @@ interface GarminUserSettings {
   };
 }
 
-/** 러닝 우선, 없으면 DEFAULT, 없으면 첫 row */
+/** RUNNING 또는 DEFAULT만 사용 — 다른 sport(cycling 등)는 러닝 프로필 오염 방지 */
 function pickRunningZones(zones: GarminHRZone[]): GarminHRZone | null {
   if (!zones || zones.length === 0) return null;
   return (
     zones.find((z) => z.sport === "RUNNING") ??
     zones.find((z) => z.sport === "DEFAULT") ??
-    zones[0]
+    null
   );
 }
 
