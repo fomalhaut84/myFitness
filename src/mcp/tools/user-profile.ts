@@ -58,10 +58,16 @@ export async function getUserProfile() {
     maxHRSource = "estimated";
   }
 
-  // Zone (Garmin Floor 우선). LTHR fallback은 위에서 결정한 maxHRValue 기반으로 일관성 유지.
-  const garminZones = profile.heartRateZonesRaw
-    ? garminZoneRanges(profile.heartRateZonesRaw as unknown as GarminZonesRaw)
-    : null;
+  // Zone 결정:
+  // - maxHR/lthr 둘 다 Garmin source일 때만 Garmin zone1~5Floor 사용
+  //   (manual override가 하나라도 있으면 Garmin zone과 inconsistent)
+  // - 그 외: 사용자 수동 값(or fallback)으로 직접 계산
+  const bothGarminOwned =
+    profile.maxHRSource === "garmin" && profile.lthrSource === "garmin";
+  const garminZones =
+    bothGarminOwned && profile.heartRateZonesRaw
+      ? garminZoneRanges(profile.heartRateZonesRaw as unknown as GarminZonesRaw)
+      : null;
   const lthrValue =
     profile.lthr && profile.lthr > 0
       ? profile.lthr
