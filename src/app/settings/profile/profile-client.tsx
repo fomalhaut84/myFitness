@@ -1,6 +1,7 @@
 "use client";
 
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 
 interface ProfileValues {
   name: string;
@@ -15,9 +16,52 @@ interface ProfileValues {
   targetCalories: number | null;
 }
 
+interface GarminMeta {
+  maxHRSource: string | null;
+  lthrSource: string | null;
+  lthrAutoDetected: boolean | null;
+  vo2maxRunning: number | null;
+  garminSyncedAt: string | null;
+}
+
+interface MetricChangeEntry {
+  id: string;
+  field: string;
+  oldValue: number | null;
+  newValue: number | null;
+  source: string;
+  reason: string | null;
+  changedAt: string;
+}
+
 interface ProfileClientProps {
   initial: ProfileValues;
+  garminMeta?: GarminMeta;
+  metricHistory?: MetricChangeEntry[];
 }
+
+const FIELD_LABELS: Record<string, string> = {
+  maxHR: "최대 심박",
+  lthr: "LTHR",
+  lthrPace: "LTHR 페이스",
+  vo2maxRunning: "VO2max",
+  restingHRBase: "안정시 심박",
+};
+
+const FIELD_UNITS: Record<string, string> = {
+  maxHR: "bpm",
+  lthr: "bpm",
+  lthrPace: "sec/km",
+  vo2maxRunning: "",
+  restingHRBase: "bpm",
+};
+
+const REASON_LABELS: Record<string, string> = {
+  user_edit: "수동 편집",
+  garmin_initial: "Garmin 초기 싱크",
+  garmin_auto_detect: "Garmin 자동 감지",
+  garmin_change_state: "Garmin 변경 알림",
+};
 
 /** "M:SS" → sec */
 function parsePace(input: string): number | null {
@@ -47,22 +91,40 @@ function toNumOrNull(v: string): number | null {
   return Number.isFinite(n) ? n : null;
 }
 
-export default function ProfileClient({ initial }: ProfileClientProps) {
-  const [values, setValues] = useState(() => ({
-    name: initial.name,
-    birthDate: initial.birthDate,
-    height: initial.height === null ? "" : String(initial.height),
+export default function ProfileClient({
+  initial,
+  garminMeta,
+  metricHistory = [],
+}: ProfileClientProps) {
+  const buildValues = (init: ProfileValues) => ({
+    name: init.name,
+    birthDate: init.birthDate,
+    height: init.height === null ? "" : String(init.height),
     targetWeight:
-      initial.targetWeight === null ? "" : String(initial.targetWeight),
-    targetDate: initial.targetDate,
+      init.targetWeight === null ? "" : String(init.targetWeight),
+    targetDate: init.targetDate,
     restingHRBase:
-      initial.restingHRBase === null ? "" : String(initial.restingHRBase),
-    maxHR: initial.maxHR === null ? "" : String(initial.maxHR),
-    lthr: initial.lthr === null ? "" : String(initial.lthr),
-    lthrPace: formatPace(initial.lthrPace),
+      init.restingHRBase === null ? "" : String(init.restingHRBase),
+    maxHR: init.maxHR === null ? "" : String(init.maxHR),
+    lthr: init.lthr === null ? "" : String(init.lthr),
+    lthrPace: formatPace(init.lthrPace),
     targetCalories:
-      initial.targetCalories === null ? "" : String(initial.targetCalories),
-  }));
+      init.targetCalories === null ? "" : String(init.targetCalories),
+  });
+  // initial 값이 바뀌면 (router.refresh 등) form 재초기화.
+  // initialKey로 변경 감지 → 렌더 중 setState (React 권장 derived state 패턴).
+  const [values, setValues] = useState(() => buildValues(initial));
+  const initialKey =
+    `${initial.maxHR}|${initial.lthr}|${initial.lthrPace}|` +
+    `${initial.restingHRBase}|${initial.targetCalories}|${initial.targetWeight}|` +
+    `${initial.targetDate}|${initial.birthDate}|${initial.height}|${initial.name}`;
+  const [prevKey, setPrevKey] = useState(initialKey);
+  if (prevKey !== initialKey) {
+    // 렌더 중 setState (React 권장 패턴: derived state from props change)
+    // https://react.dev/reference/react/useState#storing-information-from-previous-renders
+    setPrevKey(initialKey);
+    setValues(buildValues(initial));
+  }
   const [saving, setSaving] = useState(false);
   const [message, setMessage] = useState<{
     type: "success" | "error";
@@ -133,6 +195,8 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
           개인 심박 Zone, 칼로리 목표 등을 관리합니다
         </p>
       </div>
+
+      {garminMeta && <GarminSyncSection meta={garminMeta} />}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* 기본 정보 */}
@@ -299,6 +363,8 @@ export default function ProfileClient({ initial }: ProfileClientProps) {
           )}
         </div>
       </form>
+
+      {metricHistory.length > 0 && <MetricHistorySection entries={metricHistory} />}
     </div>
   );
 }
@@ -319,5 +385,158 @@ function Field({ label, hint, children }: FieldProps) {
       {children}
       {hint && <div className="text-[11px] text-dim mt-1">{hint}</div>}
     </label>
+  );
+}
+
+function GarminSyncSection({ meta }: { meta: GarminMeta }) {
+  const router = useRouter();
+  const [syncing, setSyncing] = useState(false);
+  const [message, setMessage] = useState<string | null>(null);
+
+  async function handleSync() {
+    setSyncing(true);
+    setMessage(null);
+    try {
+      const res = await fetch("/api/sync", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ dataTypes: ["user_profile"] }),
+      });
+      const data = await res.json();
+      if (!res.ok) {
+        setMessage(data?.error ?? "동기화 실패");
+        return;
+      }
+      // /api/sync는 200을 반환하면서 results[i].error로 개별 타입 실패를 보고.
+      // 단, syncUserProfile은 부분 실패 시 데이터를 apply한 후에 throw하므로
+      // 에러가 있어도 DB가 갱신될 수 있음 → 무조건 refresh.
+      const profileResult = (data?.results as Array<{ dataType: string; error?: string }> | undefined)
+        ?.find((r) => r.dataType === "user_profile");
+      if (profileResult?.error) {
+        setMessage(`부분 실패 (일부 데이터 갱신): ${profileResult.error}`);
+      } else {
+        setMessage("동기화 완료");
+      }
+      setTimeout(() => router.refresh(), 600);
+    } catch (err) {
+      setMessage(err instanceof Error ? err.message : "네트워크 오류");
+    } finally {
+      setSyncing(false);
+    }
+  }
+
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 mb-6">
+      <div className="flex items-center justify-between mb-3">
+        <div>
+          <div className="text-[11px] text-dim tracking-wider uppercase">
+            Garmin 자동 동기화
+          </div>
+          <div className="text-[12px] text-sub mt-1">
+            maxHR · LTHR · VO2max를 Garmin에서 자동 가져옵니다
+          </div>
+        </div>
+        <button
+          onClick={handleSync}
+          disabled={syncing}
+          className="px-3 py-1.5 rounded-md bg-card border border-[#2a2a2a] text-sm hover:border-accent/60 disabled:opacity-50 transition-colors"
+        >
+          {syncing ? "동기화 중..." : "지금 싱크"}
+        </button>
+      </div>
+
+      <div className="grid grid-cols-2 gap-3 text-[12px]">
+        <SourceBadge label="maxHR" source={meta.maxHRSource} />
+        <SourceBadge label="LTHR" source={meta.lthrSource} />
+        {meta.vo2maxRunning !== null && (
+          <div className="col-span-2 text-dim">
+            VO2max:{" "}
+            <span className="text-bright font-[family-name:var(--font-geist-mono)]">
+              {meta.vo2maxRunning}
+            </span>
+          </div>
+        )}
+        {meta.garminSyncedAt && (
+          <div className="col-span-2 text-[11px] text-dim">
+            마지막 싱크: {new Date(meta.garminSyncedAt).toLocaleString("ko-KR")}
+          </div>
+        )}
+      </div>
+
+      {message && (
+        <div className="mt-3 text-[12px] text-accent">{message}</div>
+      )}
+    </div>
+  );
+}
+
+function SourceBadge({
+  label,
+  source,
+}: {
+  label: string;
+  source: string | null;
+}) {
+  if (!source) return <div className="text-dim">{label}: 미설정</div>;
+  const badge =
+    source === "garmin"
+      ? "bg-blue-900/40 text-blue-300"
+      : "bg-amber-900/40 text-amber-300";
+  return (
+    <div>
+      <span className="text-dim">{label}: </span>
+      <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge}`}>
+        {source === "garmin" ? "Garmin 자동" : "수동"}
+      </span>
+    </div>
+  );
+}
+
+function MetricHistorySection({ entries }: { entries: MetricChangeEntry[] }) {
+  return (
+    <div className="bg-card border border-border rounded-xl p-5 mt-8">
+      <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
+        프로필 변경 이력
+      </div>
+      <div className="space-y-2 max-h-[400px] overflow-y-auto">
+        {entries.map((e) => {
+          const date = new Date(e.changedAt).toLocaleDateString("ko-KR");
+          const time = new Date(e.changedAt).toLocaleTimeString("ko-KR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+          const fieldLabel = FIELD_LABELS[e.field] ?? e.field;
+          const unit = FIELD_UNITS[e.field] ?? "";
+          const reasonLabel = e.reason ? REASON_LABELS[e.reason] ?? e.reason : "";
+          const sourceBadge =
+            e.source === "garmin"
+              ? "bg-blue-900/40 text-blue-300"
+              : "bg-amber-900/40 text-amber-300";
+          return (
+            <div
+              key={e.id}
+              className="flex items-center gap-3 text-[12px] py-2 border-b border-border/40 last:border-0"
+            >
+              <div className="text-dim w-20 shrink-0">
+                {date.slice(5)} {time}
+              </div>
+              <div className="w-20 text-bright">{fieldLabel}</div>
+              <div className="flex-1 font-[family-name:var(--font-geist-mono)] text-sub">
+                {e.oldValue ?? "—"} → <span className="text-bright">{e.newValue ?? "—"}</span>
+                {unit && <span className="text-dim ml-1">{unit}</span>}
+              </div>
+              <span className={`text-[10px] px-1.5 py-0.5 rounded ${sourceBadge}`}>
+                {e.source === "garmin" ? "Garmin" : "수동"}
+              </span>
+              {reasonLabel && (
+                <span className="text-[10px] text-dim w-24 text-right">
+                  {reasonLabel}
+                </span>
+              )}
+            </div>
+          );
+        })}
+      </div>
+    </div>
   );
 }

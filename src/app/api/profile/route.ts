@@ -3,6 +3,10 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
+import {
+  recordMetricChange,
+  type MetricField,
+} from "@/lib/fitness/profile-history";
 
 /** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
 const birthDateSchema = z
@@ -133,17 +137,93 @@ export async function PATCH(request: Request) {
       updatePayload.targetDate = data.targetDate
         ? parseLocalDate(data.targetDate)
         : null;
-    if (data.restingHRBase !== undefined)
+    if (data.restingHRBase !== undefined) {
       updatePayload.restingHRBase = data.restingHRBase;
-    if (data.maxHR !== undefined) updatePayload.maxHR = data.maxHR;
+      if (data.restingHRBase !== existing.restingHRBase) {
+        updatePayload.restingHRBaseSource =
+          data.restingHRBase === null ? null : "manual";
+      }
+    }
+    if (data.maxHR !== undefined) {
+      updatePayload.maxHR = data.maxHR;
+      // source는 값이 실제로 변경됐을 때만 갱신 (form 전송이 unchanged field도 포함하므로
+      // 매 저장마다 source가 manual로 뒤집히는 것 방지)
+      if (data.maxHR !== existing.maxHR) {
+        updatePayload.maxHRSource = data.maxHR === null ? null : "manual";
+      }
+    }
     if (data.lthr !== undefined) updatePayload.lthr = data.lthr;
     if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
+
+    // LTHR / LTHR pace는 한 쌍으로 측정 → lthrSource를 둘의 next state 기반으로 결정
+    {
+      const nextLthr = data.lthr !== undefined ? data.lthr : existing.lthr;
+      const nextLthrPace =
+        data.lthrPace !== undefined ? data.lthrPace : existing.lthrPace;
+      const lthrChanged =
+        data.lthr !== undefined && data.lthr !== existing.lthr;
+      const paceChanged =
+        data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace;
+
+      if (lthrChanged || paceChanged) {
+        if (nextLthr === null && nextLthrPace === null) {
+          // 둘 다 비워짐 → source 초기화 (다음 sync에서 자동 설정 OK)
+          updatePayload.lthrSource = null;
+        } else if (
+          (lthrChanged && data.lthr !== null) ||
+          (paceChanged && data.lthrPace !== null)
+        ) {
+          // 한쪽이라도 수동으로 값 설정/변경됨 → manual 보호
+          updatePayload.lthrSource = "manual";
+        }
+        // 한쪽만 비워졌고 다른 쪽이 남아있으면 source 유지 (현재 보호 상태 보존)
+      }
+    }
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
 
-    const profile = await prisma.userProfile.update({
-      where: { id: existing.id },
-      data: updatePayload,
+    // 변경 이력 기록 대상 필드 수집 (#85)
+    const trackedFields: Array<{ field: MetricField; old: number | null; new: number | null }> = [];
+    if (data.maxHR !== undefined && data.maxHR !== existing.maxHR) {
+      trackedFields.push({ field: "maxHR", old: existing.maxHR, new: data.maxHR });
+    }
+    if (data.lthr !== undefined && data.lthr !== existing.lthr) {
+      trackedFields.push({ field: "lthr", old: existing.lthr, new: data.lthr });
+    }
+    if (data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace) {
+      trackedFields.push({ field: "lthrPace", old: existing.lthrPace, new: data.lthrPace });
+    }
+    if (
+      data.restingHRBase !== undefined &&
+      data.restingHRBase !== existing.restingHRBase
+    ) {
+      trackedFields.push({
+        field: "restingHRBase",
+        old: existing.restingHRBase,
+        new: data.restingHRBase,
+      });
+    }
+
+    // UserProfile update + MetricChange 기록을 단일 트랜잭션으로 원자화.
+    // history 실패 시 profile 변경도 롤백되어 다음 요청에서 delta가 다시 감지됨.
+    const profile = await prisma.$transaction(async (tx) => {
+      const updated = await tx.userProfile.update({
+        where: { id: existing.id },
+        data: updatePayload,
+      });
+      for (const t of trackedFields) {
+        await recordMetricChange(
+          {
+            field: t.field,
+            oldValue: t.old,
+            newValue: t.new,
+            source: "manual",
+            reason: "user_edit",
+          },
+          tx
+        );
+      }
+      return updated;
     });
 
     // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산.
