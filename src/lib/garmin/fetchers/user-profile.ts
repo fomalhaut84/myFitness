@@ -299,13 +299,6 @@ export async function syncUserProfile(
     errors.push({ source: "user-settings", message: msg });
   }
 
-  // 모두 실패 시 데이터 없음 → throw 후 종료
-  if (errors.length === 2 || (!zones.length && !settings)) {
-    throw new Error(
-      `Garmin user-profile 조회 실패: ${errors.map((e) => `${e.source}=${e.message}`).join(" / ")}`
-    );
-  }
-
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
   // 빈/누락 페이로드도 "데이터 없음"으로 처리하여 stale clear 방지.
@@ -324,6 +317,23 @@ export async function syncUserProfile(
     runningZones !== null;
   const userSettingsOk =
     !errors.some((e) => e.source === "user-settings") && hasUserData;
+
+  // 양쪽 모두 사용 가능한 데이터가 없으면 throw — 200 OK + 빈 페이로드 케이스도 잡음.
+  // (HTTP 에러로 인한 errors.length === 2 케이스도 자동 포함)
+  if (!hrZonesOk && !userSettingsOk) {
+    const reasons = [
+      ...errors.map((e) => `${e.source}=${e.message}`),
+      runningZones === null && !errors.some((e) => e.source === "heartRateZones")
+        ? "heartRateZones=빈 페이로드"
+        : null,
+      !hasUserData && !errors.some((e) => e.source === "user-settings")
+        ? "user-settings=빈 userData"
+        : null,
+    ].filter(Boolean);
+    throw new Error(
+      `Garmin user-profile 사용 가능한 데이터 없음: ${reasons.join(" / ")}`
+    );
+  }
 
   await applyAutoSync({
     hrZonesOk,
