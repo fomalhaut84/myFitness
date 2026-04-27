@@ -12,9 +12,6 @@ export async function syncHeartRate(
   const dates = dateRange(startDate, endDate);
 
   for (const date of dates) {
-    // 미래 instant 방지 (서버 타임존 무관 절대 시각 비교)
-    if (date.getTime() > Date.now()) continue;
-
     try {
       const hrData = await withRateLimit(() => client.getHeartRate(date));
 
