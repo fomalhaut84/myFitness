@@ -97,70 +97,78 @@ async function applyAutoSync(args: {
     profile.lthrSource === "garmin" ||
     (profile.lthrSource === null && profile.lthr === null);
 
-  // maxHR
-  if (args.garminMaxHR && canAutoUpdateMaxHR) {
-    if (profile.maxHR !== args.garminMaxHR) {
-      historyOps.push((tx) =>
-        recordMetricChange(
-          {
-            field: "maxHR",
-            oldValue: profile.maxHR,
-            newValue: args.garminMaxHR,
-            source: "garmin",
-            reason,
-          },
-          tx
-        )
-      );
-      updates.maxHR = args.garminMaxHR;
+  // maxHR — Garmin이 null 반환 시 stale 값 클리어 (source가 garmin인 경우만)
+  if (canAutoUpdateMaxHR && profile.maxHR !== args.garminMaxHR) {
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "maxHR",
+          oldValue: profile.maxHR,
+          newValue: args.garminMaxHR,
+          source: "garmin",
+          reason,
+        },
+        tx
+      )
+    );
+    updates.maxHR = args.garminMaxHR;
+  }
+  if (canAutoUpdateMaxHR) {
+    if (args.garminMaxHR !== null && profile.maxHRSource !== "garmin") {
+      updates.maxHRSource = "garmin";
+    } else if (args.garminMaxHR === null && profile.maxHRSource === "garmin") {
+      updates.maxHRSource = null;
     }
-    if (profile.maxHRSource !== "garmin") updates.maxHRSource = "garmin";
   }
 
   // LTHR
-  if (args.garminLthr && canAutoUpdateLthr) {
-    if (profile.lthr !== args.garminLthr) {
-      historyOps.push((tx) =>
-        recordMetricChange(
-          {
-            field: "lthr",
-            oldValue: profile.lthr,
-            newValue: args.garminLthr,
-            source: "garmin",
-            reason,
-          },
-          tx
-        )
-      );
-      updates.lthr = args.garminLthr;
+  if (canAutoUpdateLthr && profile.lthr !== args.garminLthr) {
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "lthr",
+          oldValue: profile.lthr,
+          newValue: args.garminLthr,
+          source: "garmin",
+          reason,
+        },
+        tx
+      )
+    );
+    updates.lthr = args.garminLthr;
+  }
+  if (canAutoUpdateLthr) {
+    if (args.garminLthr !== null && profile.lthrSource !== "garmin") {
+      updates.lthrSource = "garmin";
+    } else if (args.garminLthr === null && profile.lthrSource === "garmin") {
+      // lthr와 lthrPace 둘 다 null로 비워질 때만 source 해제
+      if (args.garminLthrPace === null) updates.lthrSource = null;
     }
-    if (profile.lthrSource !== "garmin") updates.lthrSource = "garmin";
     if (args.garminLthrAutoDetected !== null)
       updates.lthrAutoDetected = args.garminLthrAutoDetected;
     if (args.garminLthrMeasuredAt) updates.lthrMeasuredAt = args.garminLthrMeasuredAt;
   }
 
   // LTHR Pace — LTHR과 한 쌍으로 측정되므로 lthrSource를 따름 (수동 보호)
-  if (args.garminLthrPace && canAutoUpdateLthr) {
-    if (profile.lthrPace !== args.garminLthrPace) {
-      historyOps.push((tx) =>
-        recordMetricChange(
-          {
-            field: "lthrPace",
-            oldValue: profile.lthrPace,
-            newValue: args.garminLthrPace,
-            source: "garmin",
-            reason,
-          },
-          tx
-        )
-      );
-      updates.lthrPace = args.garminLthrPace;
-    }
+  if (canAutoUpdateLthr && profile.lthrPace !== args.garminLthrPace) {
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "lthrPace",
+          oldValue: profile.lthrPace,
+          newValue: args.garminLthrPace,
+          source: "garmin",
+          reason,
+        },
+        tx
+      )
+    );
+    updates.lthrPace = args.garminLthrPace;
   }
 
   // VO2max
-  if (args.garminVo2max && profile.vo2maxRunning !== args.garminVo2max) {
+  // VO2max — Garmin 전용 (manual source 필드 없음). null도 클리어 신호로 처리.
+  if (profile.vo2maxRunning !== args.garminVo2max) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
@@ -178,7 +186,7 @@ async function applyAutoSync(args: {
 
   // 안정시 심박 (Garmin 자동 추정값. 사용자 수동 설정값은 maxHR/lthr와 달리
   // 별도 source 필드 없으므로 변경되면 그대로 갱신).
-  if (args.garminRestingHR && profile.restingHRBase !== args.garminRestingHR) {
+  if (profile.restingHRBase !== args.garminRestingHR) {
     historyOps.push((tx) =>
       recordMetricChange(
         {
