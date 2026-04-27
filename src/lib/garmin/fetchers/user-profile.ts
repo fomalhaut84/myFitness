@@ -81,11 +81,22 @@ async function applyAutoSync(args: {
         ? "garmin_auto_detect"
         : "garmin_initial";
 
-  // maxHR — 수동 설정 없으면 자동 갱신
-  if (
-    args.garminMaxHR &&
-    (profile.maxHRSource !== "manual" || profile.maxHR === null)
-  ) {
+  // 자동 갱신 가능 여부:
+  // - source === "garmin" → 갱신 OK
+  // - source === null + 값 없음 → 최초 자동 설정 OK
+  // - source === null + 값 있음 → manual로 간주 (마이그레이션 전 데이터 보호)
+  // - source === "manual" → 보호
+  const canAutoUpdateMaxHR =
+    profile.maxHR === null ||
+    profile.maxHRSource === "garmin" ||
+    (profile.maxHRSource === null && profile.maxHR === null);
+  const canAutoUpdateLthr =
+    profile.lthr === null ||
+    profile.lthrSource === "garmin" ||
+    (profile.lthrSource === null && profile.lthr === null);
+
+  // maxHR
+  if (args.garminMaxHR && canAutoUpdateMaxHR) {
     if (profile.maxHR !== args.garminMaxHR) {
       historyOps.push(() =>
         recordMetricChange({
@@ -102,10 +113,7 @@ async function applyAutoSync(args: {
   }
 
   // LTHR
-  if (
-    args.garminLthr &&
-    (profile.lthrSource !== "manual" || profile.lthr === null)
-  ) {
+  if (args.garminLthr && canAutoUpdateLthr) {
     if (profile.lthr !== args.garminLthr) {
       historyOps.push(() =>
         recordMetricChange({

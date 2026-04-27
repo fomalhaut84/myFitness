@@ -141,12 +141,17 @@ export async function PATCH(request: Request) {
       updatePayload.restingHRBase = data.restingHRBase;
     if (data.maxHR !== undefined) {
       updatePayload.maxHR = data.maxHR;
-      // 수동 변경 시 source 표시
-      updatePayload.maxHRSource = data.maxHR === null ? null : "manual";
+      // source는 값이 실제로 변경됐을 때만 갱신 (form 전송이 unchanged field도 포함하므로
+      // 매 저장마다 source가 manual로 뒤집히는 것 방지)
+      if (data.maxHR !== existing.maxHR) {
+        updatePayload.maxHRSource = data.maxHR === null ? null : "manual";
+      }
     }
     if (data.lthr !== undefined) {
       updatePayload.lthr = data.lthr;
-      updatePayload.lthrSource = data.lthr === null ? null : "manual";
+      if (data.lthr !== existing.lthr) {
+        updatePayload.lthrSource = data.lthr === null ? null : "manual";
+      }
     }
     if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
     if (data.targetCalories !== undefined)

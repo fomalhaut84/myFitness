@@ -44,15 +44,12 @@ export async function getUserProfile() {
   });
   const activityMaxHR = activityMax._max.maxHR;
 
-  // maxHR 결정
+  // maxHR 결정. profile.maxHR 있으면 source 추론 (NULL은 manual로 간주).
   let maxHRValue: number;
   let maxHRSource: "manual" | "garmin" | "activity" | "estimated";
-  if (profile.maxHR && profile.maxHRSource === "manual") {
+  if (profile.maxHR) {
     maxHRValue = profile.maxHR;
-    maxHRSource = "manual";
-  } else if (profile.maxHR && profile.maxHRSource === "garmin") {
-    maxHRValue = profile.maxHR;
-    maxHRSource = "garmin";
+    maxHRSource = profile.maxHRSource === "garmin" ? "garmin" : "manual";
   } else if (activityMaxHR) {
     maxHRValue = activityMaxHR;
     maxHRSource = "activity";
