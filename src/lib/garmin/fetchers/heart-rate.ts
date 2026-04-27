@@ -3,9 +3,9 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import {
   dateRange,
-  formatDate,
   isNoDataError,
   startOfDay,
+  toKSTDateString,
   todayKSTString,
   withRateLimit,
 } from "../utils";
@@ -19,8 +19,8 @@ export async function syncHeartRate(
   const dates = dateRange(startDate, endDate);
 
   for (const date of dates) {
-    // 미래 날짜 방지 (오늘 KST 이후 skip) — 다른 fetcher와 일관성
-    if (formatDate(date) > todayKSTString()) continue;
+    // 미래 날짜 방지 — KST 기준 비교 (서버 타임존 무관)
+    if (toKSTDateString(date) > todayKSTString()) continue;
 
     try {
       const hrData = await withRateLimit(() => client.getHeartRate(date));
