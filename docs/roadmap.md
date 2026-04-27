@@ -213,6 +213,18 @@
 - [x] 이전 동일 유형 활동 비교 (페이스/HR 델타 카드 + 테이블)
 - [x] HR Zone 분포 스택바 + 강도 라벨 배지 (M4-5에서 구현)
 
+## M4-11: Garmin 프로필 자동 싱크 + 변경 이력 트래킹 ✅
+
+- [x] UserProfile에 source 필드 추가 (maxHRSource, lthrSource, restingHRBaseSource)
+- [x] heartRateZones + user-settings 양 endpoint 통합 싱크 (러닝 sport 우선)
+- [x] manual 값 보호 (source=manual이면 자동 갱신 차단)
+- [x] zonesRaw 신선도 체크 (stale Garmin zone 방지)
+- [x] MetricChange 모델 + recordMetricChange 헬퍼 (트랜잭션 원자성)
+- [x] MCP get_metric_history 도구 (필드/기간 필터, 변경 이력 조회)
+- [x] 프로필 페이지 source 배지 + lthrPace 표시
+- 효과: 가민 자동 측정값 반영 + 시간 경과별 피트니스 변화 추적
+- 스펙: `docs/specs/garmin-profile-sync.md`
+
 ---
 
 ### 권장 진행 순서
