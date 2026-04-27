@@ -44,6 +44,35 @@ export function getZoneRanges(lthr: number, maxHR?: number | null): ZoneRange[] 
   ];
 }
 
+/** Garmin이 직접 계산한 zone1~5Floor를 ZoneRange로 변환. zoneFloor 없으면 null. */
+export interface GarminZonesRaw {
+  zone1Floor: number | null;
+  zone2Floor: number | null;
+  zone3Floor: number | null;
+  zone4Floor: number | null;
+  zone5Floor: number | null;
+  maxHeartRateUsed: number | null;
+}
+
+export function garminZoneRanges(raw: GarminZonesRaw): ZoneRange[] | null {
+  const floors = [
+    raw.zone1Floor,
+    raw.zone2Floor,
+    raw.zone3Floor,
+    raw.zone4Floor,
+    raw.zone5Floor,
+  ];
+  if (floors.some((f) => f === null || f === undefined)) return null;
+  const f = floors as number[];
+  return [
+    { zone: 1, min: f[0], max: f[1] - 1, label: "회복" },
+    { zone: 2, min: f[1], max: f[2] - 1, label: "이지런" },
+    { zone: 3, min: f[2], max: f[3] - 1, label: "에어로빅" },
+    { zone: 4, min: f[3], max: f[4] - 1, label: "역치" },
+    { zone: 5, min: f[4], max: raw.maxHeartRateUsed ?? null, label: "VO2max" },
+  ];
+}
+
 /** HR 시계열 → Zone별 초 합계 */
 export function computeZoneDistribution(
   hrSeries: readonly number[],

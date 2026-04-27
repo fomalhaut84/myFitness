@@ -3,6 +3,10 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
+import {
+  recordMetricChange,
+  type MetricField,
+} from "@/lib/fitness/profile-history";
 
 /** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
 const birthDateSchema = z
@@ -135,16 +139,56 @@ export async function PATCH(request: Request) {
         : null;
     if (data.restingHRBase !== undefined)
       updatePayload.restingHRBase = data.restingHRBase;
-    if (data.maxHR !== undefined) updatePayload.maxHR = data.maxHR;
-    if (data.lthr !== undefined) updatePayload.lthr = data.lthr;
+    if (data.maxHR !== undefined) {
+      updatePayload.maxHR = data.maxHR;
+      // 수동 변경 시 source 표시
+      updatePayload.maxHRSource = data.maxHR === null ? null : "manual";
+    }
+    if (data.lthr !== undefined) {
+      updatePayload.lthr = data.lthr;
+      updatePayload.lthrSource = data.lthr === null ? null : "manual";
+    }
     if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
+
+    // 변경 이력 기록 대상 필드 수집 (#85)
+    const trackedFields: Array<{ field: MetricField; old: number | null; new: number | null }> = [];
+    if (data.maxHR !== undefined && data.maxHR !== existing.maxHR) {
+      trackedFields.push({ field: "maxHR", old: existing.maxHR, new: data.maxHR });
+    }
+    if (data.lthr !== undefined && data.lthr !== existing.lthr) {
+      trackedFields.push({ field: "lthr", old: existing.lthr, new: data.lthr });
+    }
+    if (data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace) {
+      trackedFields.push({ field: "lthrPace", old: existing.lthrPace, new: data.lthrPace });
+    }
+    if (
+      data.restingHRBase !== undefined &&
+      data.restingHRBase !== existing.restingHRBase
+    ) {
+      trackedFields.push({
+        field: "restingHRBase",
+        old: existing.restingHRBase,
+        new: data.restingHRBase,
+      });
+    }
 
     const profile = await prisma.userProfile.update({
       where: { id: existing.id },
       data: updatePayload,
     });
+
+    // 수동 변경 history 기록
+    for (const t of trackedFields) {
+      await recordMetricChange({
+        field: t.field,
+        oldValue: t.old,
+        newValue: t.new,
+        source: "manual",
+        reason: "user_edit",
+      });
+    }
 
     // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산.
     // 히스토리가 수백 건이면 수 초 이상 걸릴 수 있으므로 fire-and-forget으로 백그라운드 실행.

@@ -22,8 +22,30 @@ model UserProfile {
   lthrPace       Float?              // LTHR 페이스 (sec/km)
   targetCalories Int?                // 일일 칼로리 목표 (kcal)
   targetDate     DateTime?           // M4-6: 목표 체중 도달 목표일
+  // Garmin 자동 싱크 (#85)
+  vo2maxRunning     Float?    // Garmin VO2max
+  maxHRSource       String?   // "manual" | "garmin"
+  lthrSource        String?   // "manual" | "garmin"
+  lthrAutoDetected  Boolean?  // Garmin thresholdHeartRateAutoDetected
+  lthrMeasuredAt    DateTime? // firstbeatRunningLtTimestamp 변환
+  heartRateZonesRaw Json?     // Garmin 원본 zone1~5Floor + maxHR (러닝)
+  garminSyncedAt    DateTime? // 마지막 user-settings/biometric 싱크
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
+}
+
+// 프로필 메트릭 변경 이력 (#85)
+model MetricChange {
+  id        String   @id @default(cuid())
+  field     String   // "maxHR" | "lthr" | "lthrPace" | "vo2maxRunning" | "restingHRBase"
+  oldValue  Float?   // 이전 값 (null = 최초 설정)
+  newValue  Float?   // 새 값 (null = 삭제)
+  source    String   // "manual" | "garmin"
+  reason    String?  // "user_edit" | "garmin_auto_detect" | "garmin_change_state" | "garmin_initial"
+  changedAt DateTime @default(now())
+
+  @@index([field, changedAt])
+  @@index([changedAt])
 }
 
 model SyncMetadata {

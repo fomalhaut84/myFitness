@@ -8,6 +8,7 @@ import { syncSleep } from "./fetchers/sleep";
 import { syncHeartRate } from "./fetchers/heart-rate";
 import { syncBodyComposition } from "./fetchers/body-composition";
 import { syncBloodPressure } from "./fetchers/blood-pressure";
+import { syncUserProfile } from "./fetchers/user-profile";
 
 const INITIAL_HISTORY_DAYS = 365;
 
@@ -17,7 +18,8 @@ type DataType =
   | "sleep"
   | "heart_rate"
   | "body_composition"
-  | "blood_pressure";
+  | "blood_pressure"
+  | "user_profile";
 
 interface SyncResult {
   dataType: DataType;
@@ -35,6 +37,7 @@ const SYNC_FNS: Record<
   heart_rate: syncHeartRate,
   body_composition: syncBodyComposition,
   blood_pressure: syncBloodPressure,
+  user_profile: syncUserProfile,
 };
 
 const SYNC_ORDER: DataType[] = [
@@ -44,6 +47,7 @@ const SYNC_ORDER: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  "user_profile",
 ];
 
 async function getStartDate(dataType: DataType): Promise<Date> {
