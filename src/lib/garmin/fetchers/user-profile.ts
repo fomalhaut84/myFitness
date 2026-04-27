@@ -170,11 +170,11 @@ async function applyAutoSync(args: {
     }
   }
 
-  // lthrAutoDetected, lthrMeasuredAt — user-settings에서만 옴
+  // lthrAutoDetected, lthrMeasuredAt — user-settings에서만 옴.
+  // userSettingsOk=true (200 + 유효 페이로드)면 명시적 null도 신뢰하여 stale 클리어.
   if (args.userSettingsOk && canAutoUpdateLthr) {
-    if (args.garminLthrAutoDetected !== null)
-      updates.lthrAutoDetected = args.garminLthrAutoDetected;
-    if (args.garminLthrMeasuredAt) updates.lthrMeasuredAt = args.garminLthrMeasuredAt;
+    updates.lthrAutoDetected = args.garminLthrAutoDetected;
+    updates.lthrMeasuredAt = args.garminLthrMeasuredAt;
   }
 
   // LTHR Pace — user-settings에서만 옴
