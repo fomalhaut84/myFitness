@@ -179,21 +179,27 @@ export async function PATCH(request: Request) {
       });
     }
 
-    const profile = await prisma.userProfile.update({
-      where: { id: existing.id },
-      data: updatePayload,
-    });
-
-    // 수동 변경 history 기록
-    for (const t of trackedFields) {
-      await recordMetricChange({
-        field: t.field,
-        oldValue: t.old,
-        newValue: t.new,
-        source: "manual",
-        reason: "user_edit",
+    // UserProfile update + MetricChange 기록을 단일 트랜잭션으로 원자화.
+    // history 실패 시 profile 변경도 롤백되어 다음 요청에서 delta가 다시 감지됨.
+    const profile = await prisma.$transaction(async (tx) => {
+      const updated = await tx.userProfile.update({
+        where: { id: existing.id },
+        data: updatePayload,
       });
-    }
+      for (const t of trackedFields) {
+        await recordMetricChange(
+          {
+            field: t.field,
+            oldValue: t.old,
+            newValue: t.new,
+            source: "manual",
+            reason: "user_edit",
+          },
+          tx
+        );
+      }
+      return updated;
+    });
 
     // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산.
     // 히스토리가 수백 건이면 수 초 이상 걸릴 수 있으므로 fire-and-forget으로 백그라운드 실행.
