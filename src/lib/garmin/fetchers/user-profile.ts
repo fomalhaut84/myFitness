@@ -65,8 +65,12 @@ async function applyAutoSync(args: {
   zonesRaw: GarminHRZone | null;
   changeState: string;
 }): Promise<void> {
-  const profile = await prisma.userProfile.findFirst();
-  if (!profile) return;
+  // 신규 사용자도 첫 싱크에서 자동 설정되도록 singleton upsert.
+  const profile = await prisma.userProfile.upsert({
+    where: { singleton: true },
+    update: {},
+    create: { singleton: true, name: "사용자" },
+  });
 
   const updates: Prisma.UserProfileUpdateInput = {
     garminSyncedAt: new Date(),
@@ -204,12 +208,14 @@ export async function syncUserProfile(
 ): Promise<number> {
   let zones: GarminHRZone[] = [];
   let settings: GarminUserSettings | null = null;
+  const errors: { source: string; message: string }[] = [];
 
   try {
     zones = await withRateLimit(() => client.get<GarminHRZone[]>(HR_ZONES_URL));
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[user-profile] heartRateZones 조회 실패:", msg);
+    errors.push({ source: "heartRateZones", message: msg });
   }
 
   try {
@@ -219,6 +225,14 @@ export async function syncUserProfile(
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[user-profile] user-settings 조회 실패:", msg);
+    errors.push({ source: "user-settings", message: msg });
+  }
+
+  // 두 API 모두 실패 시 fetch 에러로 전파 (sync metadata에 error 기록되도록)
+  if (errors.length === 2) {
+    throw new Error(
+      `Garmin user-profile 조회 모두 실패: ${errors.map((e) => `${e.source}=${e.message}`).join(" / ")}`
+    );
   }
 
   if (!zones.length && !settings) return 0;
