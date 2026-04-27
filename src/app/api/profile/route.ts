@@ -147,18 +147,31 @@ export async function PATCH(request: Request) {
         updatePayload.maxHRSource = data.maxHR === null ? null : "manual";
       }
     }
-    if (data.lthr !== undefined) {
-      updatePayload.lthr = data.lthr;
-      if (data.lthr !== existing.lthr) {
-        updatePayload.lthrSource = data.lthr === null ? null : "manual";
-      }
-    }
-    if (data.lthrPace !== undefined) {
-      updatePayload.lthrPace = data.lthrPace;
-      // LTHR pace는 LTHR과 한 쌍으로 측정되므로 source를 lthrSource에 묶음.
-      // 사용자가 pace를 수동 편집하면 sync에서 lthr/pace 모두 보호.
-      if (data.lthrPace !== existing.lthrPace && data.lthrPace !== null) {
-        updatePayload.lthrSource = "manual";
+    if (data.lthr !== undefined) updatePayload.lthr = data.lthr;
+    if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
+
+    // LTHR / LTHR pace는 한 쌍으로 측정 → lthrSource를 둘의 next state 기반으로 결정
+    {
+      const nextLthr = data.lthr !== undefined ? data.lthr : existing.lthr;
+      const nextLthrPace =
+        data.lthrPace !== undefined ? data.lthrPace : existing.lthrPace;
+      const lthrChanged =
+        data.lthr !== undefined && data.lthr !== existing.lthr;
+      const paceChanged =
+        data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace;
+
+      if (lthrChanged || paceChanged) {
+        if (nextLthr === null && nextLthrPace === null) {
+          // 둘 다 비워짐 → source 초기화 (다음 sync에서 자동 설정 OK)
+          updatePayload.lthrSource = null;
+        } else if (
+          (lthrChanged && data.lthr !== null) ||
+          (paceChanged && data.lthrPace !== null)
+        ) {
+          // 한쪽이라도 수동으로 값 설정/변경됨 → manual 보호
+          updatePayload.lthrSource = "manual";
+        }
+        // 한쪽만 비워졌고 다른 쪽이 남아있으면 source 유지 (현재 보호 상태 보존)
       }
     }
     if (data.targetCalories !== undefined)
