@@ -5,6 +5,7 @@ import {
   resolveMaxHR,
   type GarminZonesRaw,
 } from "@/lib/fitness/zones";
+import { formatDateLocal } from "@/lib/format";
 
 const FIELD_LABELS: Record<string, string> = {
   maxHR: "최대 심박",
@@ -73,7 +74,8 @@ export async function getUserProfile() {
       "사용자 프로필 + Garmin 자동 동기화된 maxHR/LTHR/Zone. " +
       "각 값에 source가 표시됨 (manual=사용자 수동, garmin=자동, activity=DB 추정, estimated=공식).",
     name: profile.name,
-    birthDate: profile.birthDate?.toISOString().slice(0, 10) ?? null,
+    // 날짜는 로컬 기준으로 직렬화 (toISOString은 UTC 변환으로 ±1일 어긋남 가능)
+    birthDate: profile.birthDate ? formatDateLocal(profile.birthDate) : null,
     maxHR: { value: maxHRValue, source: maxHRSource },
     lthr: profile.lthr
       ? {
@@ -93,7 +95,7 @@ export async function getUserProfile() {
     restingHR: profile.restingHRBase,
     targetWeight: profile.targetWeight,
     targetCalories: profile.targetCalories,
-    targetDate: profile.targetDate?.toISOString().slice(0, 10) ?? null,
+    targetDate: profile.targetDate ? formatDateLocal(profile.targetDate) : null,
     heartRateZones: zones,
     zoneSource,
     garminSyncedAt: profile.garminSyncedAt?.toISOString() ?? null,
@@ -205,7 +207,7 @@ export async function getMetricHistory(args: {
     period: `최근 ${days}일`,
     summaries,
     changes: changes.map((c) => ({
-      date: c.changedAt.toISOString().slice(0, 10),
+      date: formatDateLocal(c.changedAt),
       changedAt: c.changedAt.toISOString(),
       field: c.field,
       label: FIELD_LABELS[c.field] ?? c.field,

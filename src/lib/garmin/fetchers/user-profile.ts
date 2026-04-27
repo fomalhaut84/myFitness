@@ -246,14 +246,12 @@ export async function syncUserProfile(
     errors.push({ source: "user-settings", message: msg });
   }
 
-  // 두 API 모두 실패 시 fetch 에러로 전파 (sync metadata에 error 기록되도록)
-  if (errors.length === 2) {
+  // 모두 실패 시 데이터 없음 → throw 후 종료
+  if (errors.length === 2 || (!zones.length && !settings)) {
     throw new Error(
-      `Garmin user-profile 조회 모두 실패: ${errors.map((e) => `${e.source}=${e.message}`).join(" / ")}`
+      `Garmin user-profile 조회 실패: ${errors.map((e) => `${e.source}=${e.message}`).join(" / ")}`
     );
   }
-
-  if (!zones.length && !settings) return 0;
 
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
@@ -274,6 +272,14 @@ export async function syncUserProfile(
     zonesRaw: runningZones,
     changeState: runningZones?.changeState ?? "UNCHANGED",
   });
+
+  // 부분 실패도 sync metadata에 노출되도록 throw.
+  // 데이터는 이미 apply됨 → 다음 retry에서 metadata가 정상 업데이트되며 자연 복구.
+  if (errors.length > 0) {
+    throw new Error(
+      `Garmin user-profile 부분 실패 (data 일부 적용됨): ${errors.map((e) => `${e.source}=${e.message}`).join(" / ")}`
+    );
+  }
 
   return 1;
 }
