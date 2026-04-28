@@ -36,13 +36,13 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function generate(type: string, force = false) {
+  async function generate(type: string, force = false, reportDate?: string) {
     setGenerating(type);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, force }),
+        body: JSON.stringify({ type, force, reportDate }),
       });
       const data = await res.json();
       if (data.result) {
@@ -104,7 +104,13 @@ export default function ReportsPage() {
                   {r.reportDate ?? new Date(r.createdAt).toLocaleDateString("ko-KR")}
                 </span>
                 <button
-                  onClick={() => generate(r.category.replace("_report", ""), true)}
+                  onClick={() =>
+                    generate(
+                      r.category.replace("_report", ""),
+                      true,
+                      r.reportDate ?? undefined
+                    )
+                  }
                   disabled={generating !== null}
                   className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
                 >

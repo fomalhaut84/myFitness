@@ -50,29 +50,24 @@ async function preSyncForReport(): Promise<void> {
 async function generateReport(
   category: string,
   prompt: string,
-  force = false
+  force = false,
+  reportDate?: string
 ): Promise<string> {
   const dateStr = kstDateStr();
+  // reportDate 명시됐으면 그것 사용 (UI 재생성 버튼 등 자정 넘김 케이스).
+  // 미명시면 KST today.
+  const targetDate = reportDate ?? dateStr;
 
   // force가 아니면 기존 리포트 반환
   if (!force) {
     const existing = await prisma.aIAdvice.findFirst({
-      where: { category, reportDate: dateStr },
+      where: { category, reportDate: targetDate },
     });
     if (existing) {
-      console.log(`[${category}] ${dateStr} 이미 존재, 건너뜀`);
+      console.log(`[${category}] ${targetDate} 이미 존재, 건너뜀`);
       return existing.response;
     }
   }
-
-  // force=true: 카테고리의 가장 최근 record reportDate 유지 (자정 넘어 재생성 시 다음날로 어긋남 방지)
-  const latest = force
-    ? await prisma.aIAdvice.findFirst({
-        where: { category },
-        orderBy: { createdAt: "desc" },
-      })
-    : null;
-  const targetDate = latest?.reportDate ?? dateStr;
 
   console.log(`[${category}] preSync 시작 (target=${targetDate})`);
   await preSyncForReport();
@@ -99,10 +94,16 @@ async function generateReport(
   return result;
 }
 
-export async function generateMorningReport(force = false): Promise<string> {
-  return generateReport("morning_report", MORNING_PROMPT, force);
+export async function generateMorningReport(
+  force = false,
+  reportDate?: string
+): Promise<string> {
+  return generateReport("morning_report", MORNING_PROMPT, force, reportDate);
 }
 
-export async function generateEveningReport(force = false): Promise<string> {
-  return generateReport("evening_report", EVENING_PROMPT, force);
+export async function generateEveningReport(
+  force = false,
+  reportDate?: string
+): Promise<string> {
+  return generateReport("evening_report", EVENING_PROMPT, force, reportDate);
 }

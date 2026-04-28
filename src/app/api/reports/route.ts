@@ -56,13 +56,18 @@ export async function POST(request: Request) {
     const body = await request.json().catch(() => ({}));
     const type = body.type ?? "morning";
     const force = body.force === true;
+    // 자정 넘김 재생성 등 특정 날짜 record 갱신 시 명시. 미명시면 KST today.
+    const reportDate =
+      typeof body.reportDate === "string" && /^\d{4}-\d{2}-\d{2}$/.test(body.reportDate)
+        ? body.reportDate
+        : undefined;
 
     let result: string;
 
     if (type === "morning") {
-      result = await generateMorningReport(force);
+      result = await generateMorningReport(force, reportDate);
     } else if (type === "evening") {
-      result = await generateEveningReport(force);
+      result = await generateEveningReport(force, reportDate);
     } else if (type === "weekly") {
       result = await generateWeeklyReport();
     } else {
