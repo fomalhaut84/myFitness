@@ -27,9 +27,8 @@ export async function syncSleep(
       // Garmin calendarDate가 오늘(KST) 이후면 건너뛰기 (미래 날짜 방지)
       if (calendarDate > todayKSTString()) continue;
 
-      const [year, month, day] = calendarDate.split("-").map(Number);
-      const dayDate = new Date(year, month - 1, day);
-      dayDate.setHours(0, 0, 0, 0);
+      // KST midnight UTC instant (서버 타임존 무관, 다른 fetcher와 정합)
+      const dayDate = new Date(`${calendarDate}T00:00:00+09:00`);
 
       // 수면 점수 세부
       const sleepScoreDetails = dto.sleepScores
