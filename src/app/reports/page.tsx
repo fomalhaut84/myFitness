@@ -3,6 +3,7 @@
 import { useState, useEffect } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { todayKSTString, yesterdayKST, ymdKST } from "@/lib/garmin/utils";
 
 interface Report {
   id: string;
@@ -28,6 +29,14 @@ export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
   const [generating, setGenerating] = useState<string | null>(null);
+  // 재생성 가능 record: reportDate가 KST today/yesterday일 때만
+  // (preSync/MCP/프롬프트가 모두 today 기준이라 과거 컨텍스트 보장 불가).
+  const today = todayKSTString();
+  const yesterday = ymdKST(yesterdayKST());
+  const canRegenerate = (r: Report) =>
+    (r.category === "morning_report" || r.category === "evening_report") &&
+    r.reportDate !== null &&
+    (r.reportDate === today || r.reportDate === yesterday);
 
   useEffect(() => {
     fetch("/api/reports?days=14")
@@ -36,13 +45,13 @@ export default function ReportsPage() {
       .finally(() => setLoading(false));
   }, []);
 
-  async function generate(type: string, force = false) {
+  async function generate(type: string, force = false, reportDate?: string) {
     setGenerating(type);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ type, force }),
+        body: JSON.stringify({ type, force, reportDate }),
       });
       const data = await res.json();
       if (data.result) {
@@ -103,13 +112,21 @@ export default function ReportsPage() {
                 <span className="text-[11px] text-dim">
                   {r.reportDate ?? new Date(r.createdAt).toLocaleDateString("ko-KR")}
                 </span>
-                <button
-                  onClick={() => generate(r.category.replace("_report", ""), true)}
-                  disabled={generating !== null}
-                  className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
-                >
-                  재생성
-                </button>
+                {canRegenerate(r) && (
+                  <button
+                    onClick={() =>
+                      generate(
+                        r.category.replace("_report", ""),
+                        true,
+                        r.reportDate ?? undefined
+                      )
+                    }
+                    disabled={generating !== null}
+                    className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
+                  >
+                    재생성
+                  </button>
+                )}
               </div>
               <div
                 className="prose prose-invert prose-sm max-w-none"
