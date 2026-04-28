@@ -1,5 +1,6 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
 import defaultPrisma from "@/lib/prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 
 /** Serializable 트랜잭션 재시도 상수 */
 const MAX_RETRY = 3;
@@ -8,8 +9,8 @@ const RETRY_DELAY_MS = 50;
 /**
  * reference Date에서 다음 3가지 시각값을 산출:
  *
- * 1. `summaryKey` — DailySummary 조회용 key. sync 파이프라인의 저장 관례와 정합.
- *    `startOfDay(date)` = 서버 로컬 midnight of (KST wall-clock 날짜). 서버 TZ에 의존.
+ * 1. `summaryKey` — DailySummary 조회용 key. KST midnight UTC instant.
+ *    sync 파이프라인의 `utils.startOfDay`(KST-aware) 결과와 정합. 서버 TZ 무관.
  * 2. `kstDayStart` / `kstDayEnd` — FoodLog.date(실제 UTC instant) 집계용 경계.
  *    진짜 KST 00:00 UTC instant(= Date.UTC(Y,M,D) - 9h)로 서버 TZ와 무관하게 정확.
  */
@@ -20,20 +21,12 @@ function kstDayBoundary(referenceDate: Date): {
   kstDayStart: Date;
   kstDayEnd: Date;
 } {
-  const parts = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  }).formatToParts(referenceDate);
-  const y = Number(parts.find((p) => p.type === "year")!.value);
-  const m = Number(parts.find((p) => p.type === "month")!.value);
-  const d = Number(parts.find((p) => p.type === "day")!.value);
+  // KST 기준 YYYY-MM-DD에서 KST midnight UTC instant 생성
+  const ymd = ymdKST(referenceDate);
+  const summaryKey = new Date(`${ymd}T00:00:00+09:00`);
 
-  // DailySummary.date 저장 관례: 서버 로컬 midnight of KST 날짜
-  const summaryKey = new Date(y, m - 1, d, 0, 0, 0, 0);
-
-  // FoodLog 집계 경계: 진짜 KST 00:00 UTC instant
+  // FoodLog 집계 경계: 진짜 KST 00:00 UTC instant (summaryKey와 동일 instant이지만 명시 산출 유지)
+  const [y, m, d] = ymd.split("-").map(Number);
   const kstMidnightUTCms = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
   const kstDayStart = new Date(kstMidnightUTCms);
   const kstDayEnd = new Date(kstMidnightUTCms + 24 * 60 * 60 * 1000);

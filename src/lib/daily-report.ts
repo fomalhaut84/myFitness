@@ -50,56 +50,60 @@ async function preSyncForReport(): Promise<void> {
 async function generateReport(
   category: string,
   prompt: string,
-  force = false
+  force = false,
+  reportDate?: string
 ): Promise<string> {
   const dateStr = kstDateStr();
+  // reportDate 명시됐으면 그것 사용 (UI 재생성 버튼 등 자정 넘김 케이스).
+  // 미명시면 KST today.
+  const targetDate = reportDate ?? dateStr;
 
   // force가 아니면 기존 리포트 반환
   if (!force) {
     const existing = await prisma.aIAdvice.findFirst({
-      where: { category, reportDate: dateStr },
+      where: { category, reportDate: targetDate },
     });
     if (existing) {
-      console.log(`[${category}] ${dateStr} 이미 존재, 건너뜀`);
+      console.log(`[${category}] ${targetDate} 이미 존재, 건너뜀`);
       return existing.response;
     }
   }
 
-  // 리포트 전 데이터 최신화
+  console.log(`[${category}] preSync 시작 (target=${targetDate})`);
   await preSyncForReport();
+  console.log(`[${category}] preSync 완료, askAdvisor 시작`);
 
   const { result } = await askAdvisor(prompt);
+  console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
-  try {
-    if (force) {
-      // 트랜잭션으로 삭제+생성을 원자적으로 (유실 방지)
-      await prisma.$transaction([
-        prisma.aIAdvice.deleteMany({ where: { category, reportDate: dateStr } }),
-        prisma.aIAdvice.create({
-          data: { category, reportDate: dateStr, prompt, response: result },
-        }),
-      ]);
-    } else {
-      await prisma.aIAdvice.create({
-        data: { category, reportDate: dateStr, prompt, response: result },
-      });
-    }
-    console.log(`[${category}] ${dateStr} ${force ? "재생성" : "생성"} 완료`);
-  } catch {
-    console.log(`[${category}] ${dateStr} 중복, 기존 리포트 사용`);
-    const fallback = await prisma.aIAdvice.findFirst({
-      where: { category, reportDate: dateStr },
-    });
-    if (fallback) return fallback.response;
+  // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔
+  if (!result || result.trim().length === 0) {
+    throw new Error(`askAdvisor returned empty response for ${category}`);
   }
+
+  // 트랜잭션: 같은 reportDate의 기존 record 삭제 + 새 create.
+  // force=false 케이스에서도 동일 트랜잭션 사용 (race condition 시 중복 방지).
+  await prisma.$transaction([
+    prisma.aIAdvice.deleteMany({ where: { category, reportDate: targetDate } }),
+    prisma.aIAdvice.create({
+      data: { category, reportDate: targetDate, prompt, response: result },
+    }),
+  ]);
+  console.log(`[${category}] ${targetDate} ${force ? "재생성" : "생성"} 완료`);
 
   return result;
 }
 
-export async function generateMorningReport(force = false): Promise<string> {
-  return generateReport("morning_report", MORNING_PROMPT, force);
+export async function generateMorningReport(
+  force = false,
+  reportDate?: string
+): Promise<string> {
+  return generateReport("morning_report", MORNING_PROMPT, force, reportDate);
 }
 
-export async function generateEveningReport(force = false): Promise<string> {
-  return generateReport("evening_report", EVENING_PROMPT, force);
+export async function generateEveningReport(
+  force = false,
+  reportDate?: string
+): Promise<string> {
+  return generateReport("evening_report", EVENING_PROMPT, force, reportDate);
 }

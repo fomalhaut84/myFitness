@@ -127,7 +127,10 @@
 - [x] garmin/utils.ts KST 날짜 유틸 통일 (nowKST, todayKST, yesterdayKST, daysAgoKST)
 - [x] 모닝/이브닝 리포트 전 데이터 싱크 수행
 - [x] 리포트 재생성 기능 (force 옵션, 재생성 버튼, 텔레그램 /report regenerate)
-- 스펙: `docs/specs/m2-8-date-fix.md`
+- [x] body-composition fetcher 미래 instant 가드 (#88, PR #89)
+- [x] utils.*KST 진짜 KST midnight instant + 다운스트림 KST-aware + 리포트 재생성 reportDate 유지 + 텔레그램 미수신 안전망 (#90, PR #91)
+- [x] calorie-balance / sleep / blood-pressure 잔여 KST 정합 (#92, PR #93)
+- 스펙: `docs/specs/m2-8-date-fix.md`, `docs/specs/m2-8-followup-endDate-yesterday.md`, `docs/specs/m2-8-followup-kst-and-reports.md`, `docs/specs/m2-8-followup-tz-cleanup.md`
 
 ---
 
@@ -212,6 +215,18 @@
 - [x] SplitChart: ComposedChart로 확장 (페이스 바 + HR 라인 오버레이)
 - [x] 이전 동일 유형 활동 비교 (페이스/HR 델타 카드 + 테이블)
 - [x] HR Zone 분포 스택바 + 강도 라벨 배지 (M4-5에서 구현)
+
+## M4-11: Garmin 프로필 자동 싱크 + 변경 이력 트래킹 ✅
+
+- [x] UserProfile에 source 필드 추가 (maxHRSource, lthrSource, restingHRBaseSource)
+- [x] heartRateZones + user-settings 양 endpoint 통합 싱크 (러닝 sport 우선)
+- [x] manual 값 보호 (source=manual이면 자동 갱신 차단)
+- [x] zonesRaw 신선도 체크 (stale Garmin zone 방지)
+- [x] MetricChange 모델 + recordMetricChange 헬퍼 (트랜잭션 원자성)
+- [x] MCP get_metric_history 도구 (필드/기간 필터, 변경 이력 조회)
+- [x] 프로필 페이지 source 배지 + lthrPace 표시
+- 효과: 가민 자동 측정값 반영 + 시간 경과별 피트니스 변화 추적
+- 스펙: `docs/specs/garmin-profile-sync.md`
 
 ---
 

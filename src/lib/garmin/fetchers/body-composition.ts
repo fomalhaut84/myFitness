@@ -49,6 +49,10 @@ export async function syncBodyComposition(
     try {
       const entryDate = new Date(entry.date);
       const dayDate = startOfDay(entryDate);
+
+      // 미래 instant 방지 (서버 타임존 무관 절대 시각 비교)
+      if (entryDate.getTime() > Date.now()) continue;
+
       const weight = gramToKg(entry.weight);
 
       if (weight === null) continue;

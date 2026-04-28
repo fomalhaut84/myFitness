@@ -1,7 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
+import { formatDate, todayKSTString, withRateLimit } from "../utils";
 
 const BP_URL =
   "https://connectapi.garmin.com/bloodpressure-service/bloodpressure/range";
@@ -70,8 +70,8 @@ export async function syncBloodPressure(
       // 미래 날짜 방지 (타임존 스큐)
       if (summary.startDate > todayKSTString()) continue;
 
-      const [year, month, day] = summary.startDate.split("-").map(Number);
-      const dayDate = startOfDay(new Date(year, month - 1, day));
+      // KST midnight UTC instant (서버 타임존 무관)
+      const dayDate = new Date(`${summary.startDate}T00:00:00+09:00`);
 
       // 평균 맥박 계산
       const pulses = summary.measurements
