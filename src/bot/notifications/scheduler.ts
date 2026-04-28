@@ -31,21 +31,37 @@ async function sendToAll(bot: Bot, text: string) {
   }
 }
 
+/** 리포트 cron 콜백 공통 처리: 단계별 로그 + 실패 시 텔레그램 알림 (조용한 실패 차단) */
+async function runReportCron(
+  bot: Bot,
+  label: string,
+  emoji: string,
+  generate: () => Promise<string>
+) {
+  console.log(`[bot-cron] ${label} 시작`);
+  try {
+    const report = await generate();
+    const html = `${emoji} <b>${label}</b>\n\n${mdToHtml(report)}`;
+    await sendToAll(bot, html);
+    console.log(`[bot-cron] ${label} 전송 완료`);
+  } catch (error) {
+    const msg = error instanceof Error ? error.message : String(error);
+    console.error(`[bot-cron] ${label} 에러:`, msg);
+    // 조용한 실패 차단: 사용자에게 에러 알림
+    try {
+      await sendToAll(bot, `❌ ${label} 생성 실패: ${msg.slice(0, 500)}`);
+    } catch (notifyErr) {
+      console.error(`[bot-cron] ${label} 에러 알림 전송도 실패:`, notifyErr);
+    }
+  }
+}
+
 export function startBotScheduler(bot: Bot) {
   // 모닝 리포트 (08:00 KST)
   const morningSchedule = process.env.MORNING_REPORT_CRON ?? "0 8 * * *";
   cron.schedule(
     morningSchedule,
-    async () => {
-      console.log("[bot-cron] 모닝 리포트 생성 + 전송");
-      try {
-        const report = await generateMorningReport();
-        const html = `☀️ <b>모닝 리포트</b>\n\n${mdToHtml(report)}`;
-        await sendToAll(bot, html);
-      } catch (error) {
-        console.error("[bot-cron] 모닝 리포트 에러:", error);
-      }
-    },
+    () => runReportCron(bot, "모닝 리포트", "☀️", () => generateMorningReport()),
     { timezone: "Asia/Seoul" }
   );
 
@@ -53,16 +69,7 @@ export function startBotScheduler(bot: Bot) {
   const eveningSchedule = process.env.EVENING_REPORT_CRON ?? "0 23 * * *";
   cron.schedule(
     eveningSchedule,
-    async () => {
-      console.log("[bot-cron] 이브닝 리포트 생성 + 전송");
-      try {
-        const report = await generateEveningReport();
-        const html = `🌙 <b>이브닝 리포트</b>\n\n${mdToHtml(report)}`;
-        await sendToAll(bot, html);
-      } catch (error) {
-        console.error("[bot-cron] 이브닝 리포트 에러:", error);
-      }
-    },
+    () => runReportCron(bot, "이브닝 리포트", "🌙", () => generateEveningReport()),
     { timezone: "Asia/Seoul" }
   );
 
@@ -70,18 +77,11 @@ export function startBotScheduler(bot: Bot) {
   const weeklySchedule = process.env.REPORT_CRON ?? "0 7 * * 1";
   cron.schedule(
     weeklySchedule,
-    async () => {
-      console.log("[bot-cron] 주간 리포트 생성 + 전송");
-      try {
-        const report = await generateWeeklyReport();
-        const html = `📊 <b>주간 리포트</b>\n\n${mdToHtml(report)}`;
-        await sendToAll(bot, html);
-      } catch (error) {
-        console.error("[bot-cron] 주간 리포트 에러:", error);
-      }
-    },
+    () => runReportCron(bot, "주간 리포트", "📊", () => generateWeeklyReport()),
     { timezone: "Asia/Seoul" }
   );
 
-  console.log("[bot-cron] 알림 스케줄 등록 완료 (모닝/이브닝/주간)");
+  console.log(
+    `[bot-cron] 알림 스케줄 등록 완료 (모닝=${morningSchedule}, 이브닝=${eveningSchedule}, 주간=${weeklySchedule}, TZ=Asia/Seoul)`
+  );
 }

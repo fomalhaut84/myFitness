@@ -32,38 +32,45 @@ export function startOfDay(date: Date): Date {
 }
 
 // --- KST 기준 날짜 함수 ---
+//
+// 모든 함수는 진짜 KST midnight instant Date를 반환한다 (서버 타임존 무관).
+// 구현: Intl.DateTimeFormat("en-CA", timeZone:"Asia/Seoul")로 KST 벽시계 YYYY-MM-DD를
+// 추출 → "YYYY-MM-DDT00:00:00+09:00" ISO offset 문자열로 새 Date 생성.
+// setUTCDate는 instant 단위 1일 감산 → KST midnight instant 그대로 KST midnight (전날).
+// KST는 DST 없음.
 
-/** 현재 시간의 KST Date 객체 반환 */
-export function nowKST(): Date {
-  return new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
+/** Date(또는 현재)를 KST 벽시계 기준 YYYY-MM-DD로 변환. 서버 타임존 무관. */
+export function ymdKST(d: Date = new Date()): string {
+  return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(d);
 }
 
-/** KST 기준 오늘 midnight */
+/** 현재 시각 (instant은 절대시각이라 타임존 변환 불필요) */
+export function nowKST(): Date {
+  return new Date();
+}
+
+/** KST 기준 오늘 midnight (정확한 instant) */
 export function todayKST(): Date {
-  const kst = nowKST();
-  kst.setHours(0, 0, 0, 0);
-  return kst;
+  return new Date(`${ymdKST()}T00:00:00+09:00`);
 }
 
 /** KST 기준 어제 midnight */
 export function yesterdayKST(): Date {
-  const kst = nowKST();
-  kst.setDate(kst.getDate() - 1);
-  kst.setHours(0, 0, 0, 0);
-  return kst;
+  const t = todayKST();
+  t.setUTCDate(t.getUTCDate() - 1);
+  return t;
 }
 
 /** KST 기준 N일 전 midnight */
 export function daysAgoKST(n: number): Date {
-  const kst = nowKST();
-  kst.setDate(kst.getDate() - n);
-  kst.setHours(0, 0, 0, 0);
-  return kst;
+  const t = todayKST();
+  t.setUTCDate(t.getUTCDate() - n);
+  return t;
 }
 
 /** KST 기준 오늘 날짜 문자열 YYYY-MM-DD */
 export function todayKSTString(): string {
-  return formatDate(todayKST());
+  return ymdKST();
 }
 
 // --- Legacy (하위 호환) ---

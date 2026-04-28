@@ -65,33 +65,36 @@ async function generateReport(
     }
   }
 
-  // 리포트 전 데이터 최신화
+  // force=true: 카테고리의 가장 최근 record reportDate 유지 (자정 넘어 재생성 시 다음날로 어긋남 방지)
+  const latest = force
+    ? await prisma.aIAdvice.findFirst({
+        where: { category },
+        orderBy: { createdAt: "desc" },
+      })
+    : null;
+  const targetDate = latest?.reportDate ?? dateStr;
+
+  console.log(`[${category}] preSync 시작 (target=${targetDate})`);
   await preSyncForReport();
+  console.log(`[${category}] preSync 완료, askAdvisor 시작`);
 
   const { result } = await askAdvisor(prompt);
+  console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
-  try {
-    if (force) {
-      // 트랜잭션으로 삭제+생성을 원자적으로 (유실 방지)
-      await prisma.$transaction([
-        prisma.aIAdvice.deleteMany({ where: { category, reportDate: dateStr } }),
-        prisma.aIAdvice.create({
-          data: { category, reportDate: dateStr, prompt, response: result },
-        }),
-      ]);
-    } else {
-      await prisma.aIAdvice.create({
-        data: { category, reportDate: dateStr, prompt, response: result },
-      });
-    }
-    console.log(`[${category}] ${dateStr} ${force ? "재생성" : "생성"} 완료`);
-  } catch {
-    console.log(`[${category}] ${dateStr} 중복, 기존 리포트 사용`);
-    const fallback = await prisma.aIAdvice.findFirst({
-      where: { category, reportDate: dateStr },
-    });
-    if (fallback) return fallback.response;
+  // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔
+  if (!result || result.trim().length === 0) {
+    throw new Error(`askAdvisor returned empty response for ${category}`);
   }
+
+  // 트랜잭션: 같은 reportDate의 기존 record 삭제 + 새 create.
+  // force=false 케이스에서도 동일 트랜잭션 사용 (race condition 시 중복 방지).
+  await prisma.$transaction([
+    prisma.aIAdvice.deleteMany({ where: { category, reportDate: targetDate } }),
+    prisma.aIAdvice.create({
+      data: { category, reportDate: targetDate, prompt, response: result },
+    }),
+  ]);
+  console.log(`[${category}] ${targetDate} ${force ? "재생성" : "생성"} 완료`);
 
   return result;
 }
