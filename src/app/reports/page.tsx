@@ -24,6 +24,16 @@ const TYPE_COLORS: Record<string, string> = {
   weekly_report: "#22c55e",
 };
 
+/** KST 기준 today/yesterday YYYY-MM-DD 반환. */
+function getKstTodayYesterday(): { today: string; yesterday: string } {
+  const fmt = new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" });
+  const today = fmt.format(new Date());
+  const yesterdayDate = new Date(`${today}T00:00:00+09:00`);
+  yesterdayDate.setUTCDate(yesterdayDate.getUTCDate() - 1);
+  const yesterday = fmt.format(yesterdayDate);
+  return { today, yesterday };
+}
+
 export default function ReportsPage() {
   const [reports, setReports] = useState<Report[]>([]);
   const [loading, setLoading] = useState(true);
@@ -86,48 +96,67 @@ export default function ReportsPage() {
       ) : reports.length === 0 ? (
         <div className="text-center py-12 text-dim text-[13px]">리포트 없음</div>
       ) : (
-        <div className="space-y-4">
-          {reports.map((r) => (
-            <div key={r.id} className="bg-card border border-border rounded-xl p-5">
-              <div className="flex items-center gap-2 mb-3">
-                <span
-                  className="w-2 h-2 rounded-full"
-                  style={{ backgroundColor: TYPE_COLORS[r.category] ?? "#737373" }}
-                />
-                <span
-                  className="text-[11px] tracking-wider uppercase"
-                  style={{ color: TYPE_COLORS[r.category] ?? "#737373" }}
+        (() => {
+          const { today, yesterday } = getKstTodayYesterday();
+          // 재생성 가능 카테고리: morning/evening만 (weekly는 자동 cron 외 재생성 안 함).
+          // 재생성 가능 record: reportDate가 KST today/yesterday일 때만 (과거 컨텍스트 보장 불가).
+          const canRegenerate = (r: Report) =>
+            (r.category === "morning_report" || r.category === "evening_report") &&
+            r.reportDate !== null &&
+            (r.reportDate === today || r.reportDate === yesterday);
+          return (
+            <div className="space-y-4">
+              {reports.map((r) => (
+                <div
+                  key={r.id}
+                  className="bg-card border border-border rounded-xl p-5"
                 >
-                  {TYPE_LABELS[r.category] ?? r.category}
-                </span>
-                <span className="text-[11px] text-dim">
-                  {r.reportDate ?? new Date(r.createdAt).toLocaleDateString("ko-KR")}
-                </span>
-                <button
-                  onClick={() =>
-                    generate(
-                      r.category.replace("_report", ""),
-                      true,
-                      r.reportDate ?? undefined
-                    )
-                  }
-                  disabled={generating !== null}
-                  className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
-                >
-                  재생성
-                </button>
-              </div>
-              <div
-                className="prose prose-invert prose-sm max-w-none"
-                dangerouslySetInnerHTML={{
-                  __html: DOMPurify.sanitize(
-                    marked.parse(r.response, { async: false }) as string
-                  ),
-                }}
-              />
+                  <div className="flex items-center gap-2 mb-3">
+                    <span
+                      className="w-2 h-2 rounded-full"
+                      style={{
+                        backgroundColor: TYPE_COLORS[r.category] ?? "#737373",
+                      }}
+                    />
+                    <span
+                      className="text-[11px] tracking-wider uppercase"
+                      style={{ color: TYPE_COLORS[r.category] ?? "#737373" }}
+                    >
+                      {TYPE_LABELS[r.category] ?? r.category}
+                    </span>
+                    <span className="text-[11px] text-dim">
+                      {r.reportDate ??
+                        new Date(r.createdAt).toLocaleDateString("ko-KR")}
+                    </span>
+                    {canRegenerate(r) && (
+                      <button
+                        onClick={() =>
+                          generate(
+                            r.category.replace("_report", ""),
+                            true,
+                            r.reportDate ?? undefined
+                          )
+                        }
+                        disabled={generating !== null}
+                        className="ml-auto text-[10px] text-dim hover:text-sub transition-colors disabled:opacity-50"
+                      >
+                        재생성
+                      </button>
+                    )}
+                  </div>
+                  <div
+                    className="prose prose-invert prose-sm max-w-none"
+                    dangerouslySetInnerHTML={{
+                      __html: DOMPurify.sanitize(
+                        marked.parse(r.response, { async: false }) as string
+                      ),
+                    }}
+                  />
+                </div>
+              ))}
             </div>
-          ))}
-        </div>
+          );
+        })()
       )}
     </div>
   );

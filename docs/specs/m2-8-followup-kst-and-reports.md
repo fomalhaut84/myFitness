@@ -59,6 +59,11 @@ export function nowKST(): Date {
 - `claude -p` CLI 자체의 안정성 개선 (별도 이슈)
 - AI 리포트 콘텐츠 품질 개선
 - 모든 fetcher 가드 일괄 재정비 (utils 정확화 후 별도 이슈로 heart-rate 등 보강)
+- `asOfDate`를 리포트 생성 파이프라인 전체(preSync 범위, MCP tool query, 프롬프트)로 관통 — 본 PR은 가드(today/yesterday만 허용)로 차단만, 진짜 과거 컨텍스트 재생성은 별도 이슈
+- 잔여 KST 정합 회귀 (UTC 호스트 환경에서만 발현):
+  - `src/lib/fitness/calorie-balance.ts`의 `summaryKey`가 로컬 자정으로 만들어져 KST midnight instant로 저장된 `DailySummary.date`와 키 어긋남 가능성
+  - `src/lib/garmin/fetchers/sleep.ts`가 일부 위치에서 로컬 자정 저장
+  - 현재 서버는 KST이라 영향 없음, 별도 이슈로 분리
 
 ## 기술 설계
 
