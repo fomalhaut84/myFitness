@@ -137,7 +137,7 @@ export async function syncAll(
     bootstrapNewTypes?: boolean;
   }
 ): Promise<SyncResult[]> {
-  // 기본 endDate: KST 기준 오늘
+  // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
   const endDate = options?.endDate ?? todayKST();
   const dataTypes = options?.dataTypes ?? SYNC_ORDER;
   const results: SyncResult[] = [];

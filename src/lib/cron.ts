@@ -24,7 +24,8 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        // KST 기준 2일 전 ~ 어제 (당일 데이터 제외 → 미래 날짜 방지)
+        // KST 기준 2일 전 ~ 오늘. 오늘 부분 데이터(체중/혈압/걸음 등)도
+        // 자동 갱신 대상에 포함. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
         const { daysAgoKST, todayKST } = await import("@/lib/garmin/utils");
         const results = await syncAll({
           startDate: daysAgoKST(2),
