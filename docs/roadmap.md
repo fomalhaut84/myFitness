@@ -128,7 +128,8 @@
 - [x] 모닝/이브닝 리포트 전 데이터 싱크 수행
 - [x] 리포트 재생성 기능 (force 옵션, 재생성 버튼, 텔레그램 /report regenerate)
 - [x] body-composition fetcher 미래 instant 가드 (#88, PR #89)
-- 스펙: `docs/specs/m2-8-date-fix.md`, `docs/specs/m2-8-followup-endDate-yesterday.md`
+- [x] utils.*KST 진짜 KST midnight instant + 다운스트림 KST-aware + 리포트 재생성 reportDate 유지 + 텔레그램 미수신 안전망 (#90, PR #91)
+- 스펙: `docs/specs/m2-8-date-fix.md`, `docs/specs/m2-8-followup-endDate-yesterday.md`, `docs/specs/m2-8-followup-kst-and-reports.md`
 
 ---
 
