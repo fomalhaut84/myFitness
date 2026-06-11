@@ -241,3 +241,17 @@
 6. M4-6 (대시보드) — 복잡도 높음
 7. M4-7 ~ M4-10 — 순차 진행
 ```
+
+---
+
+# 유지보수 / 보안
+
+## Dependabot 보안 패치 2026-06 ✅
+
+- [x] next 16.2.4 → 16.2.9 (^16.2.6) — high 7 / med 4 / low 2 알림
+- [x] axios 1.15.1 → 1.17.0 (overrides ^1.16.0) — high 7 / med 1
+- [x] hono 4.12.14 → 4.12.25 (overrides ^4.12.21) — med 6 / low 1
+- [x] qs 6.15.0 → 6.15.2 (overrides ^6.15.2) — med 1
+- 효과: GitHub Dependabot open 알림 29건 → 0건
+- 스펙: `docs/specs/security-dependabot-202606.md` (#99, PR #100)
+
