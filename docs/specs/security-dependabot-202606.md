@@ -2,7 +2,7 @@
 
 ## 목적
 
-GitHub Dependabot 알림으로 보고된 npm 패키지 취약점 32건을 모두 해소.
+GitHub Dependabot 알림으로 보고된 npm 패키지 취약점 29건을 모두 해소.
 전부 npm 생태계, runtime/transitive 의존성. 비즈니스 로직 변경 없음.
 
 ## 영향 패키지 및 패치 타겟
