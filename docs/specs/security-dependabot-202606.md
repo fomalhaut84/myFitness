@@ -7,15 +7,21 @@ GitHub Dependabot 알림으로 보고된 npm 패키지 취약점 32건을 모두
 
 ## 영향 패키지 및 패치 타겟
 
-| 패키지 | 현재 | 패치 | 알림 수 | 의존 형태 | 패치 방식 |
+| 패키지 | 현재 | 타겟 (resolved) | 알림 수 | 의존 형태 | 패치 방식 |
 |---|---|---|---|---|---|
-| `next` | 16.2.4 | `^16.2.6` | 13 (high 7 / med 4 / low 2) | direct | package.json dependency bump |
-| `axios` | 1.15.1 | `^1.16.0` | 8 (high 6 / med 1, 추가 1) | transitive (`@flow-js/garmin-connect`) | npm `overrides` |
-| `qs` | 6.15.0 | `^6.15.2` | 1 (med) | transitive (`@flow-js/garmin-connect`, `@modelcontextprotocol/sdk` → express) | npm `overrides` |
-| `hono` | 4.12.14 | `^4.12.21` | 8 (med 7 / low 1) | transitive (`@modelcontextprotocol/sdk`) | npm `overrides` |
-| `eslint-config-next` | 16.2.4 | `^16.2.6` | (next와 동기) | devDep | bump |
+| `next` | 16.2.4 | `^16.2.6` (resolved **16.2.9**) | 13 (high 7 / med 4 / low 2) | direct | package.json dependency bump |
+| `axios` | 1.15.1 | `^1.16.0` (resolved **1.17.0**) | 8 (high 7 / med 1) | transitive (`@flow-js/garmin-connect`) | npm `overrides` |
+| `qs` | 6.15.0 | `^6.15.2` (resolved **6.15.2**) | 1 (med) | transitive (`@flow-js/garmin-connect`, `@modelcontextprotocol/sdk` → express) | npm `overrides` |
+| `hono` | 4.12.14 | `^4.12.21` (resolved **4.12.25**) | 7 (med 6 / low 1) | transitive (`@modelcontextprotocol/sdk`) | npm `overrides` |
+| `eslint-config-next` | 16.2.4 | `^16.2.6` (resolved 16.2.9) | (next와 동기) | devDep | bump |
 
-총 알림: 32건 → 0건 목표.
+총 Dependabot open 알림: **29건 → 0건** 목표 (13 + 8 + 1 + 7 = 29).
+
+### Lockfile 부수 효과
+
+`axios 1.15.1 → 1.17.0` 갱신은 `https-proxy-agent@5.0.1`, `agent-base@6.0.2` transitive 의존을 lockfile에
+신규 추가한다 (axios 1.17 패치 라인의 정규 의존). 코드/런타임에서 axios 직접 import 없고 사용처는
+`@flow-js/garmin-connect` 1곳 한정이라 동작 영향 없음. 기록 목적으로 명시.
 
 ## 요구사항
 
