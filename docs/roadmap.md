@@ -255,3 +255,12 @@
 - 효과: GitHub Dependabot open 알림 29건 → 0건
 - 스펙: `docs/specs/security-dependabot-202606.md` (#99, PR #100)
 
+## npm audit 후속 정합 2026-06 ✅
+
+- [x] postcss devDep ^8 → ^8.5.10 + overrides "$postcss" (next 번들 8.4.31까지 8.5.15 통일)
+- [x] fast-uri 3.1.0 → 3.1.2 (overrides ^3.1.2) — high (mcp-sdk → ajv)
+- [x] ip-address 10.1.0 → 10.2.0 (overrides ^10.1.1) — moderate XSS
+- [x] brace-expansion@5 5.0.5 → 5.0.6 (scoped overrides) — moderate DoS, 1.x 호환 유지
+- 효과: `npm audit` 6건 → 0건
+- 스펙: `docs/specs/security-audit-followup-202606.md` (#103, PR #104)
+
