@@ -3,8 +3,10 @@ import type { Bot } from "grammy";
 import { generateMorningReport, generateEveningReport } from "../../lib/daily-report";
 import { generateWeeklyReport } from "../../lib/weekly-report";
 import { mdToHtml } from "../utils/telegram";
+import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error";
 
 const MAX_MSG = 4096;
+const RETRY_DELAYS_MS = [2000, 8000, 30000];
 
 function getChatIds(): string[] {
   return (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "")
@@ -19,26 +21,56 @@ interface SendResult {
   total: number;
 }
 
+function sleep(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms));
+}
+
+function truncate(text: string): string {
+  return text.length > MAX_MSG ? text.slice(0, MAX_MSG - 3) + "..." : text;
+}
+
+async function sendOneWithRetry(
+  bot: Bot,
+  chatId: string,
+  htmlText: string
+): Promise<void> {
+  const html = truncate(htmlText);
+  let lastErr: unknown;
+  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+    try {
+      await bot.api.sendMessage(chatId, html, { parse_mode: "HTML" });
+      return;
+    } catch (err) {
+      lastErr = err;
+      if (isHtmlParseError(err)) {
+        const plain = htmlText.replace(/<[^>]*>/g, "").slice(0, MAX_MSG);
+        await bot.api.sendMessage(chatId, plain);
+        return;
+      }
+      if (!isNetworkError(err) || attempt === RETRY_DELAYS_MS.length - 1) {
+        throw err;
+      }
+      const delay = RETRY_DELAYS_MS[attempt];
+      console.warn(
+        `[bot] 전송 재시도 ${attempt + 1}/${RETRY_DELAYS_MS.length} (${chatId}, ${delay}ms 후): ${sanitizeError(err)}`
+      );
+      await sleep(delay);
+    }
+  }
+  throw lastErr;
+}
+
 async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
   const ids = getChatIds();
   let sent = 0;
   let failed = 0;
   for (const chatId of ids) {
     try {
-      const msg = text.length > MAX_MSG ? text.slice(0, MAX_MSG - 3) + "..." : text;
-      await bot.api.sendMessage(chatId, msg, { parse_mode: "HTML" });
+      await sendOneWithRetry(bot, chatId, text);
       sent++;
-    } catch (error) {
-      console.error(`[bot] 메시지 전송 실패 (${chatId}):`, error);
-      // HTML 실패 시 plain text fallback
-      try {
-        const plain = text.replace(/<[^>]*>/g, "").slice(0, MAX_MSG);
-        await bot.api.sendMessage(chatId, plain);
-        sent++;
-      } catch (plainErr) {
-        console.error(`[bot] plain text fallback도 실패 (${chatId}):`, plainErr);
-        failed++;
-      }
+    } catch (err) {
+      failed++;
+      console.error(`[bot] 메시지 전송 실패 (${chatId}): ${sanitizeError(err)}`);
     }
   }
   return { sent, failed, total: ids.length };
@@ -73,13 +105,13 @@ async function runReportCron(
       );
     }
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    console.error(`[bot-cron] ${label} 에러:`, msg);
+    const msg = sanitizeError(error);
+    console.error(`[bot-cron] ${label} 에러: ${msg}`);
     // 조용한 실패 차단: 사용자에게 에러 알림 (sendToAll 자체도 실패할 수 있음)
     try {
       await sendToAll(bot, `❌ ${label} 생성 실패: ${msg.slice(0, 500)}`);
     } catch (notifyErr) {
-      console.error(`[bot-cron] ${label} 에러 알림 전송도 실패:`, notifyErr);
+      console.error(`[bot-cron] ${label} 에러 알림 전송도 실패: ${sanitizeError(notifyErr)}`);
     }
   }
 }
