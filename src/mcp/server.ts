@@ -15,6 +15,7 @@ import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
 import { getReadinessScore } from "./tools/readiness";
+import { getTrainingLoadTrend } from "./tools/training-load";
 
 const server = new McpServer({
   name: "myfitness",
@@ -142,6 +143,13 @@ server.tool(
   "오늘 회복 점수 (Garmin bodyBatteryHigh 기반, 0-100) + 5단계 강도 추천 + HRV/restingHR 7일 평균 대비 deviation + 어제 트레이닝 로드. 모닝 리포트의 오늘 강도 결정에 사용.",
   {},
   async () => getReadinessScore()
+);
+
+server.tool(
+  "get_training_load_trend",
+  "트레이닝 로드 추세 (ACWR 기반). Acute 7d / Chronic 28d / 보조 14d 일평균 부하 + ACWR + 4단계 위험 구간 (detraining / sweet_spot / high / very_high). 주간 리포트의 오버/언더트레이닝 평가에 사용.",
+  {},
+  async () => getTrainingLoadTrend()
 );
 
 async function main() {
