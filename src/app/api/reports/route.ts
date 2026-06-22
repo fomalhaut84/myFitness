@@ -4,33 +4,86 @@ import { generateMorningReport, generateEveningReport } from "@/lib/daily-report
 import { generateWeeklyReport } from "@/lib/weekly-report";
 import { todayKSTString, ymdKST, yesterdayKST } from "@/lib/garmin/utils";
 
+const DEFAULT_LIMIT = 14;
+const MAX_LIMIT = 50;
+
+/** cursor 형식: "<createdAt ISO>|<id>". orderBy [createdAt desc, id desc] 와 일치. */
+function parseCursor(cursor: string): { createdAt: Date; id: string } | null {
+  const idx = cursor.indexOf("|");
+  if (idx <= 0 || idx === cursor.length - 1) return null;
+  const tsStr = cursor.slice(0, idx);
+  const id = cursor.slice(idx + 1);
+  const createdAt = new Date(tsStr);
+  if (Number.isNaN(createdAt.getTime())) return null;
+  return { createdAt, id };
+}
+
+function buildNextCursor(rows: { createdAt: string; id: string }[]): string | null {
+  if (rows.length === 0) return null;
+  const last = rows[rows.length - 1];
+  return `${last.createdAt}|${last.id}`;
+}
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
     const date = url.searchParams.get("date");
-    const days = parseInt(url.searchParams.get("days") ?? "7");
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = parseInt(url.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`, 10);
+    const limit = Math.min(
+      MAX_LIMIT,
+      Math.max(1, Number.isNaN(limitRaw) ? DEFAULT_LIMIT : limitRaw)
+    );
+    const daysRaw = url.searchParams.get("days");
 
-    const where: Record<string, unknown> = {};
+    const baseWhere: Record<string, unknown> = {};
 
     if (type && type !== "all") {
-      where.category = `${type}_report`;
+      baseWhere.category = `${type}_report`;
     } else {
-      where.category = { in: ["morning_report", "evening_report", "weekly_report"] };
+      baseWhere.category = { in: ["morning_report", "evening_report", "weekly_report"] };
     }
 
+    // cursor 복합키 (createdAt|id): orderBy [createdAt desc, id desc] 와 일치하는
+    // 키셋 페이지네이션. 동일 createdAt 다건이 페이지 경계에 걸려도 누락/중복 없음.
+    let where: Record<string, unknown> = baseWhere;
+    // 우선순위: date(단일 날짜) > cursor(페이지네이션) > days(명시적 후방 호환)
+    // 아무것도 명시 안 되면 전체 history에서 최신 limit만 (페이지네이션 기본).
     if (date) {
-      where.reportDate = date;
-    } else {
+      where = { ...baseWhere, reportDate: date };
+    } else if (cursor) {
+      const parsed = parseCursor(cursor);
+      if (!parsed) {
+        return NextResponse.json(
+          { error: "cursor must be '<ISO 8601 datetime>|<id>'" },
+          { status: 400 }
+        );
+      }
+      where = {
+        AND: [
+          baseWhere,
+          {
+            OR: [
+              { createdAt: { lt: parsed.createdAt } },
+              { createdAt: parsed.createdAt, id: { lt: parsed.id } },
+            ],
+          },
+        ],
+      };
+    } else if (daysRaw !== null) {
+      const days = parseInt(daysRaw, 10);
       const since = new Date();
       since.setDate(since.getDate() - (Number.isNaN(days) ? 7 : days));
-      where.createdAt = { gte: since };
+      where = { ...baseWhere, createdAt: { gte: since } };
     }
+    // 그 외: where = baseWhere (전체 history, 정렬 + limit으로만 제한)
 
-    const reports = await prisma.aIAdvice.findMany({
+    // take: limit+1로 hasMore 판단 (count 쿼리 회피)
+    const rows = await prisma.aIAdvice.findMany({
       where,
-      orderBy: { createdAt: "desc" },
-      take: 30,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
       select: {
         id: true,
         category: true,
@@ -40,12 +93,15 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json({
-      data: reports.map((r) => ({
-        ...r,
-        createdAt: r.createdAt.toISOString(),
-      })),
-    });
+    const hasMore = rows.length > limit;
+    const sliced = hasMore ? rows.slice(0, limit) : rows;
+    const data = sliced.map((r) => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+    }));
+    const nextCursor = hasMore ? buildNextCursor(data) : null;
+
+    return NextResponse.json({ data, nextCursor });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });

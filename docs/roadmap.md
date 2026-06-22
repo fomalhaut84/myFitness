@@ -244,6 +244,47 @@
 
 ---
 
+# 마일스톤 5: AI 어드바이저 강화 + 리포트 개선
+
+> 시작: 2026-06-22. 누적 데이터에 대한 UX 정합 + AI 출력 품질/비용 최적화.
+> 스펙: `docs/specs/m5-overview.md`
+
+## M5-1: 리포트 페이지 페이지네이션 — 우선순위 ★★★ ✅
+
+- [x] `/api/reports` GET — cursor 복합키(`<createdAt>|<id>`) + limit (default 14, max 50), 응답에 nextCursor
+- [x] `/reports` 페이지 — server component로 SSR 첫 14건 + reports-client.tsx 클라이언트 상호작용
+- [x] "더 보기" 버튼 (cursor state, race condition 가드)
+- [x] 타입 필터 토글 (전체/모닝/이브닝/주간) + filterRef로 generate 중 필터 변경 race 해결
+- [x] isomorphic-dompurify 도입 (SSR initial reports sanitize 안전)
+- 스펙: `docs/specs/m5-1-reports-pagination.md` (#114, PR #115)
+
+## M5-2: MCP 도구 확장 — 우선순위 ★★★
+
+> AI가 파생 지표를 직접 계산하지 않도록 도구화 → 토큰 절약 + 응답 정확도.
+
+- [ ] `get_readiness_score` — HRV+안정시HR+수면+어제 로드 → 0-100 회복 점수 + 강도 추천
+- [ ] `get_training_load_trend` — 7/14/28일 ACWR, 오버/언더트레이닝 위험 라벨
+- [ ] `get_pace_progression` — 동일 거리(5k/10k) 페이스 추세, baseline 대비 % 변화
+- [ ] `get_calendar_summary` — N일 데일리 요약 한 줄씩 일괄 조회
+
+## M5-3: 프롬프트 캐싱 — 우선순위 ★★
+
+> Claude CLI/SDK의 prompt caching으로 시스템 프롬프트 + MCP 디스크립터 재사용 비용 절감.
+
+- [ ] Claude CLI prompt caching 지원 여부 조사 (`--cache-control` 등)
+- [ ] 미지원 시 SDK 전환 검토 (`cache_control: { type: "ephemeral" }`)
+- [ ] 시스템 프롬프트 정적/동적 분리
+
+## M5-4: 멀티턴 컨텍스트 강화 — 우선순위 ★★
+
+> 봇/웹/cron 동시 사용 시 단일 sessionId 오염 해소.
+
+- [ ] 채널별 sessionId 분리 (web, telegram-bot, cron-morning/evening/weekly)
+- [ ] 세션 TTL (6h 무활동) + 토큰 한도 (100k 누적) 자동 reset
+- [ ] AI 채팅 페이지 "새 대화 시작" 버튼
+
+---
+
 # 유지보수 / 보안
 
 ## Dependabot 보안 패치 2026-06 ✅
