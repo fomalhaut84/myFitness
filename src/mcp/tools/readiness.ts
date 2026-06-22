@@ -4,6 +4,7 @@ import {
   yesterdayKST,
   daysAgoKST,
   todayKSTString,
+  ymdKST,
 } from "../../lib/garmin/utils";
 
 interface ReadinessLabel {
@@ -50,6 +51,13 @@ export async function getReadinessScore() {
   const yesterday = yesterdayKST();
   const sevenDaysAgo = daysAgoKST(7);
 
+  // Activity.startTime 은 Garmin startTimeLocal 을 UTC 서버에서 naïve Date 로 저장
+  // (KST 벽시각이 UTC instant 에 그대로 박힘 — src/lib/garmin/fetchers/activities.ts:34).
+  // 따라서 어제 운동 조회는 KST 자정 instant(=UTC 15:00) 가 아니라 같은 naïve 형식으로 비교해야
+  // KST 어제 15시 이후 운동이 누락되지 않음. 근본 수정(저장 normalize + backfill)은 별도 백로그.
+  const yesterdayActivityStart = new Date(`${ymdKST(yesterday)}T00:00:00.000Z`);
+  const todayActivityStart = new Date(`${ymdKST(today)}T00:00:00.000Z`);
+
   const [todayDaily, recentDaily, todaySleep, recentSleep, yesterdayActivities] =
     await Promise.all([
       prisma.dailySummary.findUnique({
@@ -69,7 +77,7 @@ export async function getReadinessScore() {
         select: { hrvOvernight: true, sleepScore: true },
       }),
       prisma.activity.findMany({
-        where: { startTime: { gte: yesterday, lt: today } },
+        where: { startTime: { gte: yesterdayActivityStart, lt: todayActivityStart } },
         select: {
           duration: true,
           intensityScore: true,
