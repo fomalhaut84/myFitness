@@ -47,7 +47,7 @@ const tomorrow = todayKST + 1 day;
 const runs = await prisma.activity.findMany({
   where: {
     startTime: { gte: since, lt: tomorrow },
-    activityType: { in: ["running", "treadmill_running", "trail_running"] },
+    activityType: { contains: "running" },
     distance: { not: null },
     avgPace: { not: null },
   },
