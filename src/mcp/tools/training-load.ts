@@ -49,12 +49,24 @@ function round(n: number, digits = 1): number {
   return Math.round(n * factor) / factor;
 }
 
-/** N일 윈도우 집계 (오늘 포함). dailyMap에서 최근 N일의 합계 + 휴식일 카운트. */
-function aggregate(
+interface WindowRaw {
+  rawTotal: number;
+  restDays: number;
+}
+
+interface WindowDisplay {
+  totalIntensityScore: number;
+  avgDailyScore: number;
+  days: number;
+  restDays: number;
+}
+
+/** N일 윈도우 raw 집계 (오늘 포함). round 적용 전 — ACWR 분류용. */
+function aggregateRaw(
   dailyMap: Map<string, number>,
   windowDays: number,
   todayStr: string
-): { totalIntensityScore: number; avgDailyScore: number; days: number; restDays: number } {
+): WindowRaw {
   let total = 0;
   let restDays = 0;
   const today = new Date(`${todayStr}T00:00:00+09:00`);
@@ -66,11 +78,16 @@ function aggregate(
     total += score;
     if (score === 0) restDays++;
   }
+  return { rawTotal: total, restDays };
+}
+
+/** raw 집계 → 응답 표시용 round 형식. */
+function toDisplay(raw: WindowRaw, windowDays: number): WindowDisplay {
   return {
-    totalIntensityScore: Math.round(total),
-    avgDailyScore: round(total / windowDays, 1),
+    totalIntensityScore: Math.round(raw.rawTotal),
+    avgDailyScore: round(raw.rawTotal / windowDays, 1),
     days: windowDays,
-    restDays,
+    restDays: raw.restDays,
   };
 }
 
@@ -106,18 +123,23 @@ export async function getTrainingLoadTrend() {
   }
 
   const todayStr = todayKSTString();
-  const acute7d = aggregate(dailyMap, 7, todayStr);
-  const chronic28d = aggregate(dailyMap, 28, todayStr);
-  const recent14d = aggregate(dailyMap, 14, todayStr);
+  const acute7dRaw = aggregateRaw(dailyMap, 7, todayStr);
+  const chronic28dRaw = aggregateRaw(dailyMap, 28, todayStr);
+  const recent14dRaw = aggregateRaw(dailyMap, 14, todayStr);
 
-  // 분류는 raw 값으로 (round 후 분류하면 1.496 → 1.5 → very_high 오분류).
+  // 분류는 unrounded 합계로 직접 산출 — aggregate 내부 round나 display의 1자리 round로
+  // 인한 경계 flip(예: raw 1.503 → display avg 사용 시 1.487로 분류) 차단.
   const acwrRaw =
-    chronic28d.avgDailyScore > 0
-      ? acute7d.avgDailyScore / chronic28d.avgDailyScore
+    chronic28dRaw.rawTotal > 0
+      ? (acute7dRaw.rawTotal / 7) / (chronic28dRaw.rawTotal / 28)
       : null;
   const acwr = acwrRaw !== null ? round(acwrRaw, 2) : null;
 
   const { zone, recommendation } = classifyACWR(acwrRaw);
+
+  const acute7d = toDisplay(acute7dRaw, 7);
+  const chronic28d = toDisplay(chronic28dRaw, 28);
+  const recent14d = toDisplay(recent14dRaw, 14);
 
   const payload = {
     date: todayStr,
