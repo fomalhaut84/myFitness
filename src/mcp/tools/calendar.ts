@@ -89,7 +89,8 @@ export async function getCalendarSummary(args: { days?: number } = {}) {
       runningCount: run?.count ?? 0,
       restingHR: sleep?.restingHR ?? daily?.restingHR ?? null,
       sleepScore: sleep?.sleepScore ?? null,
-      sleepHours: sleep?.totalSleep ? round(sleep.totalSleep / 60, 1) : null,
+      // sleep 객체 존재 여부로 판단 (totalSleep === 0 도 "기록은 있는 0분" 으로 보존)
+      sleepHours: sleep ? round(sleep.totalSleep / 60, 1) : null,
       bodyBatteryHigh: daily?.bodyBatteryHigh ?? null,
       calorieBalance: daily?.calorieBalance ?? null,
       steps: daily?.steps ?? null,
