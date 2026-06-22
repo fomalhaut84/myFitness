@@ -4,11 +4,20 @@ import { generateMorningReport, generateEveningReport } from "@/lib/daily-report
 import { generateWeeklyReport } from "@/lib/weekly-report";
 import { todayKSTString, ymdKST, yesterdayKST } from "@/lib/garmin/utils";
 
+const DEFAULT_LIMIT = 14;
+const MAX_LIMIT = 50;
+
 export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get("type");
     const date = url.searchParams.get("date");
+    const cursor = url.searchParams.get("cursor");
+    const limitRaw = parseInt(url.searchParams.get("limit") ?? `${DEFAULT_LIMIT}`);
+    const limit = Math.min(
+      MAX_LIMIT,
+      Math.max(1, Number.isNaN(limitRaw) ? DEFAULT_LIMIT : limitRaw)
+    );
     const days = parseInt(url.searchParams.get("days") ?? "7");
 
     const where: Record<string, unknown> = {};
@@ -19,18 +28,29 @@ export async function GET(request: Request) {
       where.category = { in: ["morning_report", "evening_report", "weekly_report"] };
     }
 
+    // 우선순위: date(단일 날짜) > cursor(페이지네이션) > days(후방 호환)
     if (date) {
       where.reportDate = date;
+    } else if (cursor) {
+      const cursorDate = new Date(cursor);
+      if (Number.isNaN(cursorDate.getTime())) {
+        return NextResponse.json(
+          { error: "cursor must be a valid ISO 8601 datetime" },
+          { status: 400 }
+        );
+      }
+      where.createdAt = { lt: cursorDate };
     } else {
       const since = new Date();
       since.setDate(since.getDate() - (Number.isNaN(days) ? 7 : days));
       where.createdAt = { gte: since };
     }
 
-    const reports = await prisma.aIAdvice.findMany({
+    // take: limit+1로 hasMore 판단 (count 쿼리 회피)
+    const rows = await prisma.aIAdvice.findMany({
       where,
-      orderBy: { createdAt: "desc" },
-      take: 30,
+      orderBy: [{ createdAt: "desc" }, { id: "desc" }],
+      take: limit + 1,
       select: {
         id: true,
         category: true,
@@ -40,12 +60,16 @@ export async function GET(request: Request) {
       },
     });
 
-    return NextResponse.json({
-      data: reports.map((r) => ({
-        ...r,
-        createdAt: r.createdAt.toISOString(),
-      })),
-    });
+    const hasMore = rows.length > limit;
+    const sliced = hasMore ? rows.slice(0, limit) : rows;
+    const data = sliced.map((r) => ({
+      ...r,
+      createdAt: r.createdAt.toISOString(),
+    }));
+    const nextCursor =
+      hasMore && data.length > 0 ? data[data.length - 1].createdAt : null;
+
+    return NextResponse.json({ data, nextCursor });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
