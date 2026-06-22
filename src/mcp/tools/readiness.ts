@@ -69,8 +69,10 @@ export async function getReadinessScore() {
         select: { hrvOvernight: true, sleepScore: true },
       }),
       prisma.activity.findMany({
-        // 운영 서버 timezone은 KST이므로 startTime이 정확한 UTC instant로 저장됨.
-        // yesterdayKST / todayKST (KST 자정 instant) 가 정확한 어제 1일 범위.
+        // 운영 서버 timezone이 KST일 때, fetchers/activities.ts:34의
+        // `new Date(startTimeLocal)`이 KST 벽시각을 KST로 해석해 정확한 UTC instant가 됨.
+        // → yesterdayKST/todayKST (KST 자정 instant) 가 정확한 어제 1일 범위.
+        // UTC 환경으로 이식 시 startTime 저장 normalize 필요 (#119 wontfix close).
         where: { startTime: { gte: yesterday, lt: today } },
         select: {
           duration: true,
