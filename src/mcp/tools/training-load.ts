@@ -61,9 +61,11 @@ interface WindowDisplay {
   restDays: number;
 }
 
-/** N일 윈도우 raw 집계 (오늘 포함). round 적용 전 — ACWR 분류용. */
+/** N일 윈도우 raw 집계 (오늘 포함). round 적용 전 — ACWR 분류용.
+ * restDays: 활동 자체가 없었던 날만 카운트 (intensityScore null인 활동도 활동일 처리). */
 function aggregateRaw(
   dailyMap: Map<string, number>,
+  activeDays: Set<string>,
   windowDays: number,
   todayStr: string
 ): WindowRaw {
@@ -74,9 +76,8 @@ function aggregateRaw(
     const d = new Date(today);
     d.setUTCDate(d.getUTCDate() - i);
     const key = ymdKST(d);
-    const score = dailyMap.get(key) ?? 0;
-    total += score;
-    if (score === 0) restDays++;
+    total += dailyMap.get(key) ?? 0;
+    if (!activeDays.has(key)) restDays++;
   }
   return { rawTotal: total, restDays };
 }
@@ -107,25 +108,26 @@ export async function getTrainingLoadTrend() {
   end.setUTCDate(end.getUTCDate() + 1);
 
   const activities = await prisma.activity.findMany({
-    where: {
-      startTime: { gte: start, lt: end },
-      intensityScore: { not: null },
-    },
+    where: { startTime: { gte: start, lt: end } },
     select: { startTime: true, intensityScore: true },
   });
 
-  // 일자별 합계 (KST 날짜 기준)
+  // 일자별 합계 + 활동 존재 여부 (KST 날짜 기준).
+  // intensityScore null인 활동도 activeDays에 표시 → 휴식일과 구분.
   const dailyMap = new Map<string, number>();
+  const activeDays = new Set<string>();
   for (const a of activities) {
-    if (a.intensityScore === null) continue;
     const dayKey = ymdKST(a.startTime);
-    dailyMap.set(dayKey, (dailyMap.get(dayKey) ?? 0) + a.intensityScore);
+    activeDays.add(dayKey);
+    if (a.intensityScore !== null) {
+      dailyMap.set(dayKey, (dailyMap.get(dayKey) ?? 0) + a.intensityScore);
+    }
   }
 
   const todayStr = todayKSTString();
-  const acute7dRaw = aggregateRaw(dailyMap, 7, todayStr);
-  const chronic28dRaw = aggregateRaw(dailyMap, 28, todayStr);
-  const recent14dRaw = aggregateRaw(dailyMap, 14, todayStr);
+  const acute7dRaw = aggregateRaw(dailyMap, activeDays, 7, todayStr);
+  const chronic28dRaw = aggregateRaw(dailyMap, activeDays, 28, todayStr);
+  const recent14dRaw = aggregateRaw(dailyMap, activeDays, 14, todayStr);
 
   // 분류는 unrounded 합계로 직접 산출 — aggregate 내부 round나 display의 1자리 round로
   // 인한 경계 flip(예: raw 1.503 → display avg 사용 시 1.487로 분류) 차단.
@@ -133,7 +135,9 @@ export async function getTrainingLoadTrend() {
     chronic28dRaw.rawTotal > 0
       ? (acute7dRaw.rawTotal / 7) / (chronic28dRaw.rawTotal / 28)
       : null;
-  const acwr = acwrRaw !== null ? round(acwrRaw, 2) : null;
+  // 표시 정밀도 4자리: 경계(1.5/0.8/1.3) 근처에서 zone과 acwr 표시가 어긋나지 않도록.
+  // 예: raw 1.5001 → 1.5001로 표시 → zone very_high과 일관.
+  const acwr = acwrRaw !== null ? round(acwrRaw, 4) : null;
 
   const { zone, recommendation } = classifyACWR(acwrRaw);
 
