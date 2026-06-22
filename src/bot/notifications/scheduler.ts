@@ -35,17 +35,24 @@ async function sendOneWithRetry(
   htmlText: string
 ): Promise<void> {
   const html = truncate(htmlText);
+  const plain = truncate(htmlText.replace(/<[^>]*>/g, ""));
+  let useHtml = true;
   let lastErr: unknown;
   for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
     try {
-      await bot.api.sendMessage(chatId, html, { parse_mode: "HTML" });
+      if (useHtml) {
+        await bot.api.sendMessage(chatId, html, { parse_mode: "HTML" });
+      } else {
+        await bot.api.sendMessage(chatId, plain);
+      }
       return;
     } catch (err) {
       lastErr = err;
-      if (isHtmlParseError(err)) {
-        const plain = htmlText.replace(/<[^>]*>/g, "").slice(0, MAX_MSG);
-        await bot.api.sendMessage(chatId, plain);
-        return;
+      // HTML parse 에러 → 같은 시도 횟수로 plain 모드 전환 (백오프 없이 즉시 재시도)
+      if (useHtml && isHtmlParseError(err)) {
+        useHtml = false;
+        attempt--;
+        continue;
       }
       if (!isNetworkError(err) || attempt === RETRY_DELAYS_MS.length - 1) {
         throw err;
@@ -57,7 +64,7 @@ async function sendOneWithRetry(
       await sleep(delay);
     }
   }
-  throw lastErr;
+  throw lastErr ?? new Error("sendOneWithRetry: 재시도 모두 실패 (원인 미상)");
 }
 
 async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
