@@ -16,6 +16,7 @@ import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
 import { getReadinessScore } from "./tools/readiness";
 import { getTrainingLoadTrend } from "./tools/training-load";
+import { getPaceProgression } from "./tools/pace-progression";
 
 const server = new McpServer({
   name: "myfitness",
@@ -150,6 +151,21 @@ server.tool(
   "트레이닝 로드 추세 (ACWR 기반). Acute 7d / Chronic 28d / 보조 14d 일평균 부하 + ACWR + 4단계 위험 구간 (detraining / sweet_spot / high / very_high). 주간 리포트의 오버/언더트레이닝 평가에 사용.",
   {},
   async () => getTrainingLoadTrend()
+);
+
+server.tool(
+  "get_pace_progression",
+  "거리 bucket(5k/10k/HM/FM)별 러닝 페이스 추세. baseline/latest/best + improvementPct(%) + 최근 5건. 주간/장기 리포트의 진척도 평가에 사용.",
+  {
+    windowDays: z
+      .number()
+      .int()
+      .min(30)
+      .max(365)
+      .optional()
+      .describe("조회 일수 (기본 90, 30~365)"),
+  },
+  async (args) => getPaceProgression(args)
 );
 
 async function main() {
