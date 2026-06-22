@@ -3,7 +3,8 @@ import { todayKST, daysAgoKST, todayKSTString, ymdKST } from "../../lib/garmin/u
 
 type Bucket = "5k" | "10k" | "HM" | "FM";
 
-const RUNNING_TYPES = ["running", "treadmill_running", "trail_running"];
+// 러닝 변종 모두 포함 (running, street_running, treadmill_running, trail_running 등).
+// 다른 코드(/api/activities, /bot/commands/run.ts 등)와 동일 패턴.
 
 interface RunRow {
   startTime: Date;
@@ -86,7 +87,7 @@ export async function getPaceProgression(args: { windowDays?: number } = {}) {
   const rows = await prisma.activity.findMany({
     where: {
       startTime: { gte: since, lt: tomorrow },
-      activityType: { in: RUNNING_TYPES },
+      activityType: { contains: "running" },
       distance: { not: null },
       avgPace: { not: null },
     },

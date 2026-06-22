@@ -14,7 +14,7 @@
 ### 2.1 기능 요구사항
 
 - [ ] **F1**: 신규 MCP 도구 `get_pace_progression`. 입력 파라미터 `windowDays`(default 90, 30~365 범위).
-- [ ] **F2**: 데이터 소스 = `Activity` 중 `activityType` 가 러닝 계열(`running`, `treadmill_running`, `trail_running`). `distance`/`avgPace` 모두 not null.
+- [ ] **F2**: 데이터 소스 = `Activity` 중 `activityType` 이 러닝 계열(substring `"running"` 포함 — `running`/`street_running`/`treadmill_running`/`trail_running` 등). `distance`/`avgPace` 모두 not null. 다른 러닝 쿼리(`/api/activities`, `bot/commands/run.ts`, `/api/body`)와 동일 패턴.
 - [ ] **F3**: 거리 bucket 분류:
   - `5k`: `[4.5, 5.5)` km
   - `10k`: `[9.0, 11.0)` km
