@@ -17,6 +17,7 @@ import { getUserProfile, getMetricHistory } from "./tools/user-profile";
 import { getReadinessScore } from "./tools/readiness";
 import { getTrainingLoadTrend } from "./tools/training-load";
 import { getPaceProgression } from "./tools/pace-progression";
+import { getCalendarSummary } from "./tools/calendar";
 
 const server = new McpServer({
   name: "myfitness",
@@ -166,6 +167,21 @@ server.tool(
       .describe("조회 일수 (기본 90, 30~365)"),
   },
   async (args) => getPaceProgression(args)
+);
+
+server.tool(
+  "get_calendar_summary",
+  "N일 일자별 핵심 지표 한 줄씩 (최신순) — 러닝 km/횟수, 안정시HR, 수면 점수/시간, bodyBattery, 칼로리 밸런스, 걸음수. summary에 기간 총합. 주간/월간 리포트에서 일자별 상황 훑기에 사용.",
+  {
+    days: z
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .optional()
+      .describe("조회 일수 (기본 14, 1~90)"),
+  },
+  async (args) => getCalendarSummary(args)
 );
 
 async function main() {
