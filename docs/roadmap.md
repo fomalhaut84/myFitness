@@ -249,12 +249,14 @@
 > 시작: 2026-06-22. 누적 데이터에 대한 UX 정합 + AI 출력 품질/비용 최적화.
 > 스펙: `docs/specs/m5-overview.md`
 
-## M5-1: 리포트 페이지 페이지네이션 — 우선순위 ★★★
+## M5-1: 리포트 페이지 페이지네이션 — 우선순위 ★★★ ✅
 
-- [ ] `/api/reports` GET — cursor(createdAt ISO) + limit (default 14, max 50), 응답에 nextCursor
-- [ ] `/reports` 페이지 — 첫 14건 + "더 보기" 버튼 (cursor state)
-- [ ] 타입 필터 토글 (전체/모닝/이브닝/주간)
-- 사용자 명시 요청, 즉시 효과
+- [x] `/api/reports` GET — cursor 복합키(`<createdAt>|<id>`) + limit (default 14, max 50), 응답에 nextCursor
+- [x] `/reports` 페이지 — server component로 SSR 첫 14건 + reports-client.tsx 클라이언트 상호작용
+- [x] "더 보기" 버튼 (cursor state, race condition 가드)
+- [x] 타입 필터 토글 (전체/모닝/이브닝/주간) + filterRef로 generate 중 필터 변경 race 해결
+- [x] isomorphic-dompurify 도입 (SSR initial reports sanitize 안전)
+- 스펙: `docs/specs/m5-1-reports-pagination.md` (#114, PR #115)
 
 ## M5-2: MCP 도구 확장 — 우선순위 ★★★
 
