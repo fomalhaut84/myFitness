@@ -35,7 +35,7 @@ export async function GET(request: Request) {
       MAX_LIMIT,
       Math.max(1, Number.isNaN(limitRaw) ? DEFAULT_LIMIT : limitRaw)
     );
-    const days = parseInt(url.searchParams.get("days") ?? "7", 10);
+    const daysRaw = url.searchParams.get("days");
 
     const baseWhere: Record<string, unknown> = {};
 
@@ -48,7 +48,8 @@ export async function GET(request: Request) {
     // cursor 복합키 (createdAt|id): orderBy [createdAt desc, id desc] 와 일치하는
     // 키셋 페이지네이션. 동일 createdAt 다건이 페이지 경계에 걸려도 누락/중복 없음.
     let where: Record<string, unknown> = baseWhere;
-    // 우선순위: date(단일 날짜) > cursor(페이지네이션) > days(후방 호환)
+    // 우선순위: date(단일 날짜) > cursor(페이지네이션) > days(명시적 후방 호환)
+    // 아무것도 명시 안 되면 전체 history에서 최신 limit만 (페이지네이션 기본).
     if (date) {
       where = { ...baseWhere, reportDate: date };
     } else if (cursor) {
@@ -70,11 +71,13 @@ export async function GET(request: Request) {
           },
         ],
       };
-    } else {
+    } else if (daysRaw !== null) {
+      const days = parseInt(daysRaw, 10);
       const since = new Date();
       since.setDate(since.getDate() - (Number.isNaN(days) ? 7 : days));
       where = { ...baseWhere, createdAt: { gte: since } };
     }
+    // 그 외: where = baseWhere (전체 history, 정렬 + limit으로만 제한)
 
     // take: limit+1로 hasMore 판단 (count 쿼리 회피)
     const rows = await prisma.aIAdvice.findMany({
