@@ -20,12 +20,13 @@
   - **Chronic (28일)**: 최근 28일 일평균 트레이닝 로드
   - **ACWR** (Acute:Chronic Workload Ratio) = acute / chronic
   - **14일 보조 구간**: 트렌드 비교용
-- [ ] **F4**: ACWR 위험 구간 라벨 + 권고 (스포츠과학 표준):
+- [ ] **F4**: ACWR 위험 구간 라벨 + 권고 (스포츠과학 표준, raw 값 기준 분류):
   - `< 0.8` → `detraining` — "운동량 부족, 피트니스 손실 위험"
-  - `0.8 ~ 1.3` → `sweet_spot` — "최적 부하 구간"
-  - `1.3 ~ 1.5` → `high` — "부하 증가 주의"
+  - `[0.8, 1.3)` → `sweet_spot` — "최적 부하 구간"
+  - `[1.3, 1.5]` → `high` — "부하 증가 주의"
   - `> 1.5` → `very_high` — "부상 위험, 회복 우선"
   - chronic가 0이면 ACWR 계산 불가 → `null`, 라벨 `insufficient_data`
+  - 분류는 round 적용 전 raw 값 기준 (1.496 → 1.5로 round되어도 분류는 high)
 - [ ] **F5**: 응답 객체 — JSON 직렬화. 토큰 ≤ 500.
 
 ### 2.2 비기능

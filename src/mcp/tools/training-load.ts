@@ -32,7 +32,7 @@ function classifyACWR(acwr: number | null): ZoneInfo {
       recommendation: "최적 부하 구간 — 현재 강도 유지",
     };
   }
-  if (acwr < 1.5) {
+  if (acwr <= 1.5) {
     return {
       zone: "high",
       recommendation: "부하 증가 주의 — 회복일 추가 권장",
@@ -110,12 +110,14 @@ export async function getTrainingLoadTrend() {
   const chronic28d = aggregate(dailyMap, 28, todayStr);
   const recent14d = aggregate(dailyMap, 14, todayStr);
 
-  const acwr =
+  // 분류는 raw 값으로 (round 후 분류하면 1.496 → 1.5 → very_high 오분류).
+  const acwrRaw =
     chronic28d.avgDailyScore > 0
-      ? round(acute7d.avgDailyScore / chronic28d.avgDailyScore, 2)
+      ? acute7d.avgDailyScore / chronic28d.avgDailyScore
       : null;
+  const acwr = acwrRaw !== null ? round(acwrRaw, 2) : null;
 
-  const { zone, recommendation } = classifyACWR(acwr);
+  const { zone, recommendation } = classifyACWR(acwrRaw);
 
   const payload = {
     date: todayStr,
