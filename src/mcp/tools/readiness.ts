@@ -108,29 +108,42 @@ export async function getReadinessScore() {
   const sleepScoreToday = todaySleep?.sleepScore ?? null;
   const sleepScoreAvg7d = average(recentSleep.map((r) => r.sleepScore));
 
+  // 휴식일(empty array)과 데이터 누락(개별 필드 null)을 구분:
+  // - empty array → totalIntensityScore=0, totalDurationMin=0 (휴식일 명시)
+  // - 활동 있지만 개별 필드 null → 합계/최대 계산에서 그 활동만 제외
+  // - max*TE는 활동 없으면 0 (휴식일 = 부하 없음)
+  const isRestDay = yesterdayActivities.length === 0;
+
   const intensityValues = yesterdayActivities
     .map((a) => a.intensityScore)
     .filter((v): v is number => typeof v === "number");
-  const totalIntensityScore =
-    intensityValues.length > 0
+  const totalIntensityScore = isRestDay
+    ? 0
+    : intensityValues.length > 0
       ? Math.round(intensityValues.reduce((a, b) => a + b, 0))
       : null;
 
-  const totalDurationMin =
-    yesterdayActivities.length > 0
-      ? Math.round(yesterdayActivities.reduce((a, b) => a + b.duration, 0) / 60)
-      : null;
+  const totalDurationMin = isRestDay
+    ? 0
+    : Math.round(yesterdayActivities.reduce((a, b) => a + b.duration, 0) / 60);
 
   const aerobicValues = yesterdayActivities
     .map((a) => a.aerobicTE)
     .filter((v): v is number => typeof v === "number");
-  const maxAerobicTE = aerobicValues.length > 0 ? Math.max(...aerobicValues) : null;
+  const maxAerobicTE = isRestDay
+    ? 0
+    : aerobicValues.length > 0
+      ? Math.max(...aerobicValues)
+      : null;
 
   const anaerobicValues = yesterdayActivities
     .map((a) => a.anaerobicTE)
     .filter((v): v is number => typeof v === "number");
-  const maxAnaerobicTE =
-    anaerobicValues.length > 0 ? Math.max(...anaerobicValues) : null;
+  const maxAnaerobicTE = isRestDay
+    ? 0
+    : anaerobicValues.length > 0
+      ? Math.max(...anaerobicValues)
+      : null;
 
   const payload = {
     date: todayKSTString(),
