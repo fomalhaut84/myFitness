@@ -14,6 +14,7 @@ import { getActivitySplits } from "./tools/splits";
 import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
+import { getReadinessScore } from "./tools/readiness";
 
 const server = new McpServer({
   name: "myfitness",
@@ -134,6 +135,13 @@ server.tool(
       .describe("조회 일수 (기본 90)"),
   },
   async (args) => getMetricHistory(args)
+);
+
+server.tool(
+  "get_readiness_score",
+  "오늘 회복 점수 (Garmin bodyBatteryHigh 기반, 0-100) + 5단계 강도 추천 + HRV/restingHR 7일 평균 대비 deviation + 어제 트레이닝 로드. 모닝 리포트의 오늘 강도 결정에 사용.",
+  {},
+  async () => getReadinessScore()
 );
 
 async function main() {
