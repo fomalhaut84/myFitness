@@ -1,7 +1,10 @@
 "use client";
 
-import { useState, useRef, useCallback } from "react";
-import DOMPurify from "dompurify";
+import { useState, useRef, useCallback, useEffect } from "react";
+// isomorphic-dompurify: SSR(Node)에서도 sanitize 가능. server component인 page.tsx가
+// initial reports를 props로 전달하면 첫 렌더가 SSR에서 일어나는데, 순수 dompurify는
+// 브라우저 DOM이 필요해 Node에선 sanitize가 undefined가 되어 throw.
+import DOMPurify from "isomorphic-dompurify";
 import { marked } from "marked";
 import { todayKSTString, yesterdayKST, ymdKST } from "@/lib/garmin/utils";
 
@@ -66,6 +69,12 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
   const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // race condition 가드: 필터 변경 / 더 보기가 동시 진행될 때 이전 요청 응답을 폐기
   const requestIdRef = useRef(0);
+  // generate가 await 중 사용자가 필터를 바꿔도 최신 filter로 refresh 하도록 ref 동기화.
+  // React 19 react-hooks/refs 룰: ref mutation은 effect 안에서만.
+  const filterRef = useRef(filter);
+  useEffect(() => {
+    filterRef.current = filter;
+  }, [filter]);
 
   // 재생성 가능 record: reportDate가 KST today/yesterday일 때만
   // (preSync/MCP/프롬프트가 모두 today 기준이라 과거 컨텍스트 보장 불가).
@@ -156,7 +165,8 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
         return;
       }
       if (data.result) {
-        await fetchFirstPage(filter);
+        // 사용자가 generate 중 필터를 바꿨을 수 있어 ref로 최신 값 사용 (클로저 stale 방지)
+        await fetchFirstPage(filterRef.current);
       }
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
