@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import { syncAll, type DataType } from "@/lib/garmin/sync";
+import { todayKST, daysAgoKST } from "@/lib/garmin/utils";
 
 const DEFAULT_DAYS = 1;
 
@@ -13,22 +14,25 @@ const VALID_DATA_TYPES: DataType[] = [
   "user_profile",
 ];
 
-/** "YYYY-MM-DD" 문자열을 로컬 midnight Date로 파싱. 무효하면 null. */
-function parseLocalDate(dateStr: string): Date | null {
+/** "YYYY-MM-DD" 문자열을 KST midnight Date(정확한 UTC instant)로 파싱. 무효하면 null. */
+function parseKSTDate(dateStr: string): Date | null {
   const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(dateStr);
   if (!match) return null;
 
   const [, y, m, d] = match;
-  const date = new Date(Number(y), Number(m) - 1, Number(d));
+  const date = new Date(`${y}-${m}-${d}T00:00:00+09:00`);
 
-  // 파싱 결과가 입력과 일치하는지 검증 (2월 30일 등 방지)
-  if (
-    date.getFullYear() !== Number(y) ||
-    date.getMonth() !== Number(m) - 1 ||
-    date.getDate() !== Number(d)
-  ) {
-    return null;
-  }
+  if (Number.isNaN(date.getTime())) return null;
+
+  // 파싱 결과가 입력과 일치하는지 검증 (2월 30일 등 방지). KST 기준으로 검증.
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  const ymdKst = formatter.format(date);
+  if (ymdKst !== `${y}-${m}-${d}`) return null;
 
   return date;
 }
@@ -39,7 +43,7 @@ export async function POST(request: Request) {
 
     let endDate: Date;
     if (body.endDate) {
-      const parsed = parseLocalDate(body.endDate);
+      const parsed = parseKSTDate(body.endDate);
       if (!parsed) {
         return NextResponse.json(
           { error: `유효하지 않은 날짜: ${body.endDate} (YYYY-MM-DD 형식)` },
@@ -49,14 +53,12 @@ export async function POST(request: Request) {
       endDate = parsed;
     } else {
       // 수동 싱크: 오늘(KST)까지 (불완전해도 최신 데이터 우선)
-      const kst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-      kst.setHours(0, 0, 0, 0);
-      endDate = kst;
+      endDate = todayKST();
     }
 
     let startDate: Date;
     if (body.startDate) {
-      const parsed = parseLocalDate(body.startDate);
+      const parsed = parseKSTDate(body.startDate);
       if (!parsed) {
         return NextResponse.json(
           { error: `유효하지 않은 날짜: ${body.startDate} (YYYY-MM-DD 형식)` },
@@ -66,10 +68,7 @@ export async function POST(request: Request) {
       startDate = parsed;
     } else {
       // KST 기준 (endDate와 동일 기준)
-      const kst = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-      kst.setDate(kst.getDate() - DEFAULT_DAYS);
-      kst.setHours(0, 0, 0, 0);
-      startDate = kst;
+      startDate = daysAgoKST(DEFAULT_DAYS);
     }
 
     const dataTypes = body.dataTypes

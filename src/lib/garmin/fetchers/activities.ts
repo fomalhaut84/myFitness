@@ -31,7 +31,12 @@ export async function syncActivities(
     }
 
     for (const a of activities) {
-      const activityDate = new Date(a.startTimeLocal || a.startTimeGMT);
+      // Garmin startTimeLocal은 naïve "YYYY-MM-DD HH:mm:ss" 형식.
+      // 서버 TZ에 의존하지 않도록 KST(+09:00) 명시. startTimeGMT는 (실측상) 동일 형식의
+      // GMT 시각이므로 +00:00 명시.
+      const activityDate = a.startTimeLocal
+        ? new Date(`${a.startTimeLocal.replace(" ", "T")}+09:00`)
+        : new Date(`${a.startTimeGMT.replace(" ", "T")}+00:00`);
 
       if (activityDate < startDate) {
         hasMore = false;

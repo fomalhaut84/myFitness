@@ -14,6 +14,10 @@ import { getActivitySplits } from "./tools/splits";
 import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
+import { getReadinessScore } from "./tools/readiness";
+import { getTrainingLoadTrend } from "./tools/training-load";
+import { getPaceProgression } from "./tools/pace-progression";
+import { getCalendarSummary } from "./tools/calendar";
 
 const server = new McpServer({
   name: "myfitness",
@@ -134,6 +138,50 @@ server.tool(
       .describe("조회 일수 (기본 90)"),
   },
   async (args) => getMetricHistory(args)
+);
+
+server.tool(
+  "get_readiness_score",
+  "오늘 회복 점수 (Garmin bodyBatteryHigh 기반, 0-100) + 5단계 강도 추천 + HRV/restingHR 7일 평균 대비 deviation + 어제 트레이닝 로드. 모닝 리포트의 오늘 강도 결정에 사용.",
+  {},
+  async () => getReadinessScore()
+);
+
+server.tool(
+  "get_training_load_trend",
+  "트레이닝 로드 추세 (ACWR 기반). Acute 7d / Chronic 28d / 보조 14d 일평균 부하 + ACWR + 4단계 위험 구간 (detraining / sweet_spot / high / very_high). 주간 리포트의 오버/언더트레이닝 평가에 사용.",
+  {},
+  async () => getTrainingLoadTrend()
+);
+
+server.tool(
+  "get_pace_progression",
+  "거리 bucket(5k/10k/HM/FM)별 러닝 페이스 추세. baseline/latest/best + improvementPct(%) + 최근 5건. 주간/장기 리포트의 진척도 평가에 사용.",
+  {
+    windowDays: z
+      .number()
+      .int()
+      .min(30)
+      .max(365)
+      .optional()
+      .describe("조회 일수 (기본 90, 30~365)"),
+  },
+  async (args) => getPaceProgression(args)
+);
+
+server.tool(
+  "get_calendar_summary",
+  "N일 일자별 핵심 지표 한 줄씩 (최신순) — 러닝 km/횟수, 안정시HR, 수면 점수/시간, bodyBattery, 칼로리 밸런스, 걸음수. summary에 기간 총합. 주간/월간 리포트에서 일자별 상황 훑기에 사용.",
+  {
+    days: z
+      .number()
+      .int()
+      .min(1)
+      .max(90)
+      .optional()
+      .describe("조회 일수 (기본 14, 1~90)"),
+  },
+  async (args) => getCalendarSummary(args)
 );
 
 async function main() {
