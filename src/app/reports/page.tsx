@@ -1,6 +1,9 @@
 import prisma from "@/lib/prisma";
 import ReportsClient, { type Report } from "./reports-client";
 
+// cron이 매일 새 리포트를 생성하므로 빌드 시점 스냅샷 prerender 금지.
+export const dynamic = "force-dynamic";
+
 const PAGE_LIMIT = 14;
 
 async function fetchInitialPage(): Promise<{
@@ -28,9 +31,10 @@ async function fetchInitialPage(): Promise<{
     ...r,
     createdAt: r.createdAt.toISOString(),
   }));
+  // cursor 복합키 (createdAt|id) — API와 동일 형식.
   const initialNextCursor =
     hasMore && initialReports.length > 0
-      ? initialReports[initialReports.length - 1].createdAt
+      ? `${initialReports[initialReports.length - 1].createdAt}|${initialReports[initialReports.length - 1].id}`
       : null;
 
   return { initialReports, initialNextCursor };

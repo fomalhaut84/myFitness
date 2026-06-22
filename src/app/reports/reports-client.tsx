@@ -60,6 +60,7 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
   const [loading, setLoading] = useState(false);
   const [loadingMore, setLoadingMore] = useState(false);
   const [generating, setGenerating] = useState<string | null>(null);
+  const [errorMsg, setErrorMsg] = useState<string | null>(null);
   // race condition 가드: 필터 변경 / 더 보기가 동시 진행될 때 이전 요청 응답을 폐기
   const requestIdRef = useRef(0);
 
@@ -72,17 +73,29 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
     r.reportDate !== null &&
     (r.reportDate === today || r.reportDate === yesterday);
 
+  // filter state는 await 중 stale될 수 있어 인자로 명시 주입.
   const fetchFirstPage = useCallback(async (currentFilter: FilterType) => {
     const reqId = ++requestIdRef.current;
     setLoading(true);
+    setErrorMsg(null);
     setReports([]);
     setNextCursor(null);
     try {
       const res = await fetch(`/api/reports?${buildQuery(currentFilter)}`);
-      const data = (await res.json()) as ReportsResponse;
+      const data = (await res.json().catch(() => ({}))) as ReportsResponse & {
+        error?: string;
+      };
       if (reqId !== requestIdRef.current) return;
+      if (!res.ok) {
+        setErrorMsg(data.error ?? `리포트 조회 실패 (HTTP ${res.status})`);
+        return;
+      }
       setReports(data.data ?? []);
       setNextCursor(data.nextCursor ?? null);
+    } catch (err) {
+      if (reqId !== requestIdRef.current) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`네트워크 오류: ${msg}`);
     } finally {
       if (reqId === requestIdRef.current) setLoading(false);
     }
@@ -98,12 +111,23 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
     if (!nextCursor || loadingMore) return;
     const reqId = requestIdRef.current;
     setLoadingMore(true);
+    setErrorMsg(null);
     try {
       const res = await fetch(`/api/reports?${buildQuery(filter, nextCursor)}`);
-      const data = (await res.json()) as ReportsResponse;
+      const data = (await res.json().catch(() => ({}))) as ReportsResponse & {
+        error?: string;
+      };
       if (reqId !== requestIdRef.current) return;
+      if (!res.ok) {
+        setErrorMsg(data.error ?? `더 보기 실패 (HTTP ${res.status})`);
+        return;
+      }
       setReports((prev) => [...prev, ...(data.data ?? [])]);
       setNextCursor(data.nextCursor ?? null);
+    } catch (err) {
+      if (reqId !== requestIdRef.current) return;
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`네트워크 오류: ${msg}`);
     } finally {
       if (reqId === requestIdRef.current) setLoadingMore(false);
     }
@@ -111,16 +135,27 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
 
   async function generate(type: string, force = false, reportDate?: string) {
     setGenerating(type);
+    setErrorMsg(null);
     try {
       const res = await fetch("/api/reports", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ type, force, reportDate }),
       });
-      const data = await res.json();
+      const data = (await res.json().catch(() => ({}))) as {
+        result?: string;
+        error?: string;
+      };
+      if (!res.ok) {
+        setErrorMsg(data.error ?? `리포트 생성 실패 (HTTP ${res.status})`);
+        return;
+      }
       if (data.result) {
         await fetchFirstPage(filter);
       }
+    } catch (err) {
+      const msg = err instanceof Error ? err.message : String(err);
+      setErrorMsg(`네트워크 오류: ${msg}`);
     } finally {
       setGenerating(null);
     }
@@ -167,6 +202,12 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
           </button>
         ))}
       </div>
+
+      {errorMsg && (
+        <div className="mb-4 p-3 rounded-lg border border-red-500/40 bg-red-500/10 text-red-300 text-[12px]">
+          {errorMsg}
+        </div>
+      )}
 
       {loading ? (
         <div className="text-center py-12 text-dim text-[13px]">로딩 중...</div>
