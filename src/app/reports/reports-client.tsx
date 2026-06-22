@@ -41,6 +41,9 @@ const FILTER_OPTIONS: { value: FilterType; label: string }[] = [
 
 const PAGE_LIMIT = 14;
 
+// cursor / days 둘 다 미지정 시 API는 전체 history에서 최신 limit만 반환 (페이지네이션 의도).
+// days 명시는 후방 호환용이라 첫 페이지 fetch에선 의도적으로 보내지 않음 — 7일 필터에 갇히면
+// sparse 카테고리(주간 등) 이전 리포트 접근 불가.
 function buildQuery(filter: FilterType, cursor?: string | null): string {
   const qs = new URLSearchParams({ limit: String(PAGE_LIMIT) });
   if (filter !== "all") qs.set("type", filter);
@@ -129,7 +132,9 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`네트워크 오류: ${msg}`);
     } finally {
-      if (reqId === requestIdRef.current) setLoadingMore(false);
+      // setLoadingMore는 가드 없이 무조건 false로. generate/필터변경이 끼어들어
+      // requestIdRef가 ++되면 가드된 setLoadingMore가 스킵되어 영원히 true에 갇힘.
+      setLoadingMore(false);
     }
   }, [filter, nextCursor, loadingMore]);
 
