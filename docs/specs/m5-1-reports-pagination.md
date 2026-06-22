@@ -13,7 +13,7 @@
 
 ### 2.1 기능 요구사항
 
-- [ ] **F1**: `GET /api/reports` 가 `cursor`(ISO 8601 string) + `limit`(1~50, default 14) 파라미터를 받아 cursor 기반 페이지네이션 수행.
+- [ ] **F1**: `GET /api/reports` 가 `cursor`(`<createdAt ISO 8601>|<id>` 복합키 문자열, 예: `2026-06-22T01:30:00.000Z|cl9xyz123abc`) + `limit`(1~50, default 14) 파라미터를 받아 cursor 기반 페이지네이션 수행. 복합키 형식은 동일 `createdAt` 다건 경계 시 누락 방지를 위한 키셋 페이지네이션. 형식 위반 시 400.
 - [ ] **F2**: 응답에 `nextCursor` 포함. 다음 페이지가 없으면 `null`.
 - [ ] **F3**: 기존 `type`/`date`/`days` 파라미터 호환 유지. `cursor` 가 명시되면 `days` 무시(전체 범위에서 cursor 이후만 조회). `date` 는 단일 날짜 조회용으로 cursor와 상호배타.
 - [ ] **F4**: 응답 envelope 형식: `{ data: Report[], nextCursor: string | null }` (기존 `{ data }` 호환 — `nextCursor` 추가만).
