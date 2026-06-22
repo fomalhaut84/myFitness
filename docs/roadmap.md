@@ -264,6 +264,17 @@
 - 효과: `npm audit` 6건 → 0건
 - 스펙: `docs/specs/security-audit-followup-202606.md` (#103, PR #104)
 
+## Dependabot 2026-06-22 보안 패치 ✅
+
+- [x] form-data overrides ^4.0.6 — high CRLF injection (axios transitive, #49)
+- [x] dompurify ^3.3.3 → ^3.4.11 (direct dep) — #41/42/43/45/46/47/48 7건 해소
+- [x] esbuild devDep ^0.28.0 → ^0.28.1 + overrides "$esbuild" — low Windows dev server (tsx transitive, #39)
+- [x] dompurify #44 dismiss — IN_PLACE 모드 미사용 (tolerable_risk)
+- [x] @babel/core overrides ^7.29.6 — npm audit 후속 (low, eslint transitive)
+- [x] js-yaml overrides ^4.2.0 — npm audit 후속 (moderate, @eslint/eslintrc transitive)
+- 효과: Dependabot open 10건 → 0건, npm audit 0건
+- 스펙: `docs/specs/security-dependabot-202606-2.md` (#110, PR #111)
+
 ## 텔레그램 봇 IPv6 ETIMEDOUT 장애 + 토큰 로그 노출 2026-06 ✅
 
 - [x] `src/bot/index.ts` — grammy `client.baseFetchConfig`에 `https.Agent({family:4, keepAlive:true})` + `timeoutSeconds:60` (long-poll 30s 위 안전 마진)
