@@ -16,6 +16,11 @@ import { isFoodInput, handleFoodInput } from "./commands/food";
 // TCP/TLS 핸드셰이크 비용도 절감. 자세한 배경은 docs/specs/bot-telegram-ipv6-timeout-202606.md 참조.
 const telegramAgent = new Agent({ family: 4, keepAlive: true });
 
+// grammy client.timeoutSeconds는 모든 API 호출(getUpdates 포함) 공통 abort timer.
+// long-polling의 Telegram side hold 기본값(30s) 위에 충분한 마진 확보 필요.
+// 60s = polling 30s + 네트워크 RTT/처리 여유 30s. cron sendMessage도 60s면 충분히 짧음.
+const CLIENT_TIMEOUT_SECONDS = 60;
+
 export function getBot(): Bot {
   const token = process.env.TELEGRAM_BOT_TOKEN;
   if (!token) throw new Error("TELEGRAM_BOT_TOKEN 환경변수가 필요합니다.");
@@ -23,7 +28,7 @@ export function getBot(): Bot {
   const bot = new Bot(token, {
     client: {
       baseFetchConfig: { agent: telegramAgent },
-      timeoutSeconds: 30,
+      timeoutSeconds: CLIENT_TIMEOUT_SECONDS,
     },
   });
 

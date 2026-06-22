@@ -6,7 +6,9 @@ import { mdToHtml } from "../utils/telegram";
 import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error";
 
 const MAX_MSG = 4096;
+// 시도 사이 sleep 시간. 총 시도 = RETRY_DELAYS_MS.length + 1 = 4회 (초기 + 3 재시도).
 const RETRY_DELAYS_MS = [2000, 8000, 30000];
+const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 
 function getChatIds(): string[] {
   return (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "")
@@ -38,7 +40,7 @@ async function sendOneWithRetry(
   const plain = truncate(htmlText.replace(/<[^>]*>/g, ""));
   let useHtml = true;
   let lastErr: unknown;
-  for (let attempt = 0; attempt < RETRY_DELAYS_MS.length; attempt++) {
+  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     try {
       if (useHtml) {
         await bot.api.sendMessage(chatId, html, { parse_mode: "HTML" });
@@ -54,12 +56,12 @@ async function sendOneWithRetry(
         attempt--;
         continue;
       }
-      if (!isNetworkError(err) || attempt === RETRY_DELAYS_MS.length - 1) {
+      if (!isNetworkError(err) || attempt === MAX_ATTEMPTS - 1) {
         throw err;
       }
       const delay = RETRY_DELAYS_MS[attempt];
       console.warn(
-        `[bot] 전송 재시도 ${attempt + 1}/${RETRY_DELAYS_MS.length} (${chatId}, ${delay}ms 후): ${sanitizeError(err)}`
+        `[bot] 전송 재시도 ${attempt + 1}/${MAX_ATTEMPTS} (${chatId}, ${delay}ms 후): ${sanitizeError(err)}`
       );
       await sleep(delay);
     }

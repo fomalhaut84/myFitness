@@ -55,8 +55,8 @@
 ### 2.1 기능 요구사항
 
 - [ ] **F1**: 봇이 `api.telegram.org`로 연결할 때 IPv6를 시도하지 않음 (IPv4 강제).
-- [ ] **F2**: `sendMessage` 호출의 네트워크 타임아웃을 기본 500s에서 30s로 단축.
-- [ ] **F3**: `sendToAll`에 네트워크 일시 실패 대응 재시도(지수 백오프, 총 3회: 약 2s/8s/30s).
+- [ ] **F2**: `sendMessage` 호출의 네트워크 타임아웃을 기본 500s에서 60s로 단축 (long-poll 기본 30s 위에 안전 마진).
+- [ ] **F3**: `sendToAll`에 네트워크 일시 실패 대응 재시도(지수 백오프, 시도 사이 sleep 2s/8s/30s, 총 4회 시도 = 초기 + 3 재시도).
 - [ ] **F4**: HTML 파싱 실패 fallback과 네트워크 재시도 로직을 분리.
   - HTML parse 에러(Telegram이 명시적으로 400 반환 등)일 때만 plain text fallback.
   - 네트워크 에러일 때는 plain text 재시도 무의미 → 동일 페이로드로 재시도만.
@@ -98,7 +98,7 @@ export function getBot(): Bot {
 
 - `family: 4`는 node-fetch의 `https.Agent`가 DNS lookup 시 IPv4만 요청하게 함.
 - `keepAlive: true`로 cron 시점에 TCP/TLS 핸드셰이크 비용 절감.
-- `timeoutSeconds: 30`은 재시도 백오프와 합쳐 cron 슬롯(약 1분) 내 완료 가능.
+- `timeoutSeconds: 60`은 grammy `bot.start()` 의 long-polling 기본 timeout(30s) 위에 안전 마진. 30초로 설정하면 idle 봇이 매 long-poll round마다 abort → 재연결 루프에 빠짐. cron `sendMessage` 호출은 60s 이내 응답되므로 충분히 짧음.
 
 ### 3.2 sendToAll 재시도 + 백오프 분리 (F3, F4)
 
