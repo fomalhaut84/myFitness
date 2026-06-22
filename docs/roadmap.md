@@ -258,14 +258,14 @@
 - [x] isomorphic-dompurify 도입 (SSR initial reports sanitize 안전)
 - 스펙: `docs/specs/m5-1-reports-pagination.md` (#114, PR #115)
 
-## M5-2: MCP 도구 확장 — 우선순위 ★★★
+## M5-2: MCP 도구 확장 — 우선순위 ★★★ ✅
 
 > AI가 파생 지표를 직접 계산하지 않도록 도구화 → 토큰 절약 + 응답 정확도.
 
 - [x] `get_readiness_score` — bodyBatteryHigh 0-100 + 5단계 강도 추천 + HRV/RHR 7일 평균 deviation + 어제 로드. 스펙: `m5-2-1-readiness-score.md` (#117, PR #118)
 - [x] `get_training_load_trend` — ACWR (acute 7d / chronic 28d) + 4단계 위험 구간 (detraining/sweet_spot/high/very_high). 스펙: `m5-2-2-training-load-trend.md` (#122, PR #123)
 - [x] `get_pace_progression` — 거리 bucket (5k/10k/HM/FM) baseline/latest/best + improvementPct. 스펙: `m5-2-3-pace-progression.md` (#124, PR #125)
-- [ ] `get_calendar_summary` — N일 데일리 요약 한 줄씩 일괄 조회
+- [x] `get_calendar_summary` — N일 일자별 핵심 지표 한 줄씩 (러닝/수면/RHR/bodyBattery/칼로리 밸런스/걸음수). 스펙: `m5-2-4-calendar-summary.md` (#126, PR #127)
 
 ## M5-3: 프롬프트 캐싱 — 우선순위 ★★
 
