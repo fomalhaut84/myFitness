@@ -264,3 +264,11 @@
 - 효과: `npm audit` 6건 → 0건
 - 스펙: `docs/specs/security-audit-followup-202606.md` (#103, PR #104)
 
+## 텔레그램 봇 IPv6 ETIMEDOUT 장애 + 토큰 로그 노출 2026-06
+
+- [ ] `src/bot/index.ts` — grammy `client.baseFetchConfig`에 `https.Agent({family:4, keepAlive:true})` + `timeoutSeconds:30`
+- [ ] `src/bot/notifications/scheduler.ts` — 네트워크 에러 2s/8s/30s 백오프 3회, HTML parse fallback과 분리
+- [ ] `src/bot/utils/error.ts` 신규 — `bot<TOKEN>` URL 정규식 마스킹, grammy `HttpError.error`/`cause` 체인 sanitize
+- 배경: 운영 서버 IPv6 라우트 부재 → node-fetch가 AAAA 우선 시도 → ETIMEDOUT. cron 리포트 매일 실패.
+- 스펙: `docs/specs/bot-telegram-ipv6-timeout-202606.md` (#107)
+
