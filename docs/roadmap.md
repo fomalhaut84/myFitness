@@ -262,7 +262,7 @@
 
 > AI가 파생 지표를 직접 계산하지 않도록 도구화 → 토큰 절약 + 응답 정확도.
 
-- [ ] `get_readiness_score` — HRV+안정시HR+수면+어제 로드 → 0-100 회복 점수 + 강도 추천
+- [x] `get_readiness_score` — bodyBatteryHigh 0-100 + 5단계 강도 추천 + HRV/RHR 7일 평균 deviation + 어제 로드. 스펙: `m5-2-1-readiness-score.md` (#117, PR #118)
 - [ ] `get_training_load_trend` — 7/14/28일 ACWR, 오버/언더트레이닝 위험 라벨
 - [ ] `get_pace_progression` — 동일 거리(5k/10k) 페이스 추세, baseline 대비 % 변화
 - [ ] `get_calendar_summary` — N일 데일리 요약 한 줄씩 일괄 조회
