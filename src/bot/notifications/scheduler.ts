@@ -7,6 +7,8 @@ import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error"
 
 const MAX_MSG = 4096;
 // 시도 사이 sleep 시간. 총 시도 = RETRY_DELAYS_MS.length + 1 = 4회 (초기 + 3 재시도).
+// HTML→plain 전환(attempt--)이 발동하면 최악의 경우 5회까지 늘어날 수 있으나, plain
+// 페이로드는 parse_mode 없이 전송되므로 HTML parse 에러가 재발할 수 없어 1회 추가에 그침.
 const RETRY_DELAYS_MS = [2000, 8000, 30000];
 const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
 
