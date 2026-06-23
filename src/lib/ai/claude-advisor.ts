@@ -71,15 +71,20 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
   ];
 
   // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).
-  // 새 세션이면 정적 시스템 프롬프트는 --system-prompt 로 분리 → API system param + 자동 캐싱 적격.
-  // 동적 부분(현재 시간)은 user message 앞에 prepend.
+  // 새 세션:
+  // - --append-system-prompt: Claude Code default(tool guidance/safety) 유지 + 우리 정적 prompt 추가.
+  //   (--system-prompt는 default를 완전 교체 → tool guidance 손실, 사용 금지)
+  // - --exclude-dynamic-system-prompt-sections: default의 동적 sections(cwd/env/git/memory)를
+  //   user msg로 옮겨 system param 정적성 향상 → cache 적중률 ↑.
+  // - 동적 부분(현재 시간)은 user message 앞에 prepend.
   if (currentSessionId) {
     args.push("--resume", currentSessionId);
   } else {
     const staticPrompt = await buildStaticSystemPrompt();
     const dynamicContext = buildDynamicContext();
     args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
-    args.push("--system-prompt", staticPrompt);
+    args.push("--append-system-prompt", staticPrompt);
+    args.push("--exclude-dynamic-system-prompt-sections");
   }
 
   return new Promise((resolve, reject) => {
