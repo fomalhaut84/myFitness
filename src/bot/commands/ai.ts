@@ -15,7 +15,7 @@ export function registerAiCommands(bot: Bot) {
   });
 
   bot.command("reset", async (ctx) => {
-    resetSession();
+    resetSession("telegram");
     await ctx.reply("🔄 AI 세션이 초기화되었습니다.");
   });
 }
@@ -30,7 +30,7 @@ export async function handleAiQuestion(ctx: { reply: (text: string, options?: Re
   await ctx.reply("🤔 분석 중...");
 
   try {
-    const { result } = await askAdvisor(question);
+    const { result } = await askAdvisor(question, { channel: "telegram" });
     const html = mdToHtml(result);
     await replyLong(ctx as Parameters<typeof replyLong>[0], html, true);
   } catch (error) {

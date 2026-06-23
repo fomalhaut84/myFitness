@@ -1,4 +1,4 @@
-import { askAdvisor } from "@/lib/ai/claude-advisor";
+import { askAdvisor, resetSession } from "@/lib/ai/claude-advisor";
 import prisma from "@/lib/prisma";
 
 const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석해서 주간 리포트를 작성해줘.
@@ -19,7 +19,11 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 
 export async function generateWeeklyReport(): Promise<string> {
   try {
-    const { result } = await askAdvisor(WEEKLY_REPORT_PROMPT);
+    // cron 채널은 단발 강제 — 매번 fresh 세션
+    resetSession("cron-weekly");
+    const { result } = await askAdvisor(WEEKLY_REPORT_PROMPT, {
+      channel: "cron-weekly",
+    });
 
     // DB에 저장
     await prisma.aIAdvice.create({
