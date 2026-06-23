@@ -11,9 +11,9 @@ Claude CLI (`claude -p`) prompt caching 옵션 조사:
 
 | 옵션 | 설명 | 본 PR 적용 |
 |---|---|---|
-| `--system-prompt <text>` | 시스템 프롬프트를 API system param 으로 분리. 자동 cache_control 적격. | **채택** |
-| `--append-system-prompt <text>` | 기본 시스템 프롬프트에 append. 기본 prompt 사용 시만 의미. | N/A |
-| `--exclude-dynamic-system-prompt-sections` | 기본 prompt의 동적 sections(cwd/env/git/memory)를 첫 user msg로 이동. cross-user cache 향상. `--system-prompt` 사용 시 ignored. | N/A |
+| `--system-prompt <text>` | default를 **완전 교체** — tool guidance/safety instructions 손실. **사용 금지** (PR #130에서 채택했다 #132 hotfix로 변경). | ❌ |
+| `--append-system-prompt <text>` | default 유지 + 우리 정적 prompt 추가. system param에 합쳐져 캐시 적격. | **채택** |
+| `--exclude-dynamic-system-prompt-sections` | default 의 동적 sections(cwd/env/git/memory)를 user msg로 이동 → system param 정적성 향상 → 캐시 적중률 ↑. `--append-system-prompt` 와 조합 가능. | **채택** |
 
 **현재 코드 문제**:
 - `src/lib/ai/claude-advisor.ts:79` — `args[1] = "${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}"` 로 시스템 프롬프트가 user role 메시지에 박힘.
