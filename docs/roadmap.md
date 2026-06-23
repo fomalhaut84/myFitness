@@ -244,9 +244,9 @@
 
 ---
 
-# 마일스톤 5: AI 어드바이저 강화 + 리포트 개선
+# 마일스톤 5: AI 어드바이저 강화 + 리포트 개선 ✅
 
-> 시작: 2026-06-22. 누적 데이터에 대한 UX 정합 + AI 출력 품질/비용 최적화.
+> 기간: 2026-06-22 ~ 2026-06-23. 누적 데이터에 대한 UX 정합 + AI 출력 품질/비용 최적화.
 > 스펙: `docs/specs/m5-overview.md`
 
 ## M5-1: 리포트 페이지 페이지네이션 — 우선순위 ★★★ ✅
@@ -277,13 +277,15 @@
 - 효과: cron 1회 내 MCP 도구 5-10번 호출 시 첫 호출 후 cache hit, input token 60-80% 절감 기대
 - 스펙: `docs/specs/m5-3-prompt-caching.md` (#129, PR #130)
 
-## M5-4: 멀티턴 컨텍스트 강화 — 우선순위 ★★
+## M5-4: 멀티턴 컨텍스트 강화 — 우선순위 ★★ ✅
 
 > 봇/웹/cron 동시 사용 시 단일 sessionId 오염 해소.
 
-- [ ] 채널별 sessionId 분리 (web, telegram-bot, cron-morning/evening/weekly)
-- [ ] 세션 TTL (6h 무활동) + 토큰 한도 (100k 누적) 자동 reset
-- [ ] AI 채팅 페이지 "새 대화 시작" 버튼
+- [x] 채널별 sessionId 분리 (web, telegram, cron-morning/evening/weekly) — Map 기반 SessionStore
+- [x] TTL (6h 무활동) + 토큰 한도 (100k 누적) 자동 reset
+- [x] cron 채널 단발 강제 (매 호출 직전 resetSession) — 이전 호출 컨텍스트 오염 차단
+- [x] AI 채팅 페이지 "새 대화 시작" 버튼 — 기존 구현 활용
+- 스펙: `docs/specs/m5-4-multi-turn.md` (#134, PR #135)
 
 ---
 

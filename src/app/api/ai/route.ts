@@ -9,7 +9,7 @@ export async function POST(request: Request) {
 
     // 세션 초기화 명령
     if (body.action === "reset") {
-      resetSession();
+      resetSession("web");
       return NextResponse.json({ result: "세션이 초기화되었습니다.", sessionId: null });
     }
 
@@ -20,7 +20,9 @@ export async function POST(request: Request) {
       );
     }
 
-    const { result, sessionId, duration_ms } = await askAdvisor(prompt);
+    const { result, sessionId, duration_ms } = await askAdvisor(prompt, {
+      channel: "web",
+    });
 
     // AI 조언 이력 저장
     await prisma.aIAdvice.create({
@@ -43,5 +45,5 @@ export async function POST(request: Request) {
 }
 
 export async function GET() {
-  return NextResponse.json({ sessionId: getSessionId() });
+  return NextResponse.json({ sessionId: getSessionId("web") });
 }
