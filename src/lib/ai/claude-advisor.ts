@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
-import { buildSystemPrompt } from "./system-prompt";
+import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
@@ -70,13 +70,16 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
     "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary",
   ];
 
-  // 기존 세션이 있으면 --resume, 없으면 시스템 프롬프트와 함께 새 세션
+  // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).
+  // 새 세션이면 정적 시스템 프롬프트는 --system-prompt 로 분리 → API system param + 자동 캐싱 적격.
+  // 동적 부분(현재 시간)은 user message 앞에 prepend.
   if (currentSessionId) {
     args.push("--resume", currentSessionId);
   } else {
-    const systemPrompt = await buildSystemPrompt();
-    // 첫 메시지에 시스템 프롬프트 포함
-    args[1] = `${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}`;
+    const staticPrompt = await buildStaticSystemPrompt();
+    const dynamicContext = buildDynamicContext();
+    args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
+    args.push("--system-prompt", staticPrompt);
   }
 
   return new Promise((resolve, reject) => {
