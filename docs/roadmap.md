@@ -267,13 +267,15 @@
 - [x] `get_pace_progression` — 거리 bucket (5k/10k/HM/FM) baseline/latest/best + improvementPct. 스펙: `m5-2-3-pace-progression.md` (#124, PR #125)
 - [x] `get_calendar_summary` — N일 일자별 핵심 지표 한 줄씩 (러닝/수면/RHR/bodyBattery/칼로리 밸런스/걸음수). 스펙: `m5-2-4-calendar-summary.md` (#126, PR #127)
 
-## M5-3: 프롬프트 캐싱 — 우선순위 ★★
+## M5-3: 프롬프트 캐싱 — 우선순위 ★★ ✅
 
-> Claude CLI/SDK의 prompt caching으로 시스템 프롬프트 + MCP 디스크립터 재사용 비용 절감.
+> Claude CLI `--system-prompt` 옵션으로 시스템 프롬프트를 API system param에 분리 → 자동 cache_control 적격.
 
-- [ ] Claude CLI prompt caching 지원 여부 조사 (`--cache-control` 등)
-- [ ] 미지원 시 SDK 전환 검토 (`cache_control: { type: "ephemeral" }`)
-- [ ] 시스템 프롬프트 정적/동적 분리
+- [x] Claude CLI 옵션 조사 — `--system-prompt` 가 API system param 분리 + 자동 캐싱 적격 확인
+- [x] 시스템 프롬프트 정적/동적 분리 (BASE+profile vs 현재 시간)
+- [x] claude-advisor.ts: 새 세션 시 `--system-prompt` 사용, resume 시 CLI가 기존 system 유지
+- 효과: cron 1회 내 MCP 도구 5-10번 호출 시 첫 호출 후 cache hit, input token 60-80% 절감 기대
+- 스펙: `docs/specs/m5-3-prompt-caching.md` (#129, PR #130)
 
 ## M5-4: 멀티턴 컨텍스트 강화 — 우선순위 ★★
 

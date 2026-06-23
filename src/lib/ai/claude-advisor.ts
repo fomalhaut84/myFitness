@@ -1,7 +1,7 @@
 import { spawn } from "child_process";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
-import { buildSystemPrompt } from "./system-prompt";
+import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
@@ -70,13 +70,21 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
     "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary",
   ];
 
-  // 기존 세션이 있으면 --resume, 없으면 시스템 프롬프트와 함께 새 세션
+  // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).
+  // 새 세션:
+  // - --append-system-prompt: Claude Code default(tool guidance/safety) 유지 + 우리 정적 prompt 추가.
+  //   (--system-prompt는 default를 완전 교체 → tool guidance 손실, 사용 금지)
+  // - --exclude-dynamic-system-prompt-sections: default의 동적 sections(cwd/env/git/memory)를
+  //   user msg로 옮겨 system param 정적성 향상 → cache 적중률 ↑.
+  // - 동적 부분(현재 시간)은 user message 앞에 prepend.
   if (currentSessionId) {
     args.push("--resume", currentSessionId);
   } else {
-    const systemPrompt = await buildSystemPrompt();
-    // 첫 메시지에 시스템 프롬프트 포함
-    args[1] = `${systemPrompt}\n\n---\n\n사용자 질문: ${prompt}`;
+    const staticPrompt = await buildStaticSystemPrompt();
+    const dynamicContext = buildDynamicContext();
+    args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
+    args.push("--append-system-prompt", staticPrompt);
+    args.push("--exclude-dynamic-system-prompt-sections");
   }
 
   return new Promise((resolve, reject) => {

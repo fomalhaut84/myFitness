@@ -167,7 +167,22 @@ async function buildUserProfileSection(): Promise<string> {
   return lines.join("\n") + "\n";
 }
 
-export async function buildSystemPrompt(): Promise<string> {
+/**
+ * 정적(반정적) 시스템 프롬프트 — Claude CLI `--system-prompt` 로 전달해 API system param 분리 + 자동 캐싱 적격.
+ * BASE_PROMPT(정적) + UserProfile section(반정적, 프로필 변경 시 무효화).
+ */
+export async function buildStaticSystemPrompt(): Promise<string> {
   const profileSection = await buildUserProfileSection();
-  return `${BASE_PROMPT}\n${profileSection}## 현재 시간\n${formatKSTDateTime()}\n`;
+  return `${BASE_PROMPT}\n${profileSection}`;
+}
+
+/** 호출마다 변하는 동적 컨텍스트 — user message 앞에 prepend. 캐시 무효화 원인. */
+export function buildDynamicContext(): string {
+  return `## 현재 시간\n${formatKSTDateTime()}\n`;
+}
+
+/** 호환용: 정적+동적 합쳐 단일 문자열 반환. 신규 코드는 buildStaticSystemPrompt/buildDynamicContext 직접 사용. */
+export async function buildSystemPrompt(): Promise<string> {
+  const staticPart = await buildStaticSystemPrompt();
+  return `${staticPart}${buildDynamicContext()}`;
 }
