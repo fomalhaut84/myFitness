@@ -1,4 +1,4 @@
-import { askAdvisor } from "@/lib/ai/claude-advisor";
+import { askAdvisor, resetSession } from "@/lib/ai/claude-advisor";
 import { syncAll } from "@/lib/garmin/sync";
 import { daysAgoKST, todayKST, todayKSTString as kstDateStr } from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
@@ -73,7 +73,10 @@ async function generateReport(
   await preSyncForReport();
   console.log(`[${category}] preSync 완료, askAdvisor 시작`);
 
-  const { result } = await askAdvisor(prompt);
+  // cron 채널은 단발 강제 — 매번 fresh 세션 (이전 호출 컨텍스트 오염 차단)
+  const channel = `cron-${category.replace("_report", "")}`;
+  resetSession(channel);
+  const { result } = await askAdvisor(prompt, { channel });
   console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
   // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔

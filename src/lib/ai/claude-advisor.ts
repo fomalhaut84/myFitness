@@ -2,20 +2,24 @@ import { spawn } from "child_process";
 import { existsSync, writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
+import * as SessionStore from "./session-store";
 
 const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
 const TIMEOUT_MS = 180_000;
-
-// 세션 ID 관리 (프로세스 메모리에 유지)
-let currentSessionId: string | null = null;
+const DEFAULT_CHANNEL = "default";
 
 interface ClaudeResponse {
   result: string;
   sessionId: string | null;
   duration_ms?: number;
+}
+
+export interface AskOptions {
+  /** 세션 격리 채널. web/telegram/cron-morning/cron-evening/cron-weekly/default 등. */
+  channel?: string;
 }
 
 function ensureMcpConfig(): string {
@@ -38,15 +42,23 @@ function ensureMcpConfig(): string {
   return RUNTIME_MCP_CONFIG;
 }
 
-export function resetSession(): void {
-  currentSessionId = null;
+/** 호환 wrapper: channel 미지정 시 모든 채널 reset, 지정 시 해당 채널만. */
+export function resetSession(channel?: string): void {
+  if (channel === undefined) SessionStore.resetAll();
+  else SessionStore.resetSession(channel);
 }
 
-export function getSessionId(): string | null {
-  return currentSessionId;
+/** 호환 wrapper: channel 미지정 시 default 채널 sessionId. */
+export function getSessionId(channel: string = DEFAULT_CHANNEL): string | null {
+  return SessionStore.getSession(channel);
 }
 
-export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
+export async function askAdvisor(
+  prompt: string,
+  options: AskOptions = {}
+): Promise<ClaudeResponse> {
+  const channel = options.channel ?? DEFAULT_CHANNEL;
+  const currentSessionId = SessionStore.getSession(channel);
   if (!existsSync(MCP_SERVER_PATH)) {
     throw new Error(
       "MCP 서버 빌드가 필요합니다. `npm run build:mcp`를 먼저 실행하세요."
@@ -121,14 +133,18 @@ export async function askAdvisor(prompt: string): Promise<ClaudeResponse> {
       try {
         const parsed = JSON.parse(stdout);
 
-        // 세션 ID 저장
+        // 세션 ID + 누적 입력 토큰 저장 (채널별)
         if (parsed.session_id) {
-          currentSessionId = parsed.session_id;
+          const inputTokens =
+            typeof parsed.usage?.input_tokens === "number"
+              ? parsed.usage.input_tokens
+              : 0;
+          SessionStore.setSession(channel, parsed.session_id, inputTokens);
         }
 
         resolve({
           result: parsed.result ?? parsed.text ?? stdout,
-          sessionId: currentSessionId,
+          sessionId: parsed.session_id ?? currentSessionId,
           duration_ms: durationMs,
         });
       } catch {
