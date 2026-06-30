@@ -36,7 +36,7 @@
 
 실제 구현은 `.github/workflows/deploy.yml` 참조 (44줄).
 
-### 4.2 SSH 키 발급 절차 (운영자 1회)
+### 4.2 SSH 키 + Host Fingerprint 발급 절차 (운영자 1회)
 
 운영 서버에서:
 
@@ -50,6 +50,11 @@ chmod 600 ~/.ssh/authorized_keys
 
 # 3) private key 내용 확인 (GitHub Secrets에 복사)
 cat ~/.ssh/myfitness_deploy
+
+# 4) SSH host fingerprint 추출 (MITM 차단용)
+#    DEPLOY_SSH_HOST 와 동일한 호스트/포트 사용
+ssh-keygen -lf <(ssh-keyscan -p <PORT> -t ed25519 <HOST> 2>/dev/null) | awk '{print $2}'
+# 출력 예: SHA256:abc123...XYZ
 ```
 
 ### 4.3 GitHub Secrets 등록
@@ -63,6 +68,7 @@ Repo Settings → Secrets and variables → Actions → New repository secret:
 | `DEPLOY_SSH_KEY` | 위 4.2 의 `cat ~/.ssh/myfitness_deploy` 내용 전체 (BEGIN/END 포함) |
 | `DEPLOY_SSH_PORT` | `22` (다르면 해당 값) |
 | `DEPLOY_PATH` | `/home/nasty68/myFitness` |
+| `DEPLOY_SSH_FINGERPRINT` | 위 4.2 의 ssh-keygen -lf 출력 SHA256:... (MITM 차단) |
 
 ### 4.4 동작 흐름
 

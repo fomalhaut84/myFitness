@@ -12,6 +12,13 @@ on:
 permissions:
   contents: read
 
+# 동일 릴리즈/재시도가 겹치면 동일 worktree(node_modules/dist/pm2)에서 deploy.sh 가
+# 동시 실행되어 빌드 손상/PM2 race 위험. 직렬화로 차단. 진행 중 새 release publish 시
+# 새 deploy는 큐잉되어 이전 완료 후 시작.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
 jobs:
   deploy:
     name: SSH Deploy
@@ -32,6 +39,9 @@ jobs:
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT }}
+          # SSH host fingerprint 검증 — 미설정 시 InsecureIgnoreHostKey() default → MITM 위험.
+          # secret 등록 방법은 스펙 §4.2 참조 (ssh-keyscan + ssh-keygen -lf).
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
           envs: RELEASE_TAG,DEPLOY_PATH
           # 30분 timeout (npm ci + build + pm2 restart 충분)
           command_timeout: 30m
