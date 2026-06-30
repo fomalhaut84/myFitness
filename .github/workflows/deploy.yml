@@ -8,6 +8,14 @@ name: Deploy on Release
 on:
   release:
     types: [published]
+  # 진단/수동 재실행 트리거 — GitHub release event 가 어떤 이유로 발동 안 했을 때
+  # Actions UI 의 "Run workflow" 로 수동 실행. ref 입력에 태그 (예: v2.2.12) 지정.
+  workflow_dispatch:
+    inputs:
+      tag:
+        description: 'Release tag to deploy (예: v2.2.12)'
+        required: true
+        type: string
 
 permissions:
   contents: read
@@ -25,7 +33,8 @@ jobs:
     runs-on: ubuntu-latest
     # 정식 릴리즈(prerelease/draft 아님) 만 운영 배포.
     # draft 는 publish 이벤트 자체가 안 뜨지만 명시적 가드.
-    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+    # workflow_dispatch 는 항상 통과 (운영자가 의도적으로 트리거).
+    if: ${{ github.event_name == 'workflow_dispatch' || (!github.event.release.prerelease && !github.event.release.draft) }}
     steps:
       # Fingerprint secret 누락/typo 시 ssh-action 이 빈 문자열로 진행 → InsecureIgnoreHostKey
       # default → MITM 재개. 사전 검증으로 차단.
@@ -43,9 +52,9 @@ jobs:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
-          # release.tag_name 을 직접 script에 expand하면 shell injection 위험.
-          # env var로 받아 quoted 사용 + 형식 검증으로 차단.
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          # release event 면 release.tag_name, workflow_dispatch 면 inputs.tag.
+          # 직접 script에 expand 시 shell injection 위험 → env var + 형식 검증.
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         with:
           host: ${{ secrets.DEPLOY_SSH_HOST }}
@@ -75,7 +84,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
@@ -96,7 +105,7 @@ jobs:
         env:
           TELEGRAM_BOT_TOKEN: ${{ secrets.TELEGRAM_BOT_TOKEN }}
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
-          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
         run: |
           if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
