@@ -31,8 +31,12 @@ echo "=== 5. Build ==="
 npm run build
 
 echo "=== 6. PM2 Restart ==="
-pm2 startOrReload ecosystem.config.js --only myfitness
-pm2 startOrReload ecosystem.config.js --only myfitness-bot
+# web: --update-env 로 env 변수 갱신하며 zero-downtime reload
+pm2 startOrReload ecosystem.config.js --only myfitness --update-env
+# bot: ecosystem 옵션(min_uptime/max_restarts/instances 등) 변경이 reload로 적용되지 않으므로
+#      delete + start로 옵션 100% 반영. 봇은 stateless라 1-2초 다운타임 무관.
+pm2 delete myfitness-bot 2>/dev/null || true
+pm2 start ecosystem.config.js --only myfitness-bot
 
 echo ""
 echo "=== Deploy complete: $TARGET ==="
