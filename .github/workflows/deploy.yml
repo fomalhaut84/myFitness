@@ -92,13 +92,13 @@ jobs:
             echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secret 미설정 — 알림 skip"
             exit 0
           fi
+          # printf로 \n literal newline 처리 — multi-line YAML block scalar 들여쓰기 깨짐 회피.
+          text=$(printf '✅ <b>Deploy %s</b> 성공\n서버: production\n워크플로우: %s' "$RELEASE_TAG" "$RUN_URL")
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=HTML" \
-            --data-urlencode "text=✅ <b>Deploy ${RELEASE_TAG}</b> 성공
-서버: production
-워크플로우: ${RUN_URL}" \
+            --data-urlencode "text=$text" \
             -o /dev/null
 
       - name: Notify Telegram (failure)
@@ -113,10 +113,10 @@ jobs:
             echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secret 미설정 — 알림 skip"
             exit 0
           fi
+          text=$(printf '❌ <b>Deploy %s</b> 실패\n워크플로우 로그: %s' "${RELEASE_TAG:-unknown}" "$RUN_URL")
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=HTML" \
-            --data-urlencode "text=❌ <b>Deploy ${RELEASE_TAG:-unknown}</b> 실패
-워크플로우 로그: ${RUN_URL}" \
+            --data-urlencode "text=$text" \
             -o /dev/null
