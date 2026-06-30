@@ -53,13 +53,18 @@ PR #139에서 `min_uptime: '60s'` + `max_restarts: 10` 도입했으나:
 
 ### `deploy/deploy.sh`
 
-```diff
-- pm2 delete myfitness-bot 2>/dev/null || true
-- pm2 start ecosystem.config.js --only myfitness-bot
-+ pm2 startOrRestart ecosystem.config.js --only myfitness-bot
+PR #139 의 `delete + start` 방식 유지. 두 가지 요건 동시 충족:
+1. 단일 인스턴스 보장 (409 차단) — delete 후 start로 동시 실행 없음
+2. ecosystem 옵션 변경 100% 반영 — PM2 process 완전 삭제 후 재등록해야 `kill_timeout`/`exp_backoff_restart_delay` 등 비-env 옵션이 갱신됨 (`pm2 startOrRestart`/`reload` 는 env만 갱신, 비-env 옵션 ignore — Codex P2 지적)
+
+```bash
+pm2 delete myfitness-bot 2>/dev/null || true
+pm2 start ecosystem.config.js --only myfitness-bot
 ```
 
-`startOrRestart` = hard restart, `delete + start` 보다 부드러우면서 동시 실행 없음. PM2 메타데이터(restart count 등) 보존.
+봇은 stateless라 1-2초 다운타임 무관.
+
+**myFinance #357 차이**: 그 PR은 `startOrRestart` 사용 — ecosystem 옵션 갱신은 운영자가 한 번 수동 delete + start 해야 반영. 우리는 자동화로 갈음.
 
 ### `ecosystem.config.js` myfitness-bot 블록
 
