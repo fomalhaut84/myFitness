@@ -3,7 +3,7 @@ name: Deploy on Release
 # 운영 배포 자동화 — GitHub Release publish 시 운영 서버에서 deploy.sh 실행.
 # 사유: 매 릴리즈마다 사용자가 ssh + git pull + npm run build + pm2 restart 수동 진행
 # 누락 → 코드/dist 불일치 → 운영 장애 (실제 발생: 2026-06-29 cron 리포트 실패, 118 커밋 stale).
-# 이슈 #137, 스펙: docs/specs/137-deploy-automation.md
+# 이슈 #137, 스펙:  docs/specs/137-deploy-automation.md
 # 트리거: release.published (자동), workflow_dispatch (수동 재실행, inputs.tag 필요).
 
 on:
