@@ -289,6 +289,45 @@
 
 ---
 
+# 마일스톤 6: AI 깊이 강화 (장기 계획 + 부상 예방 + 레이스 목표)
+
+> 시작: 2026-06-30. M5 의 단기 결정적 도구화를 한 단계 더 — 장기 추세/예측/계획까지.
+> 스펙: `docs/specs/m6-overview.md`
+
+## M6-1: `generate_training_plan` MCP 도구 — 우선순위 ★★★
+
+> 4주 cycle 훈련 계획 자동 생성 (목표 거리 + 현재 피트니스 기반).
+
+- [ ] 일자별 권장 workout (거리/Zone/유형) — 4주
+- [ ] ACWR 점진적 증가 (10% 미만)
+- [ ] 사용자 LTHR/maxHR 기반 Zone
+- [ ] 신규 DB 모델 가능 (TrainingPlan)
+
+## M6-2: `get_injury_risk_score` MCP 도구 — 우선순위 ★★★
+
+> HRV 추세 + 누적 부하 + 수면 일관성 + 안정시 HR → 부상/오버트레이닝 위험 점수.
+
+- [ ] 0-100 점수 + 4단계 라벨 (safe/caution/elevated/high)
+- [ ] 기여 요인 top 3
+- [ ] 권장 조치
+
+## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★
+
+> 동일 거리 활동 + 트레이닝 트렌드 → race 예상 기록 (Riegel/Cameron 공식).
+
+- [ ] 5K/10K/HM/FM 예측 (최선/현실/최악)
+- [ ] 신뢰도 점수
+- [ ] 도달 가능 예상일
+
+## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★
+
+> readiness + 주간 계획 + 부상 위험 → 오늘 구체적 workout. M6-1~3 의존 통합 도구.
+
+- [ ] workout 유형 / 거리 / 페이스 범위 / Zone
+- [ ] 추천 이유
+
+---
+
 # 유지보수 / 보안
 
 ## Dependabot 보안 패치 2026-06 ✅
