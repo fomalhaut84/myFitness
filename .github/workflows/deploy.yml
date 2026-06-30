@@ -16,19 +16,31 @@ jobs:
   deploy:
     name: SSH Deploy
     runs-on: ubuntu-latest
-    # release 가 tag 에서 만들어졌을 때만 실행 (draft / pre-release 도 published 이벤트 발생하므로
-    # 의도된 정식 릴리즈만 배포하려면 사용자가 GitHub UI에서 "Set as latest release" 사용).
+    # 정식 릴리즈(prerelease/draft 아님) 만 운영 배포.
+    # draft 는 publish 이벤트 자체가 안 뜨지만 명시적 가드.
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
     steps:
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.2
+        env:
+          # release.tag_name 을 직접 script에 expand하면 shell injection 위험.
+          # env var로 받아 quoted 사용 + 형식 검증으로 차단.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
         with:
           host: ${{ secrets.DEPLOY_SSH_HOST }}
           username: ${{ secrets.DEPLOY_SSH_USER }}
           key: ${{ secrets.DEPLOY_SSH_KEY }}
           port: ${{ secrets.DEPLOY_SSH_PORT }}
+          envs: RELEASE_TAG,DEPLOY_PATH
           # 30분 timeout (npm ci + build + pm2 restart 충분)
           command_timeout: 30m
           script: |
-            set -e
-            cd ${{ secrets.DEPLOY_PATH }}
-            ./deploy/deploy.sh ${{ github.event.release.tag_name }}
+            set -euo pipefail
+            # 태그 형식 검증 (semver: vMAJOR.MINOR.PATCH[-suffix])
+            if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+              echo "ERROR: Invalid tag format: $RELEASE_TAG" >&2
+              exit 1
+            fi
+            cd "$DEPLOY_PATH"
+            ./deploy/deploy.sh "$RELEASE_TAG"
