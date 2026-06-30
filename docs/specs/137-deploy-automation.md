@@ -68,7 +68,9 @@ Repo Settings → Secrets and variables → Actions → New repository secret:
 | `DEPLOY_SSH_KEY` | 위 4.2 의 `cat ~/.ssh/myfitness_deploy` 내용 전체 (BEGIN/END 포함) |
 | `DEPLOY_SSH_PORT` | `22` (다르면 해당 값) |
 | `DEPLOY_PATH` | `/home/nasty68/myFitness` |
-| `DEPLOY_SSH_FINGERPRINT` | 위 4.2 의 ssh-keygen -lf 출력 SHA256:... (MITM 차단) |
+| `DEPLOY_SSH_FINGERPRINT` | 위 4.2 의 ssh-keygen -lf 출력 SHA256:... (MITM 차단). 알고리즘 명시 없이 `ssh-keyscan -p PORT HOST` 출력 첫 줄로 추출 권장 (drone-ssh 가 ed25519 외 RSA/ECDSA 협상 가능) |
+| `TELEGRAM_BOT_TOKEN` | myfitness-bot 토큰 (운영 봇과 동일) — 배포 알림용 (#145) |
+| `TELEGRAM_CHAT_ID` | `TELEGRAM_ALLOWED_CHAT_IDS` 의 첫 chat id — 배포 알림 수신 |
 
 ### 4.4 동작 흐름
 
