@@ -31,12 +31,12 @@ echo "=== 5. Build ==="
 npm run build
 
 echo "=== 6. PM2 Restart ==="
-# web: --update-env 로 env 변수 갱신하며 zero-downtime reload
+# web: stateless → graceful reload (zero-downtime) + --update-env 로 env 변수 갱신
 pm2 startOrReload ecosystem.config.js --only myfitness --update-env
-# bot: ecosystem 옵션(min_uptime/max_restarts/instances 등) 변경이 reload로 적용되지 않으므로
-#      delete + start로 옵션 100% 반영. 봇은 stateless라 1-2초 다운타임 무관.
-pm2 delete myfitness-bot 2>/dev/null || true
-pm2 start ecosystem.config.js --only myfitness-bot
+# bot: 텔레그램 long polling 은 토큰당 1 인스턴스만 허용 → reload 시 두 봇이 잠시 겹치면 409 Conflict.
+#      fork 단일 인스턴스라 hard restart (startOrRestart) 가 안전 — 옛 인스턴스 stop 후 새로 spawn.
+#      docs/specs/140-bot-409-conflict-fix.md 참조.
+pm2 startOrRestart ecosystem.config.js --only myfitness-bot
 
 echo ""
 echo "=== Deploy complete: $TARGET ==="
