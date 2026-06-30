@@ -1,0 +1,34 @@
+name: Deploy on Release
+
+# 운영 배포 자동화 — GitHub Release publish 시 운영 서버에서 deploy.sh 실행.
+# 사유: 매 릴리즈마다 사용자가 ssh + git pull + npm run build + pm2 restart 수동 진행
+# 누락 → 코드/dist 불일치 → 운영 장애 (실제 발생: 2026-06-29 cron 리포트 실패, 118 커밋 stale).
+# 이슈 #137, 스펙: docs/specs/137-deploy-automation.md
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+jobs:
+  deploy:
+    name: SSH Deploy
+    runs-on: ubuntu-latest
+    # release 가 tag 에서 만들어졌을 때만 실행 (draft / pre-release 도 published 이벤트 발생하므로
+    # 의도된 정식 릴리즈만 배포하려면 사용자가 GitHub UI에서 "Set as latest release" 사용).
+    steps:
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT }}
+          # 30분 timeout (npm ci + build + pm2 restart 충분)
+          command_timeout: 30m
+          script: |
+            set -e
+            cd ${{ secrets.DEPLOY_PATH }}
+            ./deploy/deploy.sh ${{ github.event.release.tag_name }}
