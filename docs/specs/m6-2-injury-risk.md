@@ -79,7 +79,7 @@ const score = clamp(dropPct * 5, 0, 100);
 
 #### ACWR 위험 (0-100)
 
-M5-2-2 와 동일 계산:
+M5-2-2 와 동일 윈도우 (acute [t-6..t] = 오늘 포함 7일, chronic [t-27..t] = 오늘 포함 28일):
 ```ts
 const acwr = (acute7Total / 7) / (chronic28Total / 28);
 // < 0.8: detraining (위험 낮음, 50점)

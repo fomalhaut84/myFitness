@@ -59,23 +59,25 @@ function computeHrvDecline(
     detail: `최근 7일 HRV 평균 ${round(recentAvg, 1)} ms vs 이전 7일 평균 ${round(
       prevAvg,
       1
-    )} ms (${arrow}${Math.abs(round(dropPct, 1) ?? 0)}%)`,
+    )} ms (${arrow}${Math.abs(Math.round(dropPct * 10) / 10)}%)`,
   };
 }
 
-/** ACWR 위험 — Activity intensityScore 기반. high/very_high zone 시 점수 ↑. */
+/** ACWR 위험 — Activity intensityScore 기반. high/very_high zone 시 점수 ↑.
+ * M5-2-2 (training-load.ts) 와 동일 윈도우: acute [t-6..t] (오늘 포함 7일), chronic [t-27..t] (오늘 포함 28일).
+ * 같은 입력에 두 도구가 다른 ACWR 산출하면 AI 가 혼동하므로 일치 필수. */
 function computeAcwrLoad(
   activities: { startTime: Date; intensityScore: number | null }[]
 ): FactorResult {
   const today = todayKSTString();
-  const sevenAgo = ymdKST(daysAgoKST(7));
-  const twentyEightAgo = ymdKST(daysAgoKST(28));
+  const sevenAgo = ymdKST(daysAgoKST(6));
+  const twentyEightAgo = ymdKST(daysAgoKST(27));
   let acuteTotal = 0;
   let chronicTotal = 0;
   for (const a of activities) {
     if (a.intensityScore === null) continue;
     const d = ymdKST(a.startTime);
-    if (d >= twentyEightAgo && d < today) {
+    if (d >= twentyEightAgo && d <= today) {
       chronicTotal += a.intensityScore;
       if (d >= sevenAgo) acuteTotal += a.intensityScore;
     }
