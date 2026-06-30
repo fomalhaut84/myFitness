@@ -37,6 +37,9 @@ module.exports = {
       // transient 외부 장애(텔레그램/네트워크 일시 outage) 회복까지 무한 대기.
       // 진짜 코드 버그 시에도 간격이 점차 늘어 로그 폭증/리소스 낭비 차단.
       exp_backoff_restart_delay: 100,
+      // PM2 default max_restarts=16 명시적 override — exp_backoff 만으로는 30s min_uptime 도달 못한
+      // 16회 실패 시 errored stop. Number.MAX_SAFE_INTEGER 로 실질 무한 보장.
+      max_restarts: Number.MAX_SAFE_INTEGER,
     },
   ],
 }

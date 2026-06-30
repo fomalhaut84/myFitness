@@ -45,7 +45,7 @@ PR #139에서 `min_uptime: '60s'` + `max_restarts: 10` 도입했으나:
 
 - [ ] **F1**: 봇은 deploy 시 graceful reload 대신 **hard restart** (단일 인스턴스 보장)
 - [ ] **F2**: PM2 가 봇에 더 긴 종료 유예 시간 제공 (`kill_timeout: 15000`)
-- [ ] **F3**: crash loop 시 점차 늘어나는 재시도 간격 (`exp_backoff_restart_delay: 100`). 100ms → 200ms → ... 최대 15s. **무한 재시도** 라 transient 외부 장애 회복까지 기다림. `max_restarts` 의 영구 stop 위험 회피.
+- [ ] **F3**: crash loop 시 점차 늘어나는 재시도 간격 (`exp_backoff_restart_delay: 100`). 100ms → 200ms → ... 최대 15s. **무한 재시도** 라 transient 외부 장애 회복까지 기다림. PM2 default `max_restarts: 16` 명시적 override (`Number.MAX_SAFE_INTEGER`) 필요 — 그렇지 않으면 30s min_uptime 도달 못한 16회 실패 시 영구 stopped.
 - [ ] **F4**: 안정성 기준 (`min_uptime: 30000`) — 30s 이상 살아있으면 정상 동작으로 간주.
 - [ ] 웹 (Next.js) 은 그대로 `startOrReload` 유지 (stateless, zero-downtime 유지)
 
@@ -74,7 +74,10 @@ pm2 start ecosystem.config.js --only myfitness-bot
 +  kill_timeout: 15000,
 +  min_uptime: 30000,
 +  exp_backoff_restart_delay: 100,
++  max_restarts: Number.MAX_SAFE_INTEGER,
 ```
+
+`max_restarts` 명시 안 하면 PM2 default 16 적용 → exp_backoff 가 무한 보장 못 함. Codex 리뷰 P2 반영.
 
 ## 5. 검증
 
