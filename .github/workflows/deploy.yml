@@ -1,0 +1,69 @@
+name: Deploy on Release
+
+# 운영 배포 자동화 — GitHub Release publish 시 운영 서버에서 deploy.sh 실행.
+# 사유: 매 릴리즈마다 사용자가 ssh + git pull + npm run build + pm2 restart 수동 진행
+# 누락 → 코드/dist 불일치 → 운영 장애 (실제 발생: 2026-06-29 cron 리포트 실패, 118 커밋 stale).
+# 이슈 #137, 스펙: docs/specs/137-deploy-automation.md
+
+on:
+  release:
+    types: [published]
+
+permissions:
+  contents: read
+
+# 동일 릴리즈/재시도가 겹치면 동일 worktree(node_modules/dist/pm2)에서 deploy.sh 가
+# 동시 실행되어 빌드 손상/PM2 race 위험. 직렬화로 차단. 진행 중 새 release publish 시
+# 새 deploy는 큐잉되어 이전 완료 후 시작.
+concurrency:
+  group: deploy-production
+  cancel-in-progress: false
+
+jobs:
+  deploy:
+    name: SSH Deploy
+    runs-on: ubuntu-latest
+    # 정식 릴리즈(prerelease/draft 아님) 만 운영 배포.
+    # draft 는 publish 이벤트 자체가 안 뜨지만 명시적 가드.
+    if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
+    steps:
+      # Fingerprint secret 누락/typo 시 ssh-action 이 빈 문자열로 진행 → InsecureIgnoreHostKey
+      # default → MITM 재개. 사전 검증으로 차단.
+      - name: Preflight — require host fingerprint
+        env:
+          DEPLOY_SSH_FINGERPRINT: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+        run: |
+          if [[ -z "$DEPLOY_SSH_FINGERPRINT" ]]; then
+            echo "ERROR: DEPLOY_SSH_FINGERPRINT secret is empty. SSH MITM 위험 → 배포 중단." >&2
+            echo "운영자: 스펙 docs/specs/137-deploy-automation.md §4.2 의 ssh-keygen -lf 명령으로 추출 후 GitHub Secrets 등록." >&2
+            exit 1
+          fi
+          echo "Fingerprint secret present (length=${#DEPLOY_SSH_FINGERPRINT})"
+
+      - name: Deploy via SSH
+        uses: appleboy/ssh-action@v1.2.2
+        env:
+          # release.tag_name 을 직접 script에 expand하면 shell injection 위험.
+          # env var로 받아 quoted 사용 + 형식 검증으로 차단.
+          RELEASE_TAG: ${{ github.event.release.tag_name }}
+          DEPLOY_PATH: ${{ secrets.DEPLOY_PATH }}
+        with:
+          host: ${{ secrets.DEPLOY_SSH_HOST }}
+          username: ${{ secrets.DEPLOY_SSH_USER }}
+          key: ${{ secrets.DEPLOY_SSH_KEY }}
+          port: ${{ secrets.DEPLOY_SSH_PORT }}
+          # SSH host fingerprint 검증 — 미설정 시 InsecureIgnoreHostKey() default → MITM 위험.
+          # secret 등록 방법은 스펙 §4.2 참조 (ssh-keyscan + ssh-keygen -lf).
+          fingerprint: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+          envs: RELEASE_TAG,DEPLOY_PATH
+          # 30분 timeout (npm ci + build + pm2 restart 충분)
+          command_timeout: 30m
+          script: |
+            set -euo pipefail
+            # 태그 형식 검증 (semver: vMAJOR.MINOR.PATCH[-suffix])
+            if ! [[ "$RELEASE_TAG" =~ ^v[0-9]+\.[0-9]+\.[0-9]+(-[A-Za-z0-9.-]+)?$ ]]; then
+              echo "ERROR: Invalid tag format: $RELEASE_TAG" >&2
+              exit 1
+            fi
+            cd "$DEPLOY_PATH"
+            ./deploy/deploy.sh "$RELEASE_TAG"
