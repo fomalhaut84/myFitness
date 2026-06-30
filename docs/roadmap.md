@@ -303,13 +303,15 @@
 - [ ] 사용자 LTHR/maxHR 기반 Zone
 - [ ] 신규 DB 모델 가능 (TrainingPlan)
 
-## M6-2: `get_injury_risk_score` MCP 도구 — 우선순위 ★★★
+## M6-2: `get_injury_risk_score` MCP 도구 — 우선순위 ★★★ ✅
 
 > HRV 추세 + 누적 부하 + 수면 일관성 + 안정시 HR → 부상/오버트레이닝 위험 점수.
 
-- [ ] 0-100 점수 + 4단계 라벨 (safe/caution/elevated/high)
-- [ ] 기여 요인 top 3
-- [ ] 권장 조치
+- [x] 4개 요인 각 25% 가중치 (HRV decline / ACWR / sleep instability / RHR rise)
+- [x] 0-100 점수 + 4단계 라벨 (safe/caution/elevated/high) + 권장 조치
+- [x] 기여 요인 top 3 (점수 + detail)
+- [x] 윈도우 오늘 포함 (preSync 후 stale 1일 방지), ACWR M5-2-2 와 정합
+- 스펙: `docs/specs/m6-2-injury-risk.md` (#154, PR #155)
 
 ## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★
 
