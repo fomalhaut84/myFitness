@@ -14,10 +14,10 @@
 ### 2.1 기능 요구사항
 
 - [ ] **F1**: 신규 MCP 도구 `get_injury_risk_score`. 입력 파라미터 없음.
-- [ ] **F2**: 데이터 소스 (모두 KST 기준):
+- [ ] **F2**: 데이터 소스 (모두 KST 기준, **오늘 포함** — preSyncForReport 후 today KST 날짜로 어젯밤 수면 + 오늘 daily 가 sync되어 있어 1일 stale 방지):
   - SleepRecord 14일 (HRV / restingHR / sleepScore)
-  - SleepRecord/DailySummary 28일 (restingHR 장기 평균)
-  - Activity 28일 (ACWR 산출용 intensityScore, M5-2-2 활용)
+  - DailySummary 28일 (restingHR 장기 baseline)
+  - Activity 28일 (ACWR 산출용 intensityScore, M5-2-2 동일 윈도우)
 - [ ] **F3**: 4개 위험 요인 (각 0-100 normalized):
   - **HRV 하락**: 최근 7일 평균 vs 이전 7일 (8-14일 전) 평균. 하락폭 % 기반.
   - **ACWR 위험**: M5-2-2 와 동일 계산 (acute 7d / chronic 28d). high/very_high zone 시 점수 ↑.

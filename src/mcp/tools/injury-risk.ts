@@ -28,22 +28,23 @@ function round(n: number | null, digits = 1): number | null {
   return Math.round(n * factor) / factor;
 }
 
-/** HRV 하락 — 최근 7일 평균 vs 8-14일 전 평균. 하락폭 클수록 위험. */
+/** HRV 하락 — 최근 7일 평균 vs 이전 7일 평균. 하락폭 클수록 위험.
+ * preSyncForReport 후 어젯밤 수면이 today KST 날짜로 sync되어 있으므로 last7에 오늘 포함. */
 function computeHrvDecline(
   sleeps: { date: Date; hrvOvernight: number | null }[]
 ): FactorResult {
   const today = todayKSTString();
-  const sevenAgo = ymdKST(daysAgoKST(7));
-  // last7: date >= 7일 전 ~ < 오늘
+  const sevenAgo = ymdKST(daysAgoKST(6));
+  // last7: [t-6..t] = 오늘 포함 7일
   const last7 = sleeps.filter((s) => {
     const d = ymdKST(s.date);
-    return d >= sevenAgo && d < today;
+    return d >= sevenAgo && d <= today;
   });
-  // prev7: 8-14일 전
-  const fourteenAgo = ymdKST(daysAgoKST(14));
+  // prev7: [t-13..t-7] = 이전 7일
+  const thirteenAgo = ymdKST(daysAgoKST(13));
   const prev7 = sleeps.filter((s) => {
     const d = ymdKST(s.date);
-    return d >= fourteenAgo && d < sevenAgo;
+    return d >= thirteenAgo && d < sevenAgo;
   });
   const recentAvg = average(last7.map((s) => s.hrvOvernight));
   const prevAvg = average(prev7.map((s) => s.hrvOvernight));
@@ -141,16 +142,17 @@ function computeSleepInstability(
   };
 }
 
-/** RestingHR 상승 — 최근 7일 평균 vs 28일 baseline. */
+/** RestingHR 상승 — 최근 7일 sleep RHR 평균 vs 28일 daily baseline.
+ * sleep 윈도우는 [t-6..t] = 오늘 포함 7일 (computeHrvDecline 과 동일 정합). */
 function computeRestingHrRise(
   sleeps14d: { date: Date; restingHR: number | null }[],
   dailies28d: { restingHR: number | null }[]
 ): FactorResult {
   const today = todayKSTString();
-  const sevenAgo = ymdKST(daysAgoKST(7));
+  const sevenAgo = ymdKST(daysAgoKST(6));
   const last7Sleeps = sleeps14d.filter((s) => {
     const d = ymdKST(s.date);
-    return d >= sevenAgo && d < today;
+    return d >= sevenAgo && d <= today;
   });
   const recentAvg = average(last7Sleeps.map((s) => s.restingHR));
   const baselineAvg = average(dailies28d.map((d) => d.restingHR));
@@ -193,13 +195,15 @@ export async function getInjuryRiskScore() {
   const tomorrow = new Date(today);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
+  // 모든 윈도우 오늘 포함 (lt: tomorrow). preSyncForReport 후 today KST 날짜로
+  // 어젯밤 수면 + 오늘 daily/activity 가 sync되어 있으므로 stale 1일 방지.
   const [sleeps14d, dailies28d, activities28d] = await Promise.all([
     prisma.sleepRecord.findMany({
-      where: { date: { gte: fourteenDaysAgo, lt: today } },
+      where: { date: { gte: fourteenDaysAgo, lt: tomorrow } },
       select: { date: true, hrvOvernight: true, restingHR: true, sleepScore: true },
     }),
     prisma.dailySummary.findMany({
-      where: { date: { gte: twentyEightDaysAgo, lt: today } },
+      where: { date: { gte: twentyEightDaysAgo, lt: tomorrow } },
       select: { restingHR: true },
     }),
     prisma.activity.findMany({
