@@ -34,10 +34,15 @@ async function main() {
       process.exit(1);
     });
 
-  // Graceful shutdown
-  const shutdown = () => {
+  // Graceful shutdown — bot.stop()을 await해야 마지막 getUpdates offset이 확정되어
+  // 재시작 시 중복 update 전달이 방지됨.
+  const shutdown = async () => {
     console.log("[bot] 종료 중...");
-    bot.stop();
+    try {
+      await bot.stop();
+    } catch (err) {
+      console.error(`[bot] bot.stop() 에러: ${sanitizeError(err)}`);
+    }
     process.exit(0);
   };
 
