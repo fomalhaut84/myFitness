@@ -190,24 +190,26 @@ function classify(score: number): { label: string; recommendation: string } {
  */
 export async function getInjuryRiskScore() {
   const today = todayKST();
-  const fourteenDaysAgo = daysAgoKST(14);
-  const twentyEightDaysAgo = daysAgoKST(28);
+  // 14일 윈도우 = [t-13..t] (오늘 포함), 28일 윈도우 = [t-27..t] (오늘 포함).
+  // lt: tomorrow (오늘 포함) + lower bound 1일 줄여 정확히 14/28일 만들기.
+  const sleepWindowStart = daysAgoKST(13);
+  const longWindowStart = daysAgoKST(27);
   const tomorrow = new Date(today);
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
 
-  // 모든 윈도우 오늘 포함 (lt: tomorrow). preSyncForReport 후 today KST 날짜로
+  // 모든 윈도우 오늘 포함. preSyncForReport 후 today KST 날짜로
   // 어젯밤 수면 + 오늘 daily/activity 가 sync되어 있으므로 stale 1일 방지.
   const [sleeps14d, dailies28d, activities28d] = await Promise.all([
     prisma.sleepRecord.findMany({
-      where: { date: { gte: fourteenDaysAgo, lt: tomorrow } },
+      where: { date: { gte: sleepWindowStart, lt: tomorrow } },
       select: { date: true, hrvOvernight: true, restingHR: true, sleepScore: true },
     }),
     prisma.dailySummary.findMany({
-      where: { date: { gte: twentyEightDaysAgo, lt: tomorrow } },
+      where: { date: { gte: longWindowStart, lt: tomorrow } },
       select: { restingHR: true },
     }),
     prisma.activity.findMany({
-      where: { startTime: { gte: twentyEightDaysAgo, lt: tomorrow } },
+      where: { startTime: { gte: longWindowStart, lt: tomorrow } },
       select: { startTime: true, intensityScore: true },
     }),
   ]);
