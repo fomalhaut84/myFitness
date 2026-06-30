@@ -27,6 +27,10 @@ module.exports = {
       max_memory_restart: '512M',
       node_args: '--max-old-space-size=512',
       log_date_format: 'YYYY-MM-DD HH:mm:ss',
+      // 봇 polling 영구 에러(예: 401 토큰 만료) 시 PM2 restart 무한 loop 방지.
+      // min_uptime 안에 max_restarts 초과 시 PM2가 process를 errored 상태로 stop.
+      min_uptime: '60s',
+      max_restarts: 10,
     },
   ],
 }
