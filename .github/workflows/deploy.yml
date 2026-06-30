@@ -27,6 +27,19 @@ jobs:
     # draft 는 publish 이벤트 자체가 안 뜨지만 명시적 가드.
     if: ${{ !github.event.release.prerelease && !github.event.release.draft }}
     steps:
+      # Fingerprint secret 누락/typo 시 ssh-action 이 빈 문자열로 진행 → InsecureIgnoreHostKey
+      # default → MITM 재개. 사전 검증으로 차단.
+      - name: Preflight — require host fingerprint
+        env:
+          DEPLOY_SSH_FINGERPRINT: ${{ secrets.DEPLOY_SSH_FINGERPRINT }}
+        run: |
+          if [[ -z "$DEPLOY_SSH_FINGERPRINT" ]]; then
+            echo "ERROR: DEPLOY_SSH_FINGERPRINT secret is empty. SSH MITM 위험 → 배포 중단." >&2
+            echo "운영자: 스펙 docs/specs/137-deploy-automation.md §4.2 의 ssh-keygen -lf 명령으로 추출 후 GitHub Secrets 등록." >&2
+            exit 1
+          fi
+          echo "Fingerprint secret present (length=${#DEPLOY_SSH_FINGERPRINT})"
+
       - name: Deploy via SSH
         uses: appleboy/ssh-action@v1.2.2
         env:
