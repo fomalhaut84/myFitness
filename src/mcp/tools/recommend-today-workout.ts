@@ -28,9 +28,14 @@ interface DailySummaryLike {
 function extractLabelAndScore(text: string): DailySummaryLike {
   try {
     const obj = JSON.parse(text) as Record<string, unknown>;
-    const label =
-      typeof obj.label === "string" ? obj.label : null;
-    const score = typeof obj.score === "number" ? obj.score : null;
+    const label = typeof obj.label === "string" ? obj.label : null;
+    // readiness 는 `score`, injury-risk 는 `riskScore` 필드로 저장하므로 양쪽 지원.
+    const score =
+      typeof obj.score === "number"
+        ? obj.score
+        : typeof obj.riskScore === "number"
+          ? obj.riskScore
+          : null;
     return { label, score };
   } catch {
     return { label: null, score: null };
@@ -147,19 +152,21 @@ export async function recommendTodayWorkout() {
   const todayIsRestPlanned = planWorkout?.type === "rest";
   const hasActivePlan = planWorkout !== null;
 
-  // Base: plan 오늘 workout (rest 포함) → 그대로. plan 없으면 fallback.
-  const base: BaseWorkout =
-    planWorkout !== null
-      ? {
-          source: "plan",
-          type: planWorkout.type,
-          distanceKm: planWorkout.distanceKm,
-          paceSecPerKm: planWorkout.paceSecPerKm,
-          zone: planWorkout.zone,
-          intervalDesc: planWorkout.intervalDesc,
-          planId: planWorkout.planId,
-        }
-      : fallbackBase(lthr.lthrPaceSecPerKm, lthr.baselineWeeklyKm);
+  // Base: 스펙 F2 — plan 이 없거나 오늘 rest 로 계획된 경우 fallback (easy shakeout).
+  // rest 를 그대로 base 로 두면 조정 매트릭스에서 모든 조합이 rest → optimal+safe
+  // 사용자도 강제 휴식이 되어 스펙과 어긋남.
+  const shouldFallback = planWorkout === null || planWorkout.type === "rest";
+  const base: BaseWorkout = shouldFallback
+    ? fallbackBase(lthr.lthrPaceSecPerKm, lthr.baselineWeeklyKm)
+    : {
+        source: "plan",
+        type: planWorkout.type,
+        distanceKm: planWorkout.distanceKm,
+        paceSecPerKm: planWorkout.paceSecPerKm,
+        zone: planWorkout.zone,
+        intervalDesc: planWorkout.intervalDesc,
+        planId: planWorkout.planId,
+      };
 
   const adjustment = adjustWorkout({
     base,

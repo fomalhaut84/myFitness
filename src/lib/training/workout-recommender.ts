@@ -254,10 +254,11 @@ export function adjustWorkout(input: AdjustInput): AdjustOutput {
       : null;
 
   const adjusted = input.base.type !== recommendedType;
+  // 사용자 노출 문자열은 한국어 (rationale 과 언어 일치).
   const adjustmentReason = adjusted
     ? adjustment === "rest"
-      ? "high injury risk or depleted readiness"
-      : `${readinessLabel} readiness + ${injuryLabel} injury risk`
+      ? "부상 위험 높음 또는 회복력 고갈"
+      : `readiness ${readinessLabel} + 부상 위험 ${injuryLabel}`
     : null;
 
   return {
