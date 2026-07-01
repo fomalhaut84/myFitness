@@ -18,6 +18,7 @@ import { getReadinessScore } from "./tools/readiness";
 import { getTrainingLoadTrend } from "./tools/training-load";
 import { getPaceProgression } from "./tools/pace-progression";
 import { getCalendarSummary } from "./tools/calendar";
+import { getInjuryRiskScore } from "./tools/injury-risk";
 
 const server = new McpServer({
   name: "myfitness",
@@ -182,6 +183,13 @@ server.tool(
       .describe("조회 일수 (기본 14, 1~90)"),
   },
   async (args) => getCalendarSummary(args)
+);
+
+server.tool(
+  "get_injury_risk_score",
+  "부상/오버트레이닝 위험 점수 (0-100) + 4단계 라벨 (safe/caution/elevated/high) + 기여 요인 top 3 + 권장 조치. 4개 요인 각 25% 가중치: HRV 하락(7일 vs 이전 7일), ACWR(M5-2-2 동일), 수면 점수 불안정(14일 CV), RHR 상승(7일 vs 28일 baseline). 모닝 리포트의 회복일/강도 결정에 사용.",
+  {},
+  async () => getInjuryRiskScore()
 );
 
 async function main() {
