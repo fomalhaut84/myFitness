@@ -1,12 +1,7 @@
 // M6-1: generate_training_plan + get_active_training_plan MCP 도구.
 
 import prisma from "../prisma";
-import {
-  todayKST,
-  daysAgoKST,
-  todayKSTString,
-  ymdKST,
-} from "../../lib/garmin/utils";
+import { todayKST, todayKSTString, ymdKST } from "../../lib/garmin/utils";
 import { formatPace } from "./running-buckets";
 import {
   generatePlan,
@@ -14,12 +9,9 @@ import {
   type GeneratedWorkout,
 } from "../../lib/training/plan-generator";
 import { pseudoLthrPace } from "../../lib/training/pace-calc";
+import { computeBaseline } from "../../lib/training/baseline";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
-const BASELINE_WINDOW_DAYS = 28;
-const ACWR_ACUTE_DAYS = 7;
-const MIN_BASELINE_WEEKLY_KM = 15;
-const LOW_VOLUME_THRESHOLD_KM_PER_WEEK = 5; // 이 미만이면 baseline 을 MIN 으로 대체
 const ACTIVE_PLAN_LOCK_KEY = 761101; // pg_advisory_xact_lock 키 (임의 상수)
 const TARGET_DISTANCES = ["5K", "10K", "HM", "FM"] as const;
 type TargetDistance = (typeof TARGET_DISTANCES)[number];
@@ -56,61 +48,6 @@ function parseKstDate(s: string): Date | null {
   if (Number.isNaN(d.getTime())) return null;
   if (ymdKST(d) !== s) return null;
   return d;
-}
-
-async function computeBaseline(): Promise<{
-  weeklyKm: number;
-  acwr: number | null;
-  recentAvgPace: number | null;
-}> {
-  const since = daysAgoKST(BASELINE_WINDOW_DAYS - 1);
-  const tomorrow = new Date(todayKST().getTime() + DAY_MS);
-  const rows = await prisma.activity.findMany({
-    where: {
-      startTime: { gte: since, lt: tomorrow },
-      activityType: { contains: "running" },
-      distance: { not: null },
-    },
-    select: { startTime: true, distance: true, avgPace: true },
-  });
-
-  if (rows.length === 0) {
-    return { weeklyKm: MIN_BASELINE_WEEKLY_KM, acwr: null, recentAvgPace: null };
-  }
-
-  const totalKm = rows.reduce((sum, r) => sum + (r.distance ?? 0) / 1000, 0);
-  const rawWeeklyKm = totalKm / 4;
-  // 스펙: 주간 < 5 km 인 저볼륨/신규 사용자에만 15 km 기본. 그 외에는 실측 유지.
-  const weeklyKm =
-    rawWeeklyKm < LOW_VOLUME_THRESHOLD_KM_PER_WEEK ? MIN_BASELINE_WEEKLY_KM : rawWeeklyKm;
-
-  const acuteSince = daysAgoKST(ACWR_ACUTE_DAYS - 1);
-  const acuteKm = rows
-    .filter((r) => r.startTime >= acuteSince)
-    .reduce((sum, r) => sum + (r.distance ?? 0) / 1000, 0);
-  const acuteDaily = acuteKm / ACWR_ACUTE_DAYS;
-  const chronicDaily = totalKm / BASELINE_WINDOW_DAYS;
-  const acwr = chronicDaily > 0 ? Math.round((acuteDaily / chronicDaily) * 100) / 100 : null;
-
-  // 거리 가중 평균 pace: 총 시간(초) / 총 거리(km). 단순 평균은 짧고 빠른 러닝이
-  // 긴 러닝과 같은 가중치를 가져 pseudo-LTHR 이 왜곡됨 (1km 스프린트 + 20km easy 예시).
-  const pacedRows = rows.filter(
-    (r) => r.avgPace !== null && r.distance !== null && r.distance > 0
-  );
-  let pacedTotalSec = 0;
-  let pacedTotalKm = 0;
-  for (const r of pacedRows) {
-    const distKm = (r.distance ?? 0) / 1000;
-    pacedTotalSec += (r.avgPace ?? 0) * distKm;
-    pacedTotalKm += distKm;
-  }
-  const recentAvgPace = pacedTotalKm > 0 ? pacedTotalSec / pacedTotalKm : null;
-
-  return {
-    weeklyKm: Math.round(weeklyKm * 10) / 10,
-    acwr,
-    recentAvgPace: recentAvgPace !== null ? Math.round(recentAvgPace) : null,
-  };
 }
 
 function validateTargetDistance(v: string | undefined): TargetDistance | null {

@@ -24,6 +24,7 @@ import {
   generateTrainingPlan,
   getActiveTrainingPlan,
 } from "./tools/training-plan";
+import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 
 const server = new McpServer({
   name: "myfitness",
@@ -226,6 +227,13 @@ server.tool(
   "현재 active 트레이닝 플랜 조회 + 진행 파생. 각 workout 은 completed/missed/pending 상태 (workout date 의 KST 일자 러닝 activity 매칭, 계획 대비 90% 이상 거리면 completed). 오늘 workout + 전체 진행률 요약 포함.",
   {},
   async () => getActiveTrainingPlan()
+);
+
+server.tool(
+  "recommend_today_workout",
+  "오늘 실제로 뛸 workout 을 결정적으로 추천 (read-only). active plan 의 오늘 workout 을 base 로, plan 이 없으면 baseline 기반 easy 로 fallback. readiness (M5-2-1) + injury risk (M6-2) 라벨을 매트릭스로 조합해 downgrade 단계 (0/1/2/rest) 결정 후, downgrade ladder (interval→tempo→easy→recovery→rest, long→easy 는 거리 60%) 적용. target pace 는 ±5% 범위. rationale (한국어) 포함.",
+  {},
+  async () => recommendTodayWorkout()
 );
 
 server.tool(
