@@ -1,7 +1,7 @@
 import prisma from "../prisma";
 import { todayKST, daysAgoKST, todayKSTString } from "../../lib/garmin/utils";
+import { type Bucket, bucketOf, formatPace } from "./running-buckets";
 
-type Bucket = "5k" | "10k" | "HM" | "FM";
 type Confidence = "high" | "medium" | "low";
 
 const RACE_DISTANCES: Record<Bucket, { name: string; meters: number }> = {
@@ -44,22 +44,6 @@ function formatSecToTime(totalSec: number): string {
     return `${h}:${m.toString().padStart(2, "0")}:${s.toString().padStart(2, "0")}`;
   }
   return `${m}:${s.toString().padStart(2, "0")}`;
-}
-
-function formatPace(secPerKm: number): string {
-  const total = Math.round(secPerKm);
-  const min = Math.floor(total / 60);
-  const sec = total % 60;
-  return `${min}:${sec.toString().padStart(2, "0")}`;
-}
-
-function bucketOf(distanceM: number): Bucket | null {
-  const km = distanceM / 1000;
-  if (km >= 4.5 && km < 5.5) return "5k";
-  if (km >= 9.0 && km < 11.0) return "10k";
-  if (km >= 20.0 && km < 22.0) return "HM";
-  if (km >= 40.0 && km < 44.0) return "FM";
-  return null;
 }
 
 /** Riegel: T2 = T1 × (D2/D1)^1.06 (총 시간 초). 같은 거리면 T1 그대로. */
@@ -213,7 +197,8 @@ export async function getRacePrediction(args: { windowDays?: number } = {}) {
     sourceData,
   };
 
+  // 응답 토큰 절약을 위해 compact JSON (스펙 ≤ 600 토큰 준수).
   return {
-    content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }],
+    content: [{ type: "text" as const, text: JSON.stringify(payload) }],
   };
 }
