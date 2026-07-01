@@ -161,24 +161,33 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
       }
 
       const pz = paceZoneFor(slot.type, lthrPace);
+      const distanceKm = Math.round(workoutKm * 10) / 10;
       workouts.push({
         date,
         weekNumber: week + 1,
         dayIndex: dayIdx,
         type: slot.type,
-        distanceKm: Math.round(workoutKm * 10) / 10, // 소수점 1
+        distanceKm,
         paceSecPerKm: pz?.paceSecPerKm ?? null,
         zone: pz?.zone ?? null,
         intervalDesc:
-          slot.type === "interval"
-            ? `6x400m Z5 (jog 200m recovery)`
-            : null,
+          slot.type === "interval" ? intervalDescFor(distanceKm) : null,
         notes: notesFor(slot.type),
       });
     }
   }
 
   return workouts;
+}
+
+/**
+ * 인터벌 설명 생성 — reps 를 workoutKm 에 맞춰 동적으로 계산.
+ * 400 m 반복 + 200 m jog 회복 = 회당 0.6 km. reps ≈ workoutKm / 0.6.
+ * 3 ~ 10 회로 clamp (그 미만은 인터벌 자격 없음, 초과는 tempo 성격).
+ */
+function intervalDescFor(workoutKm: number): string {
+  const reps = Math.max(3, Math.min(10, Math.round(workoutKm / 0.6)));
+  return `${reps}x400m Z5 (jog 200m recovery)`;
 }
 
 function notesFor(type: WorkoutType): string {

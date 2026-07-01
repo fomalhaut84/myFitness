@@ -142,10 +142,13 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
 
   const startDate = new Date(todayKST().getTime() + DAY_MS); // 내일
   const endDate = new Date(startDate.getTime() + 27 * DAY_MS);
+  const week4Start = new Date(startDate.getTime() + 21 * DAY_MS);
 
-  // targetDate 범위 검증: plan 창 내에 있어야 tapering 적용 (아니면 무시).
+  // targetDate 는 Wk4 창 내(21~27일차)에 있어야 tapering 이 의미 있음. 그 외 시점은 무시하고
+  // 일반 4주 plan 을 생성 (Wk1~3 targetDate 를 그대로 넘기면 race day 만 rest 로 바뀌고
+  // 이후 build 스케줄이 계속되어 스펙과 맞지 않음).
   const effectiveTargetDate =
-    targetDate !== null && targetDate >= startDate && targetDate <= endDate
+    targetDate !== null && targetDate >= week4Start && targetDate <= endDate
       ? targetDate
       : null;
 
