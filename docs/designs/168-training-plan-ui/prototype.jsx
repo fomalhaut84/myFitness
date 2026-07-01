@@ -626,6 +626,7 @@ function CalendarCell({ cell, isToday }) {
     outline: isToday ? `1.5px solid ${C.primary}` : "none",
     outlineOffset: -1,
     opacity: isRest ? 0.55 : 1,
+    overflow: "hidden", // outline 안쪽으로 컨텐츠 clip (특히 모바일 좁은 셀에서 텍스트 오버플로 방지)
   };
 
   if (isRest && !isRaceDay) {
@@ -654,10 +655,10 @@ function CalendarCell({ cell, isToday }) {
           borderTop: `2px solid ${C.primary}`,
         }}
       >
-        <div className="text-[13px] md:text-[18px]" style={{ fontFamily: '"Pretendard"', fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>
+        <div className="text-[13px] md:text-[18px] truncate" style={{ fontFamily: '"Pretendard"', fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>
           RACE
         </div>
-        <div className="text-[9px] md:text-[12px] mt-0.5 md:mt-1" style={{ fontFamily: '"Pretendard"', color: "#ffffffcc", fontWeight: 500 }}>
+        <div className="text-[9px] md:text-[12px] mt-0.5 md:mt-1 truncate" style={{ fontFamily: '"Pretendard"', color: "#ffffffcc", fontWeight: 500 }}>
           {notes}
         </div>
       </div>
@@ -725,7 +726,7 @@ function CalendarCell({ cell, isToday }) {
 
       {/* 페이스 */}
       <div
-        className="text-[9px] md:text-[12px]"
+        className="text-[9px] md:text-[12px] truncate"
         style={{
           fontFamily: '"JetBrains Mono"',
           color: C.mid,
@@ -841,9 +842,9 @@ function PlanCalendar({ plan }) {
   const sum = (cells) => cells.reduce((s, c) => s + (c.distanceKm || 0), 0).toFixed(1);
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
-      {/* 그리드 전체 — 모바일 사이즈 축소로 스크롤 최소화 (기본 뷰포트 ~375px 에서 넉넉히 fit). */}
+      {/* 그리드 전체 — 셀 최소 폭 확보 + 가로 스크롤. 컨텐츠가 셀 밖으로 넘치는 문제 방지. */}
       <div className="overflow-x-auto">
-        <div className="min-w-full md:min-w-[720px]">
+        <div className="min-w-[500px] md:min-w-[720px]">
           {/* 요일 헤더 */}
           <div className="grid grid-cols-[52px_1fr_58px] md:grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
             <div className="p-2 md:p-5 border-r" style={{ borderColor: C.border }}>
