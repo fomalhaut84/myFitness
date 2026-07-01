@@ -29,6 +29,11 @@ function toUtcDateOnly(kstInstant: Date): Date {
   return new Date(`${ymd}T00:00:00.000Z`);
 }
 
+/** DB DATE 값을 해당 KST 벽시계 날짜의 시작 instant 로 변환. */
+function dateOnlyToKstStart(dateOnly: Date): Date {
+  return new Date(`${ymdKST(dateOnly)}T00:00:00+09:00`);
+}
+
 interface GenerateInput {
   weeklyFrequency?: number;
   targetDistance?: string;
@@ -261,8 +266,8 @@ export async function getActiveTrainingPlan() {
   }
 
   // 진행 파생: plan 기간의 러닝 activity 를 KST day 기준으로 그룹.
-  const planStart = plan.startDate;
-  const planEnd = new Date(plan.endDate.getTime() + DAY_MS); // exclusive
+  const planStart = dateOnlyToKstStart(plan.startDate);
+  const planEnd = new Date(dateOnlyToKstStart(plan.endDate).getTime() + DAY_MS); // exclusive
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: planStart, lt: planEnd },
