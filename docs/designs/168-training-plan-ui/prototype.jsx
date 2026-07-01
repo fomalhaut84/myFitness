@@ -163,61 +163,64 @@ function MicroLabel({ children, color = C.lo, className = "" }) {
   );
 }
 
-/** 매거진 섹션 번호 + 라벨. 이탤릭 세리프 제거, Pretendard 로 통일. */
+/** 매거진 섹션 번호 + 라벨. 모바일에선 meta 하단으로 wrap. */
 function SectionHeader({ number, kicker, title, meta }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-8 mb-14">
-      <div className="flex items-baseline gap-5">
-        <span
-          style={{
-            fontFamily: '"Big Shoulders Display", ui-sans-serif',
-            fontWeight: 800,
-            fontSize: 64,
-            lineHeight: 0.9,
-            color: C.primary,
-            letterSpacing: "-0.02em",
-          }}
-        >
-          {number}
-        </span>
-        <div className="flex flex-col gap-1">
+    <div className="border-b border-white/5 pb-6 md:pb-8 mb-10 md:mb-14">
+      <div className="flex items-baseline justify-between gap-4 flex-wrap">
+        <div className="flex items-baseline gap-4 md:gap-5">
           <span
+            className="text-[48px] md:text-[64px]"
             style={{
-              fontFamily: '"Pretendard", ui-sans-serif',
-              fontSize: 13,
-              fontWeight: 500,
-              color: C.mid,
-              letterSpacing: "0.02em",
-            }}
-          >
-            {kicker}
-          </span>
-          <span
-            style={{
-              fontFamily: '"Pretendard", ui-sans-serif',
-              fontWeight: 700,
-              fontSize: 28,
-              lineHeight: 1.1,
-              color: C.hi,
+              fontFamily: '"Big Shoulders Display", ui-sans-serif',
+              fontWeight: 800,
+              lineHeight: 0.9,
+              color: C.primary,
               letterSpacing: "-0.02em",
             }}
           >
-            {title}
+            {number}
           </span>
+          <div className="flex flex-col gap-1">
+            <span
+              style={{
+                fontFamily: '"Pretendard", ui-sans-serif',
+                fontSize: 12,
+                fontWeight: 500,
+                color: C.mid,
+                letterSpacing: "0.02em",
+              }}
+              className="md:text-[13px]"
+            >
+              {kicker}
+            </span>
+            <span
+              className="text-[22px] md:text-[28px]"
+              style={{
+                fontFamily: '"Pretendard", ui-sans-serif',
+                fontWeight: 700,
+                lineHeight: 1.1,
+                color: C.hi,
+                letterSpacing: "-0.02em",
+              }}
+            >
+              {title}
+            </span>
+          </div>
         </div>
+        {meta && (
+          <span
+            className="text-[10px] md:text-[12px] w-full md:w-auto mt-2 md:mt-0 break-all"
+            style={{
+              fontFamily: '"JetBrains Mono", ui-monospace',
+              color: C.lo,
+              fontVariantNumeric: "tabular-nums",
+            }}
+          >
+            {meta}
+          </span>
+        )}
       </div>
-      {meta && (
-        <span
-          style={{
-            fontFamily: '"JetBrains Mono", ui-monospace',
-            fontSize: 12,
-            color: C.lo,
-            fontVariantNumeric: "tabular-nums",
-          }}
-        >
-          {meta}
-        </span>
-      )}
     </div>
   );
 }
@@ -311,9 +314,9 @@ function TodayWorkoutCard({ today }) {
     >
       {/* Left: Hero — 조정된 워크아웃 */}
       <div
-        className="p-12 md:p-16 relative overflow-hidden"
+        className="p-6 md:p-14 lg:p-16 relative overflow-hidden lg:border-r"
         style={{
-          borderRight: `1px solid ${C.border}`,
+          borderColor: C.border,
           background: `radial-gradient(ellipse at top left, ${C.primary}0A 0%, transparent 60%)`,
         }}
       >
@@ -353,11 +356,11 @@ function TodayWorkoutCard({ today }) {
           >
             추천 워크아웃
           </div>
-          <div className="flex items-end gap-5 mb-2">
+          <div className="flex items-end gap-3 md:gap-5 mb-2 flex-wrap">
             <span
+              className="text-[64px] md:text-[96px]"
               style={{
                 fontFamily: '"Big Shoulders Display", ui-sans-serif',
-                fontSize: 96,
                 fontWeight: 800,
                 lineHeight: 0.85,
                 color: C.hi,
@@ -386,24 +389,26 @@ function TodayWorkoutCard({ today }) {
           </div>
         </div>
 
-        {/* Metrics row */}
+        {/* Metrics row — 모바일 세로 스택. */}
         {!isRest && (
-          <div className="grid grid-cols-3 gap-8 pt-8 border-t" style={{ borderColor: C.border }}>
+          <div className="grid grid-cols-2 md:grid-cols-3 gap-6 md:gap-8 pt-6 md:pt-8 border-t" style={{ borderColor: C.border }}>
             <DataUnit label="Distance" value={recommendation.distanceKm} unit="km" size="lg" />
-            <DataUnit
-              label="Pace range"
-              value={`${recommendation.paceRange.min}–${recommendation.paceRange.max}`}
-              unit="/km"
-              size="md"
-              color={ZONE_COLOR[recommendation.zone]}
-            />
             <DataUnit label="Zone" value={recommendation.zone} size="lg" color={ZONE_COLOR[recommendation.zone]} />
+            <div className="col-span-2 md:col-span-1">
+              <DataUnit
+                label="Pace range"
+                value={`${recommendation.paceRange.min}–${recommendation.paceRange.max}`}
+                unit="/km"
+                size="md"
+                color={ZONE_COLOR[recommendation.zone]}
+              />
+            </div>
           </div>
         )}
 
         {/* Rationale — 세리프 이탤릭 제거, 본문 sans 로 통일 (가독성). */}
         <div
-          className="mt-10 p-6"
+          className="mt-8 md:mt-10 p-5 md:p-6"
           style={{
             background: "#0000001a",
             borderLeft: `3px solid ${C.primary}`,
@@ -447,7 +452,10 @@ function TodayWorkoutCard({ today }) {
       </div>
 
       {/* Right: Factors */}
-      <div className="p-12 md:p-14 flex flex-col gap-10">
+      <div
+        className="p-6 md:p-14 flex flex-col gap-8 md:gap-10 border-t lg:border-t-0"
+        style={{ borderColor: C.border }}
+      >
         <div>
           <MicroLabel color={C.mid}>결정 팩터</MicroLabel>
           <div
@@ -578,11 +586,11 @@ function ProgressStrip({ progress }) {
   const c = (completed / total) * 100;
   const m = (missed / total) * 100;
   return (
-    <div className="mb-12">
-      <div className="flex items-baseline justify-between mb-6">
-        <div className="flex items-baseline gap-6">
+    <div className="mb-10 md:mb-12">
+      <div className="flex flex-col md:flex-row md:items-baseline md:justify-between gap-4 md:gap-0 mb-5 md:mb-6">
+        <div className="flex items-baseline gap-4 md:gap-6">
           <div className="flex items-baseline gap-2">
-            <span style={{ fontFamily: '"Big Shoulders Display"', fontSize: 48, fontWeight: 800, color: C.hi, lineHeight: 0.85, fontVariantNumeric: "tabular-nums" }}>
+            <span className="text-[40px] md:text-[48px]" style={{ fontFamily: '"Big Shoulders Display"', fontWeight: 800, color: C.hi, lineHeight: 0.85, fontVariantNumeric: "tabular-nums" }}>
               {completionPct}
             </span>
             <span style={{ fontFamily: '"Pretendard"', fontSize: 18, color: C.mid, fontWeight: 500 }}>%</span>
@@ -591,7 +599,7 @@ function ProgressStrip({ progress }) {
             블록 진행률
           </span>
         </div>
-        <div className="flex gap-5" style={{ fontFamily: '"Pretendard"', fontSize: 13, color: C.mid, fontWeight: 500 }}>
+        <div className="flex gap-4 md:gap-5 flex-wrap" style={{ fontFamily: '"Pretendard"', fontSize: 13, color: C.mid, fontWeight: 500 }}>
           <span><span style={{ color: C.completed, marginRight: 6 }}>■</span>{completed} 완료</span>
           <span><span style={{ color: C.missed, marginRight: 6 }}>■</span>{missed} 누락</span>
           <span><span style={{ color: C.lo, marginRight: 6 }}>■</span>{pending} 예정</span>
@@ -825,42 +833,54 @@ function PlanCalendar({ plan }) {
   const sum = (cells) => cells.reduce((s, c) => s + (c.distanceKm || 0), 0).toFixed(1);
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
-      {/* 요일 헤더 */}
-      <div className="grid grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
-        <div className="p-5 border-r" style={{ borderColor: C.border }}>
-          <MicroLabel color={C.lo}>Weeks</MicroLabel>
-        </div>
-        <div className="grid grid-cols-7">
-          {w.dayHeaders.map((d) => (
-            <div key={d} className="p-5 text-center">
-              <MicroLabel color={C.lo}>{d}</MicroLabel>
+      {/* 그리드 전체 — 모바일에선 가로 스크롤 (최소 폭 확보). */}
+      <div className="overflow-x-auto">
+        <div style={{ minWidth: 720 }}>
+          {/* 요일 헤더 */}
+          <div className="grid grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
+            <div className="p-5 border-r" style={{ borderColor: C.border }}>
+              <MicroLabel color={C.lo}>Weeks</MicroLabel>
             </div>
-          ))}
-        </div>
-        <div className="p-5 border-l text-right" style={{ borderColor: C.border }}>
-          <MicroLabel color={C.lo}>Total</MicroLabel>
+            <div className="grid grid-cols-7">
+              {w.dayHeaders.map((d) => (
+                <div key={d} className="p-5 text-center">
+                  <MicroLabel color={C.lo}>{d}</MicroLabel>
+                </div>
+              ))}
+            </div>
+            <div className="p-5 border-l text-right" style={{ borderColor: C.border }}>
+              <MicroLabel color={C.lo}>Total</MicroLabel>
+            </div>
+          </div>
+
+          <WeekRow weekLabel="01" weekTotalKm={sum(w.week1)} cells={w.week1} />
+          <WeekRow weekLabel="02" weekTotalKm={sum(w.week2)} cells={w.week2} />
+          <WeekRow weekLabel="03" weekTotalKm={sum(w.week3)} cells={w.week3} isCurrentWeek />
+          <WeekRow weekLabel="04" weekTotalKm={sum(w.week4)} cells={w.week4} />
         </div>
       </div>
 
-      <WeekRow weekLabel="01" weekTotalKm={sum(w.week1)} cells={w.week1} />
-      <WeekRow weekLabel="02" weekTotalKm={sum(w.week2)} cells={w.week2} />
-      <WeekRow weekLabel="03" weekTotalKm={sum(w.week3)} cells={w.week3} isCurrentWeek />
-      <WeekRow weekLabel="04" weekTotalKm={sum(w.week4)} cells={w.week4} />
-
-      {/* Race 표기 */}
-      <div className="p-6 flex items-center justify-between" style={{ background: "#00000022" }}>
+      {/* Race 표기 — 모바일 세로 스택. */}
+      <div className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3" style={{ background: "#00000022" }}>
         <div className="flex items-center gap-3">
           <span
-            className="inline-block w-2 h-2"
+            className="inline-block w-2 h-2 shrink-0"
             style={{ background: C.primary }}
           />
           <MicroLabel color={C.primary}>Race target</MicroLabel>
-          <span style={{ fontFamily: '"Pretendard"', fontSize: 13, color: C.hi }}>
+          <span style={{ fontFamily: '"Pretendard"', fontSize: 13, color: C.hi, fontWeight: 500 }}>
             {plan.plan.targetDistance} · {plan.plan.targetDate}
           </span>
         </div>
         <span style={{ fontFamily: '"JetBrains Mono"', fontSize: 11, color: C.lo }}>
           taper: Wk4 pre-race window
+        </span>
+      </div>
+
+      {/* 모바일 힌트 */}
+      <div className="md:hidden px-5 py-3 text-center" style={{ borderTop: `1px solid ${C.border}`, background: "#00000011" }}>
+        <span style={{ fontFamily: '"Pretendard"', fontSize: 11, color: C.lo, fontWeight: 500 }}>
+          ← 가로로 스와이프해서 4주 전체 확인 →
         </span>
       </div>
     </div>
@@ -876,14 +896,14 @@ function GenerateForm({ hasActivePlan }) {
 
   return (
     <div
-      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 p-12 md:p-14"
+      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-8 md:gap-12 p-6 md:p-12 lg:p-14"
       style={{ border: `1px solid ${C.border}`, background: C.panel }}
     >
-      <div className="space-y-10">
+      <div className="space-y-8 md:space-y-10">
         {/* Frequency */}
         <div>
           <MicroLabel color={C.mid} className="mb-4">Weekly frequency</MicroLabel>
-          <div className="flex gap-3 mt-5">
+          <div className="flex gap-2 md:gap-3 mt-5">
             {[3, 4, 5].map((n) => (
               <button
                 key={n}
@@ -908,8 +928,8 @@ function GenerateForm({ hasActivePlan }) {
           </div>
         </div>
 
-        {/* Target */}
-        <div className="grid grid-cols-2 gap-6">
+        {/* Target — 모바일 세로 스택. */}
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
             <MicroLabel color={C.mid} className="mb-3">Target distance</MicroLabel>
             <div className="flex gap-2 mt-4">
@@ -957,10 +977,10 @@ function GenerateForm({ hasActivePlan }) {
         </div>
       </div>
 
-      <div className="flex flex-col justify-end gap-4">
+      <div className="flex flex-col justify-end gap-4 w-full lg:w-auto">
         {hasActivePlan && (
           <div
-            className="p-4"
+            className="p-4 w-full lg:max-w-[280px]"
             style={{
               border: `1px solid ${C.primary}44`,
               background: `${C.primary}0A`,
@@ -968,7 +988,6 @@ function GenerateForm({ hasActivePlan }) {
               fontSize: 12,
               color: C.mid,
               lineHeight: 1.6,
-              maxWidth: 280,
               fontWeight: 500,
             }}
           >
@@ -979,7 +998,7 @@ function GenerateForm({ hasActivePlan }) {
           </div>
         )}
         <button
-          className="px-10 py-5 transition-colors"
+          className="w-full lg:w-auto px-8 md:px-10 py-4 md:py-5 transition-colors"
           style={{
             background: C.primary,
             color: C.hi,
@@ -1007,15 +1026,15 @@ function ArchivedList({ items }) {
       {items.map((p, idx) => (
         <div
           key={p.planId}
-          className="grid grid-cols-[80px_1fr_100px_120px] items-center p-8 gap-6 cursor-pointer transition-colors hover:bg-white/[0.02]"
+          className="grid grid-cols-[56px_1fr_auto] md:grid-cols-[80px_1fr_100px_120px] items-center p-5 md:p-8 gap-4 md:gap-6 cursor-pointer transition-colors hover:bg-white/[0.02]"
           style={{
             borderBottom: idx < items.length - 1 ? `1px solid ${C.border}` : "none",
           }}
         >
           <div
+            className="text-[24px] md:text-[32px]"
             style={{
               fontFamily: '"Big Shoulders Display"',
-              fontSize: 32,
               fontWeight: 700,
               color: C.lo,
               lineHeight: 1,
@@ -1024,11 +1043,11 @@ function ArchivedList({ items }) {
           >
             {String(items.length - idx).padStart(2, "0")}
           </div>
-          <div>
-            <div style={{ fontFamily: '"JetBrains Mono"', fontSize: 14, color: C.hi, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}>
+          <div className="min-w-0">
+            <div className="text-[12px] md:text-[14px] truncate" style={{ fontFamily: '"JetBrains Mono"', color: C.hi, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}>
               {p.startDate} — {p.endDate}
             </div>
-            <div className="mt-2 flex items-center gap-4">
+            <div className="mt-2 flex items-center gap-3 md:gap-4 flex-wrap">
               <MicroLabel color={C.lo}>
                 {p.weeklyFrequency}x/wk
               </MicroLabel>
@@ -1041,9 +1060,9 @@ function ArchivedList({ items }) {
           </div>
           <div className="flex flex-col items-end">
             <div
+              className="text-[20px] md:text-[24px]"
               style={{
                 fontFamily: '"Big Shoulders Display"',
-                fontSize: 24,
                 fontWeight: 700,
                 color: p.completionPct >= 80 ? C.completed : p.completionPct >= 50 ? C.hi : C.missed,
                 lineHeight: 1,
@@ -1054,7 +1073,7 @@ function ArchivedList({ items }) {
             </div>
             <MicroLabel color={C.lo}>%</MicroLabel>
           </div>
-          <div className="text-right">
+          <div className="hidden md:block text-right">
             <span
               style={{
                 fontFamily: '"Pretendard"',
@@ -1121,17 +1140,23 @@ export default function TrainingPlanPrototype() {
                 · 트레이닝 플랜
               </span>
             </div>
-            <nav className="flex gap-6" style={{ fontFamily: '"Pretendard"', fontSize: 12, color: C.mid, fontWeight: 500 }}>
+            <nav className="hidden md:flex gap-6" style={{ fontFamily: '"Pretendard"', fontSize: 12, color: C.mid, fontWeight: 500 }}>
               <a href="#" style={{ color: C.mid }}>대시보드</a>
               <a href="#" style={{ color: C.mid }}>활동</a>
               <a href="#" style={{ color: C.primary, borderBottom: `1px solid ${C.primary}` }}>플랜</a>
               <a href="#" style={{ color: C.mid }}>리포트</a>
               <a href="#" style={{ color: C.mid }}>설정</a>
             </nav>
+            {/* 모바일 햄버거 (프로토타입은 정적) */}
+            <button className="md:hidden p-2" aria-label="메뉴" style={{ color: C.mid }}>
+              <svg width="20" height="20" viewBox="0 0 20 20" fill="currentColor">
+                <path d="M3 5h14v1.5H3zM3 9.25h14v1.5H3zM3 13.5h14V15H3z" />
+              </svg>
+            </button>
           </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-6 py-20 space-y-32">
+        <main className="max-w-6xl mx-auto px-4 md:px-6 py-12 md:py-20 space-y-24 md:space-y-32">
           {/* SECTION 01: TODAY */}
           <section>
             <SectionHeader
