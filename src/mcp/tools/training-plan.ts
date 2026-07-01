@@ -13,9 +13,21 @@ import { generatePlan, type GeneratedWorkout } from "../../lib/training/plan-gen
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_WINDOW_DAYS = 28;
 const ACWR_ACUTE_DAYS = 7;
-const MIN_BASELINE_WEEKLY_KM = 15; // 데이터 부족 시 기본
+const MIN_BASELINE_WEEKLY_KM = 15;
+const LOW_VOLUME_THRESHOLD_KM_PER_WEEK = 5; // 이 미만이면 baseline 을 MIN 으로 대체
+const ACTIVE_PLAN_LOCK_KEY = 761101; // pg_advisory_xact_lock 키 (임의 상수)
 const TARGET_DISTANCES = ["5K", "10K", "HM", "FM"] as const;
 type TargetDistance = (typeof TARGET_DISTANCES)[number];
+
+/**
+ * KST 벽시계 날짜(YYYY-MM-DD)에 해당하는 UTC midnight instant.
+ * Prisma `@db.Date` 컬럼은 date-only 라 UTC 기준으로 잘림 → 이 helper 로 저장하면
+ * KST 벽시계 날짜와 DB 저장 날짜가 일치.
+ */
+function toUtcDateOnly(kstInstant: Date): Date {
+  const ymd = ymdKST(kstInstant);
+  return new Date(`${ymd}T00:00:00.000Z`);
+}
 
 interface GenerateInput {
   weeklyFrequency?: number;
@@ -51,7 +63,10 @@ async function computeBaseline(): Promise<{
   }
 
   const totalKm = rows.reduce((sum, r) => sum + (r.distance ?? 0) / 1000, 0);
-  const weeklyKm = Math.max(totalKm / 4, MIN_BASELINE_WEEKLY_KM);
+  const rawWeeklyKm = totalKm / 4;
+  // 스펙: 주간 < 5 km 인 저볼륨/신규 사용자에만 15 km 기본. 그 외에는 실측 유지.
+  const weeklyKm =
+    rawWeeklyKm < LOW_VOLUME_THRESHOLD_KM_PER_WEEK ? MIN_BASELINE_WEEKLY_KM : rawWeeklyKm;
 
   const acuteSince = daysAgoKST(ACWR_ACUTE_DAYS - 1);
   const acuteKm = rows
@@ -133,23 +148,36 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     targetDate: effectiveTargetDate,
   });
 
-  // 트랜잭션: 기존 active 아카이빙 + 신규 plan + workouts insert.
+  const lthrPaceUsed =
+    lthrPace ??
+    (baseline.recentAvgPace !== null ? baseline.recentAvgPace / 1.10 : null);
+
+  // 트랜잭션: advisory lock 으로 archive+create 구간 직렬화 (동시 호출 시 중복 active 방지).
+  // 이후 기존 active 아카이빙 + 신규 plan + workouts insert.
   const result = await prisma.$transaction(async (tx) => {
-    const archived = await tx.trainingPlan.updateMany({
+    await tx.$executeRaw`SELECT pg_advisory_xact_lock(${ACTIVE_PLAN_LOCK_KEY})`;
+
+    const archivedActive = await tx.trainingPlan.findMany({
       where: { status: "active" },
-      data: { status: "archived" },
+      select: { id: true },
     });
+    if (archivedActive.length > 0) {
+      await tx.trainingPlan.updateMany({
+        where: { id: { in: archivedActive.map((p) => p.id) } },
+        data: { status: "archived" },
+      });
+    }
 
     const plan = await tx.trainingPlan.create({
       data: {
-        startDate,
-        endDate,
+        startDate: toUtcDateOnly(startDate),
+        endDate: toUtcDateOnly(endDate),
         weeklyFrequency,
         targetDistance: targetDistance,
-        targetDate: effectiveTargetDate,
+        targetDate: effectiveTargetDate !== null ? toUtcDateOnly(effectiveTargetDate) : null,
         baselineWeeklyKm: baseline.weeklyKm,
         baselineAcwr: baseline.acwr,
-        lthrPaceUsed: lthrPace ?? (baseline.recentAvgPace !== null ? baseline.recentAvgPace / 1.2 : null),
+        lthrPaceUsed,
         status: "active",
       },
     });
@@ -157,7 +185,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     await tx.trainingWorkout.createMany({
       data: workouts.map((w) => ({
         planId: plan.id,
-        date: w.date,
+        date: toUtcDateOnly(w.date),
         weekNumber: w.weekNumber,
         dayIndex: w.dayIndex,
         type: w.type,
@@ -169,7 +197,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
       })),
     });
 
-    return { plan, archivedCount: archived.count };
+    return { plan, archivedPreviousPlanIds: archivedActive.map((p) => p.id) };
   });
 
   const byWeek = [1, 2, 3, 4].map((wk) => {
@@ -194,7 +222,10 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     baselineAcwr: baseline.acwr ?? undefined,
     lthrPaceUsed: result.plan.lthrPaceUsed !== null ? Math.round(result.plan.lthrPaceUsed) : undefined,
     weeks: byWeek,
-    archivedPreviousPlans: result.archivedCount || undefined,
+    archivedPreviousPlanIds:
+      result.archivedPreviousPlanIds.length > 0
+        ? result.archivedPreviousPlanIds
+        : undefined,
   };
 
   return {

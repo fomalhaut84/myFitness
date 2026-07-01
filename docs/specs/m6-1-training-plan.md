@@ -39,7 +39,7 @@
   - 마이그레이션 파일 생성
 - [ ] **F4**: 결정적 plan 생성 로직
   - **baseline 주간 km**: 최근 28일 러닝 총 km / 4. 데이터 부족 시 (< 5 km/wk) 15 km 기본
-  - **주간 progression**: Wk1 baseline, Wk2 +10 %, Wk3 +10 % (peak), Wk4 -20 % (recovery). ACWR 10 % 이하 유지
+  - **주간 progression**: Wk1 baseline (×1.0), Wk2 (×1.1), Wk3 (×1.2, peak), Wk4 (×0.8, recovery). ACWR 10 % 이하 유지
   - **race taper**: targetDate 가 Wk4 내에 있으면 Wk4 볼륨 을 targetDate 까지 선형 감소 (60 % 시작 → race 당일 rest)
   - **weekly 패턴** (요일 고정, Mon = 0):
     - 3x: Tue easy(20 %), Thu tempo(20 %), Sat long(35 %). 나머지 rest. (weekly 총 = 75 % → recovery/보수적)
@@ -53,7 +53,7 @@
     - `interval` → Z5, pace = LTHR pace × 0.95, 짧은 반복 (예: 6 × 400 m)
     - `recovery` → Z1, pace = LTHR pace × 1.30
     - `rest` → distance 0, pace null, notes = "휴식"
-  - LTHR pace 부재 시: 최근 러닝 평균 pace × 1.10 을 pseudo-LTHR 로 사용
+  - LTHR pace 부재 시: **LTHR pace = 최근 러닝 평균 pace / 1.10** 을 pseudo-LTHR 로 사용 (avg 가 LTHR 보다 10 % 느리다는 가정; workout 배율과 정합)
 - [ ] **F5**: 응답 스키마 compact JSON (M6-3 학습). 각 workout summary 1 줄.
 
 ### 2.2 비기능

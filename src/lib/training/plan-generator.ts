@@ -80,6 +80,25 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
       targetDate >= weekStart &&
       targetDate <= weekEnd;
 
+    // Race week 이면 race 전 workout 슬롯을 시간순으로 뽑아 선형 taper 배율 매핑.
+    // slot i (0-based, race 전 총 N 개) → factor = 0.6 * (N - i) / N.
+    // 결과적으로 첫 slot 0.6 → 마지막 slot 0.6/N (매우 작음) → race day rest.
+    const raceTaperFactors = new Map<number, number>();
+    if (isRaceWeek && targetDate !== null) {
+      const preRaceSlots: number[] = [];
+      for (let d = 0; d < 7; d++) {
+        const date = addDays(weekStart, d);
+        if (date >= targetDate) continue;
+        const dayIdx = mondayZeroDayIndex(date);
+        const slot = pattern.find((s) => s.dayIndex === dayIdx);
+        if (slot) preRaceSlots.push(d);
+      }
+      const total = preRaceSlots.length;
+      preRaceSlots.forEach((offset, i) => {
+        raceTaperFactors.set(offset, total > 0 ? 0.6 * ((total - i) / total) : 0);
+      });
+    }
+
     for (let d = 0; d < 7; d++) {
       const date = addDays(weekStart, d);
       const dayIdx = mondayZeroDayIndex(date);
@@ -121,7 +140,7 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
 
       let workoutKm = weekBaseKm * slot.volumeRatio;
 
-      // Race week 이면 targetDate 이후 workout 제거 (rest 처리) + 이전 workout 볼륨 60% 축소.
+      // Race week: targetDate 이후 workout 은 rest, 이전 workout 은 선형 taper (0.6 → 0).
       if (isRaceWeek && targetDate) {
         if (date > targetDate) {
           workouts.push({
@@ -137,7 +156,8 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
           });
           continue;
         }
-        workoutKm *= 0.6; // taper
+        const factor = raceTaperFactors.get(d) ?? 0;
+        workoutKm *= factor;
       }
 
       const pz = paceZoneFor(slot.type, lthrPace);

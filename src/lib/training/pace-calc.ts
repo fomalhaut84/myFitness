@@ -32,9 +32,11 @@ export function paceZoneFor(
 }
 
 /**
- * LTHR pace 부재 시 pseudo-LTHR 계산.
- * 최근 평균 pace 는 대체로 easy 페이스 근처이므로, LTHR pace ≈ easy pace / 1.20 로 역산.
+ * LTHR pace 부재 시 pseudo-LTHR 계산 (스펙: 최근 평균 pace × 1.10).
+ * 최근 평균은 LTHR 페이스보다 10 % 정도 느리다는 가정 → LTHR pace ≈ avg / 1.10.
+ * 즉 pseudo LTHR pace 로는 avg / 1.10 을 사용해야 이후 배율 곱셈이 실제 목표 페이스에 근접.
+ * (스펙 원문 "× 1.10" 는 "10% 느림" 의미로 해석; 배율 방향 = 나눗셈.)
  */
 export function pseudoLthrPace(recentAvgPaceSecPerKm: number): number {
-  return recentAvgPaceSecPerKm / 1.20;
+  return recentAvgPaceSecPerKm / 1.10;
 }
