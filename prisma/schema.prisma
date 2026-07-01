@@ -215,3 +215,39 @@ model FoodLog {
 
   @@index([date])
 }
+
+// M6-1: 4주 트레이닝 플랜 (결정적 생성 + 진행 파생)
+model TrainingPlan {
+  id               String            @id @default(cuid())
+  createdAt        DateTime          @default(now())
+  startDate        DateTime          @db.Date          // KST day, 내일부터
+  endDate          DateTime          @db.Date          // startDate + 27일
+  weeklyFrequency  Int                                  // 3 | 4 | 5
+  targetDistance   String?                              // "5K" | "10K" | "HM" | "FM"
+  targetDate       DateTime?         @db.Date
+  baselineWeeklyKm Float?                               // 생성 시점 baseline
+  baselineAcwr     Float?
+  lthrPaceUsed     Float?                               // sec/km, LTHR 부재 시 pseudo
+  status           String            @default("active") // "active" | "archived"
+  workouts         TrainingWorkout[]
+
+  @@index([status, createdAt])
+}
+
+model TrainingWorkout {
+  id            String       @id @default(cuid())
+  planId        String
+  plan          TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
+  date          DateTime     @db.Date
+  weekNumber    Int                                    // 1 ~ 4
+  dayIndex      Int                                    // 0 (Mon) ~ 6 (Sun)
+  type          String                                 // "easy" | "long" | "tempo" | "interval" | "recovery" | "rest"
+  distanceKm    Float?                                 // null for rest
+  paceSecPerKm  Int?                                   // target
+  zone          String?                                // "Z1" | "Z2" | "Z3-4" | "Z5"
+  intervalDesc  String?                                // interval 세부 (e.g., "6x400m Z5")
+  notes         String?                                // 짧은 코칭 노트 (한글)
+
+  @@unique([planId, date])
+  @@index([date])
+}
