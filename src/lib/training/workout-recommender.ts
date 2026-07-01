@@ -3,6 +3,7 @@
 
 import type { WorkoutType } from "./workout-patterns";
 import { formatPace } from "../../mcp/tools/running-buckets";
+import { paceZoneFor } from "./pace-calc";
 
 export type ReadinessLabel =
   | "optimal"
@@ -86,16 +87,6 @@ const DOWNGRADE_DISTANCE_FACTOR: Partial<Record<WorkoutType, number>> = {
   long: 0.6,
 };
 
-// type 별 LTHR pace 배율 (M6-1 pace-calc.ts 와 일관).
-const TYPE_TO_PACE_MULT: Record<WorkoutType, { mult: number; zone: string } | null> = {
-  easy: { mult: 1.20, zone: "Z2" },
-  long: { mult: 1.22, zone: "Z2" },
-  tempo: { mult: 1.05, zone: "Z3-4" },
-  interval: { mult: 0.95, zone: "Z5" },
-  recovery: { mult: 1.30, zone: "Z1" },
-  rest: null,
-};
-
 const PACE_RANGE_PCT = 0.05; // ±5%
 const NULL_INJURY_DEFAULT: InjuryLabel = "safe";
 const NULL_READINESS_DEFAULT: ReadinessLabel = "moderate";
@@ -158,12 +149,11 @@ function recalcForType(
   if (newType === "rest") {
     return { distanceKm: null, paceSecPerKm: null, zone: null, intervalDesc: null };
   }
-  const paceConf = TYPE_TO_PACE_MULT[newType];
-  const paceSecPerKm =
-    paceConf !== null && lthrPaceSecPerKm !== null
-      ? Math.round(lthrPaceSecPerKm * paceConf.mult)
-      : null;
-  const zone = paceConf?.zone ?? null;
+  // 배율 테이블은 pace-calc.ts 단일 소스. drift 방지 위해 여기서 재정의하지 않음.
+  const pz =
+    lthrPaceSecPerKm !== null ? paceZoneFor(newType, lthrPaceSecPerKm) : null;
+  const paceSecPerKm = pz?.paceSecPerKm ?? null;
+  const zone = pz?.zone ?? null;
   // 거리: base 유지가 기본. long → easy 강등 시 60% 축소.
   const factor =
     baseType !== newType && DOWNGRADE_DISTANCE_FACTOR[baseType] !== undefined
