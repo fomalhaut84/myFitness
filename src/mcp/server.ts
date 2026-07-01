@@ -19,6 +19,7 @@ import { getTrainingLoadTrend } from "./tools/training-load";
 import { getPaceProgression } from "./tools/pace-progression";
 import { getCalendarSummary } from "./tools/calendar";
 import { getInjuryRiskScore } from "./tools/injury-risk";
+import { getRacePrediction } from "./tools/race-prediction";
 
 const server = new McpServer({
   name: "myfitness",
@@ -190,6 +191,21 @@ server.tool(
   "부상/오버트레이닝 위험 점수 (0-100) + 4단계 라벨 (safe/caution/elevated/high) + 기여 요인 top 3 + 권장 조치. 4개 요인 각 25% 가중치: HRV 하락(7일 vs 이전 7일), ACWR(M5-2-2 동일), 수면 점수 불안정(14일 CV), RHR 상승(7일 vs 28일 baseline). 모닝 리포트의 회복일/강도 결정에 사용.",
   {},
   async () => getInjuryRiskScore()
+);
+
+server.tool(
+  "get_race_prediction",
+  "5K/10K/HM/FM race 예상 기록 (Riegel 공식). 각 target 3 시나리오: best/realistic/conservative (source bucket의 best/latest/baseline pace). 자체 bucket 우선, 없으면 다른 bucket에서 Riegel 환산. confidence는 count 기반. '10K 페이스로 풀마라톤 도전 가능?' 같은 질문에 사용.",
+  {
+    windowDays: z
+      .number()
+      .int()
+      .min(30)
+      .max(365)
+      .optional()
+      .describe("조회 일수 (기본 90, 30~365)"),
+  },
+  async (args) => getRacePrediction(args)
 );
 
 async function main() {

@@ -1,7 +1,6 @@
 import prisma from "../prisma";
 import { todayKST, daysAgoKST, todayKSTString, ymdKST } from "../../lib/garmin/utils";
-
-type Bucket = "5k" | "10k" | "HM" | "FM";
+import { type Bucket, bucketOf, formatPace } from "./running-buckets";
 
 // 러닝 변종 모두 포함 (running, street_running, treadmill_running, trail_running 등).
 // 다른 코드(/api/activities, /bot/commands/run.ts 등)와 동일 패턴.
@@ -29,22 +28,6 @@ interface BucketSummary {
 function round(n: number, digits = 1): number {
   const factor = Math.pow(10, digits);
   return Math.round(n * factor) / factor;
-}
-
-function formatPace(secPerKm: number): string {
-  const total = Math.round(secPerKm);
-  const min = Math.floor(total / 60);
-  const sec = total % 60;
-  return `${min}:${sec.toString().padStart(2, "0")}`;
-}
-
-function bucketOf(distanceM: number): Bucket | null {
-  const km = distanceM / 1000;
-  if (km >= 4.5 && km < 5.5) return "5k";
-  if (km >= 9.0 && km < 11.0) return "10k";
-  if (km >= 20.0 && km < 22.0) return "HM";
-  if (km >= 40.0 && km < 44.0) return "FM";
-  return null;
 }
 
 function toPacePoint(r: RunRow): PacePoint {
