@@ -8,6 +8,11 @@ const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
+// Claude CLI 절대 경로 — 봇 프로세스가 pm2 delete + start 로 시작되면 login shell
+// profile 이 로드되지 않아 ~/.local/bin 이 PATH에서 누락됨 → spawn ENOENT.
+// .env 에 CLAUDE_BIN 명시로 회피. 미설정 시 PATH 조회 (개발 환경 편의).
+const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
+
 const TIMEOUT_MS = 180_000;
 const DEFAULT_CHANNEL = "default";
 
@@ -101,7 +106,7 @@ export async function askAdvisor(
 
   return new Promise((resolve, reject) => {
     const startTime = Date.now();
-    const child = spawn("claude", args, {
+    const child = spawn(CLAUDE_BIN, args, {
       timeout: TIMEOUT_MS,
       cwd: process.cwd(),
       stdio: ["pipe", "pipe", "pipe"],
