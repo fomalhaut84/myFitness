@@ -66,45 +66,43 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
   const pattern = patternFor(weeklyFrequency);
 
   const workouts: GeneratedWorkout[] = [];
+  const RACE_TAPER_WINDOW_DAYS = 6; // race day 기준 이전 6일이 pre-race taper 구간.
+
+  // race day 기준 pre-taper window [targetDate - 6..targetDate - 1] 내에 있는
+  // workout slot 을 전체 4주 범위에서 시간순으로 수집하고 선형 factor (0.6 → ~0) 매핑.
+  // 이렇게 하면 startDate 요일과 race 요일 misalignment (예: Wk3 마지막 주말이 race 전 2일)
+  // 상황에서도 실제 race 직전 workout 이 taper 대상이 됨.
+  const raceTaperFactorByTime = new Map<number, number>();
+  if (targetDate !== null) {
+    const taperStart = addDays(targetDate, -RACE_TAPER_WINDOW_DAYS);
+    const preRaceDates: Date[] = [];
+    for (let offset = 0; offset < 28; offset++) {
+      const date = addDays(startDate, offset);
+      if (date < taperStart || date >= targetDate) continue;
+      const dayIdx = mondayZeroDayIndex(date);
+      const slot = pattern.find((s) => s.dayIndex === dayIdx);
+      if (slot) preRaceDates.push(date);
+    }
+    const total = preRaceDates.length;
+    preRaceDates.forEach((date, i) => {
+      raceTaperFactorByTime.set(
+        date.getTime(),
+        total > 0 ? 0.6 * ((total - i) / total) : 0
+      );
+    });
+  }
 
   for (let week = 0; week < 4; week++) {
     const weekMult = WEEKLY_MULTIPLIERS[week];
     const weekBaseKm = baselineWeeklyKm * weekMult;
-
-    // Wk4 race taper: targetDate 가 이 주 내에 있으면 볼륨 배율 재계산 (선형 감소).
     const weekStart = addDays(startDate, week * 7);
-    const weekEnd = addDays(weekStart, 6);
-    const isRaceWeek =
-      week === 3 &&
-      targetDate !== null &&
-      targetDate >= weekStart &&
-      targetDate <= weekEnd;
-
-    // Race week 이면 race 전 workout 슬롯을 시간순으로 뽑아 선형 taper 배율 매핑.
-    // slot i (0-based, race 전 총 N 개) → factor = 0.6 * (N - i) / N.
-    // 결과적으로 첫 slot 0.6 → 마지막 slot 0.6/N (매우 작음) → race day rest.
-    const raceTaperFactors = new Map<number, number>();
-    if (isRaceWeek && targetDate !== null) {
-      const preRaceSlots: number[] = [];
-      for (let d = 0; d < 7; d++) {
-        const date = addDays(weekStart, d);
-        if (date >= targetDate) continue;
-        const dayIdx = mondayZeroDayIndex(date);
-        const slot = pattern.find((s) => s.dayIndex === dayIdx);
-        if (slot) preRaceSlots.push(d);
-      }
-      const total = preRaceSlots.length;
-      preRaceSlots.forEach((offset, i) => {
-        raceTaperFactors.set(offset, total > 0 ? 0.6 * ((total - i) / total) : 0);
-      });
-    }
 
     for (let d = 0; d < 7; d++) {
       const date = addDays(weekStart, d);
       const dayIdx = mondayZeroDayIndex(date);
       const slot = pattern.find((s) => s.dayIndex === dayIdx);
 
-      // race 당일이면 무조건 rest (강제 taper).
+      // race 당일이면 무조건 rest.
       const isRaceDay =
         targetDate !== null && date.getTime() === targetDate.getTime();
 
@@ -119,6 +117,22 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
           zone: null,
           intervalDesc: null,
           notes: `${input.targetDistance ?? "Race"} 당일 — 완전 휴식 + race pace 유지`,
+        });
+        continue;
+      }
+
+      // race 후 workout 은 회복 rest.
+      if (targetDate !== null && date > targetDate) {
+        workouts.push({
+          date,
+          weekNumber: week + 1,
+          dayIndex: dayIdx,
+          type: "rest",
+          distanceKm: null,
+          paceSecPerKm: null,
+          zone: null,
+          intervalDesc: null,
+          notes: "Race 후 회복",
         });
         continue;
       }
@@ -140,24 +154,10 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
 
       let workoutKm = weekBaseKm * slot.volumeRatio;
 
-      // Race week: targetDate 이후 workout 은 rest, 이전 workout 은 선형 taper (0.6 → 0).
-      if (isRaceWeek && targetDate) {
-        if (date > targetDate) {
-          workouts.push({
-            date,
-            weekNumber: week + 1,
-            dayIndex: dayIdx,
-            type: "rest",
-            distanceKm: null,
-            paceSecPerKm: null,
-            zone: null,
-            intervalDesc: null,
-            notes: "Race 후 회복",
-          });
-          continue;
-        }
-        const factor = raceTaperFactors.get(d) ?? 0;
-        workoutKm *= factor;
+      // race pre-taper window: 정상 배율 대신 선형 taper factor 적용.
+      const raceTaperFactor = raceTaperFactorByTime.get(date.getTime());
+      if (raceTaperFactor !== undefined) {
+        workoutKm = baselineWeeklyKm * slot.volumeRatio * raceTaperFactor;
       }
 
       const pz = paceZoneFor(slot.type, lthrPace);

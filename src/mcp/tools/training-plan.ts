@@ -87,11 +87,19 @@ async function computeBaseline(): Promise<{
   const chronicDaily = totalKm / BASELINE_WINDOW_DAYS;
   const acwr = chronicDaily > 0 ? Math.round((acuteDaily / chronicDaily) * 100) / 100 : null;
 
-  const pacedRows = rows.filter((r) => r.avgPace !== null);
-  const recentAvgPace =
-    pacedRows.length > 0
-      ? pacedRows.reduce((sum, r) => sum + (r.avgPace ?? 0), 0) / pacedRows.length
-      : null;
+  // 거리 가중 평균 pace: 총 시간(초) / 총 거리(km). 단순 평균은 짧고 빠른 러닝이
+  // 긴 러닝과 같은 가중치를 가져 pseudo-LTHR 이 왜곡됨 (1km 스프린트 + 20km easy 예시).
+  const pacedRows = rows.filter(
+    (r) => r.avgPace !== null && r.distance !== null && r.distance > 0
+  );
+  let pacedTotalSec = 0;
+  let pacedTotalKm = 0;
+  for (const r of pacedRows) {
+    const distKm = (r.distance ?? 0) / 1000;
+    pacedTotalSec += (r.avgPace ?? 0) * distKm;
+    pacedTotalKm += distKm;
+  }
+  const recentAvgPace = pacedTotalKm > 0 ? pacedTotalSec / pacedTotalKm : null;
 
   return {
     weeklyKm: Math.round(weeklyKm * 10) / 10,
