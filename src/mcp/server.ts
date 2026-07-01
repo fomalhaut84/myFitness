@@ -19,6 +19,12 @@ import { getTrainingLoadTrend } from "./tools/training-load";
 import { getPaceProgression } from "./tools/pace-progression";
 import { getCalendarSummary } from "./tools/calendar";
 import { getInjuryRiskScore } from "./tools/injury-risk";
+import { getRacePrediction } from "./tools/race-prediction";
+import {
+  generateTrainingPlan,
+  getActiveTrainingPlan,
+} from "./tools/training-plan";
+import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 
 const server = new McpServer({
   name: "myfitness",
@@ -190,6 +196,59 @@ server.tool(
   "부상/오버트레이닝 위험 점수 (0-100) + 4단계 라벨 (safe/caution/elevated/high) + 기여 요인 top 3 + 권장 조치. 4개 요인 각 25% 가중치: HRV 하락(7일 vs 이전 7일), ACWR(M5-2-2 동일), 수면 점수 불안정(14일 CV), RHR 상승(7일 vs 28일 baseline). 모닝 리포트의 회복일/강도 결정에 사용.",
   {},
   async () => getInjuryRiskScore()
+);
+
+server.tool(
+  "generate_training_plan",
+  "4주 트레이닝 플랜을 결정적으로 생성 + DB 저장. 입력: weeklyFrequency(3~5, 기본 4), targetDistance(5K/10K/HM/FM, optional), targetDate(YYYY-MM-DD, targetDistance 필수). 기존 active plan 은 archived 처리. Wk1 baseline / Wk2 +10% / Wk3 +10% / Wk4 taper. LTHR pace 기반 zone/pace 배분. race 목표 있고 targetDate 가 plan 창 내면 Wk4 는 targetDate 까지 선형 감소 + race 당일 rest.",
+  {
+    weeklyFrequency: z
+      .number()
+      .int()
+      .min(3)
+      .max(5)
+      .optional()
+      .describe("주간 러닝 횟수 (3~5, 기본 4)"),
+    targetDistance: z
+      .enum(["5K", "10K", "HM", "FM"])
+      .optional()
+      .describe("목표 race 거리"),
+    targetDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("race 예정일 YYYY-MM-DD (targetDistance 와 함께만)"),
+  },
+  async (args) => generateTrainingPlan(args)
+);
+
+server.tool(
+  "get_active_training_plan",
+  "현재 active 트레이닝 플랜 조회 + 진행 파생. 각 workout 은 completed/missed/pending 상태 (workout date 의 KST 일자 러닝 activity 매칭, 계획 대비 90% 이상 거리면 completed). 오늘 workout + 전체 진행률 요약 포함.",
+  {},
+  async () => getActiveTrainingPlan()
+);
+
+server.tool(
+  "recommend_today_workout",
+  "오늘 실제로 뛸 workout 을 결정적으로 추천 (read-only). active plan 의 오늘 workout 을 base 로, plan 이 없으면 baseline 기반 easy 로 fallback. readiness (M5-2-1) + injury risk (M6-2) 라벨을 매트릭스로 조합해 downgrade 단계 (0/1/2/rest) 결정 후, downgrade ladder (interval→tempo→easy→recovery→rest, long→easy 는 거리 60%) 적용. target pace 는 ±5% 범위. rationale (한국어) 포함.",
+  {},
+  async () => recommendTodayWorkout()
+);
+
+server.tool(
+  "get_race_prediction",
+  "5K/10K/HM/FM race 예상 기록 (Riegel 공식). 각 target 3 시나리오: best/realistic/conservative (source bucket의 best/latest/baseline pace). 자체 bucket 우선, 없으면 다른 bucket에서 Riegel 환산. confidence는 count 기반. '10K 페이스로 풀마라톤 도전 가능?' 같은 질문에 사용.",
+  {
+    windowDays: z
+      .number()
+      .int()
+      .min(30)
+      .max(365)
+      .optional()
+      .describe("조회 일수 (기본 90, 30~365)"),
+  },
+  async (args) => getRacePrediction(args)
 );
 
 async function main() {

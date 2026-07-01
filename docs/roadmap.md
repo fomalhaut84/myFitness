@@ -294,14 +294,18 @@
 > 시작: 2026-06-30. M5 의 단기 결정적 도구화를 한 단계 더 — 장기 추세/예측/계획까지.
 > 스펙: `docs/specs/m6-overview.md`
 
-## M6-1: `generate_training_plan` MCP 도구 — 우선순위 ★★★
+## M6-1: `generate_training_plan` / `get_active_training_plan` MCP 도구 — 우선순위 ★★★ ✅
 
-> 4주 cycle 훈련 계획 자동 생성 (목표 거리 + 현재 피트니스 기반).
+> 4주 cycle 훈련 계획 결정적 생성 + DB 저장 + 진행 파생.
 
-- [ ] 일자별 권장 workout (거리/Zone/유형) — 4주
-- [ ] ACWR 점진적 증가 (10% 미만)
-- [ ] 사용자 LTHR/maxHR 기반 Zone
-- [ ] 신규 DB 모델 가능 (TrainingPlan)
+- [x] 일자별 권장 workout (거리/Zone/유형) — 4주 (Wk1 baseline / Wk2 +10% / Wk3 +20% peak / Wk4 -20% recovery)
+- [x] weeklyFrequency 3~5 옵션 (요일 고정 패턴 + slot 정규화)
+- [x] LTHR pace 기반 zone/pace 배분 (부재 시 pseudoLthr = recentAvg / 1.10)
+- [x] race target 지원: targetDate Wk4 창 내 6일 pre-race 선형 taper (0.6 → 0), race 당일 rest
+- [x] DB 모델 TrainingPlan / TrainingWorkout + advisory lock 동시성 제어
+- [x] 진행 파생: workout ↔ 러닝 activity 매칭 (KST day + 계획 90% 이상 거리)
+- [x] `POST /api/training-plan/generate` 명시적 승인 경로 (advisor 는 read-only 만 사용)
+- 스펙: `docs/specs/m6-1-training-plan.md` (#161, PR #162)
 
 ## M6-2: `get_injury_risk_score` MCP 도구 — 우선순위 ★★★ ✅
 
@@ -313,20 +317,26 @@
 - [x] 윈도우 오늘 포함 (preSync 후 stale 1일 방지), ACWR M5-2-2 와 정합
 - 스펙: `docs/specs/m6-2-injury-risk.md` (#154, PR #155)
 
-## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★
+## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★ ✅
 
-> 동일 거리 활동 + 트레이닝 트렌드 → race 예상 기록 (Riegel/Cameron 공식).
+> 동일 거리 활동 + 트레이닝 트렌드 → race 예상 기록 (Riegel 공식).
 
-- [ ] 5K/10K/HM/FM 예측 (최선/현실/최악)
-- [ ] 신뢰도 점수
-- [ ] 도달 가능 예상일
+- [x] 5K/10K/HM/FM 예측 (best/realistic/conservative 3 시나리오)
+- [x] 신뢰도 점수 (count 기반: high ≥ 5, medium 2-4, low 1)
+- [x] source bucket 자체 우선, 없으면 다른 bucket 중 count 최대 Riegel 환산
+- [x] 러닝 bucket/포맷 유틸 공용화 (`running-buckets.ts`) — pace-progression 과 drift 방지
+- 스펙: `docs/specs/m6-3-race-prediction.md` (#159, PR #160)
 
-## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★
+## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★ ✅
 
-> readiness + 주간 계획 + 부상 위험 → 오늘 구체적 workout. M6-1~3 의존 통합 도구.
+> readiness + 주간 계획 + 부상 위험 → 오늘 구체적 workout. M6-1~2 의존 통합 도구 (read-only).
 
-- [ ] workout 유형 / 거리 / 페이스 범위 / Zone
-- [ ] 추천 이유
+- [x] workout 유형 / 거리 / 페이스 범위 (±5%) / Zone
+- [x] 조정 매트릭스 4×5 (injury × readiness) + downgrade ladder (interval→tempo→easy→recovery→rest, long→easy 60%)
+- [x] active plan 오늘 workout base, 없거나 rest 계획이면 fallback (baseline × 0.2 easy Z2)
+- [x] 한국어 rationale (데이터 부재 명시)
+- [x] `computeBaseline` 을 `baseline.ts` 로 공용화 (M6-1/M6-4 drift 방지)
+- 스펙: `docs/specs/m6-4-recommend-today-workout.md` (#163, PR #164)
 
 ---
 
