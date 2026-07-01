@@ -73,39 +73,50 @@ async function resolveLthrPace(): Promise<{
   };
 }
 
-async function fetchTodayPlanWorkout(): Promise<{
-  planId: string;
-  type: WorkoutType;
-  distanceKm: number | null;
-  paceSecPerKm: number | null;
-  zone: string | null;
-  intervalDesc: string | null;
-} | null> {
+async function fetchPlanContext(): Promise<{
+  hasActivePlan: boolean;
+  todayWorkout: {
+    planId: string;
+    type: WorkoutType;
+    distanceKm: number | null;
+    paceSecPerKm: number | null;
+    zone: string | null;
+    intervalDesc: string | null;
+  } | null;
+}> {
   const todayStr = todayKSTString();
   // @db.Date 컬럼은 UTC midnight 로 저장 → 오늘 KST 벽시계 날짜를 UTC midnight 으로 변환해 매칭.
   const todayUtcDate = new Date(`${todayStr}T00:00:00.000Z`);
-  const workout = await prisma.trainingWorkout.findFirst({
-    where: {
-      date: todayUtcDate,
-      plan: { status: "active" },
-    },
-    select: {
-      planId: true,
-      type: true,
-      distanceKm: true,
-      paceSecPerKm: true,
-      zone: true,
-      intervalDesc: true,
-    },
-  });
-  if (!workout) return null;
+  const [activePlanCount, workout] = await Promise.all([
+    prisma.trainingPlan.count({ where: { status: "active" } }),
+    prisma.trainingWorkout.findFirst({
+      where: {
+        date: todayUtcDate,
+        plan: { status: "active" },
+      },
+      select: {
+        planId: true,
+        type: true,
+        distanceKm: true,
+        paceSecPerKm: true,
+        zone: true,
+        intervalDesc: true,
+      },
+    }),
+  ]);
+
   return {
-    planId: workout.planId,
-    type: workout.type as WorkoutType,
-    distanceKm: workout.distanceKm,
-    paceSecPerKm: workout.paceSecPerKm,
-    zone: workout.zone,
-    intervalDesc: workout.intervalDesc,
+    hasActivePlan: activePlanCount > 0,
+    todayWorkout: workout
+      ? {
+          planId: workout.planId,
+          type: workout.type as WorkoutType,
+          distanceKm: workout.distanceKm,
+          paceSecPerKm: workout.paceSecPerKm,
+          zone: workout.zone,
+          intervalDesc: workout.intervalDesc,
+        }
+      : null,
   };
 }
 
@@ -131,16 +142,17 @@ interface FactorsPayload {
   injury: { score: number | null; label: string | null };
   plan: {
     hasActivePlan: boolean;
+    todayWorkoutExists: boolean;
     todayIsRestPlanned: boolean;
     lthrPaceSource: "profile" | "pseudo" | "default";
   };
 }
 
 export async function recommendTodayWorkout() {
-  const [readinessResult, injuryResult, planWorkout, lthr] = await Promise.all([
+  const [readinessResult, injuryResult, planCtx, lthr] = await Promise.all([
     getReadinessScore(),
     getInjuryRiskScore(),
-    fetchTodayPlanWorkout(),
+    fetchPlanContext(),
     resolveLthrPace(),
   ]);
 
@@ -149,8 +161,8 @@ export async function recommendTodayWorkout() {
   );
   const injury = extractLabelAndScore(injuryResult.content[0]?.text ?? "{}");
 
+  const planWorkout = planCtx.todayWorkout;
   const todayIsRestPlanned = planWorkout?.type === "rest";
-  const hasActivePlan = planWorkout !== null;
 
   // Base: 스펙 F2 — plan 이 없거나 오늘 rest 로 계획된 경우 fallback (easy shakeout).
   // rest 를 그대로 base 로 두면 조정 매트릭스에서 모든 조합이 rest → optimal+safe
@@ -192,7 +204,8 @@ export async function recommendTodayWorkout() {
     readiness: adjustment.factors.readiness,
     injury: adjustment.factors.injury,
     plan: {
-      hasActivePlan,
+      hasActivePlan: planCtx.hasActivePlan,
+      todayWorkoutExists: planWorkout !== null,
       todayIsRestPlanned,
       lthrPaceSource: lthr.source,
     },
