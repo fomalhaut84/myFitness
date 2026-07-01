@@ -2,7 +2,12 @@
 // 입력: baseline 주간 km + LTHR pace + weeklyFrequency + optional race target
 // 출력: 28일치 workout skeleton (rest 포함)
 
-import { patternFor, WEEKLY_MULTIPLIERS, type WorkoutType } from "./workout-patterns";
+import {
+  patternFor,
+  patternRatioSum,
+  WEEKLY_MULTIPLIERS,
+  type WorkoutType,
+} from "./workout-patterns";
 import { paceZoneFor, pseudoLthrPace } from "./pace-calc";
 
 export interface GeneratedWorkout {
@@ -64,6 +69,10 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
     lthrPaceSecPerKm ??
     (recentAvgPaceSecPerKm ? pseudoLthrPace(recentAvgPaceSecPerKm) : 360); // 최후 fallback 6:00 pace
   const pattern = patternFor(weeklyFrequency);
+  // volumeRatio 합이 1 이 아니어도 (예: 3x = 0.75, 4x/5x = 0.90) 정규화하여
+  // Wk1 = baseline × weekMult 를 만족시킴. 슬롯간 상대 비중은 유지.
+  const patternSum = patternRatioSum(pattern);
+  const ratioNorm = patternSum > 0 ? 1 / patternSum : 1;
 
   const workouts: GeneratedWorkout[] = [];
   const RACE_TAPER_WINDOW_DAYS = 6; // race day 기준 이전 6일이 pre-race taper 구간.
@@ -152,12 +161,13 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         continue;
       }
 
-      let workoutKm = weekBaseKm * slot.volumeRatio;
+      const normalizedRatio = slot.volumeRatio * ratioNorm;
+      let workoutKm = weekBaseKm * normalizedRatio;
 
       // race pre-taper window: 정상 배율 대신 선형 taper factor 적용.
       const raceTaperFactor = raceTaperFactorByTime.get(date.getTime());
       if (raceTaperFactor !== undefined) {
-        workoutKm = baselineWeeklyKm * slot.volumeRatio * raceTaperFactor;
+        workoutKm = baselineWeeklyKm * normalizedRatio * raceTaperFactor;
       }
 
       const pz = paceZoneFor(slot.type, lthrPace);

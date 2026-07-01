@@ -43,5 +43,10 @@ export function patternFor(weeklyFrequency: number): WeeklySlot[] {
   return PATTERN_5X;
 }
 
+/** 패턴 volumeRatio 합. 생성기가 baseline × weekMult 를 곱할 때 정규화에 사용. */
+export function patternRatioSum(pattern: WeeklySlot[]): number {
+  return pattern.reduce((sum, s) => sum + s.volumeRatio, 0);
+}
+
 // 주차별 주간 볼륨 배율 (baseline 대비). Wk1=1.0, Wk2=1.1, Wk3=1.2 (peak), Wk4=0.8 (-20% recovery).
 export const WEEKLY_MULTIPLIERS: number[] = [1.0, 1.1, 1.2, 0.8];
