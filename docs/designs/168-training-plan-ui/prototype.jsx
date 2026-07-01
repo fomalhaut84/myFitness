@@ -16,20 +16,20 @@ import { useState } from "react";
 // ─── 컬러 시스템 ─────────────────────────────────────────────────────────────
 const C = {
   bg: "#0B0B0D",
-  panel: "#151517",
-  panelHi: "#1B1B1E",
-  border: "#26262A",
-  hi: "#F0EBE0",
-  mid: "#B4AFA5",
-  lo: "#6B6560",
-  muted: "#3A3833",
-  primary: "#FF6B00",
-  completed: "#8FB65E",
-  missed: "#8B4A3F",
-  z1: "#5A9CE0",
-  z2: "#8FB65E",
+  panel: "#161618",
+  panelHi: "#1D1D20",
+  border: "#2E2E33",
+  hi: "#F5F1E8",
+  mid: "#D0CBBE",       // ↑ 대비 (기존 #B4AFA5)
+  lo: "#9A9489",        // ↑ 대비 (기존 #6B6560)
+  muted: "#3D3B36",
+  primary: "#FF7A1A",   // 살짝 밝게 (기존 #FF6B00)
+  completed: "#A5CB6E", // 살짝 밝게 (기존 #8FB65E)
+  missed: "#B85E4F",    // 살짝 밝게 (기존 #8B4A3F)
+  z1: "#6FAFEA",
+  z2: "#A5CB6E",
   z34: "#F5B324",
-  z5: "#FF6B00",
+  z5: "#FF7A1A",
 };
 
 const ZONE_COLOR = {
@@ -144,16 +144,16 @@ const MOCK_ARCHIVED = [
 
 // ─── 유틸 컴포넌트 ───────────────────────────────────────────────────────────
 
-/** UPPERCASE 트래킹된 마이크로 라벨. */
+/** UPPERCASE 트래킹된 마이크로 라벨. 가독성 위해 사이즈/트래킹 완화. */
 function MicroLabel({ children, color = C.lo, className = "" }) {
   return (
     <span
       className={`inline-block ${className}`}
       style={{
         fontFamily: "Pretendard, ui-sans-serif",
-        fontSize: 10,
+        fontSize: 11,
         fontWeight: 600,
-        letterSpacing: "0.14em",
+        letterSpacing: "0.08em",
         textTransform: "uppercase",
         color,
       }}
@@ -163,16 +163,16 @@ function MicroLabel({ children, color = C.lo, className = "" }) {
   );
 }
 
-/** 매거진 섹션 번호 + 이탤릭 세리프 라벨. */
+/** 매거진 섹션 번호 + 라벨. 이탤릭 세리프 제거, Pretendard 로 통일. */
 function SectionHeader({ number, kicker, title, meta }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-4 mb-8">
+    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-5 mb-8">
       <div className="flex items-baseline gap-5">
         <span
           style={{
             fontFamily: '"Big Shoulders Display", ui-sans-serif',
             fontWeight: 800,
-            fontSize: 68,
+            fontSize: 64,
             lineHeight: 0.9,
             color: C.primary,
             letterSpacing: "-0.02em",
@@ -180,26 +180,26 @@ function SectionHeader({ number, kicker, title, meta }) {
         >
           {number}
         </span>
-        <div className="flex flex-col">
+        <div className="flex flex-col gap-1">
           <span
             style={{
-              fontFamily: '"Instrument Serif", ui-serif',
-              fontStyle: "italic",
-              fontSize: 14,
+              fontFamily: '"Pretendard", ui-sans-serif',
+              fontSize: 13,
+              fontWeight: 500,
               color: C.mid,
+              letterSpacing: "0.02em",
             }}
           >
             {kicker}
           </span>
           <span
             style={{
-              fontFamily: '"Big Shoulders Display", ui-sans-serif',
+              fontFamily: '"Pretendard", ui-sans-serif',
               fontWeight: 700,
-              fontSize: 32,
-              lineHeight: 1,
+              fontSize: 28,
+              lineHeight: 1.1,
               color: C.hi,
-              letterSpacing: "-0.01em",
-              textTransform: "uppercase",
+              letterSpacing: "-0.02em",
             }}
           >
             {title}
@@ -329,13 +329,13 @@ function TodayWorkoutCard({ today }) {
           {recommendation.adjusted && (
             <span
               style={{
-                fontFamily: '"Instrument Serif", ui-serif',
-                fontStyle: "italic",
+                fontFamily: '"Pretendard", ui-sans-serif',
                 fontSize: 12,
+                fontWeight: 500,
                 color: C.mid,
               }}
             >
-              — 계획에서 조정됨
+              · 계획에서 조정됨
             </span>
           )}
         </div>
@@ -401,26 +401,26 @@ function TodayWorkoutCard({ today }) {
           </div>
         )}
 
-        {/* Rationale */}
+        {/* Rationale — 세리프 이탤릭 제거, 본문 sans 로 통일 (가독성). */}
         <div
           className="mt-8 p-5"
           style={{
             background: "#0000001a",
-            borderLeft: `2px solid ${C.primary}`,
+            borderLeft: `3px solid ${C.primary}`,
           }}
         >
-          <MicroLabel color={C.lo} className="mb-2">Rationale · 근거</MicroLabel>
+          <MicroLabel color={C.mid} className="mb-2">추천 근거</MicroLabel>
           <p
             style={{
-              fontFamily: '"Instrument Serif", ui-serif',
-              fontStyle: "italic",
-              fontSize: 18,
-              lineHeight: 1.5,
+              fontFamily: '"Pretendard", ui-sans-serif',
+              fontSize: 16,
+              lineHeight: 1.6,
+              fontWeight: 500,
               color: C.hi,
-              marginTop: 6,
+              marginTop: 8,
             }}
           >
-            &ldquo;{rationale}&rdquo;
+            {rationale}
           </p>
         </div>
 
@@ -428,14 +428,16 @@ function TodayWorkoutCard({ today }) {
         {recommendation.adjusted && !isRest && (
           <div
             className="mt-6 flex items-baseline gap-3 flex-wrap"
-            style={{ color: C.mid, fontFamily: '"Pretendard"', fontSize: 13 }}
+            style={{ color: C.mid, fontFamily: '"Pretendard"', fontSize: 14 }}
           >
-            <MicroLabel color={C.lo}>계획된 workout</MicroLabel>
+            <MicroLabel color={C.mid}>원 계획</MicroLabel>
             <span
               style={{
                 fontFamily: '"JetBrains Mono"',
+                fontSize: 13,
                 textDecoration: "line-through",
                 textDecorationColor: C.missed,
+                color: C.mid,
               }}
             >
               {TYPE_LABEL_KO[base.type]} · {base.distanceKm} km · {base.pace}/km · {base.zone}
@@ -447,18 +449,18 @@ function TodayWorkoutCard({ today }) {
       {/* Right: Factors */}
       <div className="p-8 md:p-10 flex flex-col gap-6">
         <div>
-          <MicroLabel color={C.lo}>결정 팩터</MicroLabel>
+          <MicroLabel color={C.mid}>결정 팩터</MicroLabel>
           <div
             style={{
-              fontFamily: '"Big Shoulders Display"',
-              fontSize: 24,
+              fontFamily: '"Pretendard", ui-sans-serif',
+              fontSize: 22,
               fontWeight: 700,
               color: C.hi,
-              textTransform: "uppercase",
-              marginTop: 4,
+              letterSpacing: "-0.01em",
+              marginTop: 6,
             }}
           >
-            Signals
+            컨디션 신호
           </div>
         </div>
 
@@ -485,29 +487,29 @@ function TodayWorkoutCard({ today }) {
             background: C.panel,
           }}
         >
-          <MicroLabel color={C.lo}>Plan context</MicroLabel>
-          <div className="mt-3 space-y-1.5" style={{ fontFamily: '"JetBrains Mono"', fontSize: 12, color: C.mid }}>
+          <MicroLabel color={C.mid}>플랜 컨텍스트</MicroLabel>
+          <div className="mt-3 space-y-2" style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.mid }}>
             <div className="flex justify-between">
               <span>Active plan</span>
-              <span style={{ color: factors.plan.hasActivePlan ? C.completed : C.missed }}>
+              <span style={{ color: factors.plan.hasActivePlan ? C.completed : C.missed, fontWeight: 600 }}>
                 {factors.plan.hasActivePlan ? "yes" : "no"}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Today workout row</span>
-              <span style={{ color: factors.plan.todayWorkoutExists ? C.completed : C.lo }}>
+              <span style={{ color: factors.plan.todayWorkoutExists ? C.completed : C.lo, fontWeight: 600 }}>
                 {factors.plan.todayWorkoutExists ? "yes" : "—"}
               </span>
             </div>
             <div className="flex justify-between">
               <span>Rest planned</span>
-              <span style={{ color: factors.plan.todayIsRestPlanned ? C.mid : C.lo }}>
+              <span style={{ color: factors.plan.todayIsRestPlanned ? C.mid : C.lo, fontWeight: 600 }}>
                 {factors.plan.todayIsRestPlanned ? "yes" : "no"}
               </span>
             </div>
             <div className="flex justify-between">
               <span>LTHR source</span>
-              <span style={{ color: C.hi }}>{factors.plan.lthrPaceSource}</span>
+              <span style={{ color: C.hi, fontWeight: 600 }}>{factors.plan.lthrPaceSource}</span>
             </div>
           </div>
         </div>
@@ -577,7 +579,7 @@ function ProgressStrip({ progress }) {
   const m = (missed / total) * 100;
   return (
     <div className="mb-8">
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex items-baseline justify-between mb-4">
         <div className="flex items-baseline gap-6">
           <div className="flex items-baseline gap-2">
             <span style={{ fontFamily: '"Big Shoulders Display"', fontSize: 48, fontWeight: 800, color: C.hi, lineHeight: 0.85, fontVariantNumeric: "tabular-nums" }}>
@@ -585,17 +587,17 @@ function ProgressStrip({ progress }) {
             </span>
             <span style={{ fontFamily: '"Pretendard"', fontSize: 18, color: C.mid, fontWeight: 500 }}>%</span>
           </div>
-          <span style={{ fontFamily: '"Instrument Serif"', fontStyle: "italic", fontSize: 14, color: C.mid }}>
-            block completion
+          <span style={{ fontFamily: '"Pretendard"', fontSize: 14, color: C.mid, fontWeight: 500 }}>
+            블록 진행률
           </span>
         </div>
-        <div className="flex gap-5 text-xs" style={{ fontFamily: '"JetBrains Mono"', color: C.mid }}>
-          <span><span style={{ color: C.completed }}>■</span> {completed} 완료</span>
-          <span><span style={{ color: C.missed }}>■</span> {missed} 누락</span>
-          <span><span style={{ color: C.mid }}>■</span> {pending} 예정</span>
+        <div className="flex gap-5" style={{ fontFamily: '"Pretendard"', fontSize: 13, color: C.mid, fontWeight: 500 }}>
+          <span><span style={{ color: C.completed, marginRight: 6 }}>■</span>{completed} 완료</span>
+          <span><span style={{ color: C.missed, marginRight: 6 }}>■</span>{missed} 누락</span>
+          <span><span style={{ color: C.lo, marginRight: 6 }}>■</span>{pending} 예정</span>
         </div>
       </div>
-      <div className="h-1.5 flex" style={{ background: C.muted }}>
+      <div className="h-2 flex" style={{ background: C.muted }}>
         <div style={{ width: `${c}%`, background: C.completed }} className="transition-all duration-700" />
         <div style={{ width: `${m}%`, background: C.missed }} className="transition-all duration-700" />
       </div>
@@ -612,19 +614,21 @@ function CalendarCell({ cell, isToday }) {
 
   const cellStyle = {
     borderTop: `1px solid ${isToday ? C.primary : C.border}`,
-    background: isToday ? `${C.primary}0A` : "transparent",
+    background: isToday ? `${C.primary}12` : "transparent",
     outline: isToday ? `1.5px solid ${C.primary}` : "none",
     outlineOffset: -1,
-    opacity: isRest ? 0.42 : 1,
-    minHeight: 96,
+    opacity: isRest ? 0.55 : 1,
+    minHeight: 120,
   };
 
   if (isRest && !isRaceDay) {
     return (
-      <div className="p-3 relative" style={cellStyle}>
-        <MicroLabel color={C.lo}>{TYPE_LABEL_KO.rest}</MicroLabel>
+      <div className="p-4 relative" style={cellStyle}>
+        <span style={{ fontFamily: '"Pretendard"', fontSize: 13, fontWeight: 500, color: C.lo }}>
+          {TYPE_LABEL_KO.rest}
+        </span>
         {isToday && (
-          <div className="absolute bottom-2 left-3 text-[9px] font-semibold" style={{ color: C.primary, letterSpacing: "0.14em" }}>
+          <div className="absolute bottom-3 left-4" style={{ fontFamily: '"Pretendard"', fontSize: 10, fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
             TODAY
           </div>
         )}
@@ -635,7 +639,7 @@ function CalendarCell({ cell, isToday }) {
   if (isRaceDay) {
     return (
       <div
-        className="p-3 relative"
+        className="p-4 relative"
         style={{
           ...cellStyle,
           background: C.primary,
@@ -643,10 +647,10 @@ function CalendarCell({ cell, isToday }) {
           borderTop: `2px solid ${C.primary}`,
         }}
       >
-        <div style={{ fontFamily: '"Big Shoulders Display"', fontSize: 22, fontWeight: 800, color: C.hi, letterSpacing: "-0.01em", textTransform: "uppercase" }}>
+        <div style={{ fontFamily: '"Pretendard"', fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>
           RACE
         </div>
-        <div style={{ fontFamily: '"Pretendard"', fontSize: 10, color: `${C.hi}cc`, marginTop: 2 }}>
+        <div style={{ fontFamily: '"Pretendard"', fontSize: 12, color: "#ffffffcc", marginTop: 4, fontWeight: 500 }}>
           {notes}
         </div>
       </div>
@@ -655,18 +659,17 @@ function CalendarCell({ cell, isToday }) {
 
   return (
     <div
-      className="p-3 relative group cursor-default"
+      className="p-4 relative group cursor-default"
       style={cellStyle}
     >
-      {/* 타입 이름 */}
-      <div className="flex items-baseline justify-between mb-1">
+      {/* 타입 이름 + zone 칩 */}
+      <div className="flex items-center justify-between mb-2">
         <span
           style={{
-            fontFamily: '"Big Shoulders Display"',
-            fontSize: 16,
+            fontFamily: '"Pretendard"',
+            fontSize: 14,
             fontWeight: 700,
             color: isMissed ? C.missed : isCompleted ? C.completed : C.hi,
-            textTransform: "uppercase",
             letterSpacing: "-0.005em",
             textDecoration: isMissed ? "line-through" : "none",
           }}
@@ -677,12 +680,14 @@ function CalendarCell({ cell, isToday }) {
           <span
             style={{
               fontFamily: '"JetBrains Mono"',
-              fontSize: 9,
-              fontWeight: 600,
+              fontSize: 10,
+              fontWeight: 700,
               color: zColor,
-              padding: "1px 4px",
-              border: `1px solid ${zColor}55`,
+              padding: "2px 6px",
+              border: `1px solid ${zColor}66`,
+              background: `${zColor}14`,
               lineHeight: 1.3,
+              borderRadius: 2,
             }}
           >
             {zone}
@@ -690,12 +695,12 @@ function CalendarCell({ cell, isToday }) {
         )}
       </div>
 
-      {/* 거리 + 페이스 */}
-      <div className="flex items-baseline gap-1.5 mb-1">
+      {/* 거리 (큰 조판) */}
+      <div className="flex items-baseline gap-1.5 mb-1.5">
         <span
           style={{
             fontFamily: '"Big Shoulders Display"',
-            fontSize: 28,
+            fontSize: 32,
             fontWeight: 800,
             color: C.hi,
             lineHeight: 0.9,
@@ -706,14 +711,16 @@ function CalendarCell({ cell, isToday }) {
         >
           {distanceKm}
         </span>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 10, color: C.lo, fontWeight: 500 }}>
+        <span style={{ fontFamily: '"Pretendard"', fontSize: 12, color: C.mid, fontWeight: 500 }}>
           km
         </span>
       </div>
+
+      {/* 페이스 */}
       <div
         style={{
           fontFamily: '"JetBrains Mono"',
-          fontSize: 10,
+          fontSize: 12,
           color: C.mid,
           fontVariantNumeric: "tabular-nums",
         }}
@@ -721,26 +728,27 @@ function CalendarCell({ cell, isToday }) {
         {pace}/km
       </div>
 
-      {/* Matched activity */}
+      {/* Matched activity (완료 시) */}
       {matched && (
         <div
-          className="mt-2 pt-2 flex items-baseline gap-2"
+          className="mt-2.5 pt-2 flex items-baseline gap-2"
           style={{
-            borderTop: `1px dashed ${C.completed}33`,
+            borderTop: `1px dashed ${C.completed}44`,
             fontFamily: '"JetBrains Mono"',
-            fontSize: 10,
+            fontSize: 11,
             color: C.completed,
             fontVariantNumeric: "tabular-nums",
+            fontWeight: 500,
           }}
         >
-          <span>→</span>
-          <span>{matched.distanceKm} km · {matched.actualPace}</span>
+          <span style={{ fontWeight: 700 }}>→</span>
+          <span>{matched.distanceKm} · {matched.actualPace}</span>
         </div>
       )}
 
-      {/* 상태 인디케이터 (오늘/누락은 상단 인디케이터) */}
+      {/* 오늘 인디케이터 */}
       {isToday && (
-        <div className="absolute top-2 right-2 text-[9px] font-semibold" style={{ color: C.primary, letterSpacing: "0.14em" }}>
+        <div className="absolute top-2 right-2" style={{ fontFamily: '"Pretendard"', fontSize: 10, fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
           TODAY
         </div>
       )}
@@ -1048,13 +1056,13 @@ function ArchivedList({ items }) {
           <div className="text-right">
             <span
               style={{
-                fontFamily: '"Instrument Serif"',
-                fontStyle: "italic",
-                fontSize: 12,
+                fontFamily: '"Pretendard"',
+                fontSize: 13,
+                fontWeight: 500,
                 color: C.mid,
               }}
             >
-              view details →
+              상세 보기 →
             </span>
           </div>
         </div>
@@ -1108,8 +1116,8 @@ export default function TrainingPlanPrototype() {
               >
                 myFITNESS
               </span>
-              <span style={{ fontFamily: '"Instrument Serif"', fontStyle: "italic", fontSize: 14, color: C.mid }}>
-                — training plan
+              <span style={{ fontFamily: '"Pretendard"', fontSize: 14, color: C.mid, fontWeight: 500 }}>
+                · 트레이닝 플랜
               </span>
             </div>
             <nav className="flex gap-6" style={{ fontFamily: '"Pretendard"', fontSize: 12, color: C.mid, fontWeight: 500 }}>
@@ -1169,8 +1177,8 @@ export default function TrainingPlanPrototype() {
           </section>
 
           {/* Footer */}
-          <footer className="pt-8 pb-6 border-t" style={{ borderColor: C.border, fontFamily: '"Instrument Serif"', fontStyle: "italic", fontSize: 12, color: C.lo }}>
-            — end of ledger. 다음 블록은 활동 데이터가 갱신되면 자동으로 반영됩니다.
+          <footer className="pt-8 pb-6 border-t" style={{ borderColor: C.border, fontFamily: '"Pretendard"', fontSize: 13, color: C.lo, fontWeight: 500 }}>
+            다음 블록은 활동 데이터가 갱신되면 자동으로 반영됩니다.
           </footer>
         </main>
       </div>

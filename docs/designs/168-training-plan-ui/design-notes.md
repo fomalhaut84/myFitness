@@ -14,40 +14,42 @@
 - 한국어 UI, 라벨은 UPPERCASE + tracking (영어 마이크로카피 병용)
 - 데이터 정확성 강조 (레이스 결과 리포트 감성)
 
-## 컬러 시스템
+## 컬러 시스템 (가독성 리비전 반영)
 
 | 역할 | HEX | 용도 |
 |---|---|---|
 | BG | `#0B0B0D` | 페이지 배경 (deep asphalt) |
-| Panel | `#151517` | 카드 배경 |
-| Panel border | `#26262A` | 카드 테두리 |
-| Text hi | `#F0EBE0` | 주요 텍스트 (warm cream) |
-| Text mid | `#B4AFA5` | 보조 텍스트 |
-| Text lo | `#6B6560` | 마이크로카피 |
-| Muted | `#3A3833` | rest / dimmed |
-| **Primary accent** | `#FF6B00` | safety orange — 오늘·CTA·경고 |
-| Completed | `#8FB65E` | 완료 (moss) |
-| Missed | `#8B4A3F` | 누락 (rusted red-brown, 조용) |
-| Z1 | `#5A9CE0` | recovery |
-| Z2 | `#8FB65E` | easy / long |
+| Panel | `#161618` | 카드 배경 |
+| Panel border | `#2E2E33` | 카드 테두리 |
+| Text hi | `#F5F1E8` | 주요 텍스트 (warm cream) |
+| Text mid | `#D0CBBE` | 보조 텍스트 (**대비 상향**) |
+| Text lo | `#9A9489` | 마이크로카피 (**대비 상향**) |
+| Muted | `#3D3B36` | rest / dimmed |
+| **Primary accent** | `#FF7A1A` | safety orange (**살짝 밝게**) |
+| Completed | `#A5CB6E` | 완료 (moss, **살짝 밝게**) |
+| Missed | `#B85E4F` | 누락 (**살짝 밝게**) |
+| Z1 | `#6FAFEA` | recovery |
+| Z2 | `#A5CB6E` | easy / long |
 | Z3-4 | `#F5B324` | tempo |
-| Z5 | `#FF6B00` | interval |
+| Z5 | `#FF7A1A` | interval |
 
 Zone 별 색상은 **강도 그라디언트** (파랑→녹→노랑→오렌지). 사용자가 캘린더에서 한눈에 강도 분포 파악.
 
-## 타이포그래피
+## 타이포그래피 (가독성 리비전 반영)
 
 | 역할 | 폰트 | 무게 |
 |---|---|---|
-| Display (숫자/거리/페이스) | **Big Shoulders Display** | 700~900 |
-| 섹션 헤더 | **Instrument Serif** | 400 italic |
-| 본문 (한글 포함) | **Pretendard** | 400/500/600 |
-| 데이터 (표) | **JetBrains Mono** | 400/500 |
+| Display (큰 조판된 숫자만) | **Big Shoulders Display** | 800 |
+| 섹션 헤더 / 본문 / 라벨 | **Pretendard** | 500/600/700 |
+| 데이터 (표) | **JetBrains Mono** | 500/600 |
 
-- **Big Shoulders**: 육상 트랙 넘버링 폰트 계열의 콘덴스드 sans. 조판된 큰 숫자에 어울림.
-- **Instrument Serif**: 매거진 pull-quote 감성. rationale, section 넘버링 옆 라벨.
-- **Pretendard**: 한글/영문 겸용 개방 한국 sans. body 안전 선택.
-- **JetBrains Mono**: tabular figures 로 페이스/시간/km 정렬.
+**리비전 사유**: 초기 시안은 4개 폰트 패밀리 (Big Shoulders + Instrument Serif + Pretendard + JetBrains Mono) 를 혼용 → 시각 노이즈 + Instrument Serif 이탤릭이 rationale/kicker 에 쓰이면서 가독성 저하. 리비전에서:
+
+- **Instrument Serif 제거**: 모든 rationale/kicker/subtitle/footer/archive 링크를 Pretendard 로 통일.
+- **Big Shoulders 사용 축소**: 이제 "숫자만" 사용 (점수, 진행률 %, 거리, 섹션 번호). 텍스트 헤더는 Pretendard.
+- **micro-label 사이즈 10→11px + tracking 0.14em→0.08em**: 소문자 강제 트래킹의 판독성 문제 완화.
+- **rationale 사이즈 18px 이탤릭 세리프 → 16px Pretendard 500**: 이탤릭 세리프 대신 명료한 sans.
+- **캘린더 셀 min-height 96→120px**: 정보 4개(타입/거리/페이스/매칭)가 눌리지 않도록 여유 확보. 타입명 폰트도 Big Shoulders 16px → Pretendard 14px 700 로 판독성 상승.
 
 ## 레이아웃
 
