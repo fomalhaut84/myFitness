@@ -40,11 +40,17 @@ interface GenerateInput {
   targetDate?: string; // "YYYY-MM-DD"
 }
 
-/** KST 자정 Date 로 변환. 유효하지 않으면 null. */
+/**
+ * KST 자정 Date 로 변환. 유효하지 않으면 null.
+ * `2026-02-30` 같은 규정상 불가능 날짜는 `new Date` 가 3월 1일로 정규화하므로,
+ * 파싱 후 KST 벽시계 문자열을 원본과 비교해 round-trip 검증.
+ */
 function parseKstDate(s: string): Date | null {
   if (!/^\d{4}-\d{2}-\d{2}$/.test(s)) return null;
   const d = new Date(`${s}T00:00:00+09:00`);
-  return Number.isNaN(d.getTime()) ? null : d;
+  if (Number.isNaN(d.getTime())) return null;
+  if (ymdKST(d) !== s) return null;
+  return d;
 }
 
 async function computeBaseline(): Promise<{
