@@ -10,8 +10,9 @@ const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
 // Claude CLI 절대 경로 — 봇 프로세스가 pm2 delete + start 로 시작되면 login shell
 // profile 이 로드되지 않아 ~/.local/bin 이 PATH에서 누락됨 → spawn ENOENT.
-// .env 에 CLAUDE_BIN 명시로 회피. 미설정 시 PATH 조회 (개발 환경 편의).
-const CLAUDE_BIN = process.env.CLAUDE_BIN ?? "claude";
+// .env 에 CLAUDE_BIN 명시로 회피. 미설정/빈문자열이면 PATH 조회 (개발 환경 편의).
+// `||` 로 empty string도 fallback (nullish 는 empty string 통과시켜 spawn("") ERR_INVALID_ARG_VALUE 유발).
+const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 
 const TIMEOUT_MS = 180_000;
 const DEFAULT_CHANNEL = "default";
