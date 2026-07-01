@@ -266,7 +266,7 @@ interface WorkoutStatusRow {
   distanceKm: number | null;
   pace: string | null;
   zone: string | null;
-  status: "completed" | "missed" | "pending";
+  status: "completed" | "missed" | "pending" | "rest";
   matched?: { distanceKm: number; actualPace: string | null };
 }
 
@@ -331,8 +331,10 @@ export async function getActiveTrainingPlan() {
     };
 
     if (w.type === "rest") {
-      // rest 는 무조건 pending 대신 별도 표기하지 않고 skip (요약에서 제외)
-      // 진행률 계산에서 rest 제외 → 요약 카운터에는 반영 X
+      // rest 는 진행률 카운터에 포함하지 않음. status 는 초기값 "pending" 대신
+      // 명시적으로 "rest" 로 표기하여 클라이언트/AI 가 오늘/과거 rest 를
+      // pending 으로 오독하지 않도록 함.
+      row.status = "rest";
     } else if (dateStr > todayStr) {
       pending++;
       row.status = "pending";
