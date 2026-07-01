@@ -13,6 +13,7 @@ import {
   DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM,
   type GeneratedWorkout,
 } from "../../lib/training/plan-generator";
+import { pseudoLthrPace } from "../../lib/training/pace-calc";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_WINDOW_DAYS = 28;
@@ -180,10 +181,11 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   });
 
   // generatePlan 의 lthrPace 결정 로직과 정확히 일치시켜 DB 헤더와 실제 workout pace 가 정합.
+  // 배율 상수가 pseudoLthrPace 한 곳에 있으므로 caller 도 동일 helper 를 사용.
   const lthrPaceUsed =
     lthrPace ??
     (baseline.recentAvgPace !== null
-      ? baseline.recentAvgPace / 1.10
+      ? pseudoLthrPace(baseline.recentAvgPace)
       : DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM);
 
   // 트랜잭션: advisory lock 으로 archive+create 구간 직렬화 (동시 호출 시 중복 active 방지).
@@ -349,7 +351,7 @@ export async function getActiveTrainingPlan() {
       const matches = byDate.get(dateStr) ?? [];
       const plannedKm = w.distanceKm ?? 0;
       const threshold = plannedKm * 0.9;
-      // 계획 이상 거리 우선, 없으면 가장 긴 것.
+      // 임계(계획 90%) 이상 활동 중 가장 긴 것 우선. 임계 미달만 있으면 missed 처리.
       const sufficient = matches.filter((m) => m.distanceKm >= threshold);
       const pick =
         sufficient.length > 0

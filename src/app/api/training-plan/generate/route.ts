@@ -15,6 +15,16 @@ const BODY_SCHEMA = z.object({
     .optional(),
 });
 
+// generateTrainingPlan 이 명시적으로 throw 하는 사용자 입력 관련 오류 시그니처.
+// (targetDate 형식 오류 / targetDistance 누락 / Wk4 창 밖 targetDate)
+function isUserInputError(msg: string): boolean {
+  return (
+    msg.includes("유효하지 않은 targetDate") ||
+    msg.includes("targetDate 를 지정하려면") ||
+    msg.includes("targetDate 는 Wk4 창")
+  );
+}
+
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -32,6 +42,13 @@ export async function POST(request: Request) {
     return NextResponse.json(payload);
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    return NextResponse.json({ error: message }, { status: 400 });
+    if (isUserInputError(message)) {
+      return NextResponse.json({ error: message }, { status: 400 });
+    }
+    console.error("[api/training-plan/generate] 예상치 못한 오류:", error);
+    return NextResponse.json(
+      { error: "plan 생성 중 서버 오류가 발생했습니다." },
+      { status: 500 }
+    );
   }
 }
