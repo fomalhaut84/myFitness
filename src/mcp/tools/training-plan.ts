@@ -144,13 +144,18 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   const endDate = new Date(startDate.getTime() + 27 * DAY_MS);
   const week4Start = new Date(startDate.getTime() + 21 * DAY_MS);
 
-  // targetDate 는 Wk4 창 내(21~27일차)에 있어야 tapering 이 의미 있음. 그 외 시점은 무시하고
-  // 일반 4주 plan 을 생성 (Wk1~3 targetDate 를 그대로 넘기면 race day 만 rest 로 바뀌고
-  // 이후 build 스케줄이 계속되어 스펙과 맞지 않음).
-  const effectiveTargetDate =
-    targetDate !== null && targetDate >= week4Start && targetDate <= endDate
-      ? targetDate
-      : null;
+  // targetDate 는 Wk4 창(21~27일차) 내에 있어야 tapering 이 의미 있음.
+  // 그 외 시점(과거, 너무 가까움, plan 창 밖) 은 mutation 전에 명시적으로 거부.
+  // (silent null 대체 시 사용자의 active plan 이 archived 되고 race 요청이 무시된 plan 이 저장됨)
+  if (targetDate !== null && (targetDate < week4Start || targetDate > endDate)) {
+    const wk4StartStr = ymdKST(week4Start);
+    const endStr = ymdKST(endDate);
+    throw new Error(
+      `targetDate 는 Wk4 창 [${wk4StartStr} ~ ${endStr}] 내에 있어야 합니다. ` +
+        `현재 값: ${input.targetDate}. 더 가까운 race 는 별도 대응 필요.`
+    );
+  }
+  const effectiveTargetDate = targetDate;
 
   const workouts = generatePlan({
     startDate,
