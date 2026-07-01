@@ -87,13 +87,39 @@ jobs:
           TELEGRAM_CHAT_ID: ${{ secrets.TELEGRAM_CHAT_ID }}
           RELEASE_TAG: ${{ github.event.release.tag_name || github.event.inputs.tag }}
           RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          # release event 는 body 를 payload 에 담고 있음. workflow_dispatch 는 없음 → gh 로 폴백.
+          RELEASE_BODY: ${{ github.event.release.body }}
+          GH_TOKEN: ${{ github.token }}
+          GH_REPO: ${{ github.repository }}
         run: |
           if [[ -z "${TELEGRAM_BOT_TOKEN:-}" || -z "${TELEGRAM_CHAT_ID:-}" ]]; then
             echo "::warning::TELEGRAM_BOT_TOKEN / TELEGRAM_CHAT_ID secret 미설정 — 알림 skip"
             exit 0
           fi
-          # printf로 \n literal newline 처리 — multi-line YAML block scalar 들여쓰기 깨짐 회피.
-          text=$(printf '✅ <b>Deploy %s</b> 성공\n서버: production\n워크플로우: %s' "$RELEASE_TAG" "$RUN_URL")
+
+          # 릴리스 본문 확보 — release event 면 payload, 아니면 gh 로 조회.
+          notes_raw="${RELEASE_BODY:-}"
+          if [[ -z "$notes_raw" ]]; then
+            notes_raw=$(gh release view "$RELEASE_TAG" --repo "$GH_REPO" --json body -q .body 2>/dev/null || true)
+          fi
+
+          # 마크다운 노이즈 제거 → HTML 이스케이프. sed 순서: **bold** / ## 헤더 / 백틱 제거 / \/ \` 언이스케이프 후 HTML 이스케이프.
+          # ERE (-E) 로 헤더 매칭 (\+ 는 GNU/BSD sed 호환성 이슈). head -c 800 로 트림, 길이 비교로 잘림 감지.
+          processed=$(printf '%s' "$notes_raw" \
+            | sed -E -e 's/\\([`/])/\1/g' -e 's/\*\*//g' -e 's/^#+ //' -e 's/`//g' \
+            | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
+          notes=$(printf '%s' "$processed" | head -c 800)
+          if [[ ${#notes} -lt ${#processed} ]]; then
+            notes="${notes}…"
+          fi
+
+          # printf 로 \n literal newline 처리 — multi-line YAML block scalar 들여쓰기 깨짐 회피.
+          if [[ -n "$notes" ]]; then
+            text=$(printf '✅ <b>Deploy %s</b> 성공\n서버: production\n\n<b>변경 내역</b>\n%s\n\n워크플로우: %s' "$RELEASE_TAG" "$notes" "$RUN_URL")
+          else
+            text=$(printf '✅ <b>Deploy %s</b> 성공\n서버: production\n워크플로우: %s' "$RELEASE_TAG" "$RUN_URL")
+          fi
+
           curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
