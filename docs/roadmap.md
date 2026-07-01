@@ -294,14 +294,18 @@
 > 시작: 2026-06-30. M5 의 단기 결정적 도구화를 한 단계 더 — 장기 추세/예측/계획까지.
 > 스펙: `docs/specs/m6-overview.md`
 
-## M6-1: `generate_training_plan` MCP 도구 — 우선순위 ★★★
+## M6-1: `generate_training_plan` / `get_active_training_plan` MCP 도구 — 우선순위 ★★★ ✅
 
-> 4주 cycle 훈련 계획 자동 생성 (목표 거리 + 현재 피트니스 기반).
+> 4주 cycle 훈련 계획 결정적 생성 + DB 저장 + 진행 파생.
 
-- [ ] 일자별 권장 workout (거리/Zone/유형) — 4주
-- [ ] ACWR 점진적 증가 (10% 미만)
-- [ ] 사용자 LTHR/maxHR 기반 Zone
-- [ ] 신규 DB 모델 가능 (TrainingPlan)
+- [x] 일자별 권장 workout (거리/Zone/유형) — 4주 (Wk1 baseline / Wk2 +10% / Wk3 +20% peak / Wk4 -20% recovery)
+- [x] weeklyFrequency 3~5 옵션 (요일 고정 패턴 + slot 정규화)
+- [x] LTHR pace 기반 zone/pace 배분 (부재 시 pseudoLthr = recentAvg / 1.10)
+- [x] race target 지원: targetDate Wk4 창 내 6일 pre-race 선형 taper (0.6 → 0), race 당일 rest
+- [x] DB 모델 TrainingPlan / TrainingWorkout + advisory lock 동시성 제어
+- [x] 진행 파생: workout ↔ 러닝 activity 매칭 (KST day + 계획 90% 이상 거리)
+- [x] `POST /api/training-plan/generate` 명시적 승인 경로 (advisor 는 read-only 만 사용)
+- 스펙: `docs/specs/m6-1-training-plan.md` (#161, PR #162)
 
 ## M6-2: `get_injury_risk_score` MCP 도구 — 우선순위 ★★★ ✅
 
