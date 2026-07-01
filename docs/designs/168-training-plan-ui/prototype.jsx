@@ -626,17 +626,16 @@ function CalendarCell({ cell, isToday }) {
     outline: isToday ? `1.5px solid ${C.primary}` : "none",
     outlineOffset: -1,
     opacity: isRest ? 0.55 : 1,
-    minHeight: 148,
   };
 
   if (isRest && !isRaceDay) {
     return (
-      <div className="p-6 relative" style={cellStyle}>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 13, fontWeight: 500, color: C.lo }}>
-          {TYPE_LABEL_KO.rest}
+      <div className="p-2.5 md:p-6 relative min-h-[64px] md:min-h-[148px]" style={cellStyle}>
+        <span className="text-[11px] md:text-[13px]" style={{ fontFamily: '"Pretendard"', fontWeight: 500, color: C.lo }}>
+          휴식
         </span>
         {isToday && (
-          <div className="absolute bottom-3 left-4" style={{ fontFamily: '"Pretendard"', fontSize: 10, fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
+          <div className="absolute bottom-1.5 md:bottom-3 left-2.5 md:left-4 text-[8px] md:text-[10px]" style={{ fontFamily: '"Pretendard"', fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
             TODAY
           </div>
         )}
@@ -647,7 +646,7 @@ function CalendarCell({ cell, isToday }) {
   if (isRaceDay) {
     return (
       <div
-        className="p-6 relative"
+        className="p-2.5 md:p-6 relative min-h-[64px] md:min-h-[148px]"
         style={{
           ...cellStyle,
           background: C.primary,
@@ -655,10 +654,10 @@ function CalendarCell({ cell, isToday }) {
           borderTop: `2px solid ${C.primary}`,
         }}
       >
-        <div style={{ fontFamily: '"Pretendard"', fontSize: 18, fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>
+        <div className="text-[13px] md:text-[18px]" style={{ fontFamily: '"Pretendard"', fontWeight: 800, color: "#fff", letterSpacing: "-0.01em" }}>
           RACE
         </div>
-        <div style={{ fontFamily: '"Pretendard"', fontSize: 12, color: "#ffffffcc", marginTop: 4, fontWeight: 500 }}>
+        <div className="text-[9px] md:text-[12px] mt-0.5 md:mt-1" style={{ fontFamily: '"Pretendard"', color: "#ffffffcc", fontWeight: 500 }}>
           {notes}
         </div>
       </div>
@@ -667,15 +666,15 @@ function CalendarCell({ cell, isToday }) {
 
   return (
     <div
-      className="p-6 relative group cursor-default"
+      className="p-2.5 md:p-6 relative group cursor-default min-h-[64px] md:min-h-[148px]"
       style={cellStyle}
     >
-      {/* 타입 이름 + zone 칩 */}
-      <div className="flex items-center justify-between mb-3">
+      {/* 타입 이름 + zone 칩 (모바일 컴팩트) */}
+      <div className="flex items-center justify-between mb-1.5 md:mb-3 gap-1">
         <span
+          className="text-[11px] md:text-[14px] truncate"
           style={{
             fontFamily: '"Pretendard"',
-            fontSize: 14,
             fontWeight: 700,
             color: isMissed ? C.missed : isCompleted ? C.completed : C.hi,
             letterSpacing: "-0.005em",
@@ -686,12 +685,12 @@ function CalendarCell({ cell, isToday }) {
         </span>
         {zone && (
           <span
+            className="text-[8px] md:text-[10px] shrink-0"
             style={{
               fontFamily: '"JetBrains Mono"',
-              fontSize: 10,
               fontWeight: 700,
               color: zColor,
-              padding: "2px 6px",
+              padding: "1px 4px",
               border: `1px solid ${zColor}66`,
               background: `${zColor}14`,
               lineHeight: 1.3,
@@ -703,12 +702,12 @@ function CalendarCell({ cell, isToday }) {
         )}
       </div>
 
-      {/* 거리 (큰 조판) */}
-      <div className="flex items-baseline gap-1.5 mb-2">
+      {/* 거리 */}
+      <div className="flex items-baseline gap-1 md:gap-1.5 mb-0.5 md:mb-2">
         <span
+          className="text-[20px] md:text-[32px]"
           style={{
             fontFamily: '"Big Shoulders Display"',
-            fontSize: 32,
             fontWeight: 800,
             color: C.hi,
             lineHeight: 0.9,
@@ -719,44 +718,53 @@ function CalendarCell({ cell, isToday }) {
         >
           {distanceKm}
         </span>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 12, color: C.mid, fontWeight: 500 }}>
+        <span className="text-[9px] md:text-[12px]" style={{ fontFamily: '"Pretendard"', color: C.mid, fontWeight: 500 }}>
           km
         </span>
       </div>
 
       {/* 페이스 */}
       <div
+        className="text-[9px] md:text-[12px]"
         style={{
           fontFamily: '"JetBrains Mono"',
-          fontSize: 12,
           color: C.mid,
           fontVariantNumeric: "tabular-nums",
         }}
       >
-        {pace}/km
+        {pace}
       </div>
 
-      {/* Matched activity (완료 시) */}
+      {/* Matched activity — 모바일: 완료 dot 만, md 이상: 상세 */}
       {matched && (
-        <div
-          className="mt-4 pt-3 flex items-baseline gap-2"
-          style={{
-            borderTop: `1px dashed ${C.completed}44`,
-            fontFamily: '"JetBrains Mono"',
-            fontSize: 11,
-            color: C.completed,
-            fontVariantNumeric: "tabular-nums",
-            fontWeight: 500,
-          }}
-        >
-          <span style={{ fontWeight: 700 }}>→</span>
-          <span>{matched.distanceKm} · {matched.actualPace}</span>
-        </div>
+        <>
+          {/* 모바일: 우상단 완료 인디케이터 dot */}
+          <span
+            className="md:hidden absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
+            style={{ background: C.completed }}
+            aria-label="완료"
+          />
+          {/* 데스크톱: 상세 표기 */}
+          <div
+            className="hidden md:flex mt-4 pt-3 items-baseline gap-2"
+            style={{
+              borderTop: `1px dashed ${C.completed}44`,
+              fontFamily: '"JetBrains Mono"',
+              fontSize: 11,
+              color: C.completed,
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: 500,
+            }}
+          >
+            <span style={{ fontWeight: 700 }}>→</span>
+            <span>{matched.distanceKm} · {matched.actualPace}</span>
+          </div>
+        </>
       )}
 
       {/* 오늘 인디케이터 */}
       {isToday && (
-        <div className="absolute top-2 right-2" style={{ fontFamily: '"Pretendard"', fontSize: 10, fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
+        <div className="absolute top-1.5 right-2 md:top-2 md:right-2 text-[8px] md:text-[10px]" style={{ fontFamily: '"Pretendard"', fontWeight: 700, color: C.primary, letterSpacing: "0.1em" }}>
           TODAY
         </div>
       )}
@@ -766,32 +774,32 @@ function CalendarCell({ cell, isToday }) {
 
 function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, weekStartOffset, planStart }) {
   return (
-    <div className="grid grid-cols-[96px_1fr_96px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
+    <div className="grid grid-cols-[52px_1fr_58px] md:grid-cols-[96px_1fr_96px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
       {/* 좌: 주 라벨 */}
       <div
-        className="p-6 flex flex-col justify-between"
+        className="p-2 md:p-6 flex flex-col justify-between"
         style={{
           background: isCurrentWeek ? `${C.primary}08` : "transparent",
           borderRight: `1px solid ${C.border}`,
         }}
       >
         <div>
-          <MicroLabel color={C.lo}>Week</MicroLabel>
+          <span className="hidden md:inline"><MicroLabel color={C.lo}>Week</MicroLabel></span>
           <div
+            className="text-[24px] md:text-[42px]"
             style={{
               fontFamily: '"Big Shoulders Display"',
-              fontSize: 42,
               fontWeight: 800,
               color: isCurrentWeek ? C.primary : C.hi,
               lineHeight: 0.85,
-              marginTop: 6,
+              marginTop: 4,
             }}
           >
             {weekLabel}
           </div>
         </div>
         {isCurrentWeek && (
-          <MicroLabel color={C.primary}>current</MicroLabel>
+          <span className="hidden md:block"><MicroLabel color={C.primary}>current</MicroLabel></span>
         )}
       </div>
 
@@ -805,24 +813,24 @@ function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, week
 
       {/* 우: 주간 총계 */}
       <div
-        className="p-6 flex flex-col items-end justify-center gap-1"
+        className="p-2 md:p-6 flex flex-col items-end justify-center gap-0.5 md:gap-1"
         style={{ borderLeft: `1px solid ${C.border}` }}
       >
-        <MicroLabel color={C.lo}>Vol</MicroLabel>
+        <span className="hidden md:inline"><MicroLabel color={C.lo}>Vol</MicroLabel></span>
         <span
+          className="text-[16px] md:text-[26px]"
           style={{
             fontFamily: '"Big Shoulders Display"',
-            fontSize: 26,
             fontWeight: 700,
             color: C.hi,
             lineHeight: 1,
             fontVariantNumeric: "tabular-nums",
-            marginTop: 4,
+            marginTop: 2,
           }}
         >
           {weekTotalKm}
         </span>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 11, color: C.lo, fontWeight: 500 }}>km</span>
+        <span className="text-[9px] md:text-[11px]" style={{ fontFamily: '"Pretendard"', color: C.lo, fontWeight: 500 }}>km</span>
       </div>
     </div>
   );
@@ -833,23 +841,23 @@ function PlanCalendar({ plan }) {
   const sum = (cells) => cells.reduce((s, c) => s + (c.distanceKm || 0), 0).toFixed(1);
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
-      {/* 그리드 전체 — 모바일에선 가로 스크롤 (최소 폭 확보). */}
+      {/* 그리드 전체 — 모바일 사이즈 축소로 스크롤 최소화 (기본 뷰포트 ~375px 에서 넉넉히 fit). */}
       <div className="overflow-x-auto">
-        <div style={{ minWidth: 720 }}>
+        <div className="min-w-full md:min-w-[720px]">
           {/* 요일 헤더 */}
-          <div className="grid grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
-            <div className="p-5 border-r" style={{ borderColor: C.border }}>
-              <MicroLabel color={C.lo}>Weeks</MicroLabel>
+          <div className="grid grid-cols-[52px_1fr_58px] md:grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
+            <div className="p-2 md:p-5 border-r" style={{ borderColor: C.border }}>
+              <span className="text-[9px] md:text-[11px]" style={{ fontFamily: '"Pretendard"', fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: C.lo }}>Weeks</span>
             </div>
             <div className="grid grid-cols-7">
               {w.dayHeaders.map((d) => (
-                <div key={d} className="p-5 text-center">
-                  <MicroLabel color={C.lo}>{d}</MicroLabel>
+                <div key={d} className="p-1.5 md:p-5 text-center">
+                  <span className="text-[9px] md:text-[11px]" style={{ fontFamily: '"Pretendard"', fontWeight: 600, letterSpacing: "0.05em", color: C.lo }}>{d}</span>
                 </div>
               ))}
             </div>
-            <div className="p-5 border-l text-right" style={{ borderColor: C.border }}>
-              <MicroLabel color={C.lo}>Total</MicroLabel>
+            <div className="p-2 md:p-5 border-l text-right" style={{ borderColor: C.border }}>
+              <span className="text-[9px] md:text-[11px]" style={{ fontFamily: '"Pretendard"', fontWeight: 600, letterSpacing: "0.05em", textTransform: "uppercase", color: C.lo }}>Total</span>
             </div>
           </div>
 
@@ -877,10 +885,11 @@ function PlanCalendar({ plan }) {
         </span>
       </div>
 
-      {/* 모바일 힌트 */}
+      {/* 모바일 힌트: 셀 탭 시 상세, 완료는 우상단 도트 */}
       <div className="md:hidden px-5 py-3 text-center" style={{ borderTop: `1px solid ${C.border}`, background: "#00000011" }}>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 11, color: C.lo, fontWeight: 500 }}>
-          ← 가로로 스와이프해서 4주 전체 확인 →
+        <span style={{ fontFamily: '"Pretendard"', fontSize: 10, color: C.lo, fontWeight: 500 }}>
+          <span style={{ display: "inline-block", width: 6, height: 6, borderRadius: 6, background: C.completed, marginRight: 6, verticalAlign: "middle" }} />
+          완료 · 셀 탭 시 상세
         </span>
       </div>
     </div>
