@@ -22,6 +22,9 @@ export interface GeneratedWorkout {
   notes: string | null;
 }
 
+/** LTHR pace 도 avgPace 도 없을 때 최종 fallback (6:00/km). generatePlan 내부와 caller 저장 로직이 반드시 동일 값을 사용해야 함. */
+export const DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM = 360;
+
 export interface PlanGeneratorInput {
   startDate: Date; // 내일 KST 00:00 timestamp (Mon-Sun 이어야 함은 X, 요일 shift 자동 처리)
   weeklyFrequency: number; // 3 | 4 | 5
@@ -67,7 +70,9 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
 
   const lthrPace =
     lthrPaceSecPerKm ??
-    (recentAvgPaceSecPerKm ? pseudoLthrPace(recentAvgPaceSecPerKm) : 360); // 최후 fallback 6:00 pace
+    (recentAvgPaceSecPerKm
+      ? pseudoLthrPace(recentAvgPaceSecPerKm)
+      : DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM);
   const pattern = patternFor(weeklyFrequency);
   // volumeRatio 합이 1 이 아니어도 (예: 3x = 0.75, 4x/5x = 0.90) 정규화하여
   // Wk1 = baseline × weekMult 를 만족시킴. 슬롯간 상대 비중은 유지.

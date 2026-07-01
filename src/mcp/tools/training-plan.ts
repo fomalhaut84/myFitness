@@ -8,7 +8,11 @@ import {
   ymdKST,
 } from "../../lib/garmin/utils";
 import { formatPace } from "./running-buckets";
-import { generatePlan, type GeneratedWorkout } from "../../lib/training/plan-generator";
+import {
+  generatePlan,
+  DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM,
+  type GeneratedWorkout,
+} from "../../lib/training/plan-generator";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const BASELINE_WINDOW_DAYS = 28;
@@ -175,9 +179,12 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     targetDate: effectiveTargetDate,
   });
 
+  // generatePlan 의 lthrPace 결정 로직과 정확히 일치시켜 DB 헤더와 실제 workout pace 가 정합.
   const lthrPaceUsed =
     lthrPace ??
-    (baseline.recentAvgPace !== null ? baseline.recentAvgPace / 1.10 : null);
+    (baseline.recentAvgPace !== null
+      ? baseline.recentAvgPace / 1.10
+      : DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM);
 
   // 트랜잭션: advisory lock 으로 archive+create 구간 직렬화 (동시 호출 시 중복 active 방지).
   // 이후 기존 active 아카이빙 + 신규 plan + workouts insert.
