@@ -327,12 +327,16 @@
 - [x] 러닝 bucket/포맷 유틸 공용화 (`running-buckets.ts`) — pace-progression 과 drift 방지
 - 스펙: `docs/specs/m6-3-race-prediction.md` (#159, PR #160)
 
-## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★
+## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★ ✅
 
-> readiness + 주간 계획 + 부상 위험 → 오늘 구체적 workout. M6-1~3 의존 통합 도구.
+> readiness + 주간 계획 + 부상 위험 → 오늘 구체적 workout. M6-1~2 의존 통합 도구 (read-only).
 
-- [ ] workout 유형 / 거리 / 페이스 범위 / Zone
-- [ ] 추천 이유
+- [x] workout 유형 / 거리 / 페이스 범위 (±5%) / Zone
+- [x] 조정 매트릭스 4×5 (injury × readiness) + downgrade ladder (interval→tempo→easy→recovery→rest, long→easy 60%)
+- [x] active plan 오늘 workout base, 없거나 rest 계획이면 fallback (baseline × 0.2 easy Z2)
+- [x] 한국어 rationale (데이터 부재 명시)
+- [x] `computeBaseline` 을 `baseline.ts` 로 공용화 (M6-1/M6-4 drift 방지)
+- 스펙: `docs/specs/m6-4-recommend-today-workout.md` (#163, PR #164)
 
 ---
 
