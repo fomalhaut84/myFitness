@@ -166,7 +166,7 @@ function MicroLabel({ children, color = C.lo, className = "" }) {
 /** 매거진 섹션 번호 + 라벨. 이탤릭 세리프 제거, Pretendard 로 통일. */
 function SectionHeader({ number, kicker, title, meta }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-5 mb-8">
+    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-6 mb-10">
       <div className="flex items-baseline gap-5">
         <span
           style={{
@@ -311,14 +311,14 @@ function TodayWorkoutCard({ today }) {
     >
       {/* Left: Hero — 조정된 워크아웃 */}
       <div
-        className="p-8 md:p-10 relative overflow-hidden"
+        className="p-10 md:p-14 relative overflow-hidden"
         style={{
           borderRight: `1px solid ${C.border}`,
           background: `radial-gradient(ellipse at top left, ${C.primary}0A 0%, transparent 60%)`,
         }}
       >
         {/* 좌상단 kicker */}
-        <div className="flex items-center justify-between mb-6">
+        <div className="flex items-center justify-between mb-8">
           <div className="flex items-center gap-3">
             <span
               className="inline-block w-1.5 h-1.5 rounded-full"
@@ -341,19 +341,19 @@ function TodayWorkoutCard({ today }) {
         </div>
 
         {/* Hero: 타입 + 거리 */}
-        <div className="mb-8">
+        <div className="mb-10">
           <div
             style={{
               fontFamily: '"Pretendard", ui-sans-serif',
               fontSize: 14,
               fontWeight: 500,
               color: C.mid,
-              marginBottom: 4,
+              marginBottom: 10,
             }}
           >
             추천 워크아웃
           </div>
-          <div className="flex items-end gap-4 mb-2">
+          <div className="flex items-end gap-5 mb-2">
             <span
               style={{
                 fontFamily: '"Big Shoulders Display", ui-sans-serif',
@@ -388,7 +388,7 @@ function TodayWorkoutCard({ today }) {
 
         {/* Metrics row */}
         {!isRest && (
-          <div className="grid grid-cols-3 gap-6 pt-6 border-t" style={{ borderColor: C.border }}>
+          <div className="grid grid-cols-3 gap-8 pt-8 border-t" style={{ borderColor: C.border }}>
             <DataUnit label="Distance" value={recommendation.distanceKm} unit="km" size="lg" />
             <DataUnit
               label="Pace range"
@@ -403,21 +403,21 @@ function TodayWorkoutCard({ today }) {
 
         {/* Rationale — 세리프 이탤릭 제거, 본문 sans 로 통일 (가독성). */}
         <div
-          className="mt-8 p-5"
+          className="mt-10 p-6"
           style={{
             background: "#0000001a",
             borderLeft: `3px solid ${C.primary}`,
           }}
         >
-          <MicroLabel color={C.mid} className="mb-2">추천 근거</MicroLabel>
+          <MicroLabel color={C.mid} className="mb-3">추천 근거</MicroLabel>
           <p
             style={{
               fontFamily: '"Pretendard", ui-sans-serif',
               fontSize: 16,
-              lineHeight: 1.6,
+              lineHeight: 1.7,
               fontWeight: 500,
               color: C.hi,
-              marginTop: 8,
+              marginTop: 12,
             }}
           >
             {rationale}
@@ -427,7 +427,7 @@ function TodayWorkoutCard({ today }) {
         {/* Base 비교 */}
         {recommendation.adjusted && !isRest && (
           <div
-            className="mt-6 flex items-baseline gap-3 flex-wrap"
+            className="mt-8 flex items-baseline gap-4 flex-wrap"
             style={{ color: C.mid, fontFamily: '"Pretendard"', fontSize: 14 }}
           >
             <MicroLabel color={C.mid}>원 계획</MicroLabel>
@@ -447,7 +447,7 @@ function TodayWorkoutCard({ today }) {
       </div>
 
       {/* Right: Factors */}
-      <div className="p-8 md:p-10 flex flex-col gap-6">
+      <div className="p-10 md:p-12 flex flex-col gap-8">
         <div>
           <MicroLabel color={C.mid}>결정 팩터</MicroLabel>
           <div
@@ -457,7 +457,7 @@ function TodayWorkoutCard({ today }) {
               fontWeight: 700,
               color: C.hi,
               letterSpacing: "-0.01em",
-              marginTop: 6,
+              marginTop: 10,
             }}
           >
             컨디션 신호
@@ -481,14 +481,14 @@ function TodayWorkoutCard({ today }) {
         />
 
         <div
-          className="mt-2 p-4"
+          className="mt-4 p-6"
           style={{
             border: `1px solid ${C.border}`,
             background: C.panel,
           }}
         >
           <MicroLabel color={C.mid}>플랜 컨텍스트</MicroLabel>
-          <div className="mt-3 space-y-2" style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.mid }}>
+          <div className="mt-5 space-y-3" style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.mid }}>
             <div className="flex justify-between">
               <span>Active plan</span>
               <span style={{ color: factors.plan.hasActivePlan ? C.completed : C.missed, fontWeight: 600 }}>
@@ -529,7 +529,7 @@ function FactorRow({ label, score, maxScore, statusLabel, tone, higherIsWorse })
 
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-2">
+      <div className="flex items-baseline justify-between mb-3">
         <div className="flex items-baseline gap-3">
           <MicroLabel color={C.mid}>{label}</MicroLabel>
           <span
@@ -558,7 +558,7 @@ function FactorRow({ label, score, maxScore, statusLabel, tone, higherIsWorse })
           {score}
         </span>
       </div>
-      <div className="h-1 rounded-none" style={{ background: C.muted }}>
+      <div className="h-1.5 rounded-none" style={{ background: C.muted }}>
         <div
           className="h-full transition-all duration-700 ease-out"
           style={{
@@ -578,8 +578,8 @@ function ProgressStrip({ progress }) {
   const c = (completed / total) * 100;
   const m = (missed / total) * 100;
   return (
-    <div className="mb-8">
-      <div className="flex items-baseline justify-between mb-4">
+    <div className="mb-10">
+      <div className="flex items-baseline justify-between mb-5">
         <div className="flex items-baseline gap-6">
           <div className="flex items-baseline gap-2">
             <span style={{ fontFamily: '"Big Shoulders Display"', fontSize: 48, fontWeight: 800, color: C.hi, lineHeight: 0.85, fontVariantNumeric: "tabular-nums" }}>
@@ -618,12 +618,12 @@ function CalendarCell({ cell, isToday }) {
     outline: isToday ? `1.5px solid ${C.primary}` : "none",
     outlineOffset: -1,
     opacity: isRest ? 0.55 : 1,
-    minHeight: 120,
+    minHeight: 140,
   };
 
   if (isRest && !isRaceDay) {
     return (
-      <div className="p-4 relative" style={cellStyle}>
+      <div className="p-5 relative" style={cellStyle}>
         <span style={{ fontFamily: '"Pretendard"', fontSize: 13, fontWeight: 500, color: C.lo }}>
           {TYPE_LABEL_KO.rest}
         </span>
@@ -639,7 +639,7 @@ function CalendarCell({ cell, isToday }) {
   if (isRaceDay) {
     return (
       <div
-        className="p-4 relative"
+        className="p-5 relative"
         style={{
           ...cellStyle,
           background: C.primary,
@@ -659,11 +659,11 @@ function CalendarCell({ cell, isToday }) {
 
   return (
     <div
-      className="p-4 relative group cursor-default"
+      className="p-5 relative group cursor-default"
       style={cellStyle}
     >
       {/* 타입 이름 + zone 칩 */}
-      <div className="flex items-center justify-between mb-2">
+      <div className="flex items-center justify-between mb-3">
         <span
           style={{
             fontFamily: '"Pretendard"',
@@ -696,7 +696,7 @@ function CalendarCell({ cell, isToday }) {
       </div>
 
       {/* 거리 (큰 조판) */}
-      <div className="flex items-baseline gap-1.5 mb-1.5">
+      <div className="flex items-baseline gap-1.5 mb-2">
         <span
           style={{
             fontFamily: '"Big Shoulders Display"',
@@ -731,7 +731,7 @@ function CalendarCell({ cell, isToday }) {
       {/* Matched activity (완료 시) */}
       {matched && (
         <div
-          className="mt-2.5 pt-2 flex items-baseline gap-2"
+          className="mt-4 pt-3 flex items-baseline gap-2"
           style={{
             borderTop: `1px dashed ${C.completed}44`,
             fontFamily: '"JetBrains Mono"',
@@ -758,10 +758,10 @@ function CalendarCell({ cell, isToday }) {
 
 function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, weekStartOffset, planStart }) {
   return (
-    <div className="grid grid-cols-[80px_1fr_60px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
+    <div className="grid grid-cols-[80px_1fr_80px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
       {/* 좌: 주 라벨 */}
       <div
-        className="p-4 flex flex-col justify-between"
+        className="p-5 flex flex-col justify-between"
         style={{
           background: isCurrentWeek ? `${C.primary}08` : "transparent",
           borderRight: `1px solid ${C.border}`,
@@ -776,7 +776,7 @@ function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, week
               fontWeight: 800,
               color: isCurrentWeek ? C.primary : C.hi,
               lineHeight: 0.85,
-              marginTop: 2,
+              marginTop: 6,
             }}
           >
             {weekLabel}
@@ -797,24 +797,24 @@ function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, week
 
       {/* 우: 주간 총계 */}
       <div
-        className="p-4 flex flex-col items-end justify-center"
+        className="p-5 flex flex-col items-end justify-center gap-1"
         style={{ borderLeft: `1px solid ${C.border}` }}
       >
         <MicroLabel color={C.lo}>Vol</MicroLabel>
         <span
           style={{
             fontFamily: '"Big Shoulders Display"',
-            fontSize: 24,
+            fontSize: 26,
             fontWeight: 700,
             color: C.hi,
             lineHeight: 1,
             fontVariantNumeric: "tabular-nums",
-            marginTop: 2,
+            marginTop: 4,
           }}
         >
           {weekTotalKm}
         </span>
-        <span style={{ fontFamily: '"Pretendard"', fontSize: 9, color: C.lo }}>km</span>
+        <span style={{ fontFamily: '"Pretendard"', fontSize: 11, color: C.lo, fontWeight: 500 }}>km</span>
       </div>
     </div>
   );
@@ -826,18 +826,18 @@ function PlanCalendar({ plan }) {
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
       {/* 요일 헤더 */}
-      <div className="grid grid-cols-[80px_1fr_60px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
-        <div className="p-3 border-r" style={{ borderColor: C.border }}>
+      <div className="grid grid-cols-[80px_1fr_80px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
+        <div className="p-4 border-r" style={{ borderColor: C.border }}>
           <MicroLabel color={C.lo}>Weeks</MicroLabel>
         </div>
         <div className="grid grid-cols-7">
           {w.dayHeaders.map((d) => (
-            <div key={d} className="p-3 text-center">
+            <div key={d} className="p-4 text-center">
               <MicroLabel color={C.lo}>{d}</MicroLabel>
             </div>
           ))}
         </div>
-        <div className="p-3 border-l text-right" style={{ borderColor: C.border }}>
+        <div className="p-4 border-l text-right" style={{ borderColor: C.border }}>
           <MicroLabel color={C.lo}>Total</MicroLabel>
         </div>
       </div>
@@ -848,7 +848,7 @@ function PlanCalendar({ plan }) {
       <WeekRow weekLabel="04" weekTotalKm={sum(w.week4)} cells={w.week4} />
 
       {/* Race 표기 */}
-      <div className="p-4 flex items-center justify-between" style={{ background: "#00000022" }}>
+      <div className="p-5 flex items-center justify-between" style={{ background: "#00000022" }}>
         <div className="flex items-center gap-3">
           <span
             className="inline-block w-2 h-2"
@@ -876,14 +876,14 @@ function GenerateForm({ hasActivePlan }) {
 
   return (
     <div
-      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-6 p-8"
+      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 p-10"
       style={{ border: `1px solid ${C.border}`, background: C.panel }}
     >
-      <div className="space-y-6">
+      <div className="space-y-8">
         {/* Frequency */}
         <div>
           <MicroLabel color={C.mid} className="mb-3">Weekly frequency</MicroLabel>
-          <div className="flex gap-2 mt-3">
+          <div className="flex gap-3 mt-4">
             {[3, 4, 5].map((n) => (
               <button
                 key={n}
@@ -909,10 +909,10 @@ function GenerateForm({ hasActivePlan }) {
         </div>
 
         {/* Target */}
-        <div className="grid grid-cols-2 gap-4">
+        <div className="grid grid-cols-2 gap-6">
           <div>
             <MicroLabel color={C.mid} className="mb-3">Target distance</MicroLabel>
-            <div className="flex gap-2 mt-3">
+            <div className="flex gap-2 mt-4">
               {["", "5K", "10K", "HM", "FM"].map((d, idx) => (
                 <button
                   key={idx}
@@ -940,7 +940,7 @@ function GenerateForm({ hasActivePlan }) {
               value={date}
               onChange={(e) => setDate(e.target.value)}
               disabled={!distance}
-              className="w-full mt-3 px-3 py-2"
+              className="w-full mt-4 px-4 py-3"
               style={{
                 background: "transparent",
                 border: `1px solid ${C.border}`,
@@ -950,35 +950,36 @@ function GenerateForm({ hasActivePlan }) {
                 opacity: distance ? 1 : 0.4,
               }}
             />
-            <div style={{ fontSize: 10, color: C.lo, marginTop: 6, fontFamily: '"Pretendard"' }}>
+            <div style={{ fontSize: 11, color: C.lo, marginTop: 10, fontFamily: '"Pretendard"', fontWeight: 500 }}>
               Wk4 창 내여야 taper 적용 (오늘 +21~28일)
             </div>
           </div>
         </div>
       </div>
 
-      <div className="flex flex-col justify-end gap-3">
+      <div className="flex flex-col justify-end gap-4">
         {hasActivePlan && (
           <div
-            className="p-3"
+            className="p-4"
             style={{
               border: `1px solid ${C.primary}44`,
               background: `${C.primary}0A`,
               fontFamily: '"Pretendard"',
-              fontSize: 11,
+              fontSize: 12,
               color: C.mid,
-              lineHeight: 1.4,
-              maxWidth: 260,
+              lineHeight: 1.6,
+              maxWidth: 280,
+              fontWeight: 500,
             }}
           >
             <MicroLabel color={C.primary}>Warning</MicroLabel>
-            <div className="mt-1">
+            <div className="mt-2">
               기존 active plan 이 archived 로 이동합니다. 되돌릴 수 없음.
             </div>
           </div>
         )}
         <button
-          className="px-10 py-4 transition-colors"
+          className="px-10 py-5 transition-colors"
           style={{
             background: C.primary,
             color: C.hi,
@@ -1006,7 +1007,7 @@ function ArchivedList({ items }) {
       {items.map((p, idx) => (
         <div
           key={p.planId}
-          className="grid grid-cols-[80px_1fr_100px_120px] items-center p-5 cursor-pointer transition-colors hover:bg-white/[0.02]"
+          className="grid grid-cols-[80px_1fr_100px_120px] items-center p-7 gap-4 cursor-pointer transition-colors hover:bg-white/[0.02]"
           style={{
             borderBottom: idx < items.length - 1 ? `1px solid ${C.border}` : "none",
           }}
@@ -1024,10 +1025,10 @@ function ArchivedList({ items }) {
             {String(items.length - idx).padStart(2, "0")}
           </div>
           <div>
-            <div style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.hi, fontVariantNumeric: "tabular-nums" }}>
+            <div style={{ fontFamily: '"JetBrains Mono"', fontSize: 14, color: C.hi, fontVariantNumeric: "tabular-nums", fontWeight: 500 }}>
               {p.startDate} — {p.endDate}
             </div>
-            <div className="mt-1 flex items-center gap-3">
+            <div className="mt-2 flex items-center gap-4">
               <MicroLabel color={C.lo}>
                 {p.weeklyFrequency}x/wk
               </MicroLabel>
@@ -1130,7 +1131,7 @@ export default function TrainingPlanPrototype() {
           </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-6 py-12 space-y-20">
+        <main className="max-w-6xl mx-auto px-6 py-16 space-y-28">
           {/* SECTION 01: TODAY */}
           <section>
             <SectionHeader
