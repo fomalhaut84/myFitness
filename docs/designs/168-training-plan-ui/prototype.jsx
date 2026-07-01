@@ -166,7 +166,7 @@ function MicroLabel({ children, color = C.lo, className = "" }) {
 /** 매거진 섹션 번호 + 라벨. 이탤릭 세리프 제거, Pretendard 로 통일. */
 function SectionHeader({ number, kicker, title, meta }) {
   return (
-    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-6 mb-10">
+    <div className="flex items-baseline justify-between gap-4 border-b border-white/5 pb-8 mb-14">
       <div className="flex items-baseline gap-5">
         <span
           style={{
@@ -311,7 +311,7 @@ function TodayWorkoutCard({ today }) {
     >
       {/* Left: Hero — 조정된 워크아웃 */}
       <div
-        className="p-10 md:p-14 relative overflow-hidden"
+        className="p-12 md:p-16 relative overflow-hidden"
         style={{
           borderRight: `1px solid ${C.border}`,
           background: `radial-gradient(ellipse at top left, ${C.primary}0A 0%, transparent 60%)`,
@@ -447,7 +447,7 @@ function TodayWorkoutCard({ today }) {
       </div>
 
       {/* Right: Factors */}
-      <div className="p-10 md:p-12 flex flex-col gap-8">
+      <div className="p-12 md:p-14 flex flex-col gap-10">
         <div>
           <MicroLabel color={C.mid}>결정 팩터</MicroLabel>
           <div
@@ -481,14 +481,14 @@ function TodayWorkoutCard({ today }) {
         />
 
         <div
-          className="mt-4 p-6"
+          className="mt-6 p-7"
           style={{
             border: `1px solid ${C.border}`,
             background: C.panel,
           }}
         >
           <MicroLabel color={C.mid}>플랜 컨텍스트</MicroLabel>
-          <div className="mt-5 space-y-3" style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.mid }}>
+          <div className="mt-6 space-y-3.5" style={{ fontFamily: '"JetBrains Mono"', fontSize: 13, color: C.mid }}>
             <div className="flex justify-between">
               <span>Active plan</span>
               <span style={{ color: factors.plan.hasActivePlan ? C.completed : C.missed, fontWeight: 600 }}>
@@ -578,8 +578,8 @@ function ProgressStrip({ progress }) {
   const c = (completed / total) * 100;
   const m = (missed / total) * 100;
   return (
-    <div className="mb-10">
-      <div className="flex items-baseline justify-between mb-5">
+    <div className="mb-12">
+      <div className="flex items-baseline justify-between mb-6">
         <div className="flex items-baseline gap-6">
           <div className="flex items-baseline gap-2">
             <span style={{ fontFamily: '"Big Shoulders Display"', fontSize: 48, fontWeight: 800, color: C.hi, lineHeight: 0.85, fontVariantNumeric: "tabular-nums" }}>
@@ -618,12 +618,12 @@ function CalendarCell({ cell, isToday }) {
     outline: isToday ? `1.5px solid ${C.primary}` : "none",
     outlineOffset: -1,
     opacity: isRest ? 0.55 : 1,
-    minHeight: 140,
+    minHeight: 148,
   };
 
   if (isRest && !isRaceDay) {
     return (
-      <div className="p-5 relative" style={cellStyle}>
+      <div className="p-6 relative" style={cellStyle}>
         <span style={{ fontFamily: '"Pretendard"', fontSize: 13, fontWeight: 500, color: C.lo }}>
           {TYPE_LABEL_KO.rest}
         </span>
@@ -639,7 +639,7 @@ function CalendarCell({ cell, isToday }) {
   if (isRaceDay) {
     return (
       <div
-        className="p-5 relative"
+        className="p-6 relative"
         style={{
           ...cellStyle,
           background: C.primary,
@@ -659,7 +659,7 @@ function CalendarCell({ cell, isToday }) {
 
   return (
     <div
-      className="p-5 relative group cursor-default"
+      className="p-6 relative group cursor-default"
       style={cellStyle}
     >
       {/* 타입 이름 + zone 칩 */}
@@ -758,10 +758,10 @@ function CalendarCell({ cell, isToday }) {
 
 function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, weekStartOffset, planStart }) {
   return (
-    <div className="grid grid-cols-[80px_1fr_80px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
+    <div className="grid grid-cols-[96px_1fr_96px] items-stretch" style={{ borderBottom: `1px solid ${C.border}` }}>
       {/* 좌: 주 라벨 */}
       <div
-        className="p-5 flex flex-col justify-between"
+        className="p-6 flex flex-col justify-between"
         style={{
           background: isCurrentWeek ? `${C.primary}08` : "transparent",
           borderRight: `1px solid ${C.border}`,
@@ -797,7 +797,7 @@ function WeekRow({ weekLabel, weekTotalKm, cells, isCurrentWeek, todayDate, week
 
       {/* 우: 주간 총계 */}
       <div
-        className="p-5 flex flex-col items-end justify-center gap-1"
+        className="p-6 flex flex-col items-end justify-center gap-1"
         style={{ borderLeft: `1px solid ${C.border}` }}
       >
         <MicroLabel color={C.lo}>Vol</MicroLabel>
@@ -826,18 +826,18 @@ function PlanCalendar({ plan }) {
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
       {/* 요일 헤더 */}
-      <div className="grid grid-cols-[80px_1fr_80px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
-        <div className="p-4 border-r" style={{ borderColor: C.border }}>
+      <div className="grid grid-cols-[96px_1fr_96px]" style={{ background: "#00000022", borderBottom: `1px solid ${C.border}` }}>
+        <div className="p-5 border-r" style={{ borderColor: C.border }}>
           <MicroLabel color={C.lo}>Weeks</MicroLabel>
         </div>
         <div className="grid grid-cols-7">
           {w.dayHeaders.map((d) => (
-            <div key={d} className="p-4 text-center">
+            <div key={d} className="p-5 text-center">
               <MicroLabel color={C.lo}>{d}</MicroLabel>
             </div>
           ))}
         </div>
-        <div className="p-4 border-l text-right" style={{ borderColor: C.border }}>
+        <div className="p-5 border-l text-right" style={{ borderColor: C.border }}>
           <MicroLabel color={C.lo}>Total</MicroLabel>
         </div>
       </div>
@@ -848,7 +848,7 @@ function PlanCalendar({ plan }) {
       <WeekRow weekLabel="04" weekTotalKm={sum(w.week4)} cells={w.week4} />
 
       {/* Race 표기 */}
-      <div className="p-5 flex items-center justify-between" style={{ background: "#00000022" }}>
+      <div className="p-6 flex items-center justify-between" style={{ background: "#00000022" }}>
         <div className="flex items-center gap-3">
           <span
             className="inline-block w-2 h-2"
@@ -876,14 +876,14 @@ function GenerateForm({ hasActivePlan }) {
 
   return (
     <div
-      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-10 p-10"
+      className="grid grid-cols-1 lg:grid-cols-[1fr_auto] gap-12 p-12 md:p-14"
       style={{ border: `1px solid ${C.border}`, background: C.panel }}
     >
-      <div className="space-y-8">
+      <div className="space-y-10">
         {/* Frequency */}
         <div>
-          <MicroLabel color={C.mid} className="mb-3">Weekly frequency</MicroLabel>
-          <div className="flex gap-3 mt-4">
+          <MicroLabel color={C.mid} className="mb-4">Weekly frequency</MicroLabel>
+          <div className="flex gap-3 mt-5">
             {[3, 4, 5].map((n) => (
               <button
                 key={n}
@@ -1007,7 +1007,7 @@ function ArchivedList({ items }) {
       {items.map((p, idx) => (
         <div
           key={p.planId}
-          className="grid grid-cols-[80px_1fr_100px_120px] items-center p-7 gap-4 cursor-pointer transition-colors hover:bg-white/[0.02]"
+          className="grid grid-cols-[80px_1fr_100px_120px] items-center p-8 gap-6 cursor-pointer transition-colors hover:bg-white/[0.02]"
           style={{
             borderBottom: idx < items.length - 1 ? `1px solid ${C.border}` : "none",
           }}
@@ -1104,7 +1104,7 @@ export default function TrainingPlanPrototype() {
           className="border-b sticky top-0 z-10 backdrop-blur"
           style={{ borderColor: C.border, background: `${C.bg}dd` }}
         >
-          <div className="max-w-6xl mx-auto px-6 py-4 flex items-center justify-between">
+          <div className="max-w-6xl mx-auto px-6 py-5 flex items-center justify-between">
             <div className="flex items-baseline gap-3">
               <span
                 style={{
@@ -1131,7 +1131,7 @@ export default function TrainingPlanPrototype() {
           </div>
         </header>
 
-        <main className="max-w-6xl mx-auto px-6 py-16 space-y-28">
+        <main className="max-w-6xl mx-auto px-6 py-20 space-y-32">
           {/* SECTION 01: TODAY */}
           <section>
             <SectionHeader
@@ -1178,7 +1178,7 @@ export default function TrainingPlanPrototype() {
           </section>
 
           {/* Footer */}
-          <footer className="pt-8 pb-6 border-t" style={{ borderColor: C.border, fontFamily: '"Pretendard"', fontSize: 13, color: C.lo, fontWeight: 500 }}>
+          <footer className="pt-12 pb-8 border-t" style={{ borderColor: C.border, fontFamily: '"Pretendard"', fontSize: 13, color: C.lo, fontWeight: 500 }}>
             다음 블록은 활동 데이터가 갱신되면 자동으로 반영됩니다.
           </footer>
         </main>
