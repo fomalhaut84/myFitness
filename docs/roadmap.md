@@ -313,13 +313,15 @@
 - [x] 윈도우 오늘 포함 (preSync 후 stale 1일 방지), ACWR M5-2-2 와 정합
 - 스펙: `docs/specs/m6-2-injury-risk.md` (#154, PR #155)
 
-## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★
+## M6-3: `get_race_prediction` MCP 도구 — 우선순위 ★★ ✅
 
-> 동일 거리 활동 + 트레이닝 트렌드 → race 예상 기록 (Riegel/Cameron 공식).
+> 동일 거리 활동 + 트레이닝 트렌드 → race 예상 기록 (Riegel 공식).
 
-- [ ] 5K/10K/HM/FM 예측 (최선/현실/최악)
-- [ ] 신뢰도 점수
-- [ ] 도달 가능 예상일
+- [x] 5K/10K/HM/FM 예측 (best/realistic/conservative 3 시나리오)
+- [x] 신뢰도 점수 (count 기반: high ≥ 5, medium 2-4, low 1)
+- [x] source bucket 자체 우선, 없으면 다른 bucket 중 count 최대 Riegel 환산
+- [x] 러닝 bucket/포맷 유틸 공용화 (`running-buckets.ts`) — pace-progression 과 drift 방지
+- 스펙: `docs/specs/m6-3-race-prediction.md` (#159, PR #160)
 
 ## M6-4: `recommend_today_workout` MCP 도구 — 우선순위 ★★
 
