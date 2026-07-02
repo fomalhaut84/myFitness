@@ -17,13 +17,19 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
   const [distance, setDistance] = useState<string>("");
   const [date, setDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
+  const [submitting, setSubmitting] = useState(false);
   const [isPending, startTransition] = useTransition();
 
-  const busy = isPending;
+  // submitting = POST 진행 중, isPending = router.refresh 진행 중.
+  // POST 는 mutating (기존 active → archived + 신규 active) 이라 중복 호출 시
+  // 첫 결과가 즉시 archived 되는 문제 → busy 상태 유지 필요.
+  const busy = submitting || isPending;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (busy) return; // guard: 이미 요청 진행 중.
     setError(null);
+    setSubmitting(true);
     const payload: Record<string, unknown> = { weeklyFrequency: freq };
     if (distance) payload.targetDistance = distance;
     if (distance && date) payload.targetDate = date;
@@ -41,6 +47,8 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
       startTransition(() => router.refresh());
     } catch (err) {
       setError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSubmitting(false);
     }
   }
 
