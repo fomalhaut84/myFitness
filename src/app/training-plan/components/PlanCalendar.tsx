@@ -1,12 +1,15 @@
 "use client";
 
+import { useState } from "react";
 import { C, ZONE_COLOR, TYPE_LABEL_KO, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme";
 import type { ActivePlanPayload, ActivePlanWorkout } from "../types";
 import { MicroLabel } from "./atoms";
+import WorkoutEditModal from "./WorkoutEditModal";
 
 interface Props {
   data: ActivePlanPayload;
   todayStr: string; // KST YYYY-MM-DD
+  editable?: boolean; // M8: true 이면 셀 클릭 시 편집 모달 (active plan 만).
 }
 
 const DAY_HEADERS_BASE = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
@@ -115,10 +118,12 @@ function CalendarCell({
   cell,
   isToday,
   isRaceDay,
+  onEdit,
 }: {
   cell: ActivePlanWorkout | null;
   isToday: boolean;
   isRaceDay: boolean;
+  onEdit?: (w: ActivePlanWorkout) => void;
 }) {
   const cellStyle: React.CSSProperties = {
     borderTop: `1px solid ${isToday ? C.primary : C.border}`,
@@ -183,10 +188,24 @@ function CalendarCell({
   const isCompleted = cell.status === "completed";
   const zColor = cell.zone ? ZONE_COLOR[cell.zone] : null;
 
+  const clickable = onEdit !== undefined;
   return (
     <div
-      className="p-2.5 md:p-6 relative group cursor-default min-h-[64px] md:min-h-[148px]"
+      className={`p-2.5 md:p-6 relative group min-h-[64px] md:min-h-[148px] ${clickable ? "cursor-pointer" : "cursor-default"}`}
       style={cellStyle}
+      onClick={clickable ? () => onEdit(cell) : undefined}
+      role={clickable ? "button" : undefined}
+      tabIndex={clickable ? 0 : undefined}
+      onKeyDown={
+        clickable
+          ? (e) => {
+              if (e.key === "Enter" || e.key === " ") {
+                e.preventDefault();
+                onEdit(cell);
+              }
+            }
+          : undefined
+      }
     >
       <div className="flex items-center justify-between mb-1.5 md:mb-3 gap-1">
         <span
@@ -320,6 +339,7 @@ function WeekRow({
   todayStr,
   raceDateStr,
   startDayIdx,
+  onEdit,
 }: {
   weekIdx: number;
   cells: ActivePlanWorkout[];
@@ -327,6 +347,7 @@ function WeekRow({
   todayStr: string;
   raceDateStr: string | null;
   startDayIdx: number;
+  onEdit?: (w: ActivePlanWorkout) => void;
 }) {
   // dayIndex 별 workout 매칭 (0 = Mon).
   const byDayIndex = new Map<number, ActivePlanWorkout>();
@@ -382,7 +403,13 @@ function WeekRow({
           const isToday = dateStr === todayStr;
           const isRaceDay = raceDateStr !== null && dateStr === raceDateStr;
           return (
-            <CalendarCell key={col} cell={w} isToday={isToday} isRaceDay={isRaceDay} />
+            <CalendarCell
+              key={col}
+              cell={w}
+              isToday={isToday}
+              isRaceDay={isRaceDay}
+              onEdit={onEdit}
+            />
           );
         })}
       </div>
@@ -418,7 +445,8 @@ function WeekRow({
   );
 }
 
-export default function PlanCalendar({ data, todayStr }: Props) {
+export default function PlanCalendar({ data, todayStr, editable = false }: Props) {
+  const [editWorkout, setEditWorkout] = useState<ActivePlanWorkout | null>(null);
   if (!data.plan || !data.workouts || !data.progress) {
     return null;
   }
@@ -503,6 +531,7 @@ export default function PlanCalendar({ data, todayStr }: Props) {
                 todayStr={todayStr}
                 raceDateStr={raceDate}
                 startDayIdx={startDayIdx}
+                onEdit={editable ? setEditWorkout : undefined}
               />
             ))}
           </div>
@@ -560,6 +589,14 @@ export default function PlanCalendar({ data, todayStr }: Props) {
           </span>
         </div>
       </div>
+
+      {editWorkout && data.plan && (
+        <WorkoutEditModal
+          planId={data.plan.planId}
+          workout={editWorkout}
+          onClose={() => setEditWorkout(null)}
+        />
+      )}
     </>
   );
 }
