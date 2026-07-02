@@ -104,14 +104,22 @@ jobs:
           fi
 
           # 마크다운 노이즈 제거 → HTML 이스케이프. sed 순서: **bold** / ## 헤더 / 백틱 제거 / \/ \` 언이스케이프 후 HTML 이스케이프.
-          # ERE (-E) 로 헤더 매칭 (\+ 는 GNU/BSD sed 호환성 이슈). head -c 800 로 트림, 길이 비교로 잘림 감지.
+          # ERE (-E) 로 헤더 매칭 (\+ 는 GNU/BSD sed 호환성 이슈).
           processed=$(printf '%s' "$notes_raw" \
             | sed -E -e 's/\\([`/])/\1/g' -e 's/\*\*//g' -e 's/^#+ //' -e 's/`//g' \
             | sed -e 's/&/\&amp;/g' -e 's/</\&lt;/g' -e 's/>/\&gt;/g')
-          notes=$(printf '%s' "$processed" | head -c 800)
-          if [[ ${#notes} -lt ${#processed} ]]; then
-            notes="${notes}…"
-          fi
+          # UTF-8 문자 단위 절단 (Python3, Actions runner 기본 탑재). head -c 는 byte 단위라
+          # 한글 UTF-8 문자 중간에서 절단해 HTML entity/multibyte sequence 를 깨뜨릴 수 있음.
+          # 상한은 Telegram sendMessage text 4096 자 이내 안전 마진.
+          notes=$(printf '%s' "$processed" | python3 -c '
+          import sys
+          s = sys.stdin.read()
+          LIMIT = 3500
+          if len(s) > LIMIT:
+              sys.stdout.write(s[:LIMIT] + "…")
+          else:
+              sys.stdout.write(s)
+          ')
 
           # printf 로 \n literal newline 처리 — multi-line YAML block scalar 들여쓰기 깨짐 회피.
           if [[ -n "$notes" ]]; then
@@ -120,12 +128,23 @@ jobs:
             text=$(printf '✅ <b>Deploy %s</b> 성공\n서버: production\n워크플로우: %s' "$RELEASE_TAG" "$RUN_URL")
           fi
 
-          curl -sS -X POST \
+          # 성공 응답 body (sent message + chat metadata) 는 chat 정보 노출 위험 → /tmp 로 격리.
+          # 실패 (HTTP 4xx/5xx) 시에만 body 를 stderr 에 warning 으로 노출 → 다음 리비전 debug.
+          # curl 실패해도 배포 workflow 자체는 성공 유지 (Telegram 미도착이 배포 실패로 이어지지 않게).
+          body=$(mktemp)
+          if curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=HTML" \
             --data-urlencode "text=$text" \
-            -o /dev/null
+            --fail-with-body \
+            -o "$body"; then
+            :
+          else
+            echo "::warning::Telegram 알림 실패 (HTTP 에러). 응답:"
+            cat "$body" >&2 || true
+          fi
+          rm -f "$body"
 
       - name: Notify Telegram (failure)
         if: failure()
@@ -140,9 +159,17 @@ jobs:
             exit 0
           fi
           text=$(printf '❌ <b>Deploy %s</b> 실패\n워크플로우 로그: %s' "${RELEASE_TAG:-unknown}" "$RUN_URL")
-          curl -sS -X POST \
+          body=$(mktemp)
+          if curl -sS -X POST \
             "https://api.telegram.org/bot${TELEGRAM_BOT_TOKEN}/sendMessage" \
             --data-urlencode "chat_id=${TELEGRAM_CHAT_ID}" \
             --data-urlencode "parse_mode=HTML" \
             --data-urlencode "text=$text" \
-            -o /dev/null
+            --fail-with-body \
+            -o "$body"; then
+            :
+          else
+            echo "::warning::Telegram 실패 알림 자체가 실패. 응답:"
+            cat "$body" >&2 || true
+          fi
+          rm -f "$body"
