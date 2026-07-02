@@ -100,9 +100,10 @@ export async function fetchPlanDetail(
     else byDate.set(key, [entry]);
   }
 
-  // 오늘 (또는 archived 의 endDate) 이전 workout 은 매칭, 이후는 pending.
-  // Archived plan 은 effectiveEnd 시점까지의 매칭만 유효.
-  const cutoffStr = ymdKST(new Date(effectiveEnd.getTime() - DAY_MS));
+  // cutoffStr = effectiveEnd 의 KST 벽 날짜 (exclusive lower bound 의 KST 표현).
+  // 이 날 workout 은 byDate 에 이미 있는 activity 로 매칭 시도 (successor 생성 이전 활동).
+  // 이후 날짜만 pending. plan-history.ts 의 매칭 방식과 정합 → ArchivedList 완료율과 일치.
+  const cutoffStr = ymdKST(effectiveEnd);
 
   const rows: PlanDetailWorkout[] = [];
   let completed = 0;

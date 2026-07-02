@@ -155,6 +155,24 @@ export default function TodayWorkoutHero({ today }: Props) {
               </p>
             )}
 
+            {/* Interval workout 세부 (reps × 400m 등) — 실제 수행에 필요한 정보. */}
+            {!isRest && recommendation.intervalDesc && (
+              <div
+                className="mt-3 inline-flex items-center gap-2 px-3 py-1.5"
+                style={{
+                  border: `1px dashed ${zColor}66`,
+                  background: `${zColor}0A`,
+                  fontFamily: FONT_MONO,
+                  fontSize: 12,
+                  color: C.hi,
+                  fontWeight: 600,
+                }}
+              >
+                <span style={{ color: zColor }}>●</span>
+                <span>{recommendation.intervalDesc}</span>
+              </div>
+            )}
+
             {/* Rationale — 1~2 줄 */}
             <p
               className="mt-4 md:mt-5"
