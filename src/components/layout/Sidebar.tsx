@@ -77,6 +77,18 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    label: "트레이닝 플랜",
+    href: "/training-plan",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="14" height="13" rx="1.5" />
+        <path d="M3 8h14" />
+        <path d="M7 2v3M13 2v3" />
+        <path d="M7 11h2M11 11h2M7 14h2" />
+      </svg>
+    ),
+  },
+  {
     label: "AI 어드바이저",
     href: "/ai",
     icon: (
