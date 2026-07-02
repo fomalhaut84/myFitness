@@ -1,8 +1,8 @@
 // Archived plan 이력 조회 + 완료율 재계산 공용 helper.
 // src/app/training-plan/page.tsx (SSR) 와 src/app/api/training-plan/history/route.ts 가 공유.
 
-import prisma from "../../mcp/prisma";
-import { ymdKST } from "../garmin/utils";
+import prisma from "@/lib/prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const HISTORY_LIMIT = 20;
