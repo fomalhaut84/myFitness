@@ -5,6 +5,7 @@ import { useRouter } from "next/navigation";
 import { C, ZONE_COLOR, TYPE_LABEL_KO, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme";
 import type { ActivePlanWorkout } from "../types";
 import type { WorkoutType } from "../theme";
+import { parsePace } from "@/lib/training/workout-editor";
 import { MicroLabel } from "./atoms";
 
 interface Props {
@@ -53,7 +54,16 @@ export default function WorkoutEditModal({ planId, workout, onClose }: Props) {
         return;
       }
       body.distanceKm = dNum;
-      body.pace = pace.trim() === "" ? null : pace.trim();
+      // pace 클라이언트 즉시 검증 (서버 왕복 없이 UX 개선).
+      const paceTrim = pace.trim();
+      if (paceTrim !== "") {
+        if (parsePace(paceTrim) === null) {
+          setError("pace 형식은 m:ss (예: 5:30, 초는 0~59) 이며 2:00~15:00/km 범위여야 합니다.");
+          setBusy(false);
+          return;
+        }
+      }
+      body.pace = paceTrim === "" ? null : paceTrim;
       body.zone = zone === "" ? null : zone;
     }
     if (notes.trim() !== "") body.notes = notes.trim();

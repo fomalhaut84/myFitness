@@ -60,17 +60,26 @@ export function toWorkoutUpdate(
   return upd;
 }
 
-// type 이 rest 로 바뀌면 distance/pace/zone/interval 은 null 로 강제.
+/**
+ * finalType 에 맞춰 부수 필드 정규화.
+ * - rest: distance/pace/zone/interval 전부 null
+ * - interval 아닌 다른 타입: intervalDesc null (이전 interval workout 의 reps 설명 잔류 방지)
+ */
 export function normalizeRest(
   update: Record<string, unknown>,
   finalType: WorkoutType
 ): Record<string, unknown> {
-  if (finalType !== "rest") return update;
-  return {
-    ...update,
-    distanceKm: null,
-    paceSecPerKm: null,
-    zone: null,
-    intervalDesc: null,
-  };
+  if (finalType === "rest") {
+    return {
+      ...update,
+      distanceKm: null,
+      paceSecPerKm: null,
+      zone: null,
+      intervalDesc: null,
+    };
+  }
+  if (finalType !== "interval") {
+    return { ...update, intervalDesc: null };
+  }
+  return update;
 }
