@@ -1,5 +1,6 @@
 "use client";
 
+import Link from "next/link";
 import { C, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme";
 import type { HistoryItem } from "../types";
 import { MicroLabel } from "./atoms";
@@ -29,9 +30,10 @@ export default function ArchivedList({ items }: Props) {
   return (
     <div style={{ border: `1px solid ${C.border}`, background: C.panel }}>
       {items.map((p, idx) => (
-        <div
+        <Link
           key={p.planId}
-          className="grid grid-cols-[56px_1fr_auto] md:grid-cols-[80px_1fr_100px_120px] items-center p-5 md:p-8 gap-4 md:gap-6 transition-colors"
+          href={`/training-plan/history/${p.planId}`}
+          className="grid grid-cols-[56px_1fr_auto] md:grid-cols-[80px_1fr_100px_120px] items-center p-5 md:p-8 gap-4 md:gap-6 transition-colors hover:bg-white/[0.02]"
           style={{
             borderBottom:
               idx < items.length - 1 ? `1px solid ${C.border}` : "none",
@@ -90,7 +92,7 @@ export default function ArchivedList({ items }: Props) {
             </div>
             <MicroLabel color={C.lo}>%</MicroLabel>
           </div>
-          <div className="hidden md:block text-right">
+          <div className="hidden md:flex md:items-baseline md:justify-end md:gap-3 text-right">
             <span
               style={{
                 fontFamily: FONT_BODY,
@@ -101,8 +103,18 @@ export default function ArchivedList({ items }: Props) {
             >
               {p.completed}/{p.totalActive} 완료
             </span>
+            <span
+              style={{
+                fontFamily: FONT_BODY,
+                fontSize: 13,
+                fontWeight: 500,
+                color: C.mid,
+              }}
+            >
+              →
+            </span>
           </div>
-        </div>
+        </Link>
       ))}
     </div>
   );
