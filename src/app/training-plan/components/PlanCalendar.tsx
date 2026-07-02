@@ -9,10 +9,24 @@ interface Props {
   todayStr: string; // KST YYYY-MM-DD
 }
 
-const DAY_HEADERS = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
+const DAY_HEADERS_BASE = ["MON", "TUE", "WED", "THU", "FRI", "SAT", "SUN"];
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-// 주별 workout 그룹핑 + 각 요일 채우기.
+// 0 = Mon ~ 6 = Sun. UTC 기준 자정 Date 를 받아 monday-0 dayIndex 반환.
+function mondayZeroDayIndex(utcDate: Date): number {
+  const sunZero = utcDate.getUTCDay();
+  return (sunZero + 6) % 7;
+}
+
+// plan 시작 요일 기준으로 헤더 로테이션. 시작이 Fri 라면 [FRI SAT SUN MON TUE WED THU].
+function rotatedHeaders(startDayIdx: number): string[] {
+  return [
+    ...DAY_HEADERS_BASE.slice(startDayIdx),
+    ...DAY_HEADERS_BASE.slice(0, startDayIdx),
+  ];
+}
+
+// 주별 workout 그룹핑 + 각 컬럼 채우기. 컬럼 인덱스는 plan-start 기준 오프셋 (0~6).
 function groupByWeek(
   workouts: ActivePlanWorkout[],
   planStartYmd: string
@@ -242,11 +256,26 @@ function CalendarCell({
 
       {cell.matched && (
         <>
+          {/* 모바일: 우상단 완료 dot + 하단 축약 매칭 정보 (사용자가 실제 뛴 값 확인). */}
           <span
             className="md:hidden absolute top-2 right-2 w-1.5 h-1.5 rounded-full"
             style={{ background: C.completed }}
             aria-label="완료"
           />
+          <div
+            className="md:hidden mt-1 truncate"
+            style={{
+              fontFamily: FONT_MONO,
+              fontSize: 9,
+              color: C.completed,
+              fontVariantNumeric: "tabular-nums",
+              fontWeight: 600,
+            }}
+          >
+            → {cell.matched.distanceKm}
+            {cell.matched.actualPace ? ` · ${cell.matched.actualPace}` : ""}
+          </div>
+          {/* 데스크톱: 대시라인 + 상세 정보. */}
           <div
             className="hidden md:flex mt-4 pt-3 items-baseline gap-2"
             style={{
@@ -290,20 +319,20 @@ function WeekRow({
   isCurrentWeek,
   todayStr,
   raceDateStr,
+  startDayIdx,
 }: {
   weekIdx: number;
   cells: ActivePlanWorkout[];
   isCurrentWeek: boolean;
   todayStr: string;
   raceDateStr: string | null;
+  startDayIdx: number;
 }) {
-  // 요일 인덱스별 workout 매칭 (dayIndex: 0=Mon).
+  // dayIndex 별 workout 매칭 (0 = Mon).
   const byDayIndex = new Map<number, ActivePlanWorkout>();
   for (const w of cells) {
     const d = new Date(`${w.date}T00:00:00Z`);
-    const utcSunZero = d.getUTCDay();
-    const dayIdx = (utcSunZero + 6) % 7;
-    byDayIndex.set(dayIdx, w);
+    byDayIndex.set(mondayZeroDayIndex(d), w);
   }
   const totalKm = cells.reduce((s, w) => s + (w.distanceKm ?? 0), 0);
   const weekLabel = String(weekIdx + 1).padStart(2, "0");
@@ -345,13 +374,15 @@ function WeekRow({
       </div>
 
       <div className="grid grid-cols-7">
-        {[0, 1, 2, 3, 4, 5, 6].map((di) => {
+        {[0, 1, 2, 3, 4, 5, 6].map((col) => {
+          // col 0 = plan 시작 요일. rotated 매핑.
+          const di = (startDayIdx + col) % 7;
           const w = byDayIndex.get(di) ?? null;
           const dateStr = w?.date ?? "";
           const isToday = dateStr === todayStr;
           const isRaceDay = raceDateStr !== null && dateStr === raceDateStr;
           return (
-            <CalendarCell key={di} cell={w} isToday={isToday} isRaceDay={isRaceDay} />
+            <CalendarCell key={col} cell={w} isToday={isToday} isRaceDay={isRaceDay} />
           );
         })}
       </div>
@@ -394,6 +425,13 @@ export default function PlanCalendar({ data, todayStr }: Props) {
   const buckets = groupByWeek(data.workouts, data.plan.startDate);
   const raceDate = data.plan.targetDate ?? null;
 
+  // plan 시작 요일 계산 → 컬럼 헤더/셀 회전. 시작이 월요일이 아닐 때도
+  // Wk1 첫 셀 = 실제 시작일이 되도록 정렬해 시간 순서 유지.
+  const startDayIdx = mondayZeroDayIndex(
+    new Date(`${data.plan.startDate}T00:00:00Z`)
+  );
+  const dayHeaders = rotatedHeaders(startDayIdx);
+
   // current week 판정: todayStr 이 포함된 bucket.
   const currentWeekIdx = buckets.findIndex((cells) =>
     cells.some((w) => w.date === todayStr)
@@ -424,8 +462,8 @@ export default function PlanCalendar({ data, todayStr }: Props) {
                 </span>
               </div>
               <div className="grid grid-cols-7">
-                {DAY_HEADERS.map((d) => (
-                  <div key={d} className="p-1.5 md:p-5 text-center">
+                {dayHeaders.map((d, col) => (
+                  <div key={col} className="p-1.5 md:p-5 text-center">
                     <span
                       className="text-[9px] md:text-[11px]"
                       style={{
@@ -464,6 +502,7 @@ export default function PlanCalendar({ data, todayStr }: Props) {
                 isCurrentWeek={idx === currentWeekIdx}
                 todayStr={todayStr}
                 raceDateStr={raceDate}
+                startDayIdx={startDayIdx}
               />
             ))}
           </div>
@@ -517,7 +556,7 @@ export default function PlanCalendar({ data, todayStr }: Props) {
                 verticalAlign: "middle",
               }}
             />
-            완료 · 셀 탭 시 상세
+            완료 · 아래 축약 = 실제 뛴 거리 · 페이스
           </span>
         </div>
       </div>
