@@ -218,7 +218,8 @@ export default function TodayWorkoutCard({ today }: Props) {
           </p>
         </div>
 
-        {recommendation.adjusted && !isRest && base.distanceKm !== undefined && (
+        {/* 원 계획 표시 — REST 로 downgrade 된 경우도 포함 (base 는 항상 non-rest workout). */}
+        {recommendation.adjusted && base.type !== "rest" && (
           <div
             className="mt-8 flex items-baseline gap-4 flex-wrap"
             style={{ color: C.mid, fontFamily: FONT_BODY, fontSize: 14 }}
