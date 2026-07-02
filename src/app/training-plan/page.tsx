@@ -6,6 +6,7 @@ import TodayWorkoutCard from "./components/TodayWorkoutCard";
 import PlanCalendar from "./components/PlanCalendar";
 import GeneratePlanForm from "./components/GeneratePlanForm";
 import ArchivedList from "./components/ArchivedList";
+import CancelPlanButton from "./components/CancelPlanButton";
 import { SectionHeader } from "./components/atoms";
 import { C, FONT_BODY } from "./theme";
 import type { ActivePlanPayload, RecommendPayload } from "./types";
@@ -78,7 +79,7 @@ export default async function TrainingPlanPage() {
           }
         />
         {active.plan ? (
-          <PlanCalendar data={active} todayStr={todayStr} />
+          <PlanCalendar data={active} todayStr={todayStr} editable />
         ) : (
           <div
             className="p-10 text-center"
@@ -105,6 +106,9 @@ export default async function TrainingPlanPage() {
           meta="POST /api/training-plan/generate"
         />
         <GeneratePlanForm hasActivePlan={hasActivePlan} />
+        {hasActivePlan && active.plan && (
+          <CancelPlanButton planId={active.plan.planId} />
+        )}
       </section>
 
       {/* SECTION 04 */}

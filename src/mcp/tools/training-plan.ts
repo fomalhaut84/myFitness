@@ -10,6 +10,7 @@ import {
 } from "../../lib/training/plan-generator";
 import { pseudoLthrPace } from "../../lib/training/pace-calc";
 import { computeBaseline } from "../../lib/training/baseline";
+import { scaleBaseline, type TargetDistance as ScaleTarget } from "../../lib/training/plan-scaling";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_PLAN_LOCK_KEY = 761101; // pg_advisory_xact_lock 키 (임의 상수)
@@ -90,6 +91,13 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   const lthrPace = profile?.lthrPace ?? null;
   const baseline = await computeBaseline();
 
+  // M8: 목표 거리에 맞춰 baseline 스케일 (히스토리 sanity cap 포함).
+  const scaled = scaleBaseline(
+    baseline.weeklyKm,
+    targetDistance as ScaleTarget | null,
+    baseline.historicalMaxWeekKm
+  );
+
   const startDate = new Date(todayKST().getTime() + DAY_MS); // 내일
   const endDate = new Date(startDate.getTime() + 27 * DAY_MS);
   const week4Start = new Date(startDate.getTime() + 21 * DAY_MS);
@@ -110,7 +118,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   const workouts = generatePlan({
     startDate,
     weeklyFrequency,
-    baselineWeeklyKm: baseline.weeklyKm,
+    baselineWeeklyKm: scaled.finalBase,
     lthrPaceSecPerKm: lthrPace,
     recentAvgPaceSecPerKm: baseline.recentAvgPace,
     targetDistance,
@@ -148,7 +156,8 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
         weeklyFrequency,
         targetDistance: targetDistance,
         targetDate: effectiveTargetDate !== null ? toUtcDateOnly(effectiveTargetDate) : null,
-        baselineWeeklyKm: baseline.weeklyKm,
+        // M8: DB 저장 baselineWeeklyKm 은 최종 스케일된 값 (실제 생성에 사용된 값과 일치).
+        baselineWeeklyKm: scaled.finalBase,
         baselineAcwr: baseline.acwr,
         lthrPaceUsed,
         status: "active",
@@ -191,7 +200,9 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     weeklyFrequency,
     targetDistance: targetDistance ?? undefined,
     targetDate: effectiveTargetDate !== null ? ymdKST(effectiveTargetDate) : undefined,
-    baselineWeeklyKm: baseline.weeklyKm,
+    baselineWeeklyKm: scaled.finalBase,
+    scaledForTarget: scaled.scaledForTarget,
+    rawBaselineWeeklyKm: scaled.rawBaseline,
     baselineAcwr: baseline.acwr ?? undefined,
     lthrPaceUsed: result.plan.lthrPaceUsed !== null ? Math.round(result.plan.lthrPaceUsed) : undefined,
     weeks: byWeek,
