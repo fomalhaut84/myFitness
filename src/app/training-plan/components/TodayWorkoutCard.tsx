@@ -171,6 +171,31 @@ export default function TodayWorkoutCard({ today }: Props) {
           </div>
         )}
 
+        {/* 인터벌 세부 (reps × 400m 등) — interval workout 실제 수행 정보. */}
+        {!isRest && recommendation.intervalDesc && (
+          <div
+            className="mt-6 md:mt-8 p-4 md:p-5"
+            style={{
+              border: `1px dashed ${zColor}66`,
+              background: `${zColor}0A`,
+            }}
+          >
+            <MicroLabel color={zColor}>인터벌 세부</MicroLabel>
+            <div
+              className="mt-2"
+              style={{
+                fontFamily: FONT_MONO,
+                fontSize: 15,
+                color: C.hi,
+                fontWeight: 600,
+                letterSpacing: "0.02em",
+              }}
+            >
+              {recommendation.intervalDesc}
+            </div>
+          </div>
+        )}
+
         <div
           className="mt-8 md:mt-10 p-5 md:p-6"
           style={{
@@ -212,6 +237,7 @@ export default function TodayWorkoutCard({ today }: Props) {
               {base.distanceKm !== undefined ? ` · ${base.distanceKm} km` : ""}
               {base.pace ? ` · ${base.pace}/km` : ""}
               {base.zone ? ` · ${base.zone}` : ""}
+              {base.intervalDesc ? ` · ${base.intervalDesc}` : ""}
             </span>
           </div>
         )}

@@ -150,7 +150,7 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
                 fontWeight: 500,
               }}
             >
-              Wk4 창 내여야 taper 적용 (오늘 +21~28일)
+              Wk4 창 내여야 taper 적용 (오늘 +22~28일)
             </div>
           </div>
         </div>

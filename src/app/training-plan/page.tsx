@@ -1,93 +1,17 @@
 import { todayKSTString } from "@/lib/garmin/utils";
 import { getActiveTrainingPlan } from "@/mcp/tools/training-plan";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
-import prisma from "@/lib/prisma";
-import { ymdKST } from "@/lib/garmin/utils";
-import { formatPace } from "@/mcp/tools/running-buckets";
+import { fetchArchivedHistory } from "@/lib/training/plan-history";
 import TodayWorkoutCard from "./components/TodayWorkoutCard";
 import PlanCalendar from "./components/PlanCalendar";
 import GeneratePlanForm from "./components/GeneratePlanForm";
 import ArchivedList from "./components/ArchivedList";
 import { SectionHeader } from "./components/atoms";
 import { C, FONT_BODY } from "./theme";
-import type {
-  ActivePlanPayload,
-  HistoryItem,
-  RecommendPayload,
-} from "./types";
+import type { ActivePlanPayload, RecommendPayload } from "./types";
 
 // SSR 마다 최신 상태 (mutating POST 후 router.refresh 대응).
 export const dynamic = "force-dynamic";
-
-const DAY_MS = 24 * 60 * 60 * 1000;
-
-function dateOnlyToKstStart(dateOnly: Date): Date {
-  return new Date(`${ymdKST(dateOnly)}T00:00:00+09:00`);
-}
-
-async function fetchHistory(): Promise<HistoryItem[]> {
-  // API route 와 같은 로직을 SSR 안에서 직접 호출 (route 왕복 회피).
-  const plans = await prisma.trainingPlan.findMany({
-    where: { status: "archived" },
-    orderBy: { createdAt: "desc" },
-    take: 20,
-    include: {
-      workouts: { select: { date: true, type: true, distanceKm: true } },
-    },
-  });
-  const items = await Promise.all(
-    plans.map(async (plan) => {
-      const planStart = dateOnlyToKstStart(plan.startDate);
-      const planEnd = new Date(
-        dateOnlyToKstStart(plan.endDate).getTime() + DAY_MS
-      );
-      const activities = await prisma.activity.findMany({
-        where: {
-          startTime: { gte: planStart, lt: planEnd },
-          activityType: { contains: "running" },
-          distance: { not: null },
-        },
-        select: { startTime: true, distance: true },
-      });
-      const byDate = new Map<string, number[]>();
-      for (const a of activities) {
-        const key = ymdKST(a.startTime);
-        const distKm = (a.distance ?? 0) / 1000;
-        const list = byDate.get(key);
-        if (list) list.push(distKm);
-        else byDate.set(key, [distKm]);
-      }
-      const active = plan.workouts.filter((w) => w.type !== "rest");
-      let completed = 0;
-      for (const w of active) {
-        const dateStr = ymdKST(w.date);
-        const matches = byDate.get(dateStr) ?? [];
-        const threshold = (w.distanceKm ?? 0) * 0.9;
-        if (matches.some((d) => d >= threshold)) completed++;
-      }
-      const completionPct =
-        active.length > 0
-          ? Math.round((completed / active.length) * 1000) / 10
-          : 0;
-      return {
-        planId: plan.id,
-        startDate: ymdKST(plan.startDate),
-        endDate: ymdKST(plan.endDate),
-        weeklyFrequency: plan.weeklyFrequency,
-        targetDistance: plan.targetDistance ?? null,
-        targetDate:
-          plan.targetDate !== null ? ymdKST(plan.targetDate) : null,
-        totalActive: active.length,
-        completed,
-        completionPct,
-        createdAt: plan.createdAt.toISOString(),
-      };
-    })
-  );
-  // formatPace 는 여기서 미사용 — TS 엄격성 회피용 참조.
-  void formatPace;
-  return items;
-}
 
 export default async function TrainingPlanPage() {
   const todayStr = todayKSTString();
@@ -95,12 +19,13 @@ export default async function TrainingPlanPage() {
   const [activeResult, recommendResult, history] = await Promise.all([
     getActiveTrainingPlan(),
     recommendTodayWorkout(),
-    fetchHistory(),
+    fetchArchivedHistory(),
   ]);
 
   const active = JSON.parse(activeResult.content[0]?.text ?? "{}") as ActivePlanPayload;
   const recommend = JSON.parse(recommendResult.content[0]?.text ?? "{}") as RecommendPayload;
-  const hasActivePlan = active.plan !== null;
+  // undefined/null 모두 "없음" 으로 취급 (Section 02 truthy 체크와 일관).
+  const hasActivePlan = Boolean(active.plan);
 
   return (
     <main className="max-w-6xl mx-auto px-4 md:px-6 py-12 md:py-20 space-y-24 md:space-y-32">
