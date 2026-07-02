@@ -9,6 +9,10 @@ import {
   type WorkoutType,
 } from "./workout-patterns";
 import { paceZoneFor, pseudoLthrPace } from "./pace-calc";
+import {
+  PEAK_LONG_MIN_KM,
+  type TargetDistance,
+} from "./plan-scaling";
 
 export interface GeneratedWorkout {
   date: Date; // KST 00:00 timestamp
@@ -173,6 +177,18 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
       const raceTaperFactor = raceTaperFactorByTime.get(date.getTime());
       if (raceTaperFactor !== undefined) {
         workoutKm = baselineWeeklyKm * normalizedRatio * raceTaperFactor;
+      }
+
+      // M8: Wk3 (peak) long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시 (taper 우선).
+      if (
+        slot.type === "long" &&
+        week === 2 &&
+        raceTaperFactor === undefined &&
+        input.targetDistance !== null &&
+        input.targetDistance in PEAK_LONG_MIN_KM
+      ) {
+        const min = PEAK_LONG_MIN_KM[input.targetDistance as TargetDistance];
+        if (workoutKm < min) workoutKm = min;
       }
 
       const pz = paceZoneFor(slot.type, lthrPace);

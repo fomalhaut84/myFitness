@@ -1,6 +1,10 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import DashboardClient from "./dashboard-client";
+import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
+import TodayWorkoutHero from "./components/TodayWorkoutHero";
+import TodayWorkoutHeroEmpty from "./components/TodayWorkoutHeroEmpty";
+import type { RecommendPayload } from "./training-plan/types";
 
 function todayLocal(): Date {
   const d = new Date();
@@ -112,8 +116,24 @@ export default async function DashboardPage() {
     select: { category: true, response: true, createdAt: true },
   });
 
+  // 오늘 workout 추천 (M7-1). 실패 시 hero 를 스킵하고 조용히 진행 (본 대시보드는 필수 기능).
+  let todayWorkout: RecommendPayload | null = null;
+  try {
+    const rec = await recommendTodayWorkout();
+    todayWorkout = JSON.parse(rec.content[0]?.text ?? "{}") as RecommendPayload;
+  } catch (err) {
+    console.error("[dashboard] recommendTodayWorkout 실패:", err);
+  }
+  const hasActivePlan = todayWorkout?.factors?.plan?.hasActivePlan ?? false;
+
   return (
-    <DashboardClient
+    <>
+      {todayWorkout && hasActivePlan ? (
+        <TodayWorkoutHero today={todayWorkout} />
+      ) : (
+        <TodayWorkoutHeroEmpty />
+      )}
+      <DashboardClient
       today={todayData}
       yesterday={yesterdayData}
       latestReport={latestReport ? {
@@ -165,6 +185,7 @@ export default async function DashboardPage() {
         medium: d.stressMediumDuration,
         low: d.stressLowDuration,
       }))}
-    />
+      />
+    </>
   );
 }
