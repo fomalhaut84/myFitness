@@ -92,11 +92,12 @@ export async function askAdvisor(
     // Plan 생성은 명시적 진입점 (POST /api/training-plan/generate) 에서 처리하고,
     // AI 는 read-only get_active_training_plan 만 사용.
     "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout",
-    // #179: Claude 가 MCP 도구 대신 Bash/파일시스템/HTTP 로 우회 시도해 max_turns 소진.
-    // disallowedTools 로 non-MCP 도구를 명시 차단 → permission_denial 자체가 발생 안 하고
-    // Claude 는 애초에 이 도구들을 못 본다.
-    "--disallowedTools",
-    "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit,BashOutput,KillShell",
+    // #179: --tools "" 로 built-in 도구를 모두 제거 (MCP 도구는 영향 없음).
+    // --allowedTools/--disallowedTools 는 permission prompt 만 제어할 뿐 built-in 도구 목록 자체를
+    // 제한하지 않아 Agent/AskUserQuestion/PowerShell/Task 등이 여전히 Claude 컨텍스트에 남는다.
+    // --tools "" 로 근본 차단하고 mcp__myfitness__* 만 allowedTools 로 남겨 승인 없이 실행되게 함.
+    "--tools",
+    "",
   ];
 
   // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).
