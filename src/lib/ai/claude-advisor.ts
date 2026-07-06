@@ -141,8 +141,8 @@ export async function askAdvisor(
     child.on("close", (code) => {
       const durationMs = Date.now() - startTime;
 
-      // stdout 이 JSON 이면 항상 파싱 시도. code !== 0 이라도 subtype/num_turns/permission_denials
-      // 정보를 추출해 진단 가능한 에러 메시지 생성.
+      // stdout 이 JSON 이면 항상 파싱 시도. code !== 0 이라도 subtype/num_turns/permission_denials/
+      // errors/api_error_status 정보를 추출해 진단 가능한 에러 메시지 생성.
       let parsed: {
         session_id?: string;
         result?: string;
@@ -151,6 +151,8 @@ export async function askAdvisor(
         subtype?: string;
         num_turns?: number;
         permission_denials?: Array<{ tool_name?: string }>;
+        errors?: string[];
+        api_error_status?: number;
         usage?: { input_tokens?: number };
       } | null = null;
       try {
@@ -172,6 +174,18 @@ export async function askAdvisor(
           const parts = [`Claude CLI 실패 (subtype=${subtype}, turns=${numTurns})`];
           if (deniedTools) {
             parts.push(`거부된 도구=${deniedTools}`);
+          }
+          // SDK 가 errors: string[] 또는 api_error_status 를 담아주는 경우 (auth/rate-limit/model)
+          // 그 원인을 잃지 않도록 메시지에 포함.
+          if (parsed.api_error_status !== undefined) {
+            parts.push(`api_status=${parsed.api_error_status}`);
+          }
+          if (Array.isArray(parsed.errors) && parsed.errors.length > 0) {
+            parts.push(`errors=${parsed.errors.join(" ; ")}`);
+          }
+          const stderrTrim = stderr.trim();
+          if (stderrTrim) {
+            parts.push(`stderr=${stderrTrim.slice(0, 500)}`);
           }
           reject(new Error(parts.join(" | ")));
           return;
