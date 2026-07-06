@@ -83,13 +83,20 @@ export async function askAdvisor(
     "--model",
     "haiku",
     "--max-turns",
-    "10",
+    // 근본 fix (issue #179) 이후에도 여유 필요 시 재조정. 10 → 15 로 완화해
+    // 정상 세션이 tool 호출 횟수 초과로 실패하는 경우를 방지.
+    "15",
     "--allowedTools",
     // 주의: 여기 나열된 도구는 승인 프롬프트 없이 실행됨. mutating 도구(generate_training_plan
     // 등) 는 스케줄 리포트/일반 채팅에서 의도치 않게 상태를 바꿀 수 있으므로 여기에 포함하지 않음.
     // Plan 생성은 명시적 진입점 (POST /api/training-plan/generate) 에서 처리하고,
     // AI 는 read-only get_active_training_plan 만 사용.
     "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout",
+    // #179: Claude 가 MCP 도구 대신 Bash/파일시스템/HTTP 로 우회 시도해 max_turns 소진.
+    // disallowedTools 로 non-MCP 도구를 명시 차단 → permission_denial 자체가 발생 안 하고
+    // Claude 는 애초에 이 도구들을 못 본다.
+    "--disallowedTools",
+    "Bash,Read,Write,Edit,Glob,Grep,WebFetch,WebSearch,Task,TodoWrite,NotebookEdit,BashOutput,KillShell",
   ];
 
   // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).
@@ -133,16 +140,48 @@ export async function askAdvisor(
     child.on("close", (code) => {
       const durationMs = Date.now() - startTime;
 
+      // stdout 이 JSON 이면 항상 파싱 시도. code !== 0 이라도 subtype/num_turns/permission_denials
+      // 정보를 추출해 진단 가능한 에러 메시지 생성.
+      let parsed: {
+        session_id?: string;
+        result?: string;
+        text?: string;
+        is_error?: boolean;
+        subtype?: string;
+        num_turns?: number;
+        permission_denials?: Array<{ tool_name?: string }>;
+        usage?: { input_tokens?: number };
+      } | null = null;
+      try {
+        parsed = JSON.parse(stdout);
+      } catch {
+        // ignore
+      }
+
       if (code !== 0) {
+        // Claude CLI 실패 — stdout JSON 에서 진단 정보 추출.
+        if (parsed) {
+          const subtype = parsed.subtype ?? "unknown";
+          const numTurns = parsed.num_turns ?? 0;
+          const denials = parsed.permission_denials ?? [];
+          const deniedTools = denials
+            .map((d) => d.tool_name)
+            .filter(Boolean)
+            .join(",");
+          const parts = [`Claude CLI 실패 (subtype=${subtype}, turns=${numTurns})`];
+          if (deniedTools) {
+            parts.push(`거부된 도구=${deniedTools}`);
+          }
+          reject(new Error(parts.join(" | ")));
+          return;
+        }
         reject(
           new Error(`Claude CLI 에러 (code ${code}): ${stderr || stdout}`)
         );
         return;
       }
 
-      try {
-        const parsed = JSON.parse(stdout);
-
+      if (parsed) {
         // 세션 ID + 누적 입력 토큰 저장 (채널별)
         if (parsed.session_id) {
           const inputTokens =
@@ -157,7 +196,7 @@ export async function askAdvisor(
           sessionId: parsed.session_id ?? currentSessionId,
           duration_ms: durationMs,
         });
-      } catch {
+      } else {
         resolve({
           result: stdout.trim(),
           sessionId: currentSessionId,
