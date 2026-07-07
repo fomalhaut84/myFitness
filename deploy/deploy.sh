@@ -39,6 +39,15 @@ pm2 delete myfitness-mcp 2>/dev/null || true
 pm2 start ecosystem.config.js --only myfitness-mcp
 
 echo "=== 6-b. MCP health check (20s retry, 실패 시 abort) ==="
+# 우선순위: shell override > .env > default 4301.
+# ecosystem.config.js 는 shell override 없으면 MCP_PORT 를 비워 subprocess dotenv 가
+# .env 를 로드하도록 함. deploy.sh 도 같은 우선순위를 지켜야 서버가 리슨하는 포트를 정확히 polling.
+if [[ -z "${MCP_PORT:-}" && -f .env ]]; then
+  # .env 전체 source 하지 않고 MCP_PORT 라인만 안전하게 추출 (다른 secret 은 shell 에 노출하지 않음).
+  # 따옴표 / CR 문자 제거.
+  ENV_MCP_PORT=$(grep -E '^MCP_PORT=' .env | tail -1 | cut -d= -f2- | tr -d "\"'\r")
+  MCP_PORT="${ENV_MCP_PORT:-}"
+fi
 MCP_PORT="${MCP_PORT:-4301}"
 for i in $(seq 1 10); do
   if curl -sf "http://127.0.0.1:${MCP_PORT}/health" >/dev/null 2>&1; then
