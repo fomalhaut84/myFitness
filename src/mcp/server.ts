@@ -275,8 +275,14 @@ server.tool(
 
 // --- 서버 시작 ---
 
-const TRANSPORT_MODE = process.env.MCP_TRANSPORT ?? "stdio";
-const HTTP_PORT = parseInt(process.env.MCP_PORT ?? "4301", 10);
+// #180: 빈 문자열 ('') 도 default 로 취급. .env 에 MCP_TRANSPORT= / MCP_PORT= 같이
+// 빈 값이 있으면 ?? 로는 통과 → parseInt('') = NaN → httpServer.listen(NaN) crash.
+// || 로 normalize (empty string / undefined 모두 falsy → fallback).
+const TRANSPORT_MODE = process.env.MCP_TRANSPORT || "stdio";
+const rawPort = process.env.MCP_PORT;
+const HTTP_PORT = rawPort && !Number.isNaN(parseInt(rawPort, 10))
+  ? parseInt(rawPort, 10)
+  : 4301;
 const HTTP_HOST = "127.0.0.1";
 
 async function startStdio(): Promise<void> {
