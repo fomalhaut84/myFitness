@@ -25,6 +25,14 @@ MCP_PORT="${MCP_PORT:-4301}"
 # Pre-flight 임시 포트 — 4200 (웹) / MCP_PORT (mcp 실서비스) 와 충돌 회피.
 PREFLIGHT_PORT="${MCP_PREFLIGHT_PORT:-4399}"
 
+# 안전장치: PREFLIGHT_PORT == MCP_PORT 이면 좀비 감지 로직이 프로덕션 mcp 를 대상으로
+# 판정하고 정리 시도 (kill -TERM/-KILL) → 프로덕션 다운. 명시 abort.
+if [ "$PREFLIGHT_PORT" = "$MCP_PORT" ]; then
+    echo "ERROR: PREFLIGHT_PORT ($PREFLIGHT_PORT) 이 MCP_PORT ($MCP_PORT) 와 동일"
+    echo "  MCP_PREFLIGHT_PORT env 로 다른 포트 지정 필요"
+    exit 1
+fi
+
 echo "=== 1. Fetch latest ==="
 git fetch origin --tags
 
@@ -150,6 +158,11 @@ if [ "$MCP_HEALTHY" != "1" ]; then
     echo "웹/봇 재시작 X. 배포 abort"
     exit 1
 fi
+
+# MCP 검증 완료 시점에 dump 갱신. 이후 봇/웹 재시작 실패로 abort 되어도 mcp 앱은
+# dump 에 기록 → host reboot 후 resurrect 로 복원 가능. Step 8 에서 봇 성공 후에도
+# 재실행 (idempotent).
+pm2 save --force
 
 echo "=== 7-b. PM2 web / bot ==="
 # web: stateless → graceful reload (zero-downtime) + --update-env 로 env 변수 갱신
