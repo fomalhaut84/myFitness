@@ -43,9 +43,12 @@ echo "=== 6-b. MCP health check (20s retry, 실패 시 abort) ==="
 # ecosystem.config.js 는 shell override 없으면 MCP_PORT 를 비워 subprocess dotenv 가
 # .env 를 로드하도록 함. deploy.sh 도 같은 우선순위를 지켜야 서버가 리슨하는 포트를 정확히 polling.
 if [[ -z "${MCP_PORT:-}" && -f .env ]]; then
-  # .env 전체 source 하지 않고 MCP_PORT 라인만 안전하게 추출 (다른 secret 은 shell 에 노출하지 않음).
-  # 따옴표 / CR 문자 제거.
-  ENV_MCP_PORT=$(grep -E '^MCP_PORT=' .env | tail -1 | cut -d= -f2- | tr -d "\"'\r")
+  # bash grep 은 dotenv 호환 형태 (export prefix / '=' 주변 공백 / inline comment /
+  # 따옴표) 를 못 다룸. src/mcp/server.ts 가 사용하는 것과 동일한 dotenv 파서를
+  # node 로 재사용해 MCP_PORT 만 안전 추출. 실패 시 조용히 default fallback.
+  # dotenv.config() 는 v17+ 에서 stdout 안내 문자를 인쇄 → 파싱된 값에 섞임.
+  # dotenv.parse(buf) 만 사용해 process.env 오염 없이 KV 만 추출.
+  ENV_MCP_PORT=$(node -e "const fs=require('fs');const p=require('dotenv').parse(fs.readFileSync('.env'));process.stdout.write(p.MCP_PORT ?? '')" 2>/dev/null || echo "")
   MCP_PORT="${ENV_MCP_PORT:-}"
 fi
 MCP_PORT="${MCP_PORT:-4301}"
