@@ -1,11 +1,8 @@
 {
   "mcpServers": {
     "myfitness": {
-      "command": "node",
-      "args": ["dist/mcp/server.cjs"],
-      "env": {
-        "DATABASE_URL": "${DATABASE_URL}"
-      }
+      "type": "http",
+      "url": "http://127.0.0.1:4301/mcp"
     }
   }
 }
