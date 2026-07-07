@@ -22,10 +22,13 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         // #180: 봇 프로세스 (claude-advisor) 가 pm2 delete + start 로 시작되면
-        // shell env override (MCP_PORT / MCP_HTTP_URL) 를 자동 상속 못 함.
-        // 명시적으로 pass — mcp 앱과 같은 env 를 공유해 client/server 포트 정합 유지.
+        // shell env override 를 자동 상속 못 함. 명시적으로 pass.
+        // - MCP_PORT / MCP_HTTP_URL: mcp 앱과 같은 env 공유해 client/server 포트 정합 유지.
+        // - MCP_TRANSPORT: stdio 회귀 스위치. bot env 에 명시 안 하면 rollback 절차
+        //   (MCP_TRANSPORT=stdio pm2 delete+start) 가 봇에 도달 못 해 롤백 조용히 실패.
         MCP_PORT: process.env.MCP_PORT || '',
         MCP_HTTP_URL: process.env.MCP_HTTP_URL || '',
+        MCP_TRANSPORT: process.env.MCP_TRANSPORT || '',
       },
       instances: 1,
       autorestart: true,
