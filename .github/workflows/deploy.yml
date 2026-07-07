@@ -76,6 +76,16 @@ jobs:
               exit 1
             fi
             cd "$DEPLOY_PATH"
+
+            # #188: bash 는 스크립트를 스트림으로 로드해 실행 중. deploy.sh 안에서
+            # git checkout 이 파일을 갱신해도 이미 로드된 old 버전이 그대로 실행됨.
+            # → 배포 흐름 자체가 바뀐 릴리즈 (v2.6.0 MCP HTTP 승격 등) 는 old
+            # deploy.sh 에 없는 새 단계가 실행 안 됨.
+            # 대응: workflow 에서 먼저 checkout → 새 deploy.sh 를 로드 실행.
+            # deploy.sh 안의 checkout 은 그대로 유지 (idempotent, no-op).
+            git fetch origin --tags --force
+            git checkout -f "$RELEASE_TAG"
+
             ./deploy/deploy.sh "$RELEASE_TAG"
 
       # 배포 결과 텔레그램 알림 — myfitness-bot 인프라 재활용. raw curl 로 third-party action 의존 X.
