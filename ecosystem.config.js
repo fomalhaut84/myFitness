@@ -26,9 +26,11 @@ module.exports = {
         // - MCP_PORT / MCP_HTTP_URL: mcp 앱과 같은 env 공유해 client/server 포트 정합 유지.
         // - MCP_TRANSPORT: stdio 회귀 스위치. bot env 에 명시 안 하면 rollback 절차
         //   (MCP_TRANSPORT=stdio pm2 delete+start) 가 봇에 도달 못 해 롤백 조용히 실패.
-        MCP_PORT: process.env.MCP_PORT || '',
-        MCP_HTTP_URL: process.env.MCP_HTTP_URL || '',
-        MCP_TRANSPORT: process.env.MCP_TRANSPORT || '',
+        // Codex bot P2: shell override 존재 시에만 세팅. 빈 값을 넣으면 dotenv 가
+        // 기존 env key 를 덮어쓰지 않아 .env 파일의 override 가 mask 됨.
+        ...(process.env.MCP_PORT ? { MCP_PORT: process.env.MCP_PORT } : {}),
+        ...(process.env.MCP_HTTP_URL ? { MCP_HTTP_URL: process.env.MCP_HTTP_URL } : {}),
+        ...(process.env.MCP_TRANSPORT ? { MCP_TRANSPORT: process.env.MCP_TRANSPORT } : {}),
       },
       instances: 1,
       autorestart: true,
@@ -61,10 +63,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         MCP_TRANSPORT: 'http',
-        // #180 Codex bot P2: shell env override (MCP_PORT=4302 ./deploy.sh) 존중.
-        // PM2 는 ecosystem env 를 shell 뒤에 덮어씌우므로 여기서 process.env.MCP_PORT
-        // fallback 을 명시하지 않으면 deploy.sh 의 health check 포트와 어긋난다.
-        MCP_PORT: process.env.MCP_PORT || '4301',
+        // #180: shell override 존재 시에만 세팅. 빈 값 세팅 시 subprocess dotenv/config
+        // 가 .env 의 MCP_PORT 를 덮어쓰지 못함 (Codex bot P2, "mask .env overrides").
+        // shell 없고 .env 없을 때는 server.ts 내부 default (4301) 로 fallback.
+        ...(process.env.MCP_PORT ? { MCP_PORT: process.env.MCP_PORT } : {}),
       },
       instances: 1,
       autorestart: true,
