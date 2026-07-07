@@ -53,7 +53,10 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         MCP_TRANSPORT: 'http',
-        MCP_PORT: '4301',
+        // #180 Codex bot P2: shell env override (MCP_PORT=4302 ./deploy.sh) 존중.
+        // PM2 는 ecosystem env 를 shell 뒤에 덮어씌우므로 여기서 process.env.MCP_PORT
+        // fallback 을 명시하지 않으면 deploy.sh 의 health check 포트와 어긋난다.
+        MCP_PORT: process.env.MCP_PORT || '4301',
       },
       instances: 1,
       autorestart: true,
