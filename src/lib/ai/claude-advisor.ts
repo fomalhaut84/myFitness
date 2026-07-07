@@ -1,12 +1,16 @@
 import { spawn } from "child_process";
-import { existsSync, writeFileSync, mkdirSync } from "fs";
+import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
 import * as SessionStore from "./session-store";
 
-const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.mjs");
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
+
+// M#180: MCP 서버를 pm2 daemon 으로 승격 후 HTTP transport 로 연결.
+// MCP_HTTP_URL 미설정 시 기본 127.0.0.1:4301 (ecosystem 과 일치).
+const MCP_HTTP_URL =
+  process.env.MCP_HTTP_URL || "http://127.0.0.1:4301/mcp";
 
 // Claude CLI 절대 경로 — 봇 프로세스가 pm2 delete + start 로 시작되면 login shell
 // profile 이 로드되지 않아 ~/.local/bin 이 PATH에서 누락됨 → spawn ENOENT.
@@ -31,15 +35,12 @@ export interface AskOptions {
 function ensureMcpConfig(): string {
   mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
 
+  // M#180: STDIO subprocess → HTTP transport. myfitness-mcp pm2 앱이 상시 상주.
   const config = {
     mcpServers: {
       myfitness: {
-        command: "node",
-        args: [MCP_SERVER_PATH],
-        env: {
-          DATABASE_URL: process.env.DATABASE_URL ?? "",
-          APP_BASE_URL: `http://localhost:${process.env.PORT ?? "4200"}`,
-        },
+        type: "http",
+        url: MCP_HTTP_URL,
       },
     },
   };
@@ -65,11 +66,6 @@ export async function askAdvisor(
 ): Promise<ClaudeResponse> {
   const channel = options.channel ?? DEFAULT_CHANNEL;
   const currentSessionId = SessionStore.getSession(channel);
-  if (!existsSync(MCP_SERVER_PATH)) {
-    throw new Error(
-      "MCP 서버 빌드가 필요합니다. `npm run build:mcp`를 먼저 실행하세요."
-    );
-  }
 
   const mcpConfigPath = ensureMcpConfig();
 

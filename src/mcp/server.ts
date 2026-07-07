@@ -1,6 +1,20 @@
+// M#180: standalone PM2 프로세스로 승격 후에는 .env 를 스스로 로드해야 함
+// (기존 stdio 모드는 부모 프로세스인 bot/next 가 로드해서 상속받았음).
+// import 순서상 다른 import 보다 먼저 — Prisma / prisma client 가 DATABASE_URL 을
+// module load 시점에 검사.
+import "dotenv/config";
 import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
+import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import {
+  createServer as createHttpServer,
+  type IncomingMessage,
+  type ServerResponse,
+} from "node:http";
+import { randomUUID } from "node:crypto";
 import { z } from "zod";
+
+import { pickStaleSessions, resolveSessionRequest } from "./session-utils";
 
 import {
   getActivities,
@@ -26,10 +40,15 @@ import {
 } from "./tools/training-plan";
 import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 
-const server = new McpServer({
-  name: "myfitness",
-  version: "1.0.0",
-});
+/**
+ * MCP server factory — 세션마다 fresh 인스턴스 필요 (multi-session HTTP 대응).
+ * stdio 모드에서는 단일 호출로 충분, HTTP 모드에서는 initialize 마다 호출.
+ */
+export function createMyFitnessMcpServer(): McpServer {
+  const server = new McpServer({
+    name: "myfitness",
+    version: "1.0.0",
+  });
 
 server.tool(
   "get_activities",
@@ -251,9 +270,249 @@ server.tool(
   async (args) => getRacePrediction(args)
 );
 
-async function main() {
+  return server;
+}
+
+// --- 서버 시작 ---
+
+const TRANSPORT_MODE = process.env.MCP_TRANSPORT ?? "stdio";
+const HTTP_PORT = parseInt(process.env.MCP_PORT ?? "4301", 10);
+const HTTP_HOST = "127.0.0.1";
+
+async function startStdio(): Promise<void> {
+  const server = createMyFitnessMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
+  console.error("[mcp] stdio transport ready");
+}
+
+/**
+ * 세션 idle 상한. 이 시간 동안 요청이 없으면 sweeper 가 정리.
+ * Claude CLI 가 timeout/SIGKILL 로 죽으면 DELETE 도 onclose 도 트리거되지 않아
+ * transports Map 이 무한 누적 → 방어책.
+ */
+const SESSION_IDLE_TTL_MS = 30 * 60 * 1000; // 30분
+const SESSION_SWEEP_INTERVAL_MS = 5 * 60 * 1000; // 5분
+
+interface SessionEntry {
+  transport: StreamableHTTPServerTransport;
+  lastActivityAt: number;
+}
+
+/**
+ * Multi-session HTTP mode — myFinance Phase 32-A PoC 결과 (PR #406/407) 반영.
+ * 세션마다 별도 `StreamableHTTPServerTransport` + `McpServer` 페어를 생성해
+ * `mcp-session-id` 헤더로 라우팅. 단일 transport 재사용은 재초기화 reject 됨.
+ */
+async function startHttp(): Promise<void> {
+  const transports = new Map<string, SessionEntry>();
+
+  const httpServer = createHttpServer(
+    async (req: IncomingMessage, res: ServerResponse) => {
+      const url = req.url ?? "/";
+
+      if (url === "/health") {
+        res.writeHead(200, { "Content-Type": "application/json" });
+        res.end(
+          JSON.stringify({
+            ok: true,
+            uptime: process.uptime(),
+            sessions: transports.size,
+            version: "1.0.0",
+          })
+        );
+        return;
+      }
+
+      if (url === "/mcp" || url.startsWith("/mcp?")) {
+        const t0 = Date.now();
+        const sessionIdHeader =
+          (req.headers["mcp-session-id"] as string | undefined) ?? null;
+        try {
+          let body: unknown;
+          if (req.method === "POST") {
+            const chunks: Buffer[] = [];
+            for await (const chunk of req) chunks.push(chunk as Buffer);
+            const bodyText = Buffer.concat(chunks).toString("utf-8");
+            body = bodyText ? JSON.parse(bodyText) : undefined;
+          }
+
+          const method =
+            (body as { method?: string } | undefined)?.method ?? "(no-body)";
+          const isInit = method === "initialize";
+
+          let transport: StreamableHTTPServerTransport | undefined;
+          const resolution = resolveSessionRequest({
+            sessionIdHeader,
+            hasSession: sessionIdHeader
+              ? transports.has(sessionIdHeader)
+              : false,
+            isInitialize: isInit,
+          });
+
+          if (resolution === "reuse") {
+            const entry = transports.get(sessionIdHeader!)!;
+            entry.lastActivityAt = Date.now(); // TTL 갱신
+            transport = entry.transport;
+          } else if (resolution === "create") {
+            // sid 를 outer 로 캡처 → SDK 가 sessionId 를 언제 clear 하든 onclose 에서 안정적 삭제.
+            let assignedSid: string | undefined;
+            transport = new StreamableHTTPServerTransport({
+              sessionIdGenerator: () => randomUUID(),
+              onsessioninitialized: (sid: string) => {
+                assignedSid = sid;
+                transports.set(sid, {
+                  transport: transport!,
+                  lastActivityAt: Date.now(),
+                });
+                console.log(
+                  `[mcp] session initialized: ${sid} (total=${transports.size})`
+                );
+              },
+            });
+            transport.onclose = () => {
+              if (assignedSid) {
+                transports.delete(assignedSid);
+                console.log(
+                  `[mcp] session closed: ${assignedSid} (total=${transports.size})`
+                );
+              }
+            };
+            const s = createMyFitnessMcpServer();
+            await s.connect(transport);
+          } else if (resolution === "expired") {
+            // Session id 는 있지만 서버에 없음 (sweeper 정리 or 프로세스 재시작).
+            // MCP 표준: 404 로 클라이언트가 stale 세션 폐기 후 재초기화하도록 시그널.
+            res.writeHead(404, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                error: {
+                  code: -32001,
+                  message: `Session not found: ${sessionIdHeader}`,
+                },
+                id: null,
+              })
+            );
+            return;
+          } else {
+            // resolution === "invalid" — session id 없고 initialize 도 아님.
+            res.writeHead(400, { "Content-Type": "application/json" });
+            res.end(
+              JSON.stringify({
+                jsonrpc: "2.0",
+                error: {
+                  code: -32600,
+                  message: "Bad Request: no session id and not initialize",
+                },
+                id: null,
+              })
+            );
+            return;
+          }
+
+          await transport!.handleRequest(req, res, body);
+          console.log(
+            `[mcp] ${req.method} ${method} session=${sessionIdHeader ?? "(new)"} in ${Date.now() - t0}ms`
+          );
+          return;
+        } catch (error) {
+          console.error("[mcp] request handling error:", error);
+          if (!res.headersSent) {
+            res.writeHead(500, { "Content-Type": "application/json" });
+            res.end(JSON.stringify({ error: "internal_error" }));
+          }
+          return;
+        }
+      }
+
+      res.writeHead(404, { "Content-Type": "application/json" });
+      res.end(JSON.stringify({ error: "not_found", url }));
+    }
+  );
+
+  httpServer.on("error", (err) => {
+    // EADDRINUSE 등 listen 실패 시 즉시 종료 → PM2 backoff 로 재시도 (이전 프로세스 정리 대기).
+    console.error("[mcp] http server error:", err);
+    process.exit(1);
+  });
+
+  httpServer.listen(HTTP_PORT, HTTP_HOST, () => {
+    console.log(
+      `[mcp] http transport listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`
+    );
+    console.log(`[mcp] health: http://${HTTP_HOST}:${HTTP_PORT}/health`);
+  });
+
+  // Idle session sweeper — Claude CLI 가 timeout/SIGKILL 로 죽으면 DELETE 도
+  // onclose 도 트리거되지 않아 transports 가 누적. 주기적으로 idle 세션 close.
+  const sweeper = setInterval(() => {
+    const stale = pickStaleSessions(
+      transports.entries(),
+      Date.now(),
+      SESSION_IDLE_TTL_MS
+    );
+    if (stale.length === 0) return;
+    console.log(
+      `[mcp] sweeping ${stale.length} idle session(s) (ttl=${SESSION_IDLE_TTL_MS / 60_000}min)`
+    );
+    for (const sid of stale) {
+      const entry = transports.get(sid);
+      if (!entry) continue;
+      Promise.resolve(entry.transport.close?.()).catch(() => {
+        /* ignore */
+      });
+      // onclose 콜백이 실행되어야 Map 이 정리되지만, 안전망으로 직접 삭제.
+      transports.delete(sid);
+    }
+  }, SESSION_SWEEP_INTERVAL_MS);
+  sweeper.unref?.(); // 이벤트 루프 blocker 방지 (shutdown 시 정상 종료 허용)
+
+  // Graceful shutdown — PM2 SIGTERM 대응.
+  // httpServer.close() 는 새 연결만 거부하고 SSE 스트림은 유지되므로,
+  // 활성 transport 를 명시적으로 close → transports Map 정리 → httpServer close 순서.
+  let shuttingDown = false;
+  const shutdown = async (signal: string) => {
+    if (shuttingDown) return;
+    shuttingDown = true;
+    clearInterval(sweeper);
+    console.log(
+      `[mcp] received ${signal}, closing ${transports.size} active session(s)`
+    );
+    const closeTasks = Array.from(transports.values()).map((entry) =>
+      Promise.resolve(entry.transport.close?.()).catch((err) => {
+        console.error("[mcp] transport close error:", err);
+      })
+    );
+    await Promise.allSettled(closeTasks);
+    transports.clear();
+    httpServer.close(() => {
+      console.log("[mcp] http server closed");
+      process.exit(0);
+    });
+    // Node 18.2+: 활성 소켓도 강제 종료 → SSE 스트림 lingering 방지
+    if (
+      typeof (httpServer as unknown as { closeAllConnections?: () => void })
+        .closeAllConnections === "function"
+    ) {
+      (httpServer as unknown as { closeAllConnections: () => void }).closeAllConnections();
+    }
+    // 15s 이내 강제 종료 (safety net) — unref 하지 않아 이벤트 루프 blocker 로 유지.
+    setTimeout(() => {
+      console.warn("[mcp] force exit after 15s");
+      process.exit(1);
+    }, 15000);
+  };
+  process.on("SIGTERM", () => void shutdown("SIGTERM"));
+  process.on("SIGINT", () => void shutdown("SIGINT"));
+}
+
+async function main() {
+  if (TRANSPORT_MODE === "http") {
+    await startHttp();
+  } else {
+    await startStdio();
+  }
 }
 
 main().catch((error) => {
