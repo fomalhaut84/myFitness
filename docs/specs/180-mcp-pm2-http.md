@@ -55,9 +55,19 @@ myFitness 도 동일 패턴 이식. **다만 포트는 4200 이 웹 예약이라
 
 ## 6. 롤백
 
-`MCP_TRANSPORT` 미설정 시 stdio 모드로 동작. 회귀 스위치 유효.
-- pm2 앱 삭제: `pm2 delete myfitness-mcp`
-- stdio 로 즉시 롤백은 별도 커밋 or git revert 필요.
+`MCP_TRANSPORT=stdio` 로 서버와 client 를 동시에 회귀 스위치.
+
+```bash
+# 1. 봇/웹의 client 를 stdio 로 되돌리기 (config 파일이 subprocess spawn 형태로 재생성됨)
+export MCP_TRANSPORT=stdio  # 또는 .env / ecosystem 에 설정
+pm2 delete myfitness-bot && pm2 start ecosystem.config.js --only myfitness-bot
+pm2 restart myfitness --update-env
+
+# 2. HTTP MCP 앱 종료
+pm2 delete myfitness-mcp
+```
+
+이후 매 AI 호출마다 Claude CLI 가 `dist/mcp/server.cjs` 를 stdio subprocess 로 spawn (기존 방식). client/server 둘 다 같은 `MCP_TRANSPORT` 를 보므로 config 어긋남 없음.
 
 ## 7. 검증 (배포 후)
 

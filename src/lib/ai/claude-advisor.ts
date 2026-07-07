@@ -7,12 +7,19 @@ import * as SessionStore from "./session-store";
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
-// M#180: MCP 서버를 pm2 daemon 으로 승격 후 HTTP transport 로 연결.
-// 우선순위: MCP_HTTP_URL (완전 URL) → MCP_PORT (포트만) → 4301 fallback.
+// M#180: MCP transport 는 서버와 client(여기) 가 동시에 같은 모드여야 함.
+// 기본 http (pm2 앱 myfitness-mcp 상시 상주). MCP_TRANSPORT=stdio 로 회귀 스위치.
+const MCP_TRANSPORT = process.env.MCP_TRANSPORT || "http";
+
+// HTTP url 우선순위: MCP_HTTP_URL (완전 URL) → MCP_PORT (포트만) → 4301 fallback.
 // ecosystem 의 mcp/bot 앱이 두 env 를 공유해 어긋남 방지.
 const MCP_HTTP_URL =
   process.env.MCP_HTTP_URL ||
   `http://127.0.0.1:${process.env.MCP_PORT || "4301"}/mcp`;
+
+// stdio 회귀 시 spawn 할 서버 실행 파일. server.cjs 는 MCP_TRANSPORT 미설정/stdio
+// 이면 startStdio() 로 분기하므로 그대로 재사용.
+const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.cjs");
 
 // Claude CLI 절대 경로 — 봇 프로세스가 pm2 delete + start 로 시작되면 login shell
 // profile 이 로드되지 않아 ~/.local/bin 이 PATH에서 누락됨 → spawn ENOENT.
@@ -37,13 +44,26 @@ export interface AskOptions {
 function ensureMcpConfig(): string {
   mkdirSync(RUNTIME_CONFIG_DIR, { recursive: true });
 
-  // M#180: STDIO subprocess → HTTP transport. myfitness-mcp pm2 앱이 상시 상주.
+  // M#180: 서버 mode (MCP_TRANSPORT) 에 맞춰 client config 도 스위치.
+  // - http (기본): myfitness-mcp pm2 앱 상시 상주 → HTTP url 참조
+  // - stdio: pm2 앱 없이 dist/mcp/server.cjs 를 매번 subprocess spawn (회귀)
+  const serverConfig =
+    MCP_TRANSPORT === "stdio"
+      ? {
+          command: "node",
+          args: [MCP_SERVER_PATH],
+          env: {
+            DATABASE_URL: process.env.DATABASE_URL ?? "",
+          },
+        }
+      : {
+          type: "http",
+          url: MCP_HTTP_URL,
+        };
+
   const config = {
     mcpServers: {
-      myfitness: {
-        type: "http",
-        url: MCP_HTTP_URL,
-      },
+      myfitness: serverConfig,
     },
   };
 
