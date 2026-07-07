@@ -21,6 +21,16 @@ module.exports = {
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',
+        // #180: 봇 프로세스 (claude-advisor) 가 pm2 delete + start 로 시작되면
+        // shell env override 를 자동 상속 못 함. 명시적으로 pass.
+        // - MCP_PORT / MCP_HTTP_URL: mcp 앱과 같은 env 공유해 client/server 포트 정합 유지.
+        // - MCP_TRANSPORT: stdio 회귀 스위치. bot env 에 명시 안 하면 rollback 절차
+        //   (MCP_TRANSPORT=stdio pm2 delete+start) 가 봇에 도달 못 해 롤백 조용히 실패.
+        // Codex bot P2: shell override 존재 시에만 세팅. 빈 값을 넣으면 dotenv 가
+        // 기존 env key 를 덮어쓰지 않아 .env 파일의 override 가 mask 됨.
+        ...(process.env.MCP_PORT ? { MCP_PORT: process.env.MCP_PORT } : {}),
+        ...(process.env.MCP_HTTP_URL ? { MCP_HTTP_URL: process.env.MCP_HTTP_URL } : {}),
+        ...(process.env.MCP_TRANSPORT ? { MCP_TRANSPORT: process.env.MCP_TRANSPORT } : {}),
       },
       instances: 1,
       autorestart: true,
@@ -40,6 +50,33 @@ module.exports = {
       // PM2 default max_restarts=16 명시적 override — exp_backoff 만으로는 30s min_uptime 도달 못한
       // 16회 실패 시 errored stop. Number.MAX_SAFE_INTEGER 로 실질 무한 보장.
       max_restarts: Number.MAX_SAFE_INTEGER,
+    },
+    {
+      // #180 — MCP 서버를 별도 PM2 앱으로 승격.
+      // stdio subprocess (매 세션 spawn/kill) → 상시 상주 HTTP 서버.
+      // 목적: 로그 트래킹 개선 (pm2 logs 로 사후 추적), cold-start 제거, Prisma 커넥션 재사용.
+      // Multi-session 패턴은 src/mcp/server.ts startHttp() 참고.
+      // 포트: 4200 (웹) 회피 → 4301. 웹은 그대로 4200 유지.
+      name: 'myfitness-mcp',
+      script: 'dist/mcp/server.cjs',
+      cwd: '/home/nasty68/myFitness',
+      env: {
+        NODE_ENV: 'production',
+        MCP_TRANSPORT: 'http',
+        // #180: shell override 존재 시에만 세팅. 빈 값 세팅 시 subprocess dotenv/config
+        // 가 .env 의 MCP_PORT 를 덮어쓰지 못함 (Codex bot P2, "mask .env overrides").
+        // shell 없고 .env 없을 때는 server.ts 내부 default (4301) 로 fallback.
+        ...(process.env.MCP_PORT ? { MCP_PORT: process.env.MCP_PORT } : {}),
+      },
+      instances: 1,
+      autorestart: true,
+      // SIGTERM → server.ts shutdown() graceful close (15s 강제 종료)
+      kill_timeout: 15000,
+      min_uptime: 30000,
+      exp_backoff_restart_delay: 100,
+      max_memory_restart: '512M',
+      node_args: '--max-old-space-size=512',
+      log_date_format: 'YYYY-MM-DD HH:mm:ss',
     },
   ],
 }
