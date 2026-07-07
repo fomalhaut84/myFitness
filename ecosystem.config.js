@@ -21,6 +21,11 @@ module.exports = {
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',
+        // #180: 봇 프로세스 (claude-advisor) 가 pm2 delete + start 로 시작되면
+        // shell env override (MCP_PORT / MCP_HTTP_URL) 를 자동 상속 못 함.
+        // 명시적으로 pass — mcp 앱과 같은 env 를 공유해 client/server 포트 정합 유지.
+        MCP_PORT: process.env.MCP_PORT || '',
+        MCP_HTTP_URL: process.env.MCP_HTTP_URL || '',
       },
       instances: 1,
       autorestart: true,

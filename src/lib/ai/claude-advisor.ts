@@ -8,9 +8,11 @@ const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
 
 // M#180: MCP 서버를 pm2 daemon 으로 승격 후 HTTP transport 로 연결.
-// MCP_HTTP_URL 미설정 시 기본 127.0.0.1:4301 (ecosystem 과 일치).
+// 우선순위: MCP_HTTP_URL (완전 URL) → MCP_PORT (포트만) → 4301 fallback.
+// ecosystem 의 mcp/bot 앱이 두 env 를 공유해 어긋남 방지.
 const MCP_HTTP_URL =
-  process.env.MCP_HTTP_URL || "http://127.0.0.1:4301/mcp";
+  process.env.MCP_HTTP_URL ||
+  `http://127.0.0.1:${process.env.MCP_PORT || "4301"}/mcp`;
 
 // Claude CLI 절대 경로 — 봇 프로세스가 pm2 delete + start 로 시작되면 login shell
 // profile 이 로드되지 않아 ~/.local/bin 이 PATH에서 누락됨 → spawn ENOENT.
