@@ -153,6 +153,7 @@ export async function askAdvisor(
         permission_denials?: Array<{ tool_name?: string }>;
         errors?: string[];
         api_error_status?: number;
+        total_cost_usd?: number;
         usage?: { input_tokens?: number };
       } | null = null;
       try {
@@ -205,6 +206,18 @@ export async function askAdvisor(
               : 0;
           SessionStore.setSession(channel, parsed.session_id, inputTokens);
         }
+
+        // 완료 요약 로그 (pm2 logs 에서 채널별 정상 완료 확인용).
+        // 실패 케이스는 별도로 reject 시 에러 메시지에 진단 정보가 실려 있어 스킵.
+        const sessionShort = parsed.session_id?.slice(0, 8) ?? "no-session";
+        const cost = parsed.total_cost_usd?.toFixed(4) ?? "?";
+        const turns = parsed.num_turns ?? "?";
+        const isError = parsed.is_error === true;
+        console.log(
+          `[askAdvisor] channel=${channel} duration=${durationMs}ms turns=${turns} session=${sessionShort} cost=$${cost}${
+            isError ? " is_error=true" : ""
+          }`
+        );
 
         resolve({
           result: parsed.result ?? parsed.text ?? stdout,
