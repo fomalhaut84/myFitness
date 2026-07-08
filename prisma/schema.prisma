@@ -214,12 +214,13 @@ model ReportJob {
   status       String    @default("pending") // pending | running | completed | failed
   force        Boolean   @default(false)
   startedAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt // heartbeat 기준 — runner 가 주기적으로 touch → orphan sweep 판정
   completedAt  DateTime?
   errorMessage String?
   adviceId     String?   // 완료 시 AIAdvice.id 참조 (nullable, 트랜잭션 밖 update)
 
   @@index([category, reportDate, status])
-  @@index([status, startedAt])
+  @@index([status, updatedAt])
 }
 
 model FoodLog {

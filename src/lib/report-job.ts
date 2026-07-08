@@ -79,19 +79,19 @@ export async function createOrGetReportJob(params: {
       "code" in err &&
       (err as { code?: string }).code === "P2002";
     if (!isUniqueViolation) throw err;
+    // P2#4: force=false + 기존 AIAdvice 있는 경우 runner 가 즉시 completed 로 전이 가능
+    // (generateReport 초기 check). active_only 필터로 못 찾을 수 있음 → status 무관하게
+    // 가장 최근 job 반환. completed 면 호출자가 그 결과 사용.
     const winner = await prisma.reportJob.findFirst({
       where: {
         category: params.category,
         reportDate: params.reportDate,
-        status: { in: ["pending", "running"] },
       },
       orderBy: { startedAt: "desc" },
     });
     if (!winner) {
-      // 극단 케이스: unique violation 발생 후 상태 전이가 매우 빨라 조회 시점엔 completed.
-      // 재조회 후에도 없으면 completed 인 최근 job 을 반환하지 않고 에러.
       throw new Error(
-        "createOrGetReportJob: unique violation but no active job found",
+        "createOrGetReportJob: unique violation but no job found",
       );
     }
     return { job: winner, created: false };
@@ -99,20 +99,40 @@ export async function createOrGetReportJob(params: {
 }
 
 /**
+ * runner 가 정상 실행 중임을 sweeper 에 알리는 heartbeat 간격.
+ * ORPHAN_TIMEOUT_MS 대비 충분히 짧아야 정상 실행 중 job 이 orphan 처리 안 됨.
+ */
+const HEARTBEAT_INTERVAL_MS = 30 * 1000;
+
+/**
  * pending job 을 running 으로 전이 후 generator 실행.
  * 완료 시 completed + adviceId 저장, 실패 시 failed + errorMessage 저장.
  * 이 함수는 fire-and-forget 으로 호출되므로 throw 하지 않고 이벤트만 emit.
+ *
+ * P2#5: 실행 중 heartbeat 로 updatedAt 갱신 → sweeper 가 정상 job 을 orphan 오판 안 함.
  */
 export async function runReportJob(
   jobId: string,
   generator: () => Promise<{ adviceId: string | null }>,
 ): Promise<void> {
+  let heartbeatTimer: NodeJS.Timeout | null = null;
   try {
     await prisma.reportJob.update({
       where: { id: jobId },
       data: { status: "running" },
     });
     emit(jobId, { type: "status", status: "running" });
+
+    // Heartbeat: 빈 update 로 @updatedAt 자동 갱신. 5분 sweep cutoff vs 30s 간격 →
+    // 10배 여유. 30s 안에 프로세스가 죽지 않는 한 orphan 오판 없음.
+    heartbeatTimer = setInterval(() => {
+      prisma.reportJob
+        .update({ where: { id: jobId }, data: {} })
+        .catch((err) => {
+          console.error(`[report-job] ${jobId} heartbeat failed:`, err);
+        });
+    }, HEARTBEAT_INTERVAL_MS);
+    heartbeatTimer.unref?.();
 
     const { adviceId } = await generator();
 
@@ -129,7 +149,6 @@ export async function runReportJob(
   } catch (error) {
     const errorMessage = error instanceof Error ? error.message : String(error);
     console.error(`[report-job] ${jobId} failed:`, errorMessage);
-    // update 실패도 조용히 넘기지 않음 — 사이드채널 로그만 남기고 원 에러 이벤트는 emit.
     await prisma.reportJob
       .update({
         where: { id: jobId },
@@ -147,6 +166,8 @@ export async function runReportJob(
       });
     emit(jobId, { type: "status", status: "failed" });
     emit(jobId, { type: "failed", errorMessage });
+  } finally {
+    if (heartbeatTimer) clearInterval(heartbeatTimer);
   }
 }
 
@@ -203,6 +224,10 @@ const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 /**
  * pm2 restart 등으로 orphan 된 running/pending job 을 failed 로 마킹.
  * 부팅 1회 + periodic (5분 주기) 두 방식 병행.
+ *
+ * P2#5: updatedAt 기준 판정. runner heartbeat 이 30s 마다 touch 하므로 정상 실행
+ * 중인 job (preSync + askAdvisor 로 몇 분 걸리는 것) 은 안전. heartbeat 이 5분 이상
+ * 안 온 job 만 orphan 처리.
  */
 export async function sweepOrphanedJobs(
   timeoutMs: number = ORPHAN_TIMEOUT_MS,
@@ -211,7 +236,7 @@ export async function sweepOrphanedJobs(
   const result = await prisma.reportJob.updateMany({
     where: {
       status: { in: ["pending", "running"] },
-      startedAt: { lt: cutoff },
+      updatedAt: { lt: cutoff },
     },
     data: {
       status: "failed",
