@@ -21,6 +21,7 @@ import {
   newTraceId,
   summarizeArgs,
   installCrashHandlers,
+  isStdioMode,
 } from "./logger";
 
 import {
@@ -521,10 +522,10 @@ server.tool(
 
 // --- 서버 시작 ---
 
-// #180: 빈 문자열 ('') 도 default 로 취급. .env 에 MCP_TRANSPORT= / MCP_PORT= 같이
-// 빈 값이 있으면 ?? 로는 통과 → parseInt('') = NaN → httpServer.listen(NaN) crash.
-// || 로 normalize (empty string / undefined 모두 falsy → fallback).
-const TRANSPORT_MODE = process.env.MCP_TRANSPORT || "stdio";
+// #180 / #194: 빈 문자열 ('') 도 default 로 취급. logger.ts 와 shared source of truth
+// (isStdioMode). server 는 stdio 로 진입했는데 logger 만 http 로 오판하면 stdout
+// (JSON-RPC 채널) 이 오염됨.
+const TRANSPORT_MODE = isStdioMode() ? "stdio" : "http";
 const rawPort = process.env.MCP_PORT;
 const HTTP_PORT = rawPort && !Number.isNaN(parseInt(rawPort, 10))
   ? parseInt(rawPort, 10)

@@ -20,10 +20,19 @@ import { randomUUID } from "node:crypto";
 const LOG_DIR = process.env.MCP_LOG_DIR ?? path.join(process.cwd(), "logs");
 const LOG_ENABLE_FILE = process.env.MCP_LOG_TEE_FILE === "1";
 const LOG_LEVEL = process.env.MCP_LOG_LEVEL ?? "info";
+
+/**
+ * Transport mode 결정 — server.ts 와 반드시 동일 결과여야 함.
+ * `||` 사용 이유: .env 에 `MCP_TRANSPORT=` (빈 값) 을 rollback 시나리오로 명시 지원
+ * (#180 참조). `??` 는 empty string 을 통과시켜 http 모드로 오판 → stdio 서버가
+ * 로그를 stdout (JSON-RPC 채널) 로 보내 프로토콜 파손.
+ */
+export function isStdioMode(env: NodeJS.ProcessEnv = process.env): boolean {
+  return (env.MCP_TRANSPORT || "stdio") === "stdio";
+}
+export const IS_STDIO_MODE = isStdioMode();
 // stdio 모드에서는 stdout 이 MCP JSON-RPC 통신 채널이라 로그가 섞이면 프로토콜 파손.
-// 로그는 stderr 로 라우팅. HTTP 모드에서는 stdout 이 자유이므로 그대로 (PM2 로그 흡수).
-export const IS_STDIO_MODE =
-  (process.env.MCP_TRANSPORT ?? "stdio") === "stdio";
+// 로그는 stderr 로 라우팅. HTTP 모드에서는 stdout 이 자유 (PM2 로그 흡수).
 const LOG_OUT_STREAM = IS_STDIO_MODE ? process.stderr : process.stdout;
 
 /**
@@ -94,7 +103,9 @@ function openFileStream(): pino.DestinationStream | null {
 
 /**
  * 자정 감지 후 파일 스트림 교체. 5분 주기 setInterval (로그 시점마다 검사 X).
- * 순서: flushSync (in-flight write 안전) → 새 stream open → old stream end.
+ * 순서: 새 stream open → currentFileStream 교체 (이후 write 는 new 로) →
+ * old stream flushSync → old stream end. 새 stream 먼저 여는 이유는
+ * wrapper 가 참조하는 currentFileStream 을 원자적으로 교체하기 위함.
  */
 function scheduleFileRotation(): void {
   if (!LOG_ENABLE_FILE) return;

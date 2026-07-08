@@ -35,6 +35,16 @@ MCP 서버의 `console.log/error` 자유 문자열 로그 → pino 구조화 JSO
 - `ecosystem.config.js` — MCP_LOG_TEE_FILE
 - `docs/specs/194-mcp-pino-logging.md` (본 문서)
 
+## 3-A. 회귀 시나리오
+
+- **`MCP_TRANSPORT=""` (빈 문자열, rollback 시나리오)**: server 와 logger 둘 다 stdio 모드로 판정해야 함. `??` 는 empty string 통과 → 두 모듈 split-brain (server=stdio, logger=http) → stdio 서버가 stdout 으로 로그를 보내 MCP JSON-RPC 채널 오염.
+  - **Fix**: `isStdioMode()` shared helper (`logger.ts`) 로 통일 (`||` 사용).
+  - **검증**:
+    ```
+    $ MCP_TRANSPORT="" node dist/mcp/server.cjs
+    → stderr 에 {"transport":"stdio","msg":"transport_ready"} (stdout 아님)
+    ```
+
 ## 4. 로컬 검증
 
 ```
