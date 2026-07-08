@@ -12,9 +12,16 @@ import {
   type ServerResponse,
 } from "node:http";
 import { randomUUID } from "node:crypto";
+import { AsyncLocalStorage } from "node:async_hooks";
 import { z } from "zod";
 
 import { pickStaleSessions, resolveSessionRequest } from "./session-utils";
+import {
+  logger,
+  newTraceId,
+  summarizeArgs,
+  installCrashHandlers,
+} from "./logger";
 
 import {
   getActivities,
@@ -41,14 +48,253 @@ import {
 import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 
 /**
+ * tools/call 요청 처리 스코프. Handler wrapper 가 실행됐는지 tracking 해
+ * SDK 우회 (Zod 검증 실패, 미등록 tool 등) 를 확실히 감지. prefix 매칭 heuristic
+ * 대신 AsyncLocalStorage 로 정확한 실행 여부 확인.
+ */
+interface ToolCallContext {
+  handlerInvoked: boolean;
+  toolName?: string;
+  args?: unknown;
+  /** SDK 가 handler 우회로 전송하는 response 를 캡처하여 후처리 시 파싱 */
+  capturedResponse?: unknown;
+}
+const toolCallStorage = new AsyncLocalStorage<ToolCallContext>();
+
+/**
+ * MCP tool result 에서 에러 메시지 추출. tools 가 반환하는
+ * { isError: true, content: [{ type:'text', text:'...' }] } 형태 대상.
+ */
+function extractErrorMessage(result: unknown): string {
+  if (!result || typeof result !== "object") return "unknown tool error";
+  const content = (result as { content?: unknown }).content;
+  if (Array.isArray(content) && content.length > 0) {
+    const first = content[0];
+    if (
+      typeof first === "object" &&
+      first !== null &&
+      typeof (first as { text?: unknown }).text === "string"
+    ) {
+      return (first as { text: string }).text;
+    }
+  }
+  return "unknown tool error";
+}
+
+/**
+ * Handler 우회로 SDK 가 전송한 response 에서 에러 정보 추출 → tool_call_sdk_error 로 로깅.
+ * Transport 계층 (JSON message) 대상이라 HTTP SSE 파싱 불필요.
+ */
+function logSdkBypass(ctx: ToolCallContext): void {
+  const response = ctx.capturedResponse as
+    | {
+        result?: { isError?: unknown; content?: unknown };
+        error?: { code?: number; message?: string };
+      }
+    | undefined;
+  const base = {
+    tool: ctx.toolName ?? "unknown",
+    args: summarizeArgs(ctx.args),
+    status: "error",
+  };
+  if (!response) {
+    logger.warn(
+      {
+        ...base,
+        err: {
+          message: "handler not invoked (no response captured)",
+          kind: "sdk_error",
+        },
+      },
+      "tool_call_sdk_error",
+    );
+    return;
+  }
+  if (response.error) {
+    logger.warn(
+      {
+        ...base,
+        err: {
+          code: response.error.code,
+          message: response.error.message,
+          kind: "sdk_error",
+        },
+      },
+      "tool_call_sdk_error",
+    );
+    return;
+  }
+  if (response.result) {
+    logger.warn(
+      {
+        ...base,
+        err: { message: extractErrorMessage(response.result), kind: "sdk_error" },
+      },
+      "tool_call_sdk_error",
+    );
+    return;
+  }
+  logger.warn(
+    {
+      ...base,
+      err: {
+        message: "handler not invoked (empty response)",
+        kind: "sdk_error",
+      },
+    },
+    "tool_call_sdk_error",
+  );
+}
+
+/**
+ * Transport 를 instrument — tools/call 요청마다 AsyncLocalStorage context 를 열고
+ * transport.send 를 tap 해 SDK 응답 캡처. Stdio/HTTP transport 모두 공통.
+ * server.connect(transport) 이후 호출해야 SDK 가 등록한 onmessage 를 감쌈.
+ */
+function attachToolCallInstrumentation(transport: unknown): void {
+  const t = transport as {
+    onmessage?: (msg: unknown, extra?: unknown) => void | Promise<void>;
+    send: (msg: unknown, ...rest: unknown[]) => Promise<void>;
+  };
+  const originalOnMessage = t.onmessage;
+  const originalSend = t.send.bind(t);
+
+  t.send = async (msg: unknown, ...rest: unknown[]) => {
+    // Send 는 onmessage 반환 이후 별도 tick 에서 호출될 수 있어, onmessage 완료 시점에
+    // 응답 존재 여부를 판단하기 어려움. 그래서 send 시점에 직접 검사:
+    // ctx 존재 + handler 미실행 + error/isError 응답 → SDK 우회. 여기서 로그.
+    const ctx = toolCallStorage.getStore();
+    if (ctx && !ctx.handlerInvoked && msg && typeof msg === "object") {
+      const asObj = msg as { result?: { isError?: unknown }; error?: unknown };
+      if (
+        asObj.error ||
+        (asObj.result &&
+          (asObj.result as { isError?: unknown }).isError === true)
+      ) {
+        ctx.capturedResponse = msg;
+        logSdkBypass(ctx);
+      }
+    }
+    return originalSend(msg, ...rest);
+  };
+
+  if (originalOnMessage) {
+    t.onmessage = async (msg: unknown, extra?: unknown) => {
+      const req = msg as
+        | { method?: string; params?: { name?: string; arguments?: unknown } }
+        | undefined;
+      if (req?.method === "tools/call") {
+        const ctx: ToolCallContext = {
+          handlerInvoked: false,
+          toolName: req.params?.name,
+          args: req.params?.arguments,
+        };
+        await toolCallStorage.run(ctx, async () => {
+          await originalOnMessage(msg, extra);
+        });
+      } else {
+        await originalOnMessage(msg, extra);
+      }
+    };
+  }
+}
+
+/**
  * MCP server factory — 세션마다 fresh 인스턴스 필요 (multi-session HTTP 대응).
  * stdio 모드에서는 단일 호출로 충분, HTTP 모드에서는 initialize 마다 호출.
+ *
+ * server.tool 을 wrapping 하여 모든 tool 호출을 구조화 로그로 기록 (#194).
  */
 export function createMyFitnessMcpServer(): McpServer {
   const server = new McpServer({
     name: "myfitness",
     version: "1.0.0",
   });
+
+  // Monkey-patch server.tool → 각 handler 를 latency/status/traceId 로 계측.
+  // 원래 signature 다양 (arg count 4~5) 지만 handler 는 항상 마지막 인자.
+  const originalTool = server.tool.bind(server) as (
+    ...args: unknown[]
+  ) => unknown;
+  (server as unknown as { tool: unknown }).tool = (...args: unknown[]) => {
+    if (args.length === 0) return originalTool(...args);
+    const toolName = typeof args[0] === "string" ? args[0] : "unknown";
+    const lastIdx = args.length - 1;
+    const originalHandler = args[lastIdx];
+    if (typeof originalHandler !== "function") return originalTool(...args);
+
+    const instrumentedHandler = async (...handlerArgs: unknown[]) => {
+      // AsyncLocalStorage 로 handler 실행 여부 시그널링 (SDK 우회 감지용).
+      const ctx = toolCallStorage.getStore();
+      if (ctx) ctx.handlerInvoked = true;
+
+      const traceId = newTraceId();
+      const start = Date.now();
+      try {
+        const result = await (
+          originalHandler as (...a: unknown[]) => Promise<unknown>
+        )(...handlerArgs);
+        // MCP tool 은 실패를 두 방식으로 시그널: (1) throw, (2) { isError: true, content }
+        // (resolved result). status 를 result.isError 로 판단하지 않으면 실패가
+        // 로그에서 성공으로 오분류 → 에러율 모니터링 사각지대.
+        const isError =
+          typeof result === "object" &&
+          result !== null &&
+          (result as { isError?: unknown }).isError === true;
+        if (isError) {
+          logger.warn(
+            {
+              tool: toolName,
+              traceId,
+              latency_ms: Date.now() - start,
+              status: "error",
+              args: summarizeArgs(handlerArgs[0]),
+              err: {
+                message: extractErrorMessage(result),
+                kind: "tool_reported_error",
+              },
+            },
+            "tool_call_reported_error",
+          );
+        } else {
+          logger.info(
+            {
+              tool: toolName,
+              traceId,
+              latency_ms: Date.now() - start,
+              status: "ok",
+              args: summarizeArgs(handlerArgs[0]),
+            },
+            "tool_call",
+          );
+        }
+        return result;
+      } catch (error) {
+        logger.error(
+          {
+            tool: toolName,
+            traceId,
+            latency_ms: Date.now() - start,
+            status: "error",
+            args: summarizeArgs(handlerArgs[0]),
+            err:
+              error instanceof Error
+                ? {
+                    message: error.message,
+                    stack: error.stack,
+                    name: error.name,
+                  }
+                : { message: String(error) },
+          },
+          "tool_call_failed",
+        );
+        throw error;
+      }
+    };
+
+    const patchedArgs = [...args.slice(0, lastIdx), instrumentedHandler];
+    return originalTool(...patchedArgs);
+  };
 
 server.tool(
   "get_activities",
@@ -289,7 +535,8 @@ async function startStdio(): Promise<void> {
   const server = createMyFitnessMcpServer();
   const transport = new StdioServerTransport();
   await server.connect(transport);
-  console.error("[mcp] stdio transport ready");
+  attachToolCallInstrumentation(transport);
+  logger.info({ transport: "stdio" }, "transport_ready");
 }
 
 /**
@@ -371,21 +618,24 @@ async function startHttp(): Promise<void> {
                   transport: transport!,
                   lastActivityAt: Date.now(),
                 });
-                console.log(
-                  `[mcp] session initialized: ${sid} (total=${transports.size})`
+                logger.info(
+                  { sid, total: transports.size },
+                  "session_initialized",
                 );
               },
             });
             transport.onclose = () => {
               if (assignedSid) {
                 transports.delete(assignedSid);
-                console.log(
-                  `[mcp] session closed: ${assignedSid} (total=${transports.size})`
+                logger.info(
+                  { sid: assignedSid, total: transports.size },
+                  "session_closed",
                 );
               }
             };
             const s = createMyFitnessMcpServer();
             await s.connect(transport);
+            attachToolCallInstrumentation(transport);
           } else if (resolution === "expired") {
             // Session id 는 있지만 서버에 없음 (sweeper 정리 or 프로세스 재시작).
             // MCP 표준: 404 로 클라이언트가 stale 세션 폐기 후 재초기화하도록 시그널.
@@ -418,12 +668,26 @@ async function startHttp(): Promise<void> {
           }
 
           await transport!.handleRequest(req, res, body);
-          console.log(
-            `[mcp] ${req.method} ${method} session=${sessionIdHeader ?? "(new)"} in ${Date.now() - t0}ms`
+          logger.info(
+            {
+              httpMethod: req.method,
+              rpcMethod: method,
+              sid: sessionIdHeader ?? "(new)",
+              latency_ms: Date.now() - t0,
+            },
+            "http_request",
           );
           return;
         } catch (error) {
-          console.error("[mcp] request handling error:", error);
+          logger.error(
+            {
+              err:
+                error instanceof Error
+                  ? { message: error.message, stack: error.stack }
+                  : String(error),
+            },
+            "http_request_error",
+          );
           if (!res.headersSent) {
             res.writeHead(500, { "Content-Type": "application/json" });
             res.end(JSON.stringify({ error: "internal_error" }));
@@ -439,15 +703,18 @@ async function startHttp(): Promise<void> {
 
   httpServer.on("error", (err) => {
     // EADDRINUSE 등 listen 실패 시 즉시 종료 → PM2 backoff 로 재시도 (이전 프로세스 정리 대기).
-    console.error("[mcp] http server error:", err);
+    logger.fatal(
+      { err: { message: err.message, stack: err.stack } },
+      "http_server_error",
+    );
     process.exit(1);
   });
 
   httpServer.listen(HTTP_PORT, HTTP_HOST, () => {
-    console.log(
-      `[mcp] http transport listening at http://${HTTP_HOST}:${HTTP_PORT}/mcp`
+    logger.info(
+      { transport: "http", host: HTTP_HOST, port: HTTP_PORT },
+      "transport_ready",
     );
-    console.log(`[mcp] health: http://${HTTP_HOST}:${HTTP_PORT}/health`);
   });
 
   // Idle session sweeper — Claude CLI 가 timeout/SIGKILL 로 죽으면 DELETE 도
@@ -459,8 +726,9 @@ async function startHttp(): Promise<void> {
       SESSION_IDLE_TTL_MS
     );
     if (stale.length === 0) return;
-    console.log(
-      `[mcp] sweeping ${stale.length} idle session(s) (ttl=${SESSION_IDLE_TTL_MS / 60_000}min)`
+    logger.info(
+      { count: stale.length, ttl_min: SESSION_IDLE_TTL_MS / 60_000 },
+      "session_sweep",
     );
     for (const sid of stale) {
       const entry = transports.get(sid);
@@ -482,18 +750,27 @@ async function startHttp(): Promise<void> {
     if (shuttingDown) return;
     shuttingDown = true;
     clearInterval(sweeper);
-    console.log(
-      `[mcp] received ${signal}, closing ${transports.size} active session(s)`
+    logger.info(
+      { signal, activeSessions: transports.size },
+      "shutdown_started",
     );
     const closeTasks = Array.from(transports.values()).map((entry) =>
       Promise.resolve(entry.transport.close?.()).catch((err) => {
-        console.error("[mcp] transport close error:", err);
-      })
+        logger.error(
+          {
+            err:
+              err instanceof Error
+                ? { message: err.message, stack: err.stack }
+                : String(err),
+          },
+          "transport_close_error",
+        );
+      }),
     );
     await Promise.allSettled(closeTasks);
     transports.clear();
     httpServer.close(() => {
-      console.log("[mcp] http server closed");
+      logger.info({}, "http_server_closed");
       process.exit(0);
     });
     // Node 18.2+: 활성 소켓도 강제 종료 → SSE 스트림 lingering 방지
@@ -501,11 +778,13 @@ async function startHttp(): Promise<void> {
       typeof (httpServer as unknown as { closeAllConnections?: () => void })
         .closeAllConnections === "function"
     ) {
-      (httpServer as unknown as { closeAllConnections: () => void }).closeAllConnections();
+      (
+        httpServer as unknown as { closeAllConnections: () => void }
+      ).closeAllConnections();
     }
     // 15s 이내 강제 종료 (safety net) — unref 하지 않아 이벤트 루프 blocker 로 유지.
     setTimeout(() => {
-      console.warn("[mcp] force exit after 15s");
+      logger.warn({}, "force_exit_after_15s");
       process.exit(1);
     }, 15000);
   };
@@ -514,6 +793,8 @@ async function startHttp(): Promise<void> {
 }
 
 async function main() {
+  // Crash handlers 는 main 진입 즉시 설치 → 로거 초기화 실패 등 초기 오류도 캡처.
+  installCrashHandlers();
   if (TRANSPORT_MODE === "http") {
     await startHttp();
   } else {
@@ -522,6 +803,14 @@ async function main() {
 }
 
 main().catch((error) => {
-  console.error("MCP server error:", error);
+  logger.fatal(
+    {
+      err:
+        error instanceof Error
+          ? { message: error.message, stack: error.stack }
+          : String(error),
+    },
+    "startup_error",
+  );
   process.exit(1);
 });

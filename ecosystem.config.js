@@ -63,6 +63,8 @@ module.exports = {
       env: {
         NODE_ENV: 'production',
         MCP_TRANSPORT: 'http',
+        // #194: 파일 tee 활성화 — logs/mcp-YYYY-MM-DD.log 로 pm2 stdout 외 사후 분석 채널.
+        MCP_LOG_TEE_FILE: '1',
         // #180: shell override 존재 시에만 세팅. 빈 값 세팅 시 subprocess dotenv/config
         // 가 .env 의 MCP_PORT 를 덮어쓰지 못함 (Codex bot P2, "mask .env overrides").
         // shell 없고 .env 없을 때는 server.ts 내부 default (4301) 로 fallback.
