@@ -147,6 +147,48 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
     }
   }, [filter, nextCursor, loadingMore]);
 
+  // M#191: SSE 연결 관리. mount 시 진행중 job 감지 → 재개, 언마운트 시 close.
+  const eventSourceRef = useRef<EventSource | null>(null);
+
+  const attachSSE = useCallback(
+    (jobId: string, category: string) => {
+      eventSourceRef.current?.close();
+      const es = new EventSource(`/api/reports/stream?jobId=${jobId}`);
+      eventSourceRef.current = es;
+      const shortType = category.replace("_report", "");
+      setGenerating(shortType);
+
+      es.addEventListener("status", () => {
+        // running / pending 상태 유지 — 별도 UI 반영 없음 (generating 유지 만으로 충분)
+      });
+      es.addEventListener("completed", () => {
+        es.close();
+        if (eventSourceRef.current === es) eventSourceRef.current = null;
+        setGenerating(null);
+        void fetchFirstPage(filterRef.current);
+      });
+      es.addEventListener("failed", (event) => {
+        const raw = (event as MessageEvent).data;
+        let msg = "리포트 생성 실패";
+        try {
+          const parsed = JSON.parse(raw) as { errorMessage?: string };
+          if (parsed.errorMessage) msg = parsed.errorMessage;
+        } catch {
+          /* ignore */
+        }
+        setErrorMsg(msg);
+        es.close();
+        if (eventSourceRef.current === es) eventSourceRef.current = null;
+        setGenerating(null);
+      });
+      // 네트워크 끊김 시 EventSource 는 자동 재연결 시도. 명시 close 후엔 X.
+      es.onerror = () => {
+        // 조용히. 재연결 성공 시 status 이벤트 재수신.
+      };
+    },
+    [fetchFirstPage],
+  );
+
   async function generate(type: string, force = false, reportDate?: string) {
     setGenerating(type);
     setErrorMsg(null);
@@ -157,24 +199,69 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
         body: JSON.stringify({ type, force, reportDate }),
       });
       const data = (await res.json().catch(() => ({}))) as {
-        result?: string;
+        jobId?: string;
+        status?: string;
+        category?: string;
         error?: string;
       };
-      if (!res.ok) {
+      if (!res.ok || !data.jobId || !data.category) {
         setErrorMsg(data.error ?? `리포트 생성 실패 (HTTP ${res.status})`);
+        setGenerating(null);
         return;
       }
-      if (data.result) {
-        // 사용자가 generate 중 필터를 바꿨을 수 있어 ref로 최신 값 사용 (클로저 stale 방지)
+      // 이미 completed 인 경우 (job 재사용) — 즉시 refetch 후 종료
+      if (data.status === "completed") {
+        setGenerating(null);
         await fetchFirstPage(filterRef.current);
+        return;
       }
+      attachSSE(data.jobId, data.category);
     } catch (err) {
       const msg = err instanceof Error ? err.message : String(err);
       setErrorMsg(`네트워크 오류: ${msg}`);
-    } finally {
       setGenerating(null);
     }
   }
+
+  // 마운트 시 오늘/어제 날짜의 진행중 job 감지 → SSE 재개.
+  // 이탈 시 EventSource close (백엔드 job 은 무관하게 계속).
+  // canRegenerate 가 today/yesterday 둘 다 허용하므로 mount scan 도 둘 다 커버.
+  useEffect(() => {
+    let cancelled = false;
+    const candidates: {
+      category: "morning_report" | "evening_report" | "weekly_report";
+      reportDate: string;
+    }[] = [
+      { category: "morning_report", reportDate: today },
+      { category: "evening_report", reportDate: today },
+      { category: "weekly_report", reportDate: today },
+      { category: "morning_report", reportDate: yesterday },
+      { category: "evening_report", reportDate: yesterday },
+    ];
+    (async () => {
+      for (const c of candidates) {
+        try {
+          const res = await fetch(
+            `/api/reports/current-job?category=${c.category}&reportDate=${c.reportDate}`,
+          );
+          if (!res.ok) continue;
+          const data = (await res.json()) as { job: { id: string } | null };
+          if (cancelled) return;
+          if (data.job) {
+            attachSSE(data.job.id, c.category);
+            return; // 첫 매칭만 재개 — 동시에 여러 SSE 불필요
+          }
+        } catch {
+          /* ignore */
+        }
+      }
+    })();
+    return () => {
+      cancelled = true;
+      eventSourceRef.current?.close();
+      eventSourceRef.current = null;
+    };
+  }, [attachSSE, today, yesterday]);
 
   return (
     <div>
