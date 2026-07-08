@@ -123,11 +123,16 @@ export async function runReportJob(
     });
     emit(jobId, { type: "status", status: "running" });
 
-    // Heartbeat: 빈 update 로 @updatedAt 자동 갱신. 5분 sweep cutoff vs 30s 간격 →
-    // 10배 여유. 30s 안에 프로세스가 죽지 않는 한 orphan 오판 없음.
+    // Heartbeat: updatedAt 을 명시적으로 갱신. Prisma 는 empty update ({data: {}}) 시
+    // @updatedAt 을 갱신 안 하므로 (docs: prisma-schema-reference#updatedat), 반드시
+    // updatedAt: new Date() 를 넣어야 sweeper 가 healthy 로 인식.
+    // 5분 sweep cutoff vs 30s 간격 → 10배 여유. 30s 안에 프로세스가 죽지 않는 한 orphan 오판 없음.
     heartbeatTimer = setInterval(() => {
       prisma.reportJob
-        .update({ where: { id: jobId }, data: {} })
+        .update({
+          where: { id: jobId },
+          data: { updatedAt: new Date() },
+        })
         .catch((err) => {
           console.error(`[report-job] ${jobId} heartbeat failed:`, err);
         });
