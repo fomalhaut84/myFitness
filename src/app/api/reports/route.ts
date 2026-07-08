@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { generateMorningReport, generateEveningReport } from "@/lib/daily-report";
-import { generateWeeklyReport } from "@/lib/weekly-report";
+import { startReportJob } from "@/lib/daily-report";
+import { startWeeklyReportJob } from "@/lib/weekly-report";
 import { todayKSTString, ymdKST, yesterdayKST } from "@/lib/garmin/utils";
 
 const DEFAULT_LIMIT = 14;
@@ -147,14 +147,13 @@ export async function POST(request: Request) {
       reportDate = body.reportDate;
     }
 
-    let result: string;
-
-    if (type === "morning") {
-      result = await generateMorningReport(force, reportDate);
-    } else if (type === "evening") {
-      result = await generateEveningReport(force, reportDate);
+    // M#191: 동기 실행 → job 큐 fire-and-forget. 즉시 jobId 반환.
+    // 프론트는 SSE (/api/reports/stream?jobId=...) 로 상태 구독.
+    let job;
+    if (type === "morning" || type === "evening") {
+      job = await startReportJob({ type, force, reportDate });
     } else if (type === "weekly") {
-      result = await generateWeeklyReport();
+      job = await startWeeklyReportJob({ force, reportDate });
     } else {
       return NextResponse.json(
         { error: "type: morning, evening, weekly" },
@@ -162,7 +161,12 @@ export async function POST(request: Request) {
       );
     }
 
-    return NextResponse.json({ result, type });
+    return NextResponse.json({
+      jobId: job.id,
+      status: job.status,
+      category: job.category,
+      reportDate: job.reportDate,
+    });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
