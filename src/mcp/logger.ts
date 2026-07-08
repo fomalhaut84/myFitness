@@ -194,12 +194,38 @@ export function newTraceId(): string {
   return randomUUID().slice(0, 8);
 }
 
-/** Sensitive 필드 제외한 args summary (긴 문자열 truncate) */
+const SENSITIVE_KEY_REGEX = /password|token|secret|apikey|jwt/i;
+
+/**
+ * Deep-redact sensitive 필드 (`password/token/secret/apiKey/jwt`). Pino redact 는
+ * top-level path 만 처리하므로 summarizeArgs 안에서 preview 문자열이 만들어지기 전
+ * 원본을 마스킹해야 secret 노출 방지.
+ */
+function deepRedact(value: unknown): unknown {
+  if (value === null || typeof value !== "object") return value;
+  if (Array.isArray(value)) return value.map(deepRedact);
+  const out: Record<string, unknown> = {};
+  for (const [k, v] of Object.entries(value)) {
+    if (SENSITIVE_KEY_REGEX.test(k)) {
+      out[k] = "[REDACTED]";
+    } else {
+      out[k] = deepRedact(v);
+    }
+  }
+  return out;
+}
+
+/**
+ * Sensitive 필드 마스킹 + 긴 문자열 truncate.
+ * Pino redact 는 preview 문자열 내부의 nested key 를 검사 못 함 → deepRedact 로
+ * 원본을 먼저 마스킹 후 stringify.
+ */
 export function summarizeArgs(args: unknown, maxLen = 200): unknown {
   if (args === null || args === undefined) return args;
+  const safe = deepRedact(args);
   try {
-    const s = JSON.stringify(args);
-    if (s.length <= maxLen) return args;
+    const s = JSON.stringify(safe);
+    if (s.length <= maxLen) return safe;
     return { _truncated: true, preview: s.slice(0, maxLen) };
   } catch {
     return { _unserializable: true, type: typeof args };
