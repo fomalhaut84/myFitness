@@ -65,9 +65,13 @@ export async function GET(request: NextRequest) {
       };
 
       // P1 fix: subscribe 먼저 → 그 다음 DB snapshot. Node EventEmitter 는 동기적 emit
-      // 이므로 subscribe 등록 후 발생한 이벤트는 handler 에 도달. subscribe 등록 시점부터
-      // snapshot 까지 사이에 runReportJob 이 emit 한 이벤트도 정상 수신.
-      let terminated = false; // 이벤트 수신 후 이후 snapshot 중복 send 방지
+      // 이므로 subscribe 등록 후 발생한 이벤트는 handler 에 도달.
+      //
+      // P2 fix (cross-process): EventEmitter 는 process-local. web (myfitness) 과
+      // bot (myfitness-bot) 은 별도 pm2 앱 → cron 이 bot 에서 emit 해도 web SSE 는 못 받음.
+      // DB poll 병행 → same-process 는 EventEmitter (즉시), cross-process 는 poll (2s).
+      let terminated = false;
+      let lastPolledStatus: string | null = null;
       const handleEvent = (event: JobEvent) => {
         if (closed) return;
         if (event.type === "status") {
@@ -75,35 +79,66 @@ export async function GET(request: NextRequest) {
         } else if (event.type === "completed") {
           send("completed", { adviceId: event.adviceId });
           terminated = true;
-          closeStream(unsubscribe);
+          stopEverything();
         } else if (event.type === "failed") {
           send("failed", { errorMessage: event.errorMessage });
           terminated = true;
-          closeStream(unsubscribe);
+          stopEverything();
         }
       };
       const unsubscribe = subscribeToJob(jobId, handleEvent);
 
+      // DB poll (cross-process fallback). Same-process 케이스에도 즉시성 영향 없음.
+      // unref 로 shutdown blocker 방지.
+      const pollTimer: NodeJS.Timeout = setInterval(async () => {
+        if (closed || terminated) return;
+        try {
+          const j = await getReportJob(jobId);
+          if (!j) return;
+          if (j.status !== lastPolledStatus) {
+            send("status", { status: j.status });
+            lastPolledStatus = j.status;
+          }
+          if (j.status === "completed") {
+            send("completed", { adviceId: j.adviceId });
+            terminated = true;
+            stopEverything();
+          } else if (j.status === "failed") {
+            send("failed", { errorMessage: j.errorMessage });
+            terminated = true;
+            stopEverything();
+          }
+        } catch (err) {
+          console.error(`[reports/stream] poll error jobId=${jobId}:`, err);
+        }
+      }, 2000);
+      pollTimer.unref?.();
+
+      const stopEverything = () => {
+        clearInterval(pollTimer);
+        closeStream(unsubscribe);
+      };
+
       // Client disconnect 감지 → subscription cleanup (백엔드 job 은 계속 실행).
       request.signal.addEventListener("abort", () => {
-        closeStream(unsubscribe);
+        stopEverything();
       });
 
-      // Subscribe 등록 후 snapshot 조회 → 초기 상태 send.
+      // Subscribe/poll 등록 후 snapshot 조회 → 초기 상태 send.
       const snapshot = await getReportJob(jobId);
-      if (closed || terminated) return; // 이미 이벤트로 종료된 케이스
+      if (closed || terminated) return;
       if (!snapshot) {
-        // 극단 케이스: pre-check 통과 후 삭제됨. 안전하게 close.
-        closeStream(unsubscribe);
+        stopEverything();
         return;
       }
+      lastPolledStatus = snapshot.status;
       send("status", { status: snapshot.status });
       if (snapshot.status === "completed") {
         send("completed", { adviceId: snapshot.adviceId });
-        closeStream(unsubscribe);
+        stopEverything();
       } else if (snapshot.status === "failed") {
         send("failed", { errorMessage: snapshot.errorMessage });
-        closeStream(unsubscribe);
+        stopEverything();
       }
     },
   });

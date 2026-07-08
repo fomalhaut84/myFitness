@@ -42,8 +42,9 @@ export function subscribeToJob(
 /**
  * 동일 category+reportDate 로 pending/running job 있으면 그것 반환, 없으면 신규 pending 생성.
  *
- * 완벽한 상호 배제는 아님 (조회-생성 사이 race 가능). PM2 fork 단일 프로세스 + web 요청
- * 자체가 동기 진입이라 실사용상 충돌은 극히 낮음. cron 은 정해진 시각에 1회만 실행.
+ * DB level partial unique index (`ReportJob_active_unique`) 로 race 차단:
+ * pending/running 상태에서 동일 (category, reportDate) 는 1건만 허용.
+ * 두 프로세스 (web + bot) 가 동시 create 시도해도 두 번째는 P2002 위반 → catch 후 재조회.
  */
 export async function createOrGetReportJob(params: {
   category: string;
@@ -60,15 +61,41 @@ export async function createOrGetReportJob(params: {
   });
   if (existing) return { job: existing, created: false };
 
-  const job = await prisma.reportJob.create({
-    data: {
-      category: params.category,
-      reportDate: params.reportDate,
-      force: params.force,
-      status: "pending",
-    },
-  });
-  return { job, created: true };
+  try {
+    const job = await prisma.reportJob.create({
+      data: {
+        category: params.category,
+        reportDate: params.reportDate,
+        force: params.force,
+        status: "pending",
+      },
+    });
+    return { job, created: true };
+  } catch (err) {
+    // Race: 다른 프로세스가 그 사이 create → partial unique index 위반 (P2002).
+    // 재조회로 승자 반환.
+    const isUniqueViolation =
+      err instanceof Error &&
+      "code" in err &&
+      (err as { code?: string }).code === "P2002";
+    if (!isUniqueViolation) throw err;
+    const winner = await prisma.reportJob.findFirst({
+      where: {
+        category: params.category,
+        reportDate: params.reportDate,
+        status: { in: ["pending", "running"] },
+      },
+      orderBy: { startedAt: "desc" },
+    });
+    if (!winner) {
+      // 극단 케이스: unique violation 발생 후 상태 전이가 매우 빨라 조회 시점엔 completed.
+      // 재조회 후에도 없으면 completed 인 최근 job 을 반환하지 않고 에러.
+      throw new Error(
+        "createOrGetReportJob: unique violation but no active job found",
+      );
+    }
+    return { job: winner, created: false };
+  }
 }
 
 /**

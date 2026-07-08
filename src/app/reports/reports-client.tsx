@@ -225,6 +225,7 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
 
   // 마운트 시 오늘/어제 날짜의 진행중 job 감지 → SSE 재개.
   // 이탈 시 EventSource close (백엔드 job 은 무관하게 계속).
+  // canRegenerate 가 today/yesterday 둘 다 허용하므로 mount scan 도 둘 다 커버.
   useEffect(() => {
     let cancelled = false;
     const candidates: {
@@ -234,6 +235,8 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
       { category: "morning_report", reportDate: today },
       { category: "evening_report", reportDate: today },
       { category: "weekly_report", reportDate: today },
+      { category: "morning_report", reportDate: yesterday },
+      { category: "evening_report", reportDate: yesterday },
     ];
     (async () => {
       for (const c of candidates) {
@@ -258,7 +261,7 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
       eventSourceRef.current?.close();
       eventSourceRef.current = null;
     };
-  }, [attachSSE, today]);
+  }, [attachSSE, today, yesterday]);
 
   return (
     <div>
