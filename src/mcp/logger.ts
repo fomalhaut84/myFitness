@@ -194,7 +194,10 @@ export function newTraceId(): string {
   return randomUUID().slice(0, 8);
 }
 
-const SENSITIVE_KEY_REGEX = /password|token|secret|apikey|jwt/i;
+// pino redact 의 `paths` 옵션은 top-level 만 다루므로 args 내부 (nested) 도 커버해야 함.
+// database_url / DATABASE_URL 처럼 대소문자 상관없이 매칭 (i flag).
+const SENSITIVE_KEY_REGEX =
+  /password|token|secret|apikey|jwt|database_url|databaseurl/i;
 
 /**
  * Deep-redact sensitive 필드 (`password/token/secret/apiKey/jwt`). Pino redact 는
