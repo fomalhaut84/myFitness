@@ -2,6 +2,7 @@ import "dotenv/config";
 import { getBot } from "./index";
 import { startBotScheduler } from "./notifications/scheduler";
 import { sanitizeError } from "./utils/error";
+import { sweepOrphanedJobs } from "@/lib/report-job";
 
 async function main() {
   console.log("[bot] myFitness 텔레그램 봇 시작...");
@@ -18,6 +19,12 @@ async function main() {
 
   // 웹훅 해제 (long polling 모드)
   await bot.api.deleteWebhook();
+
+  // M#191: 봇 프로세스 부팅 시 orphan 된 ReportJob 정리. pm2 restart 도중 running
+  // 이던 job 이 있으면 failed 로 마킹 → UI/스케줄러 재실행 가능.
+  await sweepOrphanedJobs(10 * 60 * 1000).catch((err) => {
+    console.error("[report-job] sweep failed:", err);
+  });
 
   // 알림 스케줄러 시작
   startBotScheduler(bot);

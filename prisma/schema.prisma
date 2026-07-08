@@ -205,6 +205,23 @@ model AIAdvice {
   @@index([reportDate])
 }
 
+// M#191: 리포트 생성 비동기 job.
+// 페이지 이탈 후 재방문 시 진행 상태 복원, cron 진행 이력, 중복 실행 방지 목적.
+model ReportJob {
+  id           String    @id @default(cuid())
+  category     String    // morning_report | evening_report | weekly_report
+  reportDate   String    // YYYY-MM-DD (KST)
+  status       String    @default("pending") // pending | running | completed | failed
+  force        Boolean   @default(false)
+  startedAt    DateTime  @default(now())
+  completedAt  DateTime?
+  errorMessage String?
+  adviceId     String?   // 완료 시 AIAdvice.id 참조 (nullable, 트랜잭션 밖 update)
+
+  @@index([category, reportDate, status])
+  @@index([status, startedAt])
+}
+
 model FoodLog {
   id            String   @id @default(cuid())
   date          DateTime
