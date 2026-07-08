@@ -128,6 +128,26 @@ export async function getReportJob(jobId: string): Promise<ReportJob | null> {
 }
 
 /**
+ * cron 이 web 과 동시 실행 시나리오 방어. 이미 running job 은 완료 대기.
+ * TimeoutMs 초과 시 마지막 스냅샷 반환 (호출자가 null result 로 처리).
+ * askAdvisor TIMEOUT_MS (180s) + preSync headroom → 기본 240s.
+ */
+export async function waitForJobCompletion(
+  jobId: string,
+  timeoutMs = 240_000,
+  pollIntervalMs = 2000,
+): Promise<ReportJob | null> {
+  const started = Date.now();
+  while (Date.now() - started < timeoutMs) {
+    const job = await prisma.reportJob.findUnique({ where: { id: jobId } });
+    if (!job) return null;
+    if (job.status === "completed" || job.status === "failed") return job;
+    await new Promise((resolve) => setTimeout(resolve, pollIntervalMs));
+  }
+  return prisma.reportJob.findUnique({ where: { id: jobId } });
+}
+
+/**
  * category+reportDate 로 최신 pending/running job 조회. 프론트 mount 시 재개용.
  */
 export async function getActiveReportJob(params: {
@@ -145,10 +165,21 @@ export async function getActiveReportJob(params: {
 }
 
 /**
- * pm2 restart 등으로 orphan 된 running/pending job 을 failed 로 마킹.
- * 앱 부팅 시 1회 호출. runReportJob 은 프로세스가 죽으면 다시 실행 불가.
+ * askAdvisor 최대 실행 시간 (180s) + preSync 여유. 이 시간 초과된 pending/running
+ * job 은 orphan 으로 간주 후 failed 마킹.
+ * askAdvisor TIMEOUT_MS = 180s 이라 5분 (300s) cutoff 은 정상 완료 job 을 잘못
+ * 죽이지 않으면서 pm2 restart 로 orphan 된 job 은 빠르게 감지.
  */
-export async function sweepOrphanedJobs(timeoutMs: number): Promise<number> {
+export const ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
+const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
+
+/**
+ * pm2 restart 등으로 orphan 된 running/pending job 을 failed 로 마킹.
+ * 부팅 1회 + periodic (5분 주기) 두 방식 병행.
+ */
+export async function sweepOrphanedJobs(
+  timeoutMs: number = ORPHAN_TIMEOUT_MS,
+): Promise<number> {
   const cutoff = new Date(Date.now() - timeoutMs);
   const result = await prisma.reportJob.updateMany({
     where: {
@@ -167,4 +198,18 @@ export async function sweepOrphanedJobs(timeoutMs: number): Promise<number> {
     );
   }
   return result.count;
+}
+
+/**
+ * Periodic sweep. 앱 부팅 시 1회 호출. 반환된 stop 함수는 SIGTERM 등에서 정리용.
+ * setInterval 은 unref 로 이벤트 루프 blocker 방지.
+ */
+export function startOrphanSweeper(): () => void {
+  const timer = setInterval(() => {
+    sweepOrphanedJobs().catch((err) => {
+      console.error("[report-job] periodic sweep failed:", err);
+    });
+  }, SWEEP_INTERVAL_MS);
+  timer.unref?.();
+  return () => clearInterval(timer);
 }

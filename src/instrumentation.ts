@@ -11,10 +11,13 @@ export async function register() {
     startCronJobs();
 
     // M#191: pm2 restart 등으로 orphan 된 pending/running job 을 failed 로 마킹.
-    // 앱 부팅 시 1회. 봇 프로세스도 별도로 호출 (src/bot/standalone.ts).
-    const { sweepOrphanedJobs } = await import("@/lib/report-job");
-    sweepOrphanedJobs(10 * 60 * 1000).catch((err) => {
+    // 부팅 1회 + periodic (5분 주기) 병행. 봇 프로세스도 별도로 호출 (src/bot/standalone.ts).
+    const { sweepOrphanedJobs, startOrphanSweeper } = await import(
+      "@/lib/report-job"
+    );
+    sweepOrphanedJobs().catch((err) => {
       console.error("[report-job] sweep failed:", err);
     });
+    startOrphanSweeper();
   }
 }

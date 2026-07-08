@@ -6,6 +6,7 @@ import {
   createOrGetReportJob,
   runReportJob,
   getReportJob,
+  waitForJobCompletion,
 } from "@/lib/report-job";
 import type { ReportJob } from "@/generated/prisma/client";
 
@@ -142,12 +143,13 @@ async function runReportViaJob(params: {
     } else {
       await runner;
     }
-  } else if (!background && job.status === "running") {
-    // cron 이 web 과 동시 실행되는 극단 케이스 — 완료 대기 대신 즉시 진행 상태 반환.
-    // 실사용상 발생 확률 극히 낮음 (cron 스케줄 vs 사용자 클릭 동시 겹침).
+  } else if (!background && (job.status === "pending" || job.status === "running")) {
+    // P1: cron 이 web 과 겹친 경우 — 완료까지 poll 대기 후 결과 반환. 대기 없이
+    // null 반환하면 텔레그램 알림 누락 (하루치 손실).
     console.log(
-      `[report] ${category} ${reportDate} 이미 running (다른 프로세스) — 결과 대기 없이 진행`,
+      `[report] ${category} ${reportDate} 이미 진행중 (${job.status}) — 완료 대기`,
     );
+    await waitForJobCompletion(job.id);
   }
 
   // 완료된 리포트 텍스트 조회 (background 라도 이미 completed 였다면 반환).

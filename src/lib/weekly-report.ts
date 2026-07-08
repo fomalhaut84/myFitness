@@ -5,6 +5,7 @@ import {
   createOrGetReportJob,
   runReportJob,
   getReportJob,
+  waitForJobCompletion,
 } from "@/lib/report-job";
 import type { ReportJob } from "@/generated/prisma/client";
 
@@ -73,6 +74,12 @@ async function runWeeklyViaJob(params: {
     });
     if (background) void runner;
     else await runner;
+  } else if (!background && (job.status === "pending" || job.status === "running")) {
+    // P1: cron 이 web 과 겹친 경우 완료 대기.
+    console.log(
+      `[weekly-report] ${reportDate} 이미 진행중 (${job.status}) — 완료 대기`,
+    );
+    await waitForJobCompletion(job.id);
   }
   const finalJob = background ? job : (await getReportJob(job.id)) ?? job;
   let result: string | null = null;
