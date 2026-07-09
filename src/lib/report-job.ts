@@ -183,11 +183,13 @@ export async function getReportJob(jobId: string): Promise<ReportJob | null> {
 /**
  * cron 이 web 과 동시 실행 시나리오 방어. 이미 running job 은 완료 대기.
  * TimeoutMs 초과 시 마지막 스냅샷 반환 (호출자가 null result 로 처리).
- * askAdvisor TIMEOUT_MS (180s) + preSync headroom → 기본 240s.
+ *
+ * 예산: askAdvisor TIMEOUT_MS 180s × (1 + MAX_RETRIES=1) = 360s + preSync ~60s +
+ * 여유 → 기본 480s. #197 재시도 도입 이후 240s 로는 부족 (Codex bot P2).
  */
 export async function waitForJobCompletion(
   jobId: string,
-  timeoutMs = 240_000,
+  timeoutMs = 480_000,
   pollIntervalMs = 2000,
 ): Promise<ReportJob | null> {
   const started = Date.now();
