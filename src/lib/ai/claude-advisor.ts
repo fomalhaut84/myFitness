@@ -63,6 +63,7 @@ export function stripToolCallArtifacts(text: string): string {
   if (!text) return text;
   const marker = /"type"\s*:\s*"tool_use"/g;
   let result = text;
+  let removed = false;
   // 최대 반복 (안전장치): 예상보다 많은 tool_use 가 있어도 무한 루프 방지.
   for (let i = 0; i < 100; i++) {
     marker.lastIndex = 0;
@@ -87,14 +88,17 @@ export function stripToolCallArtifacts(text: string): string {
     }
     if (end < 0) break;
     result = result.slice(0, start) + result.slice(end + 1);
+    removed = true;
   }
-  // Object 제거 후 남는 배열 잔존물 정리 (`[,,]`, `[ , ]`, trailing comma 등).
-  result = result.replace(/\[\s*(?:,\s*)*\]/g, "");
-  result = result.replace(/,\s*,/g, ",");
-  result = result.replace(/\[\s*,/g, "[");
-  result = result.replace(/,\s*\]/g, "]");
-  // 3연속 이상 개행은 2 로 정리 후 좌우 공백 제거.
-  result = result.replace(/\n{3,}/g, "\n\n").trim();
+  // Object 제거가 실제로 있었을 때만 배열/쉼표 후처리. 정상 응답에 포함된
+  // JSON/JS 예제의 `[]` 를 실수로 파괴하지 않도록 (Codex bot P3).
+  if (removed) {
+    result = result.replace(/\[\s*(?:,\s*)*\]/g, "");
+    result = result.replace(/,\s*,/g, ",");
+    result = result.replace(/\[\s*,/g, "[");
+    result = result.replace(/,\s*\]/g, "]");
+    result = result.replace(/\n{3,}/g, "\n\n").trim();
+  }
   return result;
 }
 
