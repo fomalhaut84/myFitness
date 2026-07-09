@@ -83,9 +83,10 @@ async function generateReport(
   // cron 채널은 단발 강제 — 매번 fresh 세션 (이전 호출 컨텍스트 오염 차단)
   const channel = `cron-${category.replace("_report", "")}`;
   resetSession(channel);
-  // #197: minTurns=3 — 리포트는 반드시 MCP 도구 여러 개 조회해야 정상.
-  // 미달 시 자동 재시도 (askAdvisor 내부 처리).
-  const { result } = await askAdvisor(prompt, { channel, minTurns: 3 });
+  // #197: minTurns=2 — num_turns 는 agentic round trip count 라 batched tool call 시
+  // 정상 리포트도 num_turns=2 로 완료 가능. num_turns=1 만 확실한 hallucination
+  // (tool 호출 없이 답변). 미달 시 자동 재시도 (askAdvisor 내부 처리).
+  const { result } = await askAdvisor(prompt, { channel, minTurns: 2 });
   console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
   // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔

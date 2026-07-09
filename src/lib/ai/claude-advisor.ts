@@ -41,32 +41,61 @@ export interface AskOptions {
   /** 세션 격리 채널. web/telegram/cron-morning/cron-evening/cron-weekly/default 등. */
   channel?: string;
   /**
-   * #197: turns < minTurns 이면 tool 호출 없이 답변한 것으로 간주.
-   * 리포트 채널은 반드시 MCP 조회를 여러 개 수행해야 하므로 3 이상 요구.
+   * #197: num_turns < minTurns 이면 tool 호출 없이 답변한 것으로 간주.
+   *
+   * `num_turns` 는 Claude Code SDK 에서 "agentic turn round trip" — 여러 MCP
+   * 도구를 batched 로 병렬 호출하면 num_turns=2 로 정상 완료 가능. 즉 tool 호출
+   * count 가 아님. minTurns=2 는 "최소 tool 호출 1회는 있어야 한다" 의 안전장치
+   * (num_turns=1 은 tool 없이 답변 = hallucination 확정).
    * 미달 시 1회 자동 재시도 후에도 미달이면 throw (조용한 실패 방지).
    */
   minTurns?: number;
 }
 
 /**
- * #197: LLM 이 응답 본문에 흘려보낸 tool_use JSON 배열/사고 과정 아티팩트 제거.
+ * #197: LLM 이 응답 본문에 흘려보낸 tool_use JSON 배열/객체 아티팩트 제거.
  * 실제 tool_use 이벤트가 아니라 텍스트로 그대로 stringify 된 케이스 방어.
+ *
+ * 정규식 lazy quantifier 는 nested `input:{...}` 의 inner `}` 에서 멈춰 outer `}`
+ * 를 남기는 버그가 있어 balanced brace scanning 으로 처리.
  */
 export function stripToolCallArtifacts(text: string): string {
   if (!text) return text;
-  // tool_use JSON 배열/객체 제거. 여러 배열이 있을 수 있고 배열 안 객체가 여러 개일 수 있어
-  // 관대한 정규식 사용.
-  let cleaned = text.replace(
-    /\[\s*\{[\s\S]*?"type"\s*:\s*"tool_use"[\s\S]*?\}\s*\]/g,
-    "",
-  );
-  cleaned = cleaned.replace(
-    /\{[\s\S]*?"type"\s*:\s*"tool_use"[\s\S]*?\}/g,
-    "",
-  );
+  const marker = /"type"\s*:\s*"tool_use"/g;
+  let result = text;
+  // 최대 반복 (안전장치): 예상보다 많은 tool_use 가 있어도 무한 루프 방지.
+  for (let i = 0; i < 100; i++) {
+    marker.lastIndex = 0;
+    const m = marker.exec(result);
+    if (!m) break;
+    // marker 앞쪽에서 가장 가까운 `{` 찾기 — 이게 outer tool_use 객체의 시작.
+    const start = result.lastIndexOf("{", m.index);
+    if (start < 0) break;
+    // Balanced brace scanning — nested `input:{...}` 도 정확히 매칭.
+    let depth = 0;
+    let end = -1;
+    for (let j = start; j < result.length; j++) {
+      const c = result[j];
+      if (c === "{") depth++;
+      else if (c === "}") {
+        depth--;
+        if (depth === 0) {
+          end = j;
+          break;
+        }
+      }
+    }
+    if (end < 0) break;
+    result = result.slice(0, start) + result.slice(end + 1);
+  }
+  // Object 제거 후 남는 배열 잔존물 정리 (`[,,]`, `[ , ]`, trailing comma 등).
+  result = result.replace(/\[\s*(?:,\s*)*\]/g, "");
+  result = result.replace(/,\s*,/g, ",");
+  result = result.replace(/\[\s*,/g, "[");
+  result = result.replace(/,\s*\]/g, "]");
   // 3연속 이상 개행은 2 로 정리 후 좌우 공백 제거.
-  cleaned = cleaned.replace(/\n{3,}/g, "\n\n").trim();
-  return cleaned;
+  result = result.replace(/\n{3,}/g, "\n\n").trim();
+  return result;
 }
 
 function ensureMcpConfig(): string {
