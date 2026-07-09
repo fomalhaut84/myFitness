@@ -28,8 +28,11 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 /** 실제 spawn + DB save. job 안에서 호출됨. */
 async function generateAndSaveWeekly(reportDate: string): Promise<void> {
   resetSession("cron-weekly");
+  // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
+  // num_turns=1 만 확실한 hallucination (tool 없이 답변).
   const { result } = await askAdvisor(WEEKLY_REPORT_PROMPT, {
     channel: "cron-weekly",
+    minTurns: 2,
   });
   if (!result || result.trim().length === 0) {
     throw new Error("weekly askAdvisor returned empty response");
