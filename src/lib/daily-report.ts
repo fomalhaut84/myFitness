@@ -83,7 +83,9 @@ async function generateReport(
   // cron 채널은 단발 강제 — 매번 fresh 세션 (이전 호출 컨텍스트 오염 차단)
   const channel = `cron-${category.replace("_report", "")}`;
   resetSession(channel);
-  const { result } = await askAdvisor(prompt, { channel });
+  // #197: minTurns=3 — 리포트는 반드시 MCP 도구 여러 개 조회해야 정상.
+  // 미달 시 자동 재시도 (askAdvisor 내부 처리).
+  const { result } = await askAdvisor(prompt, { channel, minTurns: 3 });
   console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
   // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔

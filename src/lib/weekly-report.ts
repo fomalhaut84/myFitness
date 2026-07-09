@@ -28,8 +28,10 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 /** 실제 spawn + DB save. job 안에서 호출됨. */
 async function generateAndSaveWeekly(reportDate: string): Promise<void> {
   resetSession("cron-weekly");
+  // #197: minTurns=3 — 주간 리포트도 반드시 MCP 도구 조회 필요.
   const { result } = await askAdvisor(WEEKLY_REPORT_PROMPT, {
     channel: "cron-weekly",
+    minTurns: 3,
   });
   if (!result || result.trim().length === 0) {
     throw new Error("weekly askAdvisor returned empty response");
