@@ -111,13 +111,16 @@ export async function startWeeklyReportJob(params: {
 
 /** cron / 완료 대기 흐름. */
 export async function generateWeeklyReport(): Promise<string> {
-  const { result } = await runWeeklyViaJob({
+  const { result, job } = await runWeeklyViaJob({
     force: false,
     reportDate: kstDateStr(),
     background: false,
   });
   if (!result) {
-    throw new Error("weekly_report 결과 조회 실패 (job 완료 후 record 부재)");
+    // #200: finalJob.errorMessage 를 담아 실제 원인 노출.
+    const parts = [`weekly_report 실패 (job status=${job.status})`];
+    if (job.errorMessage) parts.push(job.errorMessage);
+    throw new Error(parts.join(": "));
   }
   return result;
 }

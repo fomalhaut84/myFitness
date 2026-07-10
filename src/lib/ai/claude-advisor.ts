@@ -147,8 +147,22 @@ export function getSessionId(channel: string = DEFAULT_CHANNEL): string | null {
 }
 
 /**
- * #197: askAdvisor guard wrapper — minTurns 검증 + 1회 재시도 + 응답 필터.
- * 리포트 채널에서 turns=1 로 tool 호출 없이 답변한 경우 재시도 유도.
+ * #200: 재시도 시 프롬프트 앞에 삽입되는 강화 지시. 첫 시도가 tool 호출 없이 끝난
+ * 원인 (LLM 이 최신 데이터 불필요하다고 판단) 을 직접 반박해 tool 호출 유도.
+ */
+const RETRY_BOOST_PREFIX = `[중요 지시 — 이전 응답이 MCP 도구 호출 없이 완료되어 재시도합니다]
+
+반드시 아래 순서를 지키세요:
+1. 먼저 필요한 MCP 도구를 모두 호출해 최신 데이터를 수집합니다.
+2. 도구 결과의 실제 수치만 인용합니다. 추측/기억으로 답변하지 마세요.
+3. 데이터 수집이 끝난 후에만 최종 리포트를 작성합니다.
+
+---
+
+`;
+
+/**
+ * #197/#200: askAdvisor guard wrapper — minTurns 검증 + 재시도 (강화 프롬프트) + 응답 필터.
  */
 export async function askAdvisor(
   prompt: string,
@@ -160,13 +174,17 @@ export async function askAdvisor(
 
   let lastResponse: ClaudeResponse | null = null;
   for (let attempt = 0; attempt <= MAX_RETRIES; attempt++) {
-    const response = await askAdvisorOnce(prompt, options);
+    // #200: 재시도 시 프롬프트 강화 (첫 시도는 원본 그대로).
+    const effectivePrompt =
+      attempt === 0 ? prompt : `${RETRY_BOOST_PREFIX}${prompt}`;
+    const response = await askAdvisorOnce(effectivePrompt, options);
     lastResponse = response;
     if ((response.num_turns ?? 0) >= minTurns) {
       return { ...response, result: stripToolCallArtifacts(response.result) };
     }
+    const nextAttempt = attempt + 1;
     console.warn(
-      `[askAdvisor] channel=${channel} turns=${response.num_turns ?? 0} < minTurns=${minTurns} — attempt ${attempt + 1}/${MAX_RETRIES + 1}`,
+      `[askAdvisor] channel=${channel} turns=${response.num_turns ?? 0} < minTurns=${minTurns} — attempt ${attempt + 1}/${MAX_RETRIES + 1}${nextAttempt <= MAX_RETRIES ? " retryWithBoost=true" : ""}`,
     );
     // 재시도 시 fresh session — 이전 대화가 짧게 끝난 원인 제거.
     SessionStore.resetSession(channel);
