@@ -191,22 +191,27 @@ export async function startReportJob(params: {
 }
 
 /**
- * cron / 기존 동기 흐름 유지 — 완료 대기 후 리포트 텍스트 반환.
+ * #200: result=null 시 finalJob.status/errorMessage 를 담아 실제 원인 노출.
+ * 텔레그램/UI 에서 "record 부재" 대신 askAdvisor 실패 원인 확인 가능.
  */
+function buildReportError(category: string, job: ReportJob): Error {
+  const parts = [`${category} 실패 (job status=${job.status})`];
+  if (job.errorMessage) parts.push(job.errorMessage);
+  return new Error(parts.join(": "));
+}
+
 export async function generateMorningReport(
   force = false,
   reportDate?: string,
 ): Promise<string> {
-  const { result } = await runReportViaJob({
+  const { result, job } = await runReportViaJob({
     category: "morning_report",
     prompt: MORNING_PROMPT,
     force,
     reportDate: reportDate ?? kstDateStr(),
     background: false,
   });
-  if (!result) {
-    throw new Error("morning_report 결과 조회 실패 (job 완료 후 record 부재)");
-  }
+  if (!result) throw buildReportError("morning_report", job);
   return result;
 }
 
@@ -214,15 +219,13 @@ export async function generateEveningReport(
   force = false,
   reportDate?: string,
 ): Promise<string> {
-  const { result } = await runReportViaJob({
+  const { result, job } = await runReportViaJob({
     category: "evening_report",
     prompt: EVENING_PROMPT,
     force,
     reportDate: reportDate ?? kstDateStr(),
     background: false,
   });
-  if (!result) {
-    throw new Error("evening_report 결과 조회 실패 (job 완료 후 record 부재)");
-  }
+  if (!result) throw buildReportError("evening_report", job);
   return result;
 }
