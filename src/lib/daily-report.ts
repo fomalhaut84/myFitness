@@ -191,9 +191,6 @@ export async function startReportJob(params: {
 }
 
 /**
- * cron / 기존 동기 흐름 유지 — 완료 대기 후 리포트 텍스트 반환.
- */
-/**
  * #200: result=null 시 finalJob.status/errorMessage 를 담아 실제 원인 노출.
  * 텔레그램/UI 에서 "record 부재" 대신 askAdvisor 실패 원인 확인 가능.
  */
