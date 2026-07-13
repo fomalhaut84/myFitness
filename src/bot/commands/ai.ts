@@ -12,11 +12,26 @@ let isProcessing = false;
 type ReportType = "morning" | "evening" | "weekly";
 
 /**
- * #212: /ai text 에서 리포트 요청 감지. "리포트" 키워드 필수 (자연 질문과 구분).
- * "이번 주 러닝 분석해줘" 같은 자연 질문은 null 반환 → 기존 askAdvisor 흐름 유지.
+ * #212: text 에서 리포트 **생성 요청** 감지.
+ *
+ * handleAiQuestion 은 /ai 뿐 아니라 봇의 자연어 fallback (src/bot/index.ts) 에서도
+ * 호출됨. 따라서 "모닝 리포트 왜 이상해?" 같은 질문형까지 매칭되면 강제 재생성 →
+ * 덮어쓰기 (Codex bot P2 #4682956892). 강한 창조 의도 (만들어/생성/뽑아/재생성 등)
+ * 가 있을 때만 매칭.
+ *
+ * 자연 질문 (예: "이번 주 러닝 분석해줘") 은 null 반환 → 기존 askAdvisor 흐름.
  */
 export function parseReportRequest(text: string): ReportType | null {
+  // 두 조건 모두 필요: (1) 리포트/report 언급, (2) 명시적 생성 의도.
   if (!/리포트|report/i.test(text)) return null;
+  // 실제 창조 동사만 인정. 정중 표현 (부탁/please/요청) 은 진단 질문에도 흔함
+  // ("모닝 리포트 확인 부탁해") → 포함 시 강제 재생성 = 덮어쓰기 위험 (Codex bot P2).
+  // 사용자 UX: 리포트 생성 원할 시 "만들어" 등 명시적 동사 필요.
+  if (
+    !/만들|생성|뽑|create|generate|refresh|재생성|다시\s?만들/i.test(text)
+  ) {
+    return null;
+  }
   if (/모닝|아침|morning/i.test(text)) return "morning";
   if (/이브닝|저녁|evening/i.test(text)) return "evening";
   if (/주간|이번\s?주|weekly/i.test(text)) return "weekly";

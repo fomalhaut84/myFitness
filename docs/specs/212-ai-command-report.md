@@ -23,17 +23,21 @@
 ### 파싱 검증 (로컬)
 
 ```
-"모닝 리포트 만들어줘"       → morning
-"이브닝 리포트 생성"          → evening
-"주간 리포트 만들어줘"        → weekly
-"이번주 리포트 만들어줘"      → weekly
-"이번 주 리포트 만들어줘"     → weekly
-"저녁 리포트"                 → evening
-"아침 리포트 부탁"            → morning
-"morning report please"      → morning
-"이번 주 러닝 분석해줘"       → null (자연 질문)
-"오늘 컨디션 어때?"           → null
+"모닝 리포트 만들어줘"           → morning
+"이브닝 리포트 생성"              → evening
+"주간 리포트 만들어줘"            → weekly
+"주간 리포트 다시 만들어"         → weekly
+"이브닝 리포트 뽑아줘"            → evening
+"generate morning report"        → morning
+"이번 주 러닝 분석해줘"           → null (자연 질문)
+"모닝 리포트 확인 부탁해"         → null (정중어만 있고 창조 동사 없음)
+"morning report please explain"  → null (설명 요청)
+"아침 리포트 부탁"                → null (창조 동사 명시 필요)
 ```
+
+**주의**: 정중어 (`부탁`/`please`/`요청`) 는 진단/질문형에도 흔히 등장하므로
+create intent 로 간주하지 않음. 리포트 생성 원할 시 **`만들어`/`생성`/`뽑아`/
+`generate`** 등 명시적 동사 필요.
 
 ## 3. 흐름
 
