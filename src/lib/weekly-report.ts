@@ -23,8 +23,9 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 
 ## 반드시 아래 MCP 도구를 먼저 호출해 최신 데이터를 수집한 후 리포트 작성
 
-(주의: days 인자는 도구 내부에서 \`since = daysAgo(days)\` + inclusive \`gte\` 로 계산되어
-"오늘 포함 (days+1) 일" window 가 됩니다. 정확한 7일 window 를 원하면 \`days=6\` 을 지정.)
+(주의: 대부분 도구는 내부에서 \`since = daysAgo(days)\` + inclusive \`gte\` 로 계산되어
+"오늘 포함 (days+1) 일" window. 정확한 7일 window 는 \`days=6\`. 예외: get_blood_pressure
+는 \`days\` 를 display window length 로 그대로 사용 → 7일 원하면 \`days=7\`.)
 
 - mcp__myfitness__get_activities(days=6, type="running") — 최근 7일 러닝 활동 목록
 - mcp__myfitness__get_sleep(days=6) — 최근 7일 수면 추세 (점수, 시간)
@@ -35,7 +36,7 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 - mcp__myfitness__get_weight_loss_status() — 칼로리 밸런스 주간 요약
 - mcp__myfitness__get_pace_progression() — 페이스 발전 추세
 - mcp__myfitness__get_injury_risk_score() — 부상 위험도
-- mcp__myfitness__get_blood_pressure(days=6) — 최근 7일 혈압 (시스템 프롬프트 주간 BP 경고 규칙 필수)
+- mcp__myfitness__get_blood_pressure(days=7) — 최근 7일 혈압 (시스템 프롬프트 주간 BP 경고 규칙 필수)
 
 기억이나 추측이 아닌 위 도구 결과의 실제 수치만 인용.
 
