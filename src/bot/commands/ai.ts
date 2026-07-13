@@ -62,7 +62,9 @@ export function registerAiCommands(bot: Bot) {
       await ctx.reply("사용법: /ai [질문]\n예: /ai 이번 주 러닝 분석해줘");
       return;
     }
-    await handleAiQuestion(ctx, question);
+    // #212: /ai 명시적 진입에서만 리포트 요청 감지. 자연어 fallback (bot/index.ts) 에서는
+    // 감지 skip → 오탐으로 인한 강제 재생성/덮어쓰기 방지 (Codex bot P2).
+    await handleAiQuestion(ctx, question, { detectReportRequest: true });
   });
 
   bot.command("reset", async (ctx) => {
@@ -71,7 +73,17 @@ export function registerAiCommands(bot: Bot) {
   });
 }
 
-export async function handleAiQuestion(ctx: { reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>; chat: { id: number } }, question: string) {
+export async function handleAiQuestion(
+  ctx: {
+    reply: (
+      text: string,
+      options?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    chat: { id: number };
+  },
+  question: string,
+  options?: { detectReportRequest?: boolean },
+) {
   if (isProcessing) {
     await ctx.reply("⏳ 이전 질문 처리 중입니다. 잠시 후 다시 시도해주세요.");
     return;
@@ -82,8 +94,11 @@ export async function handleAiQuestion(ctx: { reply: (text: string, options?: Re
   // isProcessing 영구 true → 이후 모든 AI 질문 차단되는 버그가 있었음.
   isProcessing = true;
   try {
-    // #212: 리포트 요청 감지 → generateXReport 로 DB 저장 흐름. 자연 질문은 그대로 askAdvisor.
-    const reportType = parseReportRequest(question);
+    // #212: /ai 명시적 진입 (detectReportRequest=true) 일 때만 리포트 감지.
+    // Fallback 자연어 진입 (bot/index.ts) 에서는 항상 askAdvisor 로 → 오탐 위험 원천 차단.
+    const reportType = options?.detectReportRequest
+      ? parseReportRequest(question)
+      : null;
     if (reportType) {
       await ctx.reply(`📝 ${REPORT_LABEL[reportType]} 리포트 생성 중...`);
       const result = await runReportFromAiCommand(reportType);

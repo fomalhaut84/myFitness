@@ -47,14 +47,20 @@
 
 ## 3. 흐름
 
-1. `/ai <question>` → `handleAiQuestion`
-2. `parseReportRequest(question)` 실행
+1. `/ai <question>` → `handleAiQuestion(ctx, question, { detectReportRequest: true })`
+2. `parseReportRequest(question)` 실행 (detectReportRequest 옵션 true 일 때만)
 3. 매칭 결과:
    - `null` → 기존 `askAdvisor` 흐름 (자연 질문)
    - `morning/evening/weekly` → `generateXReport(force=true)` 호출
      - force=true 이유: /ai 로 명시 요청은 항상 새로 생성
      - 기존 record 는 `$transaction([deleteMany, create])` 로 upsert-like
 4. 결과 텍스트 텔레그램 전송 + "✅ X 리포트 저장 완료" 확인 메시지
+
+### Fallback 경로
+
+`bot/index.ts` 의 자연어 fallback 은 `handleAiQuestion(ctx, text)` 로 호출 —
+`detectReportRequest: false` (기본) → **항상 `askAdvisor` 흐름**. 오탐으로 인한
+강제 재생성/덮어쓰기 원천 차단. 리포트 생성 원할 시 명시적 `/ai` 커맨드 사용.
 
 ## 4. 변경 파일
 
