@@ -74,17 +74,34 @@ async function preSyncForWeekly(): Promise<void> {
   ] as const;
   try {
     console.log("[weekly-report] 1/2 incremental sync (gap-fill)");
-    await syncAll({
+    const step1 = await syncAll({
       endDate: todayKST(),
       dataTypes: [...dataTypes],
       bootstrapNewTypes: true,
     });
-    console.log("[weekly-report] 2/2 최근 1일 강제 refresh");
-    await syncAll({
-      startDate: daysAgoKST(1),
-      endDate: todayKST(),
-      dataTypes: [...dataTypes],
-    });
+    // Step 1 에서 error 난 타입은 step 2 에서 skip.
+    // 실패한 타입에 대해 step 2 의 explicit range (yesterday-today) 가 성공하면
+    // updateSyncMetadata 가 lastSyncDate=today 로 마킹 → 향후 gap-fill 이 tomorrow
+    // 부터 시작 → 365일 backfill 이 영구히 skip 됨 (Codex bot P2).
+    const failedTypes = new Set(
+      step1.filter((r) => r.error).map((r) => r.dataType),
+    );
+    const step2Types = dataTypes.filter((t) => !failedTypes.has(t));
+    if (failedTypes.size > 0) {
+      console.warn(
+        `[weekly-report] step 1 실패: ${[...failedTypes].join(",")} — step 2 에서 skip`,
+      );
+    }
+    if (step2Types.length > 0) {
+      console.log(
+        `[weekly-report] 2/2 최근 1일 강제 refresh: ${step2Types.join(",")}`,
+      );
+      await syncAll({
+        startDate: daysAgoKST(1),
+        endDate: todayKST(),
+        dataTypes: [...step2Types],
+      });
+    }
     console.log("[weekly-report] 데이터 싱크 완료");
   } catch (error) {
     console.warn(
