@@ -87,15 +87,14 @@ async function preSyncForWeekly(): Promise<void> {
     // 실패한 타입에 대해 step 2 의 explicit range (yesterday-today) 가 성공하면
     // updateSyncMetadata 가 lastSyncDate=today 로 마킹 → 향후 gap-fill 이 tomorrow
     // 부터 시작 → 365일 backfill 이 영구히 skip 됨 (Codex bot P2).
+    // syncUserProfile 은 partial failure 시에도 applyAutoSync 로 LTHR/maxHR 을
+    // 먼저 반영한 뒤 throw (fetchers/user-profile.ts:421-427). 즉 error 여도
+    // profile 자체는 최신일 수 있음 → activities 를 dependent 로 skip 하지 않고
+    // step 2 실행. Total failure 시엔 activities 도 자연스럽게 실패로 이어져
+    // failedTypes 에 포함됨.
     const failedTypes = new Set(
       step1.filter((r) => r.error).map((r) => r.dataType),
     );
-    // syncActivities 는 UserProfile.lthr 을 참조해 intensityLabel/intensityScore 계산.
-    // user_profile 실패 시 activities 는 stale zones 로 분류될 수 있으므로 dependent
-    // 처리 → step 2 도 skip. profile sync 회복 후 재실행 시 재분류 (Codex bot P2).
-    if (failedTypes.has("user_profile")) {
-      failedTypes.add("activities");
-    }
     const step2Types = dataTypes.filter((t) => !failedTypes.has(t));
     if (failedTypes.size > 0) {
       console.warn(
