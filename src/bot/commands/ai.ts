@@ -22,13 +22,15 @@ type ReportType = "morning" | "evening" | "weekly";
  * 자연 질문 (예: "이번 주 러닝 분석해줘") 은 null 반환 → 기존 askAdvisor 흐름.
  */
 export function parseReportRequest(text: string): ReportType | null {
-  // 두 조건 모두 필요: (1) 리포트/report 언급, (2) 명시적 생성 의도.
   if (!/리포트|report/i.test(text)) return null;
-  // 실제 창조 동사만 인정. 정중 표현 (부탁/please/요청) 은 진단 질문에도 흔함
-  // ("모닝 리포트 확인 부탁해") → 포함 시 강제 재생성 = 덮어쓰기 위험 (Codex bot P2).
-  // 사용자 UX: 리포트 생성 원할 시 "만들어" 등 명시적 동사 필요.
+  // imperative form 만 매칭. descriptive form (만들어**진**, **생성된**, generat**ed**)
+  // 은 진단 질문에서 흔함 → 오탐 방지 (Codex bot P2 #4683066284).
+  // 한글: negative lookahead 로 완료/피동 접미사 배제.
+  // 영어: \b word boundary 로 원형만 (generated/created 등 파생 제외).
   if (
-    !/만들|생성|뽑|create|generate|refresh|재생성|다시\s?만들/i.test(text)
+    !/만들어(?![진지졌져짐])|생성해|뽑아|재생성(?![된됨돼])|다시\s?만들[자아]|다시\s?만들어(?![진지졌져짐])|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
+      text,
+    )
   ) {
     return null;
   }
@@ -59,7 +61,9 @@ export function registerAiCommands(bot: Bot) {
       await ctx.reply("사용법: /ai [질문]\n예: /ai 이번 주 러닝 분석해줘");
       return;
     }
-    await handleAiQuestion(ctx, question);
+    // #212: /ai 명시적 진입에서만 리포트 감지. bot/index.ts 자연어 fallback 은
+    // 감지 skip → 오탐으로 인한 강제 재생성/덮어쓰기 원천 차단 (Codex bot P2).
+    await handleAiQuestion(ctx, question, { detectReportRequest: true });
   });
 
   bot.command("reset", async (ctx) => {
@@ -68,7 +72,17 @@ export function registerAiCommands(bot: Bot) {
   });
 }
 
-export async function handleAiQuestion(ctx: { reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>; chat: { id: number } }, question: string) {
+export async function handleAiQuestion(
+  ctx: {
+    reply: (
+      text: string,
+      options?: Record<string, unknown>,
+    ) => Promise<unknown>;
+    chat: { id: number };
+  },
+  question: string,
+  options?: { detectReportRequest?: boolean },
+) {
   if (isProcessing) {
     await ctx.reply("⏳ 이전 질문 처리 중입니다. 잠시 후 다시 시도해주세요.");
     return;
@@ -79,8 +93,11 @@ export async function handleAiQuestion(ctx: { reply: (text: string, options?: Re
   // isProcessing 영구 true → 이후 모든 AI 질문 차단되는 버그가 있었음.
   isProcessing = true;
   try {
-    // #212: 리포트 요청 감지 → generateXReport 로 DB 저장 흐름. 자연 질문은 그대로 askAdvisor.
-    const reportType = parseReportRequest(question);
+    // #212: /ai 명시적 진입 (detectReportRequest=true) 에서만 리포트 감지.
+    // Fallback 자연어 (bot/index.ts) 는 기본 false → 항상 askAdvisor.
+    const reportType = options?.detectReportRequest
+      ? parseReportRequest(question)
+      : null;
     if (reportType) {
       await ctx.reply(`📝 ${REPORT_LABEL[reportType]} 리포트 생성 중...`);
       const result = await runReportFromAiCommand(reportType);

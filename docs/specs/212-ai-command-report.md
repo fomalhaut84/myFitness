@@ -23,32 +23,44 @@
 ### 파싱 검증 (로컬)
 
 ```
-"모닝 리포트 만들어줘"           → morning
-"이브닝 리포트 생성"              → evening
-"주간 리포트 만들어줘"            → weekly
-"주간 리포트 다시 만들어"         → weekly
-"이브닝 리포트 뽑아줘"            → evening
-"generate morning report"        → morning
-"이번 주 러닝 분석해줘"           → null (자연 질문)
-"모닝 리포트 확인 부탁해"         → null (정중어만 있고 창조 동사 없음)
-"morning report please explain"  → null (설명 요청)
-"아침 리포트 부탁"                → null (창조 동사 명시 필요)
+"모닝 리포트 만들어줘"                → morning
+"이브닝 리포트 생성해"                → evening
+"주간 리포트 다시 만들어"             → weekly
+"이브닝 리포트 뽑아줘"                → evening
+"generate morning report"            → morning
+"create weekly report"               → weekly
+"모닝 리포트 재생성해"                → morning
+"만들어진 모닝 리포트 왜 이상해?"     → null (descriptive form)
+"오늘 생성된 모닝 리포트 왜 이상해?"  → null (descriptive form)
+"generated morning report looks wrong" → null (past participle)
+"이번 주 러닝 분석해줘"               → null (자연 질문)
 ```
 
-**주의**: 정중어 (`부탁`/`please`/`요청`) 는 진단/질문형에도 흔히 등장하므로
-create intent 로 간주하지 않음. 리포트 생성 원할 시 **`만들어`/`생성`/`뽑아`/
-`generate`** 등 명시적 동사 필요.
+**주의**: **imperative form 만 인정**. 정중어 (`부탁`/`please`), descriptive form
+(`만들어진`/`생성된`/`generated`), 명사형 (`생성`/`create` 단독) 은 진단 질문에도
+흔하므로 create intent 로 간주하지 않음.
+
+- 한글: `만들어(진 아님)`, `생성해`, `뽑아`, `재생성(된 아님)`, `다시\s?만들[어자아]`
+- 영어: `\bcreate\b`, `\bgenerate\b`, `\brefresh\b` (word boundary)
 
 ## 3. 흐름
 
-1. `/ai <question>` → `handleAiQuestion`
-2. `parseReportRequest(question)` 실행
+1. `/ai <question>` → `handleAiQuestion(ctx, question, { detectReportRequest: true })`
+2. `parseReportRequest(question)` 실행 (detectReportRequest true 일 때만)
 3. 매칭 결과:
    - `null` → 기존 `askAdvisor` 흐름 (자연 질문)
    - `morning/evening/weekly` → `generateXReport(force=true)` 호출
      - force=true 이유: /ai 로 명시 요청은 항상 새로 생성
      - 기존 record 는 `$transaction([deleteMany, create])` 로 upsert-like
 4. 결과 텍스트 텔레그램 전송 + "✅ X 리포트 저장 완료" 확인 메시지
+
+### Fallback 경로
+
+`bot/index.ts` 의 자연어 fallback 은 `handleAiQuestion(ctx, text)` 로 호출 —
+`detectReportRequest` 미지정 (undefined → false) → `parseReportRequest` skip →
+**항상 `askAdvisor` 흐름**. 자연어 문장 다양성 (descriptive/의문형 등) 을 정규식
+으로 완벽 배제 불가하므로 fallback 경로 자체에서 감지 차단이 근본 방어.
+리포트 생성 원할 시 반드시 명시적 `/ai` 커맨드 사용.
 
 ## 4. 변경 파일
 
