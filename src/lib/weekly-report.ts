@@ -47,17 +47,26 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 7. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)`;
 
 /**
- * #203: 주간 리포트 전 7일 데이터 sync. daily-report preSync (1일) 와 별개.
- * Prompt 필수 도구 목록과 대응해야 함:
+ * #203: 주간 리포트 전 데이터 sync. daily-report preSync (1일) 와 별개.
+ *
+ * 범위 결정:
+ * - 14일 (Codex bot P2 #4681350986): get_weight_loss_status 는 7일 이동평균 vs
+ *   이전 7일 비교로 change7d 산출 → 최소 14일 데이터 필요. 7일 sync 는 null 반환.
+ * - bootstrapNewTypes: true (Codex bot P2 #4681353647): fresh DB / 신규 data type
+ *   (혈압/체성분 등) 은 explicit 7~14일 window 를 성공 sync 로 마킹하면 이후 cron
+ *   의 365일 backfill 이 skip → 주간 프롬프트가 요구하는 28/90일 history 부재.
+ *   신규 타입만 365일 로드하고 기존 타입은 명시 startDate 존중.
+ *
+ * Prompt 필수 도구 목록과 대응:
  * - sleep/daily_stats/heart_rate/activities: 기본 (daily 와 동일)
- * - blood_pressure: get_blood_pressure(days=7) 대응 (Codex bot P2)
- * - body_composition: get_weight_loss_status 가 참조하는 체중 데이터 (Codex bot P2)
+ * - blood_pressure: get_blood_pressure(days=7)
+ * - body_composition: get_weight_loss_status 가 참조하는 체중 데이터
  */
 async function preSyncForWeekly(): Promise<void> {
   try {
-    console.log("[weekly-report] 7일 데이터 싱크 시작");
+    console.log("[weekly-report] 14일 데이터 싱크 시작");
     await syncAll({
-      startDate: daysAgoKST(7),
+      startDate: daysAgoKST(14),
       endDate: todayKST(),
       dataTypes: [
         "sleep",
@@ -67,8 +76,9 @@ async function preSyncForWeekly(): Promise<void> {
         "blood_pressure",
         "body_composition",
       ],
+      bootstrapNewTypes: true,
     });
-    console.log("[weekly-report] 7일 데이터 싱크 완료");
+    console.log("[weekly-report] 14일 데이터 싱크 완료");
   } catch (error) {
     console.warn(
       "[weekly-report] 데이터 싱크 실패, 기존 데이터로 진행:",
