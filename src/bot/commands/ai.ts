@@ -28,7 +28,7 @@ export function parseReportRequest(text: string): ReportType | null {
   // 한글: negative lookahead 로 완료/피동 접미사 배제.
   // 영어: \b word boundary 로 원형만 (generated/created 등 파생 제외).
   if (
-    !/만들어(?![진지졌져짐준줬놓놨봤봐봐야])|생성해|뽑아(?![진지졌져준줬놓놨봤봐봐야])|재생성(?![된됨돼])|다시\s?만들[자아]|다시\s?만들어(?![진지졌져짐준줬놓놨봤봐])|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
+    !/만들어(?!\s*[진지졌져짐준줬놓놨봤봐야])|생성해|뽑아(?!\s*[진지졌져준줬놓놨봤봐야])|재생성(?!\s*[된됨돼])|다시\s?만들[자아]|다시\s?만들어(?!\s*[진지졌져짐준줬놓놨봤봐])|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
       text,
     )
   ) {
