@@ -67,8 +67,7 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
  * 반영해야 syncActivities 가 정확한 intensityLabel/Zone 산출.
  */
 async function preSyncForWeekly(): Promise<void> {
-  const dataTypes = [
-    "user_profile", // 반드시 activities 앞: intensityLabel/Zone 정확도
+  const NON_PROFILE_TYPES = [
     "sleep",
     "daily_stats",
     "heart_rate",
@@ -77,20 +76,45 @@ async function preSyncForWeekly(): Promise<void> {
     "body_composition",
   ] as const;
   try {
-    console.log("[weekly-report] 1/2 incremental sync (gap-fill)");
-    const step1 = await syncAll({
+    // Step 1a: user_profile 을 먼저 sync — activities intensityLabel/Zone 계산
+    // 시 fresh LTHR/maxHR 참조하도록. profile 실패 시 activities 는 step 1b 에서
+    // 아예 skip → old zones 로 저장되는 것 원천 차단 (Codex bot P2 #4681816112).
+    console.log("[weekly-report] 1a/3 user_profile sync");
+    const step1a = await syncAll({
       endDate: todayKST(),
-      dataTypes: [...dataTypes],
+      dataTypes: ["user_profile"],
       bootstrapNewTypes: true,
     });
-    // Step 1 에서 error 난 타입은 step 2 에서 skip.
-    // 실패한 타입에 대해 step 2 의 explicit range (yesterday-today) 가 성공하면
-    // updateSyncMetadata 가 lastSyncDate=today 로 마킹 → 향후 gap-fill 이 tomorrow
-    // 부터 시작 → 365일 backfill 이 영구히 skip 됨 (Codex bot P2).
-    const failedTypes = new Set(
-      step1.filter((r) => r.error).map((r) => r.dataType),
+    const profileFailed = step1a.some((r) => r.error);
+    if (profileFailed) {
+      console.warn(
+        "[weekly-report] user_profile sync 실패 — activities skip (stale zones 방지)",
+      );
+    }
+
+    // Step 1b: 나머지 타입 incremental gap-fill. profile 실패 시 activities 제외.
+    const step1bTypes = NON_PROFILE_TYPES.filter(
+      (t) => !profileFailed || t !== "activities",
     );
-    const step2Types = dataTypes.filter((t) => !failedTypes.has(t));
+    console.log(`[weekly-report] 1b/3 incremental: ${step1bTypes.join(",")}`);
+    const step1b = await syncAll({
+      endDate: todayKST(),
+      dataTypes: [...step1bTypes],
+      bootstrapNewTypes: true,
+    });
+
+    // Step 2: 실패 타입 skip + 최근 1일 강제 refresh.
+    // 실패한 타입에 explicit range (yesterday-today) 가 성공하면 updateSyncMetadata
+    // 가 lastSyncDate=today 로 마킹 → 향후 gap-fill 이 tomorrow 부터 시작 →
+    // 365일 backfill 이 영구히 skip 됨 (Codex bot P2).
+    const failedTypes = new Set<string>([
+      ...(profileFailed ? ["user_profile", "activities"] : []),
+      ...step1b.filter((r) => r.error).map((r) => r.dataType),
+    ]);
+    const step2Types = [
+      "user_profile",
+      ...NON_PROFILE_TYPES,
+    ].filter((t) => !failedTypes.has(t));
     if (failedTypes.size > 0) {
       console.warn(
         `[weekly-report] step 1 실패: ${[...failedTypes].join(",")} — step 2 에서 skip`,
@@ -98,12 +122,12 @@ async function preSyncForWeekly(): Promise<void> {
     }
     if (step2Types.length > 0) {
       console.log(
-        `[weekly-report] 2/2 최근 1일 강제 refresh: ${step2Types.join(",")}`,
+        `[weekly-report] 2/3 최근 1일 강제 refresh: ${step2Types.join(",")}`,
       );
       await syncAll({
         startDate: daysAgoKST(1),
         endDate: todayKST(),
-        dataTypes: [...step2Types],
+        dataTypes: step2Types as ("user_profile" | (typeof NON_PROFILE_TYPES)[number])[],
       });
     }
     console.log("[weekly-report] 데이터 싱크 완료");
