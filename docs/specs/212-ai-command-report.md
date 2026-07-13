@@ -23,21 +23,27 @@
 ### 파싱 검증 (로컬)
 
 ```
-"모닝 리포트 만들어줘"           → morning
-"이브닝 리포트 생성"              → evening
-"주간 리포트 만들어줘"            → weekly
-"주간 리포트 다시 만들어"         → weekly
-"이브닝 리포트 뽑아줘"            → evening
-"generate morning report"        → morning
-"이번 주 러닝 분석해줘"           → null (자연 질문)
-"모닝 리포트 확인 부탁해"         → null (정중어만 있고 창조 동사 없음)
-"morning report please explain"  → null (설명 요청)
-"아침 리포트 부탁"                → null (창조 동사 명시 필요)
+"모닝 리포트 만들어줘"                → morning
+"이브닝 리포트 생성해"                → evening
+"주간 리포트 다시 만들어"             → weekly
+"이브닝 리포트 뽑아줘"                → evening
+"generate morning report"            → morning
+"create weekly report"               → weekly
+"모닝 리포트 재생성해"                → morning
+"만들어진 모닝 리포트 왜 이상해?"     → null (descriptive form)
+"오늘 생성된 모닝 리포트 왜 이상해?"  → null (descriptive form)
+"generated morning report looks wrong" → null (past participle)
+"이번 주 러닝 분석해줘"               → null (자연 질문)
 ```
 
-**주의**: 정중어 (`부탁`/`please`/`요청`) 는 진단/질문형에도 흔히 등장하므로
-create intent 로 간주하지 않음. 리포트 생성 원할 시 **`만들어`/`생성`/`뽑아`/
-`generate`** 등 명시적 동사 필요.
+**주의**: **imperative form 만 인정**. 정중어 (`부탁`/`please`), descriptive form
+(`만들어진`/`생성된`/`generated`), 명사형 (`생성`/`create` 단독) 은 진단 질문에도
+흔하므로 create intent 로 간주하지 않음.
+
+- 매칭: `만들어(진 아님)`, `생성해`, `뽑아`, `재생성(된 아님)`, `다시\s?만들[어자아]`,
+  `\bcreate\b`, `\bgenerate\b`, `\brefresh\b`
+- 사용자 UX: 리포트 생성 원할 시 **`만들어(줘)` / `생성해(줘)` / `뽑아(줘)` /
+  `재생성해` / `generate` / `create`** 등 명시적 명령형 동사 필요.
 
 ## 3. 흐름
 

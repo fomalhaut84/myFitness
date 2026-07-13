@@ -24,11 +24,14 @@ type ReportType = "morning" | "evening" | "weekly";
 export function parseReportRequest(text: string): ReportType | null {
   // 두 조건 모두 필요: (1) 리포트/report 언급, (2) 명시적 생성 의도.
   if (!/리포트|report/i.test(text)) return null;
-  // 실제 창조 동사만 인정. 정중 표현 (부탁/please/요청) 은 진단 질문에도 흔함
-  // ("모닝 리포트 확인 부탁해") → 포함 시 강제 재생성 = 덮어쓰기 위험 (Codex bot P2).
-  // 사용자 UX: 리포트 생성 원할 시 "만들어" 등 명시적 동사 필요.
+  // imperative form 만 매칭. descriptive form (만들어**진**, **생성된**, generat**ed**)
+  // 은 진단/설명 질문에서 흔히 나타남 → 오탐 방지 (Codex bot P2).
+  // 한글: negative lookahead 로 완료/피동 접미사 배제.
+  // 영어: \b word boundary 로 원형만 매칭 (generated/created 는 skip).
   if (
-    !/만들|생성|뽑|create|generate|refresh|재생성|다시\s?만들/i.test(text)
+    !/만들어(?![진지])|생성해|뽑아|재생성(?![된됨])|다시\s?만들[어자아]|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
+      text,
+    )
   ) {
     return null;
   }
