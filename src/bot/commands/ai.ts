@@ -34,7 +34,7 @@ async function runReportFromAiCommand(type: ReportType): Promise<string> {
   // deleteMany + create 로 update-like 처리 (사용자 요구 사항 그대로).
   if (type === "morning") return generateMorningReport(true);
   if (type === "evening") return generateEveningReport(true);
-  return generateWeeklyReport();
+  return generateWeeklyReport(true);
 }
 
 export function registerAiCommands(bot: Bot) {
