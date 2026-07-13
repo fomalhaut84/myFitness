@@ -32,6 +32,7 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 - mcp__myfitness__get_weight_loss_status() — 칼로리 밸런스 주간 요약
 - mcp__myfitness__get_pace_progression() — 페이스 발전 추세
 - mcp__myfitness__get_injury_risk_score() — 부상 위험도
+- mcp__myfitness__get_blood_pressure(days=7) — 혈압 (시스템 프롬프트 주간 BP 경고 규칙 필수)
 
 기억이나 추측이 아닌 위 도구 결과의 실제 수치만 인용.
 
