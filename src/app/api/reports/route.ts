@@ -118,12 +118,15 @@ export async function POST(request: Request) {
     // 더 과거 record는 preSync/MCP/프롬프트가 모두 "오늘 기준"이라 과거 컨텍스트 보장 불가 → 차단.
     let reportDate: string | undefined;
     if (typeof body.reportDate === "string") {
-      // reportDate 명시는 force=true + morning/evening에서만 허용 (재생성 전용)
-      if (!force || (type !== "morning" && type !== "evening")) {
+      // #210: reportDate 명시는 force=true + morning/evening/weekly 재생성용.
+      if (
+        !force ||
+        (type !== "morning" && type !== "evening" && type !== "weekly")
+      ) {
         return NextResponse.json(
           {
             error:
-              "reportDate is only allowed with force=true and type in {morning, evening}",
+              "reportDate is only allowed with force=true and type in {morning, evening, weekly}",
           },
           { status: 400 }
         );
