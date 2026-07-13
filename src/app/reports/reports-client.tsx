@@ -240,6 +240,8 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
       { category: "weekly_report", reportDate: today },
       { category: "morning_report", reportDate: yesterday },
       { category: "evening_report", reportDate: yesterday },
+      // #210: weekly 도 어제 재생성 허용 → 어제 진행중 job 재개 필요.
+      { category: "weekly_report", reportDate: yesterday },
     ];
     (async () => {
       for (const c of candidates) {
