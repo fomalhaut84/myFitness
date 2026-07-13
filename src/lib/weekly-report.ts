@@ -46,14 +46,27 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 6. 경고 사항 (시스템 프롬프트의 경고 규칙에 해당하면 반드시 포함)
 7. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)`;
 
-/** #203: 주간 리포트 전 7일 데이터 sync. daily-report preSync (1일) 와 별개. */
+/**
+ * #203: 주간 리포트 전 7일 데이터 sync. daily-report preSync (1일) 와 별개.
+ * Prompt 필수 도구 목록과 대응해야 함:
+ * - sleep/daily_stats/heart_rate/activities: 기본 (daily 와 동일)
+ * - blood_pressure: get_blood_pressure(days=7) 대응 (Codex bot P2)
+ * - body_composition: get_weight_loss_status 가 참조하는 체중 데이터 (Codex bot P2)
+ */
 async function preSyncForWeekly(): Promise<void> {
   try {
     console.log("[weekly-report] 7일 데이터 싱크 시작");
     await syncAll({
       startDate: daysAgoKST(7),
       endDate: todayKST(),
-      dataTypes: ["sleep", "daily_stats", "heart_rate", "activities"],
+      dataTypes: [
+        "sleep",
+        "daily_stats",
+        "heart_rate",
+        "activities",
+        "blood_pressure",
+        "body_composition",
+      ],
     });
     console.log("[weekly-report] 7일 데이터 싱크 완료");
   } catch (error) {
