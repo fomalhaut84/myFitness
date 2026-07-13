@@ -1,8 +1,41 @@
 import type { Bot } from "grammy";
 import { askAdvisor, resetSession } from "../../lib/ai/claude-advisor";
+import {
+  generateMorningReport,
+  generateEveningReport,
+} from "../../lib/daily-report";
+import { generateWeeklyReport } from "../../lib/weekly-report";
 import { mdToHtml, replyLong } from "../utils/telegram";
 
 let isProcessing = false;
+
+type ReportType = "morning" | "evening" | "weekly";
+
+/**
+ * #212: /ai text 에서 리포트 요청 감지. "리포트" 키워드 필수 (자연 질문과 구분).
+ * "이번 주 러닝 분석해줘" 같은 자연 질문은 null 반환 → 기존 askAdvisor 흐름 유지.
+ */
+export function parseReportRequest(text: string): ReportType | null {
+  if (!/리포트|report/i.test(text)) return null;
+  if (/모닝|아침|morning/i.test(text)) return "morning";
+  if (/이브닝|저녁|evening/i.test(text)) return "evening";
+  if (/주간|이번\s?주|weekly/i.test(text)) return "weekly";
+  return null;
+}
+
+const REPORT_LABEL: Record<ReportType, string> = {
+  morning: "모닝",
+  evening: "이브닝",
+  weekly: "주간",
+};
+
+async function runReportFromAiCommand(type: ReportType): Promise<string> {
+  // force=true: /ai 로 명시 요청은 항상 새로 생성. 기존 record 는 $transaction 안
+  // deleteMany + create 로 update-like 처리 (사용자 요구 사항 그대로).
+  if (type === "morning") return generateMorningReport(true);
+  if (type === "evening") return generateEveningReport(true);
+  return generateWeeklyReport(true);
+}
 
 export function registerAiCommands(bot: Bot) {
   bot.command("ai", async (ctx) => {
@@ -31,6 +64,16 @@ export async function handleAiQuestion(ctx: { reply: (text: string, options?: Re
   // isProcessing 영구 true → 이후 모든 AI 질문 차단되는 버그가 있었음.
   isProcessing = true;
   try {
+    // #212: 리포트 요청 감지 → generateXReport 로 DB 저장 흐름. 자연 질문은 그대로 askAdvisor.
+    const reportType = parseReportRequest(question);
+    if (reportType) {
+      await ctx.reply(`📝 ${REPORT_LABEL[reportType]} 리포트 생성 중...`);
+      const result = await runReportFromAiCommand(reportType);
+      const html = mdToHtml(result);
+      await replyLong(ctx as Parameters<typeof replyLong>[0], html, true);
+      await ctx.reply(`✅ ${REPORT_LABEL[reportType]} 리포트 저장 완료`);
+      return;
+    }
     await ctx.reply("🤔 분석 중...");
     const { result } = await askAdvisor(question, { channel: "telegram" });
     const html = mdToHtml(result);

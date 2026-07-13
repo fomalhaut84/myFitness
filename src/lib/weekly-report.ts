@@ -240,10 +240,10 @@ export async function startWeeklyReportJob(params: {
   return job;
 }
 
-/** cron / 완료 대기 흐름. */
-export async function generateWeeklyReport(): Promise<string> {
+/** cron / 완료 대기 흐름. #212: /ai 리포트 명시 요청 시 force=true 지원 (daily 와 대칭). */
+export async function generateWeeklyReport(force = false): Promise<string> {
   const { result, job } = await runWeeklyViaJob({
-    force: false,
+    force,
     reportDate: kstDateStr(),
     background: false,
   });
