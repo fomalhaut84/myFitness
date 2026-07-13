@@ -90,6 +90,12 @@ async function preSyncForWeekly(): Promise<void> {
     const failedTypes = new Set(
       step1.filter((r) => r.error).map((r) => r.dataType),
     );
+    // syncActivities 는 UserProfile.lthr 을 참조해 intensityLabel/intensityScore 계산.
+    // user_profile 실패 시 activities 는 stale zones 로 분류될 수 있으므로 dependent
+    // 처리 → step 2 도 skip. profile sync 회복 후 재실행 시 재분류 (Codex bot P2).
+    if (failedTypes.has("user_profile")) {
+      failedTypes.add("activities");
+    }
     const step2Types = dataTypes.filter((t) => !failedTypes.has(t));
     if (failedTypes.size > 0) {
       console.warn(
