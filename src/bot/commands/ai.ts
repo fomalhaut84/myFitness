@@ -24,7 +24,11 @@ type ReportType = "morning" | "evening" | "weekly";
 export function parseReportRequest(text: string): ReportType | null {
   // 두 조건 모두 필요: (1) 리포트/report 언급, (2) 명시적 생성 의도.
   if (!/리포트|report/i.test(text)) return null;
-  if (!/만들|생성|뽑|create|generate|refresh|재생성|다시\s?만들/i.test(text)) {
+  if (
+    !/만들|생성|뽑|부탁|요청|please|create|generate|refresh|재생성|다시\s?만들/i.test(
+      text,
+    )
+  ) {
     return null;
   }
   if (/모닝|아침|morning/i.test(text)) return "morning";
