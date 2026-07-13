@@ -1,6 +1,10 @@
 import { askAdvisor, resetSession } from "@/lib/ai/claude-advisor";
 import { syncAll } from "@/lib/garmin/sync";
-import { todayKSTString as kstDateStr, todayKST } from "@/lib/garmin/utils";
+import {
+  todayKSTString as kstDateStr,
+  todayKST,
+  daysAgoKST,
+} from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
 import {
   createOrGetReportJob,
@@ -43,38 +47,43 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
 7. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)`;
 
 /**
- * #203: 주간 리포트 전 데이터 sync.
+ * #203: 주간 리포트 전 데이터 sync. Prompt 가 요구하는 모든 도구의 데이터를
+ * 실효 있게 최신화. 두 단계로 나눔:
  *
- * 전략: explicit startDate 명시 X → syncAll 이 lastSyncDate + 1 부터 incremental.
- * 이유:
- * - Prompt 가 요구하는 도구가 서로 다른 window 사용 (get_training_load_trend 28일,
- *   get_pace_progression 90일, get_weight_loss_status 14일). 특정 값을 강제하면
- *   중간 range 를 놓치거나 (Codex bot P2 #4681376134) 이미 stale 인 데이터 위에
- *   짧은 window sync 결과로 lastSyncDate 를 덮어써 gap 을 영구화 (P2 #4681377512).
- * - startDate 미명시 시 syncAll 로직 (sync.ts:162-164): hasSuccessfulSync 있는 타입
- *   은 lastSyncDate + 1 부터 오늘까지 자동 backfill → gap 없음.
- * - bootstrapNewTypes: true 로 fresh DB / 신규 데이터 타입 (혈압/체성분) 은 자동
- *   365일 로드.
+ * (1) Incremental gap-fill — startDate 미명시 → syncAll 이 lastSyncDate + 1 부터
+ *     오늘까지 자동 backfill (sync.ts:162-164). fresh DB / 신규 타입은
+ *     bootstrapNewTypes 로 365일 로드. gap 은 여기서 채움.
  *
- * Prompt 필수 도구 대응:
- * - sleep / daily_stats / heart_rate / activities
- * - blood_pressure — get_blood_pressure(days=7)
- * - body_composition — get_weight_loss_status 가 참조하는 체중
+ * (2) 최근 1일 강제 refresh — startDate=daysAgoKST(1). 정상 흐름 (06:00 cron sync
+ *     성공 → lastSyncDate=today) 에서 (1) 이 skip 되기 때문에 06:00~07:00 사이
+ *     추가된 데이터 (밤 수면 device sync 등) 를 명시 fetch. (1) 이 lastSyncDate=today
+ *     로 마킹했으므로 이 explicit range 는 gap 을 만들지 않음.
+ *
+ * `user_profile` 은 activities 앞에 위치 → LTHR/maxHR auto-detect 갱신을 먼저
+ * 반영해야 syncActivities 가 정확한 intensityLabel/Zone 산출.
  */
 async function preSyncForWeekly(): Promise<void> {
+  const dataTypes = [
+    "user_profile", // 반드시 activities 앞: intensityLabel/Zone 정확도
+    "sleep",
+    "daily_stats",
+    "heart_rate",
+    "activities",
+    "blood_pressure",
+    "body_composition",
+  ] as const;
   try {
-    console.log("[weekly-report] 데이터 싱크 시작 (incremental)");
+    console.log("[weekly-report] 1/2 incremental sync (gap-fill)");
     await syncAll({
       endDate: todayKST(),
-      dataTypes: [
-        "sleep",
-        "daily_stats",
-        "heart_rate",
-        "activities",
-        "blood_pressure",
-        "body_composition",
-      ],
+      dataTypes: [...dataTypes],
       bootstrapNewTypes: true,
+    });
+    console.log("[weekly-report] 2/2 최근 1일 강제 refresh");
+    await syncAll({
+      startDate: daysAgoKST(1),
+      endDate: todayKST(),
+      dataTypes: [...dataTypes],
     });
     console.log("[weekly-report] 데이터 싱크 완료");
   } catch (error) {
