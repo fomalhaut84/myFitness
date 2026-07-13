@@ -23,12 +23,14 @@ type ReportType = "morning" | "evening" | "weekly";
  */
 export function parseReportRequest(text: string): ReportType | null {
   if (!/리포트|report/i.test(text)) return null;
-  // imperative form 만 매칭. descriptive form (만들어**진**, **생성된**, generat**ed**)
-  // 은 진단 질문에서 흔함 → 오탐 방지 (Codex bot P2 #4683066284).
-  // 한글: negative lookahead 로 완료/피동 접미사 배제.
-  // 영어: \b word boundary 로 원형만 (generated/created 등 파생 제외).
+  // imperative form 만 매칭. descriptive form (만들어**진**, **만들어준**,
+  // **생성된**, **뽑아놓**, generat**ed**) 은 진단 질문에서 흔함 → 오탐 방지.
+  // - 한글 접미사: 진(피동), 준(수여), 놓(상태), 봤/봐(경험), 야(당위) 등
+  // - 공백 있는 form (예: '만들어 진') 도 배제 위해 \s* 허용
+  // - 영어: \b word boundary 로 원형만 (generated/created 등 파생 제외)
+  // Codex bot P2 (#4683066284, #4683280516, #4683357105) 누적 반영.
   if (
-    !/만들어(?![진지졌져짐])|생성해|뽑아|재생성(?![된됨돼])|다시\s?만들[자아]|다시\s?만들어(?![진지졌져짐])|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
+    !/만들어(?!\s*[진지졌져짐준줬놓놨봤봐야])|생성해|뽑아(?!\s*[진지졌져준줬놓놨봤봐야])|재생성(?!\s*[된됨돼])|다시\s?만들[자아]|다시\s?만들어(?!\s*[진지졌져짐준줬놓놨봤봐])|\bcreate\b|\bgenerate\b|\brefresh\b/i.test(
       text,
     )
   ) {
