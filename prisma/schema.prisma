@@ -239,12 +239,13 @@ model FoodLog {
   @@index([date])
 }
 
-// M6-1: 4주 트레이닝 플랜 (결정적 생성 + 진행 파생)
+// M6-1: 트레이닝 플랜 (결정적 생성 + 진행 파생). M11 Phase 1 (#222): weekCount 4~24 지원.
 model TrainingPlan {
   id               String            @id @default(cuid())
   createdAt        DateTime          @default(now())
   startDate        DateTime          @db.Date          // KST day, 내일부터
-  endDate          DateTime          @db.Date          // startDate + 27일
+  endDate          DateTime          @db.Date          // startDate + (weekCount*7 - 1) 일
+  weekCount        Int               @default(4)      // M11 Phase 1: 4 ~ 24 주
   weeklyFrequency  Int                                  // 3 | 4 | 5
   targetDistance   String?                              // "5K" | "10K" | "HM" | "FM"
   targetDate       DateTime?         @db.Date
@@ -262,7 +263,7 @@ model TrainingWorkout {
   planId        String
   plan          TrainingPlan @relation(fields: [planId], references: [id], onDelete: Cascade)
   date          DateTime     @db.Date
-  weekNumber    Int                                    // 1 ~ 4
+  weekNumber    Int                                    // 1 ~ weekCount (플랜 기간에 따라 가변)
   dayIndex      Int                                    // 0 (Mon) ~ 6 (Sun)
   type          String                                 // "easy" | "long" | "tempo" | "interval" | "recovery" | "rest"
   distanceKm    Float?                                 // null for rest

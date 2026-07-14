@@ -51,7 +51,7 @@ export default function TodayWorkoutHeroEmpty() {
               fontWeight: 500,
             }}
           >
-            4주 트레이닝 블록을 생성하면 매일 오늘의 workout 이 여기 표시됩니다.
+            트레이닝 블록(4~24주)을 생성하면 매일 오늘의 workout 이 여기 표시됩니다.
           </p>
         </div>
         <Link

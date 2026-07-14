@@ -64,6 +64,7 @@ export default function ArchivedList({ items }: Props) {
               {p.startDate} — {p.endDate}
             </div>
             <div className="mt-2 flex items-center gap-3 md:gap-4 flex-wrap">
+              <MicroLabel color={C.lo}>{p.weekCount}wk</MicroLabel>
               <MicroLabel color={C.lo}>{p.weeklyFrequency}x/wk</MicroLabel>
               {p.targetDistance && (
                 <MicroLabel color={C.primary}>
