@@ -218,7 +218,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     const endStr = ymdKST(endDate);
     throw new Error(
       `targetDate 는 마지막 주 창 [${finalStartStr} ~ ${endStr}] 내에 있어야 합니다. ` +
-        `현재 값: ${input.targetDate}. 더 가까운 race 는 별도 대응 필요.`
+        `현재 값: ${unifiedTargetDateStr}. 더 가까운 race 는 별도 대응 필요.`
     );
   }
   const effectiveTargetDate = targetDate;
