@@ -10,22 +10,43 @@ const BODY_SCHEMA = z.object({
   weeklyFrequency: z.number().int().min(3).max(5).optional(),
   // M11 Phase 1 (#222): weekCount 4~24 (기본 4).
   weekCount: z.number().int().min(4).max(24).optional(),
+  // M11 Phase 2 (#232): 목표 유형 + 페이로드.
+  goalType: z.enum(["distance", "time", "endurance"]).optional(),
   targetDistance: z.enum(["5K", "10K", "HM", "FM"]).optional(),
   targetDate: z
     .string()
     .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식")
     .optional(),
+  timeGoal: z
+    .object({
+      distance: z.enum(["5K", "10K", "HM", "FM"]),
+      targetTimeSec: z.number().int().positive(),
+      targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식"),
+    })
+    .optional(),
+  enduranceGoal: z
+    .object({
+      targetLongRunKm: z.number().positive(),
+      targetDate: z
+        .string()
+        .regex(/^\d{4}-\d{2}-\d{2}$/, "YYYY-MM-DD 형식")
+        .optional(),
+    })
+    .optional(),
 });
 
 // generateTrainingPlan 이 명시적으로 throw 하는 사용자 입력 관련 오류 시그니처.
-// (weekCount 범위 / targetDate 형식 오류 / targetDistance 누락 / 마지막 주 창 밖 targetDate)
+// (weekCount 범위 / targetDate 형식 / targetDistance 누락 / 마지막 주 창 밖 / goalType 별 페이로드)
 function isUserInputError(msg: string): boolean {
   return (
     msg.includes("유효하지 않은 targetDate") ||
     msg.includes("targetDate 를 지정하려면") ||
     msg.includes("targetDate 는 마지막 주 창") ||
     msg.includes("weekCount 는") ||
-    msg.includes("유효하지 않은 weekCount")
+    msg.includes("유효하지 않은 weekCount") ||
+    msg.includes("goalType 은") ||
+    msg.includes("time 목표") ||
+    msg.includes("endurance 목표")
   );
 }
 
