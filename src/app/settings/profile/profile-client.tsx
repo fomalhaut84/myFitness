@@ -14,6 +14,11 @@ interface ProfileValues {
   lthr: number | null;
   lthrPace: number | null; // sec/km
   targetCalories: number | null;
+  // M12 (#223): 개인 목표 (평상 ongoing)
+  targetAvgPace: number | null; // sec/km
+  targetWeeklyKm: number | null;
+  targetVO2max: number | null;
+  personalGoalNote: string; // 빈 문자열 = 미설정
 }
 
 interface GarminMeta {
@@ -110,6 +115,13 @@ export default function ProfileClient({
     lthrPace: formatPace(init.lthrPace),
     targetCalories:
       init.targetCalories === null ? "" : String(init.targetCalories),
+    // M12
+    targetAvgPace: formatPace(init.targetAvgPace),
+    targetWeeklyKm:
+      init.targetWeeklyKm === null ? "" : String(init.targetWeeklyKm),
+    targetVO2max:
+      init.targetVO2max === null ? "" : String(init.targetVO2max),
+    personalGoalNote: init.personalGoalNote,
   });
   // initial 값이 바뀌면 (router.refresh 등) form 재초기화.
   // initialKey로 변경 감지 → 렌더 중 setState (React 권장 derived state 패턴).
@@ -117,7 +129,8 @@ export default function ProfileClient({
   const initialKey =
     `${initial.maxHR}|${initial.lthr}|${initial.lthrPace}|` +
     `${initial.restingHRBase}|${initial.targetCalories}|${initial.targetWeight}|` +
-    `${initial.targetDate}|${initial.birthDate}|${initial.height}|${initial.name}`;
+    `${initial.targetDate}|${initial.birthDate}|${initial.height}|${initial.name}|` +
+    `${initial.targetAvgPace}|${initial.targetWeeklyKm}|${initial.targetVO2max}|${initial.personalGoalNote}`;
   const [prevKey, setPrevKey] = useState(initialKey);
   if (prevKey !== initialKey) {
     // 렌더 중 setState (React 권장 패턴: derived state from props change)
@@ -147,6 +160,13 @@ export default function ProfileClient({
       setMessage({ type: "error", text: "LTHR 페이스는 M:SS 형식이어야 합니다" });
       return;
     }
+    const targetPace = values.targetAvgPace
+      ? parsePace(values.targetAvgPace)
+      : null;
+    if (values.targetAvgPace && targetPace === null) {
+      setMessage({ type: "error", text: "목표 평균 페이스는 M:SS 형식이어야 합니다" });
+      return;
+    }
 
     const payload = {
       name: values.name.trim() || "사용자",
@@ -159,6 +179,11 @@ export default function ProfileClient({
       lthr: toNumOrNull(values.lthr),
       lthrPace: pace,
       targetCalories: toNumOrNull(values.targetCalories),
+      // M12 (#223): 개인 목표 payload
+      targetAvgPace: targetPace,
+      targetWeeklyKm: toNumOrNull(values.targetWeeklyKm),
+      targetVO2max: toNumOrNull(values.targetVO2max),
+      personalGoalNote: values.personalGoalNote.trim(),
     };
 
     setSaving(true);
@@ -338,6 +363,63 @@ export default function ProfileClient({
               className={INPUT_CLASS}
               min={500}
               max={5000}
+            />
+          </Field>
+        </section>
+
+        {/* M12 (#223): 개인 목표 (평상 ongoing) */}
+        <section className="space-y-4">
+          <div>
+            <h2 className="text-sm text-muted uppercase tracking-wider">
+              개인 목표 (평상)
+            </h2>
+            <p className="text-xs text-dim mt-1">
+              대회 준비 트레이닝 플랜과 별개로 ongoing 하는 장기 목표. AI 리포트/조언 시 자동 반영
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <Field label="평균 페이스 목표 (M:SS /km)" hint="최근 30일 러닝 avg 대비 gap 표시">
+              <input
+                type="text"
+                placeholder="5:45"
+                value={values.targetAvgPace}
+                onChange={(e) => setField("targetAvgPace", e.target.value)}
+                className={INPUT_CLASS}
+              />
+            </Field>
+            <Field label="주간 러닝 거리 목표 (km)" hint="최근 4주 avg 대비 % 진행도 계산">
+              <input
+                type="number"
+                step="0.1"
+                value={values.targetWeeklyKm}
+                onChange={(e) => setField("targetWeeklyKm", e.target.value)}
+                className={INPUT_CLASS}
+                min={0}
+                max={500}
+              />
+            </Field>
+          </div>
+
+          <Field label="VO2max 목표" hint="현재 값 대비 남은 gap 표시">
+            <input
+              type="number"
+              step="0.1"
+              value={values.targetVO2max}
+              onChange={(e) => setField("targetVO2max", e.target.value)}
+              className={INPUT_CLASS}
+              min={0}
+              max={90}
+            />
+          </Field>
+
+          <Field label="커스텀 목표" hint="자유 텍스트 (예: '부상 없이 완주', '풀마라톤 sub-4')">
+            <textarea
+              value={values.personalGoalNote}
+              onChange={(e) => setField("personalGoalNote", e.target.value)}
+              className={INPUT_CLASS}
+              maxLength={500}
+              rows={2}
             />
           </Field>
         </section>

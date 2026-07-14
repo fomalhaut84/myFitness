@@ -223,7 +223,7 @@ async function askAdvisorOnce(
     // 등) 는 스케줄 리포트/일반 채팅에서 의도치 않게 상태를 바꿀 수 있으므로 여기에 포함하지 않음.
     // Plan 생성은 명시적 진입점 (POST /api/training-plan/generate) 에서 처리하고,
     // AI 는 read-only get_active_training_plan 만 사용.
-    "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout",
+    "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout,mcp__myfitness__get_personal_goals",
     // #179: --tools "" 로 built-in 도구를 모두 제거 (MCP 도구는 영향 없음).
     // --allowedTools/--disallowedTools 는 permission prompt 만 제어할 뿐 built-in 도구 목록 자체를
     // 제한하지 않아 Agent/AskUserQuestion/PowerShell/Task 등이 여전히 Claude 컨텍스트에 남는다.
@@ -239,11 +239,14 @@ async function askAdvisorOnce(
   // - --exclude-dynamic-system-prompt-sections: default의 동적 sections(cwd/env/git/memory)를
   //   user msg로 옮겨 system param 정적성 향상 → cache 적중률 ↑.
   // - 동적 부분(현재 시간)은 user message 앞에 prepend.
+  // M12 (#223): dynamic context 는 세션 유무 무관하게 매 호출 prepend →
+  // resume 시에도 최신 개인 목표/시간 반영. 이전엔 새 세션에만 붙었음.
+  const dynamicContext = await buildDynamicContext();
   if (currentSessionId) {
     args.push("--resume", currentSessionId);
+    args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
   } else {
     const staticPrompt = await buildStaticSystemPrompt();
-    const dynamicContext = buildDynamicContext();
     args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
     args.push("--append-system-prompt", staticPrompt);
     args.push("--exclude-dynamic-system-prompt-sections");
