@@ -61,10 +61,13 @@ function formatPace(secPerKm: number): string {
  */
 async function recentAvgPace(days = 30): Promise<number | null> {
   const since = daysAgoKST(days);
+  // 러닝 종류 필터 — 코드베이스 규약 (pace-progression/race-prediction/calendar 등) 과
+  // 통일. Garmin 은 track_running/street_running/virtual_run/indoor_running 등 다양한
+  // typeKey 반환 → contains 로 sub-type 포함 (whitelist 는 누락 위험).
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: since },
-      activityType: { in: ["running", "trail_running", "treadmill_running"] },
+      activityType: { contains: "running" },
       avgPace: { not: null },
       distance: { not: null, gt: 0 },
     },
@@ -92,7 +95,8 @@ async function recentWeeklyKm(weeks = 4): Promise<number | null> {
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: since },
-      activityType: { in: ["running", "trail_running", "treadmill_running"] },
+      // 러닝 종류 필터 — pace-progression 등과 동일 규약 (contains).
+      activityType: { contains: "running" },
       distance: { not: null, gt: 0 },
     },
     select: { distance: true },
@@ -183,10 +187,13 @@ export async function computePersonalGoals(): Promise<PersonalGoalsProgress> {
     const { current, start } = await latestAndStartWeight();
     let progressPct: number | null = null;
     if (current !== null && start !== null && start !== profile.targetWeight) {
-      // (감량 방향) 시작값 → 목표값 사이 이동 정도 %.
-      const total = Math.abs(start - profile.targetWeight);
-      const moved = Math.abs(start - current);
-      progressPct = total > 0 ? Math.min(100, Math.round((moved / total) * 100)) : null;
+      // 부호 있는 진행률: 목표 방향과 같으면 양수, 반대 방향이면 clamp 0.
+      // Math.abs 로 부호를 없애면 목표 반대 방향 (감량 목표인데 오히려 증가)
+      // 도 양의 진행률로 보고되어 AI 가 잘못된 격려를 함.
+      const direction = profile.targetWeight - start; // signed goal delta
+      const moved = current - start; // signed progress
+      const rawPct = (moved / direction) * 100;
+      progressPct = Math.max(0, Math.min(100, Math.round(rawPct)));
     }
     result.targetWeight = {
       target: profile.targetWeight,
