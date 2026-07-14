@@ -37,8 +37,7 @@ export interface VO2MaxGoal {
 export interface WeightGoal {
   target: number; // kg
   current: number | null; // 최신 BodyComposition
-  startWeight: number | null; // 목표 설정 이후 첫 record (proxy: 최오래된 record)
-  progressPct: number | null; // 0~100
+  gapKg: number | null; // current - target (양수 = 감량 여지, 음수 = 증량 여지)
 }
 
 export interface PersonalGoalsProgress {
@@ -113,24 +112,12 @@ async function latestVO2max(): Promise<number | null> {
   return profile?.vo2maxRunning ?? null;
 }
 
-async function latestAndStartWeight(): Promise<{
-  current: number | null;
-  start: number | null;
-}> {
-  const [latest, earliest] = await Promise.all([
-    prisma.bodyComposition.findFirst({
-      orderBy: { date: "desc" },
-      select: { weight: true },
-    }),
-    prisma.bodyComposition.findFirst({
-      orderBy: { date: "asc" },
-      select: { weight: true },
-    }),
-  ]);
-  return {
-    current: latest?.weight ?? null,
-    start: earliest?.weight ?? null,
-  };
+async function latestWeight(): Promise<number | null> {
+  const latest = await prisma.bodyComposition.findFirst({
+    orderBy: { date: "desc" },
+    select: { weight: true },
+  });
+  return latest?.weight ?? null;
 }
 
 /**
@@ -184,22 +171,14 @@ export async function computePersonalGoals(): Promise<PersonalGoalsProgress> {
   }
 
   if (profile.targetWeight !== null) {
-    const { current, start } = await latestAndStartWeight();
-    let progressPct: number | null = null;
-    if (current !== null && start !== null && start !== profile.targetWeight) {
-      // 부호 있는 진행률: 목표 방향과 같으면 양수, 반대 방향이면 clamp 0.
-      // Math.abs 로 부호를 없애면 목표 반대 방향 (감량 목표인데 오히려 증가)
-      // 도 양의 진행률로 보고되어 AI 가 잘못된 격려를 함.
-      const direction = profile.targetWeight - start; // signed goal delta
-      const moved = current - start; // signed progress
-      const rawPct = (moved / direction) * 100;
-      progressPct = Math.max(0, Math.min(100, Math.round(rawPct)));
-    }
+    // 목표 baseline 은 신뢰 어려움 (사용자가 목표 설정 시점 데이터 필요, 오래된
+    // record 를 baseline 으로 쓰면 오도됨 — Codex bot P2). gap 만 제공하고
+    // 진행률 계산은 skip. 향후 UserProfile.goalBaselineWeight 필드 추가 시 확장.
+    const current = await latestWeight();
     result.targetWeight = {
       target: profile.targetWeight,
       current,
-      startWeight: start,
-      progressPct,
+      gapKg: current !== null ? current - profile.targetWeight : null,
     };
   }
 
@@ -249,9 +228,12 @@ export function formatGoalsForPrompt(goals: PersonalGoalsProgress): string {
     const g = goals.targetWeight;
     const currentStr =
       g.current !== null ? `${g.current.toFixed(1)}kg` : "데이터 없음";
-    const pctStr = g.progressPct !== null ? ` (${g.progressPct}% 진행)` : "";
+    const gapStr =
+      g.gapKg !== null
+        ? ` (gap ${g.gapKg >= 0 ? "+" : ""}${g.gapKg.toFixed(1)}kg)`
+        : "";
     lines.push(
-      `- 체중 목표: ${g.target.toFixed(1)}kg (현재 ${currentStr}${pctStr})`,
+      `- 체중 목표: ${g.target.toFixed(1)}kg (현재 ${currentStr}${gapStr})`,
     );
   }
   if (goals.personalGoalNote) {
