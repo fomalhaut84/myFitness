@@ -61,10 +61,17 @@ else → 365일 (신규 타입 명시 없음)
 
 ## 8. Known limitations
 
-**`first === null` 케이스 판별 불가**:
-- 시나리오 A: 사용자가 해당 dataType 을 아예 기록 안 함 (예: sleep 데이터 없음)
+`SyncMetadata` 는 `lastSyncDate` (마지막 sync 완료 날짜) 만 tracking — **fetch 커버 범위** 는 모름. 이 정보 부족으로 아래 케이스 정확 판별 불가:
+
+**`first === null` 케이스**:
+- 시나리오 A: 사용자가 해당 dataType 아예 기록 안 함 (예: sleep 데이터 없음)
 - 시나리오 B: `/api/sync?days=1` + rest day 히트로 record 0개 sync 후 lastSyncDate=today
 
-현재 fix 는 A 보호 (매주 무의미 API 낭비 방지). B 는 발생 확률 낮음 (Codex bot P2 #4690151369 지적).
+**`first` 가 매우 오래된 케이스**:
+- 시나리오 C: 예전 record 1개만 있음 → `first` 는 1년 전이라 조건 통과 (backfill skip) 하지만 실제로는 최근 90일 window 부재 (Codex bot P2 #4690182743)
 
-근본 해결은 `SyncMetadata.oldestFetchedDate` 필드 추가로 실제 fetch 커버 범위 tracking — 별도 이슈 (schema migration).
+**현재 fix 는 실사용 우선순위 판단**:
+- 시나리오 A 보호 (record 없는 계정 매주 무의미 API 낭비 방지) — myFitness 실사용
+- 시나리오 B/C — 발생 확률 낮음 (`/api/sync?days=1` 이례적)
+
+**근본 해결**: `SyncMetadata.oldestFetchedDate` (또는 `fetchedRange` JSON) 필드 추가로 실제 fetch 커버 범위 tracking — 별도 이슈 (schema migration).
