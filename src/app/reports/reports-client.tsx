@@ -80,8 +80,11 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
   // (preSync/MCP/프롬프트가 모두 today 기준이라 과거 컨텍스트 보장 불가).
   const today = todayKSTString();
   const yesterday = ymdKST(yesterdayKST());
+  // #210: weekly_report 도 재생성 가능 (오늘/어제 reportDate).
   const canRegenerate = (r: Report) =>
-    (r.category === "morning_report" || r.category === "evening_report") &&
+    (r.category === "morning_report" ||
+      r.category === "evening_report" ||
+      r.category === "weekly_report") &&
     r.reportDate !== null &&
     (r.reportDate === today || r.reportDate === yesterday);
 
@@ -237,6 +240,8 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
       { category: "weekly_report", reportDate: today },
       { category: "morning_report", reportDate: yesterday },
       { category: "evening_report", reportDate: yesterday },
+      // #210: weekly 도 어제 재생성 허용 → 어제 진행중 job 재개 필요.
+      { category: "weekly_report", reportDate: yesterday },
     ];
     (async () => {
       for (const c of candidates) {
@@ -284,6 +289,13 @@ export default function ReportsClient({ initialReports, initialNextCursor }: Pro
             className="px-3 py-1.5 rounded-lg text-[12px] border border-border text-sub hover:text-bright hover:border-border-hover transition-colors disabled:opacity-50"
           >
             {generating === "evening" ? "생성 중..." : "이브닝 생성"}
+          </button>
+          <button
+            onClick={() => generate("weekly")}
+            disabled={generating !== null}
+            className="px-3 py-1.5 rounded-lg text-[12px] border border-border text-sub hover:text-bright hover:border-border-hover transition-colors disabled:opacity-50"
+          >
+            {generating === "weekly" ? "생성 중..." : "주간 생성"}
           </button>
         </div>
       </div>

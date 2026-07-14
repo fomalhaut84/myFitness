@@ -140,8 +140,23 @@ async function preSyncForWeekly(): Promise<void> {
 }
 
 /** 실제 spawn + DB save. job 안에서 호출됨. */
-async function generateAndSaveWeekly(reportDate: string): Promise<void> {
-  // #203: 최신 7일 데이터 sync (daily-report preSync 와 대칭).
+async function generateAndSaveWeekly(
+  reportDate: string,
+  force = false,
+): Promise<void> {
+  // #210: daily-report generateReport 와 대칭 — force=false 면 기존 record 재사용.
+  // 기존엔 항상 delete+create 라 "주간 생성" 버튼 (force=false) 클릭 시 기존 리포트
+  // 덮어쓰기 + AI 비용 낭비 (Codex bot P2).
+  if (!force) {
+    const existing = await prisma.aIAdvice.findFirst({
+      where: { category: "weekly_report", reportDate },
+    });
+    if (existing) {
+      console.log(`[weekly-report] ${reportDate} 이미 존재, 건너뜀`);
+      return;
+    }
+  }
+  // #203: 최신 데이터 sync (daily-report preSync 와 대칭).
   await preSyncForWeekly();
   resetSession("cron-weekly");
   // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
@@ -184,7 +199,7 @@ async function runWeeklyViaJob(params: {
   const shouldRun = created && job.status === "pending";
   if (shouldRun) {
     const runner = runReportJob(job.id, async () => {
-      await generateAndSaveWeekly(reportDate);
+      await generateAndSaveWeekly(reportDate, force);
       const advice = await prisma.aIAdvice.findFirst({
         where: { category: "weekly_report", reportDate },
         orderBy: { createdAt: "desc" },
@@ -225,10 +240,10 @@ export async function startWeeklyReportJob(params: {
   return job;
 }
 
-/** cron / 완료 대기 흐름. */
-export async function generateWeeklyReport(): Promise<string> {
+/** cron / 완료 대기 흐름. #212: /ai 리포트 명시 요청 시 force=true 지원 (daily 와 대칭). */
+export async function generateWeeklyReport(force = false): Promise<string> {
   const { result, job } = await runWeeklyViaJob({
-    force: false,
+    force,
     reportDate: kstDateStr(),
     background: false,
   });
