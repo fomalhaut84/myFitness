@@ -2,9 +2,124 @@
 
 import { useState } from "react";
 import { C, ZONE_COLOR, TYPE_LABEL_KO, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme";
-import type { ActivePlanPayload, ActivePlanWorkout } from "../types";
+import type {
+  ActivePlanPayload,
+  ActivePlanWorkout,
+  EnduranceGoalPayload,
+  TimeGoalPayload,
+} from "../types";
 import { MicroLabel } from "./atoms";
 import WorkoutEditModal from "./WorkoutEditModal";
+
+/** sec → "mm:ss" 또는 "h:mm:ss". time 목표 뱃지용. */
+function formatTargetTime(sec: number): string {
+  const total = Math.round(sec);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const mm = m.toString().padStart(2, "0");
+  const ss = s.toString().padStart(2, "0");
+  if (h > 0) return `${h}:${mm}:${ss}`;
+  return `${m}:${ss}`;
+}
+
+/** goalType 별 배너 렌더. distance 는 기존 UI, time/endurance 는 신규. 값 없으면 null. */
+function renderGoalBanner(
+  plan: NonNullable<ActivePlanPayload["plan"]>,
+): React.ReactNode {
+  const goalType = plan.goalType;
+  if (goalType === "time" && plan.goalValue) {
+    const g = plan.goalValue as TimeGoalPayload;
+    return (
+      <div
+        className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+        style={{ background: "#00000022" }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-block w-2 h-2 shrink-0"
+            style={{ background: C.primary }}
+          />
+          <MicroLabel color={C.primary}>Time target</MicroLabel>
+          <span
+            style={{
+              fontFamily: FONT_BODY,
+              fontSize: 13,
+              color: C.hi,
+              fontWeight: 500,
+            }}
+          >
+            {g.distance} · sub-{formatTargetTime(g.targetTimeSec)} · {g.targetDate}
+          </span>
+        </div>
+        <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}>
+          tempo/interval 페이스 개선 progression
+        </span>
+      </div>
+    );
+  }
+  if (goalType === "endurance" && plan.goalValue) {
+    const g = plan.goalValue as EnduranceGoalPayload;
+    return (
+      <div
+        className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+        style={{ background: "#00000022" }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-block w-2 h-2 shrink-0"
+            style={{ background: C.primary }}
+          />
+          <MicroLabel color={C.primary}>Endurance target</MicroLabel>
+          <span
+            style={{
+              fontFamily: FONT_BODY,
+              fontSize: 13,
+              color: C.hi,
+              fontWeight: 500,
+            }}
+          >
+            Long run {g.targetLongRunKm} km
+            {g.targetDate ? ` · ${g.targetDate}` : ""}
+          </span>
+        </div>
+        <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}>
+          long slot 주차별 선형 ramp
+        </span>
+      </div>
+    );
+  }
+  if (plan.targetDistance && plan.targetDate) {
+    return (
+      <div
+        className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+        style={{ background: "#00000022" }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-block w-2 h-2 shrink-0"
+            style={{ background: C.primary }}
+          />
+          <MicroLabel color={C.primary}>Race target</MicroLabel>
+          <span
+            style={{
+              fontFamily: FONT_BODY,
+              fontSize: 13,
+              color: C.hi,
+              fontWeight: 500,
+            }}
+          >
+            {plan.targetDistance} · {plan.targetDate}
+          </span>
+        </div>
+        <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}>
+          taper: 마지막 주 pre-race window
+        </span>
+      </div>
+    );
+  }
+  return null;
+}
 
 interface Props {
   data: ActivePlanPayload;
@@ -542,35 +657,7 @@ export default function PlanCalendar({ data, todayStr, editable = false }: Props
           </div>
         </div>
 
-        {data.plan.targetDistance && data.plan.targetDate && (
-          <div
-            className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
-            style={{ background: "#00000022" }}
-          >
-            <div className="flex items-center gap-3">
-              <span
-                className="inline-block w-2 h-2 shrink-0"
-                style={{ background: C.primary }}
-              />
-              <MicroLabel color={C.primary}>Race target</MicroLabel>
-              <span
-                style={{
-                  fontFamily: FONT_BODY,
-                  fontSize: 13,
-                  color: C.hi,
-                  fontWeight: 500,
-                }}
-              >
-                {data.plan.targetDistance} · {data.plan.targetDate}
-              </span>
-            </div>
-            <span
-              style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}
-            >
-              taper: 마지막 주 pre-race window
-            </span>
-          </div>
-        )}
+        {renderGoalBanner(data.plan)}
 
         <div
           className="md:hidden px-5 py-3 text-center"

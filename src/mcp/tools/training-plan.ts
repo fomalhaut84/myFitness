@@ -11,6 +11,13 @@ import {
 import { pseudoLthrPace } from "../../lib/training/pace-calc";
 import { computeBaseline } from "../../lib/training/baseline";
 import { scaleBaseline, type TargetDistance as ScaleTarget } from "../../lib/training/plan-scaling";
+import {
+  validateTimeGoal,
+  validateEnduranceGoal,
+  type EnduranceGoalValue,
+  type GoalType,
+  type TimeGoalValue,
+} from "../../lib/training/goal-progression";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 const ACTIVE_PLAN_LOCK_KEY = 761101; // pg_advisory_xact_lock 키 (임의 상수)
@@ -41,9 +48,25 @@ function dateOnlyToKstStart(dateOnly: Date): Date {
 interface GenerateInput {
   weeklyFrequency?: number;
   weekCount?: number; // M11 Phase 1: 4 ~ 24
+  // M11 Phase 2: 목표 유형 + 페이로드. 미지정 시 "distance" (기존 동작).
+  goalType?: GoalType;
+  // goalType == "distance" 시 사용 (레거시 호환).
   targetDistance?: string;
   targetDate?: string; // "YYYY-MM-DD"
+  // goalType == "time" 시 사용.
+  timeGoal?: {
+    distance?: string;
+    targetTimeSec?: number;
+    targetDate?: string;
+  };
+  // goalType == "endurance" 시 사용.
+  enduranceGoal?: {
+    targetLongRunKm?: number;
+    targetDate?: string;
+  };
 }
+
+const GOAL_TYPES: readonly GoalType[] = ["distance", "time", "endurance"];
 
 /**
  * KST 자정 Date 로 변환. 유효하지 않으면 null.
@@ -94,12 +117,70 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     );
   }
 
-  const targetDate =
-    input.targetDate !== undefined ? parseKstDate(input.targetDate) : null;
-  if (input.targetDate !== undefined && targetDate === null) {
-    throw new Error(`유효하지 않은 targetDate: ${input.targetDate} (YYYY-MM-DD 형식 필요)`);
+  // M11 Phase 2: goalType 처리.
+  const goalType: GoalType =
+    input.goalType !== undefined ? input.goalType : "distance";
+  if (!GOAL_TYPES.includes(goalType)) {
+    throw new Error(
+      `goalType 은 ${GOAL_TYPES.join("/")} 중 하나여야 합니다. 현재: ${input.goalType}`,
+    );
   }
-  if (targetDate !== null && targetDistance === null) {
+
+  // goalType 별 페이로드 검증 + targetDate 정규화. targetDate 는 유형별로 다른 필드에서 오지만
+  // Wk4 창 검증은 공통 로직 (기존 finalWeekStart 규칙) 이라 하나로 통합.
+  let timeGoal: TimeGoalValue | undefined;
+  let enduranceGoal: EnduranceGoalValue | undefined;
+  let unifiedTargetDateStr: string | undefined;
+  let unifiedTargetDistance: TargetDistance | null = targetDistance;
+
+  if (goalType === "distance") {
+    unifiedTargetDateStr = input.targetDate;
+  } else if (goalType === "time") {
+    const raw = input.timeGoal;
+    if (!raw) {
+      throw new Error("time 목표는 timeGoal 페이로드가 필요합니다.");
+    }
+    const dist = validateTargetDistance(raw.distance);
+    if (dist === null) {
+      throw new Error(
+        `time 목표 distance 는 5K/10K/HM/FM 중 하나여야 합니다. 현재: ${raw.distance}`,
+      );
+    }
+    if (raw.targetTimeSec === undefined || raw.targetDate === undefined) {
+      throw new Error("time 목표는 targetTimeSec + targetDate 필드가 필수입니다.");
+    }
+    const candidate: TimeGoalValue = {
+      distance: dist,
+      targetTimeSec: raw.targetTimeSec,
+      targetDate: raw.targetDate,
+    };
+    const err = validateTimeGoal(candidate);
+    if (err !== null) throw new Error(err);
+    timeGoal = candidate;
+    unifiedTargetDateStr = candidate.targetDate;
+    unifiedTargetDistance = dist;
+  } else {
+    // endurance
+    const raw = input.enduranceGoal;
+    if (!raw || raw.targetLongRunKm === undefined) {
+      throw new Error("endurance 목표는 enduranceGoal.targetLongRunKm 이 필수입니다.");
+    }
+    const candidate: EnduranceGoalValue = {
+      targetLongRunKm: raw.targetLongRunKm,
+      targetDate: raw.targetDate,
+    };
+    const err = validateEnduranceGoal(candidate);
+    if (err !== null) throw new Error(err);
+    enduranceGoal = candidate;
+    unifiedTargetDateStr = candidate.targetDate;
+  }
+
+  const targetDate =
+    unifiedTargetDateStr !== undefined ? parseKstDate(unifiedTargetDateStr) : null;
+  if (unifiedTargetDateStr !== undefined && targetDate === null) {
+    throw new Error(`유효하지 않은 targetDate: ${unifiedTargetDateStr} (YYYY-MM-DD 형식 필요)`);
+  }
+  if (goalType === "distance" && targetDate !== null && unifiedTargetDistance === null) {
     throw new Error("targetDate 를 지정하려면 targetDistance 도 함께 지정해야 합니다.");
   }
 
@@ -111,9 +192,13 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   const baseline = await computeBaseline();
 
   // M8: 목표 거리에 맞춰 baseline 스케일 (히스토리 sanity cap 포함).
+  // M11 Phase 2: time 목표는 unifiedTargetDistance (timeGoal.distance) 로 스케일. endurance 는
+  // 사용자 지정 targetLongRunKm 이 우선이라 distance 배율 미적용 (null 로 skip).
+  const scaleTargetDistance: ScaleTarget | null =
+    goalType === "endurance" ? null : (unifiedTargetDistance as ScaleTarget | null);
   const scaled = scaleBaseline(
     baseline.weeklyKm,
-    targetDistance as ScaleTarget | null,
+    scaleTargetDistance,
     baseline.historicalMaxWeekKm
   );
 
@@ -145,8 +230,12 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     baselineWeeklyKm: scaled.finalBase,
     lthrPaceSecPerKm: lthrPace,
     recentAvgPaceSecPerKm: baseline.recentAvgPace,
-    targetDistance,
+    // distance/time: unifiedTargetDistance (5K/10K/HM/FM). endurance: null (사용 안함).
+    targetDistance: goalType === "endurance" ? null : unifiedTargetDistance,
     targetDate: effectiveTargetDate,
+    goalType,
+    timeGoal,
+    enduranceGoal,
   });
 
   // generatePlan 의 lthrPace 결정 로직과 정확히 일치시켜 DB 헤더와 실제 workout pace 가 정합.
@@ -173,13 +262,32 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
       });
     }
 
+    // M11 Phase 2: goalValue 는 유형별 페이로드 (distance 는 undefined → null 저장).
+    // Prisma Json 필드 입력은 InputJsonValue 타입이라 좁게 캐스팅.
+    const goalValueForDb =
+      goalType === "time" && timeGoal !== undefined
+        ? {
+            distance: timeGoal.distance,
+            targetTimeSec: timeGoal.targetTimeSec,
+            targetDate: timeGoal.targetDate,
+          }
+        : goalType === "endurance" && enduranceGoal !== undefined
+          ? {
+              targetLongRunKm: enduranceGoal.targetLongRunKm,
+              targetDate: enduranceGoal.targetDate ?? null,
+            }
+          : undefined;
+
     const plan = await tx.trainingPlan.create({
       data: {
         startDate: toUtcDateOnly(startDate),
         endDate: toUtcDateOnly(endDate),
         weekCount,
         weeklyFrequency,
-        targetDistance: targetDistance,
+        goalType,
+        goalValue: goalValueForDb,
+        // targetDistance 는 distance/time 유형에서만 채움. endurance 는 null.
+        targetDistance: goalType === "endurance" ? null : unifiedTargetDistance,
         targetDate: effectiveTargetDate !== null ? toUtcDateOnly(effectiveTargetDate) : null,
         // M8: DB 저장 baselineWeeklyKm 은 최종 스케일된 값 (실제 생성에 사용된 값과 일치).
         baselineWeeklyKm: scaled.finalBase,
@@ -218,13 +326,23 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     };
   });
 
+  const goalValueForPayload =
+    goalType === "time" && timeGoal !== undefined
+      ? { ...timeGoal }
+      : goalType === "endurance" && enduranceGoal !== undefined
+        ? { ...enduranceGoal }
+        : undefined;
+
   const payload = {
     planId: result.plan.id,
     startDate: ymdKST(startDate),
     endDate: ymdKST(endDate),
     weekCount,
     weeklyFrequency,
-    targetDistance: targetDistance ?? undefined,
+    goalType,
+    goalValue: goalValueForPayload,
+    targetDistance:
+      goalType === "endurance" ? undefined : unifiedTargetDistance ?? undefined,
     targetDate: effectiveTargetDate !== null ? ymdKST(effectiveTargetDate) : undefined,
     baselineWeeklyKm: scaled.finalBase,
     scaledForTarget: scaled.scaledForTarget,
@@ -361,6 +479,8 @@ export async function getActiveTrainingPlan() {
       endDate: ymdKST(plan.endDate),
       weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
+      goalType: plan.goalType,
+      goalValue: plan.goalValue ?? undefined,
       targetDistance: plan.targetDistance ?? undefined,
       targetDate: plan.targetDate !== null ? ymdKST(plan.targetDate) : undefined,
     },

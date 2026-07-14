@@ -1,5 +1,6 @@
 // M6-1: 트레이닝 플랜 결정적 생성. M11 Phase 1 (#222): weekCount 4~24 지원.
-// 입력: baseline 주간 km + LTHR pace + weeklyFrequency + weekCount + optional race target
+// M11 Phase 2 (#232): goalType 도입 — "distance"(기존) / "time"(기록) / "endurance"(지속력).
+// 입력: baseline 주간 km + LTHR pace + weeklyFrequency + weekCount + goal 정보
 // 출력: weekCount*7 일치 workout skeleton (rest 포함)
 
 import {
@@ -13,6 +14,14 @@ import {
   type TargetDistance,
 } from "./plan-scaling";
 import { computeWeeklyProgression } from "./weekly-progression";
+import {
+  TIME_GOAL_DISTANCE_M,
+  longRunKmForWeek,
+  targetPaceForWeek,
+  type EnduranceGoalValue,
+  type GoalType,
+  type TimeGoalValue,
+} from "./goal-progression";
 
 export interface GeneratedWorkout {
   date: Date; // KST 00:00 timestamp
@@ -38,6 +47,10 @@ export interface PlanGeneratorInput {
   recentAvgPaceSecPerKm: number | null; // pseudo 대체
   targetDistance: string | null;
   targetDate: Date | null;
+  // M11 Phase 2: 목표 유형. 미지정 시 "distance" (기존 동작).
+  goalType?: GoalType;
+  timeGoal?: TimeGoalValue;
+  enduranceGoal?: EnduranceGoalValue;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -72,6 +85,9 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
     lthrPaceSecPerKm,
     recentAvgPaceSecPerKm,
     targetDate,
+    goalType = "distance",
+    timeGoal,
+    enduranceGoal,
   } = input;
 
   const lthrPace =
@@ -87,6 +103,24 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
 
   const progression = computeWeeklyProgression(weekCount);
   const totalDays = weekCount * 7;
+
+  // M11 Phase 2: goal 유형별 pre-compute.
+  // time 목표: target pace (sec/km) = targetTimeSec / distanceKm. tempo/interval slot 에 적용.
+  const timeTargetPace =
+    goalType === "time" && timeGoal !== undefined
+      ? timeGoal.targetTimeSec /
+        (TIME_GOAL_DISTANCE_M[timeGoal.distance] / 1000)
+      : null;
+  const growthWeeks = progression.peakWeekIdx + 1; // peak 주 포함한 growth 주 수.
+  // endurance 목표: Wk1 (week=0) 의 long slot 기본 거리 = baseline × Wk1 weekMult × long ratio.
+  // multipliers[0] = 1.0 (또는 buildup end) 이므로 baseline × normalizedRatio 로 계산.
+  const longSlotRatio = pattern.find((s) => s.type === "long");
+  const baselineLongKm =
+    goalType === "endurance" && longSlotRatio !== undefined
+      ? baselineWeeklyKm *
+        progression.multipliers[0] *
+        (longSlotRatio.volumeRatio * ratioNorm)
+      : 0;
 
   const workouts: GeneratedWorkout[] = [];
   const RACE_TAPER_WINDOW_DAYS = 6; // race day 기준 이전 6일이 pre-race taper 구간.
@@ -183,9 +217,10 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         workoutKm = baselineWeeklyKm * normalizedRatio * raceTaperFactor;
       }
 
-      // M8: peak 주 long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시 (taper 우선).
-      // M11 Phase 1: peak 주는 weekCount 기반 progression 이 결정 (기본 taper 직전 주).
+      // M8 / distance 목표: peak 주 long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시.
+      // endurance 목표 (M11 Phase 2) 에서는 사용자가 명시적 targetLongRunKm 을 지정하므로 이 승격 로직 skip.
       if (
+        goalType === "distance" &&
         slot.type === "long" &&
         week === progression.peakWeekIdx &&
         raceTaperFactor === undefined &&
@@ -196,16 +231,63 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         if (workoutKm < min) workoutKm = min;
       }
 
-      const pz = paceZoneFor(slot.type, lthrPace);
+      // M11 Phase 2 endurance: long slot 은 baseline → targetLongRunKm 주차별 선형 ramp.
+      // race taper 창은 원 로직 그대로 (0.6 → 0 감쇠) — 사용자 지정 target 보다 race 준비가 우선.
+      if (
+        goalType === "endurance" &&
+        enduranceGoal !== undefined &&
+        slot.type === "long" &&
+        raceTaperFactor === undefined
+      ) {
+        // multipliers 는 growth 구간 [1.0..1.2] 와 taper [0.8] or [0.85, 0.7] 로 구성.
+        // taper 주는 multipliers[week] 를 target 대비 배율로 재해석 (targetLongRunKm × factor).
+        const isTaperWeek = week >= growthWeeks;
+        const taperFactor = isTaperWeek
+          ? progression.multipliers[week] / 1.2 // 정규화 (peak 대비 상대 배율)
+          : undefined;
+        workoutKm = longRunKmForWeek(
+          baselineLongKm,
+          enduranceGoal.targetLongRunKm,
+          week,
+          growthWeeks,
+          taperFactor,
+        );
+      }
+
       const distanceKm = Math.round(workoutKm * 10) / 10;
+
+      // M11 Phase 2 time: tempo/interval 페이스를 baseline → target 으로 개선.
+      // 다른 slot 은 기본 zone 페이스 유지 (회복/지구력 강도 유지 → 부상 방지).
+      let paceSecPerKm: number | null;
+      let zone: string | null;
+      if (
+        goalType === "time" &&
+        timeTargetPace !== null &&
+        (slot.type === "tempo" || slot.type === "interval")
+      ) {
+        const improved = targetPaceForWeek(
+          slot.type,
+          recentAvgPaceSecPerKm,
+          timeTargetPace,
+          week,
+          growthWeeks,
+        );
+        paceSecPerKm = improved ?? paceZoneFor(slot.type, lthrPace)?.paceSecPerKm ?? null;
+        zone = paceZoneFor(slot.type, lthrPace)?.zone ?? null;
+      } else {
+        const pz = paceZoneFor(slot.type, lthrPace);
+        paceSecPerKm = pz?.paceSecPerKm ?? null;
+        zone = pz?.zone ?? null;
+      }
+
       workouts.push({
         date,
         weekNumber: week + 1,
         dayIndex: dayIdx,
         type: slot.type,
         distanceKm,
-        paceSecPerKm: pz?.paceSecPerKm ?? null,
-        zone: pz?.zone ?? null,
+        paceSecPerKm,
+        zone,
         intervalDesc:
           slot.type === "interval" ? intervalDescFor(distanceKm) : null,
         notes: notesFor(slot.type),

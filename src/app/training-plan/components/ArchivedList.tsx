@@ -9,6 +9,30 @@ interface Props {
   items: HistoryItem[];
 }
 
+/** goalType 별 요약 뱃지. distance 는 targetDistance, time 은 sub-time, endurance 는 long km. */
+function renderGoalBadge(p: HistoryItem): React.ReactNode {
+  if (p.goalType === "distance" && p.targetDistance) {
+    return (
+      <MicroLabel color={C.primary}>target · {p.targetDistance}</MicroLabel>
+    );
+  }
+  if (p.goalType === "time" && p.goalValue) {
+    const g = p.goalValue as { distance?: string };
+    if (typeof g.distance === "string") {
+      return <MicroLabel color={C.primary}>{g.distance} · sub-time</MicroLabel>;
+    }
+  }
+  if (p.goalType === "endurance" && p.goalValue) {
+    const g = p.goalValue as { targetLongRunKm?: number };
+    if (typeof g.targetLongRunKm === "number") {
+      return (
+        <MicroLabel color={C.primary}>long {g.targetLongRunKm}km</MicroLabel>
+      );
+    }
+  }
+  return null;
+}
+
 export default function ArchivedList({ items }: Props) {
   if (items.length === 0) {
     return (
@@ -66,11 +90,8 @@ export default function ArchivedList({ items }: Props) {
             <div className="mt-2 flex items-center gap-3 md:gap-4 flex-wrap">
               <MicroLabel color={C.lo}>{p.weekCount}wk</MicroLabel>
               <MicroLabel color={C.lo}>{p.weeklyFrequency}x/wk</MicroLabel>
-              {p.targetDistance && (
-                <MicroLabel color={C.primary}>
-                  target · {p.targetDistance}
-                </MicroLabel>
-              )}
+              <MicroLabel color={C.mid}>goal · {p.goalType}</MicroLabel>
+              {renderGoalBadge(p)}
             </div>
           </div>
           <div className="flex flex-col items-end">

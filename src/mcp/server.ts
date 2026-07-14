@@ -467,7 +467,7 @@ server.tool(
 
 server.tool(
   "generate_training_plan",
-  "트레이닝 플랜을 결정적으로 생성 + DB 저장 (M11 Phase 1: 기간 커스텀 4~24주). 입력: weeklyFrequency(3~5, 기본 4), weekCount(4~24, 기본 4), targetDistance(5K/10K/HM/FM, optional), targetDate(YYYY-MM-DD, targetDistance 필수). 기존 active plan 은 archived 처리. 마지막 1~2주는 taper, 나머지는 baseline → +20% 선형 램프. LTHR pace 기반 zone/pace 배분. race 목표 있고 targetDate 가 마지막 주 창 내면 targetDate 까지 선형 감소 + race 당일 rest.",
+  "트레이닝 플랜을 결정적으로 생성 + DB 저장 (M11 Phase 2: goalType 확장). 입력: weeklyFrequency(3~5, 기본 4), weekCount(4~24, 기본 4), goalType(distance|time|endurance, 기본 distance) + 유형별 페이로드. distance: targetDistance/targetDate. time: timeGoal{distance, targetTimeSec, targetDate} — tempo/interval 페이스를 baseline → target 으로 주차별 선형 개선. endurance: enduranceGoal{targetLongRunKm, targetDate?} — long slot 을 baseline → target 으로 ramp. 기존 active plan 은 archived 처리. race 목표 있고 targetDate 가 마지막 주 창 내면 targetDate 까지 선형 감소 + race 당일 rest.",
   {
     weeklyFrequency: z
       .number()
@@ -483,15 +483,37 @@ server.tool(
       .max(24)
       .optional()
       .describe("플랜 기간 주수 (4~24, 기본 4)"),
+    goalType: z
+      .enum(["distance", "time", "endurance"])
+      .optional()
+      .describe("목표 유형 (기본 distance)"),
     targetDistance: z
       .enum(["5K", "10K", "HM", "FM"])
       .optional()
-      .describe("목표 race 거리"),
+      .describe("distance/time 유형에서 사용되는 race 거리"),
     targetDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional()
-      .describe("race 예정일 YYYY-MM-DD (targetDistance 와 함께, 마지막 주 창 내)"),
+      .describe("distance 유형 race 예정일 YYYY-MM-DD (targetDistance 와 함께, 마지막 주 창 내)"),
+    timeGoal: z
+      .object({
+        distance: z.enum(["5K", "10K", "HM", "FM"]),
+        targetTimeSec: z.number().int().positive(),
+        targetDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+      })
+      .optional()
+      .describe("time 유형 페이로드 (기록 목표 sec + race distance + race 예정일)"),
+    enduranceGoal: z
+      .object({
+        targetLongRunKm: z.number().positive(),
+        targetDate: z
+          .string()
+          .regex(/^\d{4}-\d{2}-\d{2}$/)
+          .optional(),
+      })
+      .optional()
+      .describe("endurance 유형 페이로드 (long run 최대 목표 km, optional race 예정일)"),
   },
   async (args) => generateTrainingPlan(args)
 );

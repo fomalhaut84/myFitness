@@ -31,6 +31,8 @@ export interface PlanDetailResponse {
     endDate: string;
     weekCount: number;
     weeklyFrequency: number;
+    goalType: string;
+    goalValue: unknown;
     targetDistance: string | null;
     targetDate: string | null;
     baselineWeeklyKm: number | null;
@@ -163,6 +165,8 @@ export async function fetchPlanDetail(
       endDate: ymdKST(plan.endDate),
       weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
+      goalType: plan.goalType,
+      goalValue: plan.goalValue ?? null,
       targetDistance: plan.targetDistance ?? null,
       targetDate:
         plan.targetDate !== null ? ymdKST(plan.targetDate) : null,

@@ -240,6 +240,7 @@ model FoodLog {
 }
 
 // M6-1: 트레이닝 플랜 (결정적 생성 + 진행 파생). M11 Phase 1 (#222): weekCount 4~24 지원.
+// M11 Phase 2 (#232): goalType 도입 ("distance" | "time" | "endurance"), goalValue Json 페이로드.
 model TrainingPlan {
   id               String            @id @default(cuid())
   createdAt        DateTime          @default(now())
@@ -247,8 +248,10 @@ model TrainingPlan {
   endDate          DateTime          @db.Date          // startDate + (weekCount*7 - 1) 일
   weekCount        Int               @default(4)      // M11 Phase 1: 4 ~ 24 주
   weeklyFrequency  Int                                  // 3 | 4 | 5
-  targetDistance   String?                              // "5K" | "10K" | "HM" | "FM"
-  targetDate       DateTime?         @db.Date
+  goalType         String            @default("distance") // M11 Phase 2: "distance" | "time" | "endurance"
+  goalValue        Json?                                // M11 Phase 2: goalType 별 페이로드 (distance 는 null)
+  targetDistance   String?                              // "5K" | "10K" | "HM" | "FM" (distance/time 유형 사용)
+  targetDate       DateTime?         @db.Date          // race day 또는 목표 도달일
   baselineWeeklyKm Float?                               // 생성 시점 baseline
   baselineAcwr     Float?
   lthrPaceUsed     Float?                               // sec/km, LTHR 부재 시 pseudo

@@ -4,7 +4,11 @@ import { fetchPlanDetail } from "@/lib/training/plan-detail";
 import PlanCalendar from "@/app/training-plan/components/PlanCalendar";
 import { SectionHeader, MicroLabel } from "@/app/training-plan/components/atoms";
 import { C, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "@/app/training-plan/theme";
-import type { ActivePlanPayload } from "@/app/training-plan/types";
+import type {
+  ActivePlanPayload,
+  GoalType,
+  GoalValuePayload,
+} from "@/app/training-plan/types";
 
 export const dynamic = "force-dynamic";
 
@@ -78,6 +82,8 @@ export default async function ArchivedPlanDetailPage({ params }: Props) {
       endDate: plan.endDate,
       weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
+      goalType: plan.goalType as GoalType,
+      goalValue: (plan.goalValue as GoalValuePayload) ?? undefined,
       targetDistance: plan.targetDistance ?? undefined,
       targetDate: plan.targetDate ?? undefined,
     },
@@ -164,41 +170,13 @@ export default async function ArchivedPlanDetailPage({ params }: Props) {
               unit={plan.lthrPaceUsed !== null ? "/km" : undefined}
             />
           </div>
-          {(plan.targetDistance || plan.targetDate) && (
-            <div
-              className="mt-8 pt-6 flex items-center gap-3 flex-wrap"
-              style={{ borderTop: `1px solid ${C.border}` }}
-            >
-              <span
-                className="inline-block w-2 h-2 shrink-0"
-                style={{ background: C.primary }}
-              />
-              <MicroLabel color={C.primary}>Race target</MicroLabel>
-              {plan.targetDistance && (
-                <span
-                  style={{
-                    fontFamily: FONT_BODY,
-                    fontSize: 14,
-                    color: C.hi,
-                    fontWeight: 600,
-                  }}
-                >
-                  {plan.targetDistance}
-                </span>
-              )}
-              {plan.targetDate && (
-                <span
-                  style={{
-                    fontFamily: FONT_MONO,
-                    fontSize: 12,
-                    color: C.mid,
-                  }}
-                >
-                  {plan.targetDate}
-                </span>
-              )}
-            </div>
-          )}
+          <div
+            className="mt-8 pt-6 flex items-center gap-3 flex-wrap"
+            style={{ borderTop: `1px solid ${C.border}` }}
+          >
+            <MicroLabel color={C.mid}>Goal · {plan.goalType}</MicroLabel>
+            {/* 상세 goal 값은 아래 PlanCalendar 배너에서 표시. */}
+          </div>
         </div>
       </section>
 
