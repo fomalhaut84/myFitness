@@ -95,8 +95,10 @@ export function targetPaceForWeek(
   // 기본 zone pace fallback (LTHR × 배율) 을 사용.
   if (baselinePace === null) return null;
   if (baselinePace <= targetPace) {
-    // 이미 목표 도달 → target 유지 (더 낮추지 않음).
-    return Math.round(targetPace);
+    // 이미 목표 도달/초과 → tempo/interval 을 target(느린) 값으로 강제하면 훈련 세션이
+    // 평소 easy 페이스보다 느려지는 회귀 (Codex P2). null 반환 → caller 의 LTHR/기본
+    // zone 페이스 fallback 사용 (기존 강도 유지).
+    return null;
   }
   const paceGap = baselinePace - targetPace; // sec/km, 양수
   const clampedWeek = Math.min(week + 1, growthWeeks); // peak 주 이후는 growth 로 고정.
