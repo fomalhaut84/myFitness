@@ -90,8 +90,12 @@ export function targetPaceForWeek(
   growthWeeks: number,
 ): number | null {
   if (slotType !== "tempo" && slotType !== "interval") return null; // 다른 타입은 기존 zone 그대로 (호출자 fallback).
-  if (baselinePace === null || baselinePace <= targetPace) {
-    // baseline 페이스 정보 없음 or 이미 목표 도달 → 그대로 targetPace 사용.
+  // baseline 페이스 정보 없음 (신규 사용자, avgPace 미기록) → 개선 progression 계산 불가.
+  // 이 경우 Wk1 부터 즉시 target 을 강제하면 부상 위험 (Codex P2). null 반환 → caller 의
+  // 기본 zone pace fallback (LTHR × 배율) 을 사용.
+  if (baselinePace === null) return null;
+  if (baselinePace <= targetPace) {
+    // 이미 목표 도달 → target 유지 (더 낮추지 않음).
     return Math.round(targetPace);
   }
   const paceGap = baselinePace - targetPace; // sec/km, 양수

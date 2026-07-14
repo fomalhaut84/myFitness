@@ -217,10 +217,12 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         workoutKm = baselineWeeklyKm * normalizedRatio * raceTaperFactor;
       }
 
-      // M8 / distance 목표: peak 주 long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시.
-      // endurance 목표 (M11 Phase 2) 에서는 사용자가 명시적 targetLongRunKm 을 지정하므로 이 승격 로직 skip.
+      // M8 / distance / time 목표: peak 주 long run 은 race 거리별 최소 거리 보장.
+      // taper 창에 있으면 무시. distance 와 time 모두 실제 race 를 뜁니다 (HM/FM 완주 지구력 필수),
+      // 그래서 두 유형 다 peak long min 을 적용해야 준비 부족을 방지 (Codex P2).
+      // endurance 목표는 사용자가 명시적 targetLongRunKm 을 지정하므로 이 승격 로직 skip.
       if (
-        goalType === "distance" &&
+        (goalType === "distance" || goalType === "time") &&
         slot.type === "long" &&
         week === progression.peakWeekIdx &&
         raceTaperFactor === undefined &&

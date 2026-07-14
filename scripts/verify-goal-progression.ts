@@ -71,3 +71,47 @@ for (let w = 0; w < 8; w++) {
 console.log(
   "  ↑ 성장 주가 baseline (26.7) 에 갇히지 않고 target (20) 방향으로 감소해야 함.",
 );
+
+// --- 5. time 목표 + baseline pace null (Codex P2 회귀) --------------------
+// baselinePace=null 일 때 tempo/interval 이 즉시 target race pace 를 강제하지 않고
+// LTHR/기본 zone 페이스로 fallback 되는지.
+const timePlanNoBaseline = generatePlan({
+  ...baseInput,
+  recentAvgPaceSecPerKm: null, // baseline avg pace 부재
+  goalType: "time",
+  timeGoal: {
+    distance: "10K",
+    targetTimeSec: 3000, // target 300 sec/km (매우 공격적)
+    targetDate: "2026-09-25",
+  },
+});
+const week1Tempos = timePlanNoBaseline.filter(
+  (w) => w.type === "tempo" && w.weekNumber === 1,
+);
+console.log("\n[time regression] baselinePace=null Wk1 tempo pace (sec/km):");
+for (const w of week1Tempos) {
+  console.log(`  ${w.paceSecPerKm} (target race pace=300, 반드시 300 이 아니어야 함)`);
+}
+
+// --- 6. FM time 목표 peak long min 승격 (Codex P2 회귀) ----------------------
+// FM time 목표에서 peak 주 long slot 이 PEAK_LONG_MIN_KM['FM']=27 이상이어야.
+const fmTimePlan = generatePlan({
+  ...baseInput,
+  weekCount: 12,
+  baselineWeeklyKm: 20, // 낮은 baseline → ratio 만으로는 27km 못 채움
+  goalType: "time",
+  targetDistance: "FM", // MCP tool 이 timeGoal.distance 로 세팅
+  timeGoal: {
+    distance: "FM",
+    targetTimeSec: 14400, // 4:00:00
+    targetDate: "2026-10-24",
+  },
+});
+const fmPeakWeekIdx = 12 - 2 - 1; // taperWeeks=2 for wc>8 → growthWeeks=10, peakIdx=9
+const peakLongs = fmTimePlan.filter(
+  (w) => w.type === "long" && w.weekNumber === fmPeakWeekIdx + 1,
+);
+console.log("\n[FM time regression] peak week long slot km (min 27 필요):");
+for (const w of peakLongs) {
+  console.log(`  Wk${w.weekNumber}: ${w.distanceKm} km`);
+}
