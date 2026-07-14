@@ -28,6 +28,11 @@ export default async function ProfilePage() {
         lthr: profile?.lthr ?? null,
         lthrPace: profile?.lthrPace ?? null,
         targetCalories: profile?.targetCalories ?? null,
+        // M12 (#223): 개인 목표
+        targetAvgPace: profile?.targetAvgPace ?? null,
+        targetWeeklyKm: profile?.targetWeeklyKm ?? null,
+        targetVO2max: profile?.targetVO2max ?? null,
+        personalGoalNote: profile?.personalGoalNote ?? "",
       }}
       garminMeta={{
         maxHRSource: profile?.maxHRSource ?? null,

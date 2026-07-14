@@ -184,10 +184,26 @@ async function buildUserProfileSection(): Promise<string> {
 /**
  * 정적(반정적) 시스템 프롬프트 — Claude CLI `--system-prompt` 로 전달해 API system param 분리 + 자동 캐싱 적격.
  * BASE_PROMPT(정적) + UserProfile section(반정적, 프로필 변경 시 무효화).
+ * M12 (#223): 평상 개인 목표 section 도 정적으로 포함 → AI 가 매번 조회 없이 컨텍스트 활용.
  */
 export async function buildStaticSystemPrompt(): Promise<string> {
-  const profileSection = await buildUserProfileSection();
-  return `${BASE_PROMPT}\n${profileSection}`;
+  const [profileSection, goalsSection] = await Promise.all([
+    buildUserProfileSection(),
+    buildPersonalGoalsSection(),
+  ]);
+  return `${BASE_PROMPT}\n${profileSection}${goalsSection ? `\n${goalsSection}` : ""}`;
+}
+
+/**
+ * M12 (#223): 개인 목표 컨텍스트를 시스템 프롬프트에 삽입. 미설정 시 빈 문자열 반환 →
+ * 프롬프트에 항목 자체 생략. AI 가 매번 get_personal_goals 호출할 필요 감소.
+ */
+async function buildPersonalGoalsSection(): Promise<string> {
+  const { computePersonalGoals, formatGoalsForPrompt } = await import(
+    "@/lib/personal-goals"
+  );
+  const goals = await computePersonalGoals();
+  return formatGoalsForPrompt(goals);
 }
 
 /** 호출마다 변하는 동적 컨텍스트 — user message 앞에 prepend. 캐시 무효화 원인. */
