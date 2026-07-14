@@ -22,6 +22,11 @@ model UserProfile {
   lthrPace       Float?              // LTHR 페이스 (sec/km)
   targetCalories Int?                // 일일 칼로리 목표 (kcal)
   targetDate     DateTime?           // M4-6: 목표 체중 도달 목표일
+  // M12 (#223): 평상 개인 목표 — ongoing (기간 미지정). AI 어드바이저 컨텍스트로 활용.
+  targetAvgPace    Float?            // 평균 페이스 목표 (sec/km, 예: 5:45 = 345)
+  targetWeeklyKm   Float?            // 주간 러닝 거리 목표 (km/week)
+  targetVO2max     Float?            // VO2max 목표
+  personalGoalNote String?           // 커스텀 텍스트 목표 (자유 입력)
   // Garmin 자동 싱크 (#85)
   vo2maxRunning        Float?    // Garmin VO2max
   maxHRSource          String?   // "manual" | "garmin"

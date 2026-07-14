@@ -48,6 +48,11 @@ const PATCH_SCHEMA = z.object({
   lthr: z.number().int().min(80).max(220).nullable().optional(),
   lthrPace: z.number().positive().max(1200).nullable().optional(), // sec/km
   targetCalories: z.number().int().min(500).max(5000).nullable().optional(),
+  // M12 (#223): 평상 개인 목표
+  targetAvgPace: z.number().positive().max(1200).nullable().optional(), // sec/km
+  targetWeeklyKm: z.number().positive().max(500).nullable().optional(),
+  targetVO2max: z.number().positive().max(90).nullable().optional(),
+  personalGoalNote: z.string().trim().max(500).nullable().optional(),
 });
 
 const DEFAULT_NAME = "사용자";
@@ -181,6 +186,18 @@ export async function PATCH(request: Request) {
     }
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
+    // M12 (#223): 개인 목표 필드 update passthrough (변경 이력 tracking 대상 아님).
+    if (data.targetAvgPace !== undefined)
+      updatePayload.targetAvgPace = data.targetAvgPace;
+    if (data.targetWeeklyKm !== undefined)
+      updatePayload.targetWeeklyKm = data.targetWeeklyKm;
+    if (data.targetVO2max !== undefined)
+      updatePayload.targetVO2max = data.targetVO2max;
+    if (data.personalGoalNote !== undefined) {
+      // 빈 문자열은 null 로 정규화 (프론트 empty input 처리).
+      updatePayload.personalGoalNote =
+        data.personalGoalNote === "" ? null : data.personalGoalNote;
+    }
 
     // 변경 이력 기록 대상 필드 수집 (#85)
     const trackedFields: Array<{ field: MetricField; old: number | null; new: number | null }> = [];

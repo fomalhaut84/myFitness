@@ -47,6 +47,7 @@ import {
   getActiveTrainingPlan,
 } from "./tools/training-plan";
 import { recommendTodayWorkout } from "./tools/recommend-today-workout";
+import { getPersonalGoals } from "./tools/personal-goals";
 
 /**
  * tools/call 요청 처리 스코프. Handler wrapper 가 실행됐는지 tracking 해
@@ -515,6 +516,13 @@ server.tool(
       .describe("조회 일수 (기본 90, 30~365)"),
   },
   async (args) => getRacePrediction(args)
+);
+
+server.tool(
+  "get_personal_goals",
+  "사용자가 Settings 에서 설정한 평상 개인 목표 + 현재 진행도. 대회 준비 (트레이닝 플랜, 기간 지정) 와 별개로 ongoing 하는 장기 목표 (평균 페이스 개선, 주간 러닝 거리, VO2max, 목표 체중, 커스텀 텍스트). 미설정 시 configured=false. 리포트/조언 시 이 목표를 기준으로 진행 상황을 언급하세요.",
+  {},
+  async () => getPersonalGoals()
 );
 
   return server;
