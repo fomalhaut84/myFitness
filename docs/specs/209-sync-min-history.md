@@ -58,3 +58,13 @@ else → 365일 (신규 타입 명시 없음)
 
 - 각 dataType 별로 다른 required window 지정 (예: activities 90일, injury_risk 28일) — 가장 큰 값 (90일) 하나로 통일 (실용).
 - `firstRecordDate` 캐싱 — 매번 조회 (Prisma index 로 빠름).
+
+## 8. Known limitations
+
+**`first === null` 케이스 판별 불가**:
+- 시나리오 A: 사용자가 해당 dataType 을 아예 기록 안 함 (예: sleep 데이터 없음)
+- 시나리오 B: `/api/sync?days=1` + rest day 히트로 record 0개 sync 후 lastSyncDate=today
+
+현재 fix 는 A 보호 (매주 무의미 API 낭비 방지). B 는 발생 확률 낮음 (Codex bot P2 #4690151369 지적).
+
+근본 해결은 `SyncMetadata.oldestFetchedDate` 필드 추가로 실제 fetch 커버 범위 tracking — 별도 이슈 (schema migration).
