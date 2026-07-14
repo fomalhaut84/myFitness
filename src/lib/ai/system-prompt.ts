@@ -147,8 +147,9 @@ async function buildUserProfileSection(): Promise<string> {
   }
   if (profile?.targetCalories)
     lines.push(`- 일일 칼로리 목표: ${profile.targetCalories} kcal`);
-  if (profile?.targetWeight)
-    lines.push(`- 목표 체중: ${profile.targetWeight} kg`);
+  // M12 (#223): targetWeight 는 dynamic goals 섹션 (buildPersonalGoalsSection) 에서
+  // 관리 → resume 세션에서도 최신 반영. 여기서 중복 노출하면 static prompt 에 stale
+  // 값이 남아 dynamic 최신 값과 충돌 (Codex bot P2).
 
   // 프로필 정보가 하나도 없으면 안내 추가
   if (lines.length === 1) {
