@@ -66,6 +66,56 @@ async function getStartDate(dataType: DataType): Promise<Date> {
   return daysAgo(INITIAL_HISTORY_DAYS);
 }
 
+/**
+ * #209: dataType 별 최초 record 날짜 조회. minHistoryDays 로 backfill 판정 시 사용.
+ * user_profile 은 스냅샷이라 history 개념 없음 → null.
+ * Record 자체가 없으면 null (fresh DB).
+ */
+async function firstRecordDate(dataType: DataType): Promise<Date | null> {
+  if (dataType === "user_profile") return null;
+  if (dataType === "activities") {
+    const r = await prisma.activity.findFirst({
+      orderBy: { startTime: "asc" },
+      select: { startTime: true },
+    });
+    return r?.startTime ?? null;
+  }
+  const finders: Record<
+    Exclude<DataType, "user_profile" | "activities">,
+    () => Promise<{ date: Date } | null>
+  > = {
+    daily_stats: () =>
+      prisma.dailySummary.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    sleep: () =>
+      prisma.sleepRecord.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    heart_rate: () =>
+      prisma.heartRateRecord.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    body_composition: () =>
+      prisma.bodyComposition.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    blood_pressure: () =>
+      prisma.bloodPressure.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+  };
+  const r = await finders[
+    dataType as Exclude<DataType, "user_profile" | "activities">
+  ]();
+  return r?.date ?? null;
+}
+
 async function updateSyncMetadata(
   dataType: DataType,
   endDate: Date,
@@ -135,6 +185,25 @@ export async function syncAll(
      * 신규 타입(혈압 등)의 초기 히스토리를 놓치지 않도록. 기본 false.
      */
     bootstrapNewTypes?: boolean;
+    /**
+     * #209: 최소 보장할 history 일수. 지정 시 각 dataType 의 최초 record 가
+     * `today - minHistoryDays` 이후이면 (=history 부족) startDate 를
+     * `daysAgo(minHistoryDays)` 로 강제해 backfill 유도.
+     *
+     * 시나리오: `/api/sync` 1일 range 로 짧게 sync 한 후 lastSyncDate=today.
+     * 이 상태로 weekly preSync 를 호출하면 lastSyncDate+1 부터 시작 →
+     * get_pace_progression (90일), get_training_load_trend (28일) 등 도구가
+     * 필요한 history 부재. minHistoryDays 로 강제 backfill.
+     *
+     * `bootstrapNewTypes` 와 유사하지만 대상이 다름:
+     * - bootstrapNewTypes: 성공 sync 이력 자체가 없을 때 (신규 타입)
+     * - minHistoryDays: 성공 sync 는 있지만 history 가 부족할 때
+     * 둘 다 적용된 경우 신규 타입은 bootstrapNewTypes 로 365일, 기존 타입은
+     * minHistoryDays 로 강제 backfill.
+     *
+     * user_profile 은 스냅샷이라 무관.
+     */
+    minHistoryDays?: number;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
@@ -152,10 +221,36 @@ export async function syncAll(
       meta && meta.lastSyncDate.getTime() > 0
     );
 
+    // #209: 기존 성공 sync 가 있어도 history 가 요구 window 미만이면 강제 backfill.
+    // user_profile 은 대상 아님 (스냅샷).
+    let historyShortfall = false;
+    if (
+      options?.minHistoryDays &&
+      hasSuccessfulSync &&
+      dataType !== "user_profile"
+    ) {
+      const first = await firstRecordDate(dataType);
+      const requiredStart = daysAgo(options.minHistoryDays);
+      // first === null 은 record 없는 계정 (예: 수면 데이터 미기록) — 성공 sync 이력이
+      // 이미 있으므로 매주 backfill 은 무의미한 API 호출 (Codex bot P2 #4690117542).
+      // 실제 데이터가 있는데 짧게 fetch 된 케이스만 backfill 대상.
+      if (first && first > requiredStart) {
+        historyShortfall = true;
+      }
+    }
+
     let startDate: Date;
     if (!hasSuccessfulSync && options?.bootstrapNewTypes) {
       // 신규 타입 + bootstrap 모드 (cron): 365일 초기 로드
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
+    } else if (historyShortfall && options?.minHistoryDays) {
+      // #209: 기존 타입 + history 부족 → minHistoryDays 만큼 backfill.
+      // explicit startDate 를 override 하지 않으려면 min(startDate, requiredStart) 를
+      // 취해야 하나, minHistoryDays 사용 시엔 대개 명시 startDate 없음 (cron).
+      startDate = daysAgo(options.minHistoryDays);
+      console.log(
+        `[${dataType}] history 부족 감지 (minHistoryDays=${options.minHistoryDays}) → backfill`,
+      );
     } else if (options?.startDate) {
       // 명시 startDate 우선 (API 사용자 요청 등 의도된 범위 존중)
       startDate = options.startDate;
