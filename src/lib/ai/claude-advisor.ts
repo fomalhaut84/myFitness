@@ -239,11 +239,14 @@ async function askAdvisorOnce(
   // - --exclude-dynamic-system-prompt-sections: default의 동적 sections(cwd/env/git/memory)를
   //   user msg로 옮겨 system param 정적성 향상 → cache 적중률 ↑.
   // - 동적 부분(현재 시간)은 user message 앞에 prepend.
+  // M12 (#223): dynamic context 는 세션 유무 무관하게 매 호출 prepend →
+  // resume 시에도 최신 개인 목표/시간 반영. 이전엔 새 세션에만 붙었음.
+  const dynamicContext = await buildDynamicContext();
   if (currentSessionId) {
     args.push("--resume", currentSessionId);
+    args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
   } else {
     const staticPrompt = await buildStaticSystemPrompt();
-    const dynamicContext = buildDynamicContext();
     args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
     args.push("--append-system-prompt", staticPrompt);
     args.push("--exclude-dynamic-system-prompt-sections");
