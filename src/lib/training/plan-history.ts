@@ -17,6 +17,8 @@ export interface HistoryItem {
   endDate: string;
   weekCount: number;
   weeklyFrequency: number;
+  goalType: "distance" | "time" | "endurance"; // M11 Phase 2
+  goalValue: unknown; // 유형별 JSON payload (null 가능)
   targetDistance: string | null;
   targetDate: string | null;
   totalActive: number;
@@ -97,6 +99,8 @@ export async function fetchArchivedHistory(): Promise<HistoryItem[]> {
         endDate: ymdKST(plan.endDate),
         weekCount: plan.weekCount,
         weeklyFrequency: plan.weeklyFrequency,
+        goalType: plan.goalType as "distance" | "time" | "endurance",
+        goalValue: plan.goalValue ?? null,
         targetDistance: plan.targetDistance ?? null,
         targetDate:
           plan.targetDate !== null ? ymdKST(plan.targetDate) : null,
