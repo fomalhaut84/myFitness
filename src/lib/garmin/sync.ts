@@ -231,8 +231,10 @@ export async function syncAll(
     ) {
       const first = await firstRecordDate(dataType);
       const requiredStart = daysAgo(options.minHistoryDays);
-      // record 자체가 없거나 (edge case) firstRecordDate 가 requiredStart 이후 (=history 부족)
-      if (!first || first > requiredStart) {
+      // first === null 은 record 없는 계정 (예: 수면 데이터 미기록) — 성공 sync 이력이
+      // 이미 있으므로 매주 backfill 은 무의미한 API 호출 (Codex bot P2 #4690117542).
+      // 실제 데이터가 있는데 짧게 fetch 된 케이스만 backfill 대상.
+      if (first && first > requiredStart) {
         historyShortfall = true;
       }
     }
