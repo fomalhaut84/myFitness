@@ -184,19 +184,28 @@ async function buildUserProfileSection(): Promise<string> {
 /**
  * 정적(반정적) 시스템 프롬프트 — Claude CLI `--system-prompt` 로 전달해 API system param 분리 + 자동 캐싱 적격.
  * BASE_PROMPT(정적) + UserProfile section(반정적, 프로필 변경 시 무효화).
- * M12 (#223): 평상 개인 목표 section 도 정적으로 포함 → AI 가 매번 조회 없이 컨텍스트 활용.
+ *
+ * NOTE: 개인 목표 (M12 #223) 는 **dynamic context 로 이동**. 이유: static prompt 는
+ * 세션 resume (`--resume`) 시 재빌드되지 않아 사용자가 Settings 에서 목표를 변경/저장
+ * 해도 다음 세션까지 반영 안 됨 (Codex bot P2). 매 호출마다 새로 계산되는 dynamic
+ * context 에 넣어야 항상 최신. static 캐싱 이득은 유지 (goals section 제외).
  */
 export async function buildStaticSystemPrompt(): Promise<string> {
-  const [profileSection, goalsSection] = await Promise.all([
-    buildUserProfileSection(),
-    buildPersonalGoalsSection(),
-  ]);
-  return `${BASE_PROMPT}\n${profileSection}${goalsSection ? `\n${goalsSection}` : ""}`;
+  const profileSection = await buildUserProfileSection();
+  return `${BASE_PROMPT}\n${profileSection}`;
 }
 
 /**
- * M12 (#223): 개인 목표 컨텍스트를 시스템 프롬프트에 삽입. 미설정 시 빈 문자열 반환 →
- * 프롬프트에 항목 자체 생략. AI 가 매번 get_personal_goals 호출할 필요 감소.
+ * 호출마다 변하는 동적 컨텍스트 — user message 앞에 prepend. 캐시 무효화 원인.
+ * M12 (#223): 개인 목표 컨텍스트를 여기 포함해 세션 resume 이후에도 최신 반영.
+ */
+export async function buildDynamicContext(): Promise<string> {
+  const goalsSection = await buildPersonalGoalsSection();
+  return `## 현재 시간\n${formatKSTDateTime()}\n${goalsSection ? `\n${goalsSection}` : ""}`;
+}
+
+/**
+ * M12 (#223): 개인 목표 컨텍스트. 미설정 시 빈 문자열.
  */
 async function buildPersonalGoalsSection(): Promise<string> {
   const { computePersonalGoals, formatGoalsForPrompt } = await import(
@@ -206,13 +215,11 @@ async function buildPersonalGoalsSection(): Promise<string> {
   return formatGoalsForPrompt(goals);
 }
 
-/** 호출마다 변하는 동적 컨텍스트 — user message 앞에 prepend. 캐시 무효화 원인. */
-export function buildDynamicContext(): string {
-  return `## 현재 시간\n${formatKSTDateTime()}\n`;
-}
-
 /** 호환용: 정적+동적 합쳐 단일 문자열 반환. 신규 코드는 buildStaticSystemPrompt/buildDynamicContext 직접 사용. */
 export async function buildSystemPrompt(): Promise<string> {
-  const staticPart = await buildStaticSystemPrompt();
-  return `${staticPart}${buildDynamicContext()}`;
+  const [staticPart, dynamicPart] = await Promise.all([
+    buildStaticSystemPrompt(),
+    buildDynamicContext(),
+  ]);
+  return `${staticPart}${dynamicPart}`;
 }

@@ -49,8 +49,11 @@ export interface PersonalGoalsProgress {
 }
 
 function formatPace(secPerKm: number): string {
-  const m = Math.floor(secPerKm / 60);
-  const s = Math.round(secPerKm % 60);
+  // P3: total seconds 를 먼저 반올림. Math.floor(m) + Math.round(s%60) 하면
+  // 359.6 → m=5, s=60 → '5:60' 잘못된 표기. total 을 먼저 반올림해 이 문제 회피.
+  const total = Math.round(secPerKm);
+  const m = Math.floor(total / 60);
+  const s = total % 60;
   return `${m}:${s.toString().padStart(2, "0")}`;
 }
 
