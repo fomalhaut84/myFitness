@@ -14,6 +14,20 @@ import { daysAgoKST, todayKST } from "@/lib/garmin/utils";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
+/**
+ * 러닝 활동 판정 Prisma where 조건.
+ * Garmin activityType 은 `track_running`/`street_running`/`indoor_running` 등
+ * "running" 을 포함하는 값과 `virtual_run`/`obstacle_run` 처럼 "run" 만 있는
+ * 값이 혼재 → contains 하나만으로 후자를 놓침 (Codex bot P2).
+ */
+const RUNNING_ACTIVITY_FILTER = {
+  OR: [
+    { activityType: { contains: "running" } },
+    { activityType: "virtual_run" },
+    { activityType: "obstacle_run" },
+  ],
+};
+
 export interface PaceGoal {
   target: number; // sec/km
   current: number | null; // 최근 30일 활동의 거리 가중 평균
@@ -63,13 +77,10 @@ function formatPace(secPerKm: number): string {
  */
 async function recentAvgPace(days = 30): Promise<number | null> {
   const since = daysAgoKST(days);
-  // 러닝 종류 필터 — 코드베이스 규약 (pace-progression/race-prediction/calendar 등) 과
-  // 통일. Garmin 은 track_running/street_running/virtual_run/indoor_running 등 다양한
-  // typeKey 반환 → contains 로 sub-type 포함 (whitelist 는 누락 위험).
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: since },
-      activityType: { contains: "running" },
+      ...RUNNING_ACTIVITY_FILTER,
       avgPace: { not: null },
       distance: { not: null, gt: 0 },
     },
@@ -97,8 +108,7 @@ async function recentWeeklyKm(weeks = 4): Promise<number | null> {
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: since },
-      // 러닝 종류 필터 — pace-progression 등과 동일 규약 (contains).
-      activityType: { contains: "running" },
+      ...RUNNING_ACTIVITY_FILTER,
       distance: { not: null, gt: 0 },
     },
     select: { distance: true },
