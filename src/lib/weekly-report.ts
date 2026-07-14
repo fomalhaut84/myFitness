@@ -101,6 +101,9 @@ async function preSyncForWeekly(): Promise<void> {
       endDate: todayKST(),
       dataTypes: [...step1bTypes],
       bootstrapNewTypes: true,
+      // #209: get_pace_progression 90일, get_training_load_trend/injury_risk 28일 등
+      // 가장 큰 요구 window (90일) 기준. 짧게 sync 된 상태 (예: /api/sync 1일) 도 backfill.
+      minHistoryDays: 90,
     });
 
     // Step 2: 실패 타입 skip + 최근 1일 강제 refresh.
