@@ -29,6 +29,7 @@ export interface PlanDetailResponse {
     status: "active" | "archived";
     startDate: string;
     endDate: string;
+    weekCount: number;
     weeklyFrequency: number;
     targetDistance: string | null;
     targetDate: string | null;
@@ -160,6 +161,7 @@ export async function fetchPlanDetail(
       status: plan.status as "active" | "archived",
       startDate: ymdKST(plan.startDate),
       endDate: ymdKST(plan.endDate),
+      weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
       targetDistance: plan.targetDistance ?? null,
       targetDate:

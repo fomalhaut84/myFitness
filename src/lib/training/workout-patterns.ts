@@ -48,5 +48,5 @@ export function patternRatioSum(pattern: WeeklySlot[]): number {
   return pattern.reduce((sum, s) => sum + s.volumeRatio, 0);
 }
 
-// 주차별 주간 볼륨 배율 (baseline 대비). Wk1=1.0, Wk2=1.1, Wk3=1.2 (peak), Wk4=0.8 (-20% recovery).
-export const WEEKLY_MULTIPLIERS: number[] = [1.0, 1.1, 1.2, 0.8];
+// M11 Phase 1 (#222): 주차별 주간 볼륨 배율은 weekly-progression.ts 의
+// computeWeeklyProgression(weekCount) 로 이동. weekCount 별로 다르므로 정적 상수 제거.

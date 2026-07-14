@@ -30,17 +30,22 @@ function rotatedHeaders(startDayIdx: number): string[] {
 }
 
 // 주별 workout 그룹핑 + 각 컬럼 채우기. 컬럼 인덱스는 plan-start 기준 오프셋 (0~6).
+// M11 Phase 1 (#222): weekCount 자유 지정(4~24) 지원.
 function groupByWeek(
   workouts: ActivePlanWorkout[],
-  planStartYmd: string
+  planStartYmd: string,
+  weekCount: number
 ): ActivePlanWorkout[][] {
   const start = new Date(`${planStartYmd}T00:00:00Z`);
-  const buckets: ActivePlanWorkout[][] = [[], [], [], []];
+  const buckets: ActivePlanWorkout[][] = Array.from(
+    { length: weekCount },
+    () => [],
+  );
   for (const w of workouts) {
     const d = new Date(`${w.date}T00:00:00Z`);
     const daysDiff = Math.round((d.getTime() - start.getTime()) / DAY_MS);
     const wi = Math.floor(daysDiff / 7);
-    if (wi >= 0 && wi < 4) buckets[wi].push(w);
+    if (wi >= 0 && wi < weekCount) buckets[wi].push(w);
   }
   return buckets;
 }
@@ -450,7 +455,7 @@ export default function PlanCalendar({ data, todayStr, editable = false }: Props
   if (!data.plan || !data.workouts || !data.progress) {
     return null;
   }
-  const buckets = groupByWeek(data.workouts, data.plan.startDate);
+  const buckets = groupByWeek(data.workouts, data.plan.startDate, data.plan.weekCount);
   const raceDate = data.plan.targetDate ?? null;
 
   // plan 시작 요일 계산 → 컬럼 헤더/셀 회전. 시작이 월요일이 아닐 때도
@@ -562,7 +567,7 @@ export default function PlanCalendar({ data, todayStr, editable = false }: Props
             <span
               style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}
             >
-              taper: Wk4 pre-race window
+              taper: 마지막 주 pre-race window
             </span>
           </div>
         )}

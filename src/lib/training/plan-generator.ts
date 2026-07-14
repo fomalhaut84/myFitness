@@ -1,11 +1,10 @@
-// M6-1: 4주 트레이닝 플랜 결정적 생성.
-// 입력: baseline 주간 km + LTHR pace + weeklyFrequency + optional race target
-// 출력: 28일치 workout skeleton (rest 포함)
+// M6-1: 트레이닝 플랜 결정적 생성. M11 Phase 1 (#222): weekCount 4~24 지원.
+// 입력: baseline 주간 km + LTHR pace + weeklyFrequency + weekCount + optional race target
+// 출력: weekCount*7 일치 workout skeleton (rest 포함)
 
 import {
   patternFor,
   patternRatioSum,
-  WEEKLY_MULTIPLIERS,
   type WorkoutType,
 } from "./workout-patterns";
 import { paceZoneFor, pseudoLthrPace } from "./pace-calc";
@@ -13,10 +12,11 @@ import {
   PEAK_LONG_MIN_KM,
   type TargetDistance,
 } from "./plan-scaling";
+import { computeWeeklyProgression } from "./weekly-progression";
 
 export interface GeneratedWorkout {
   date: Date; // KST 00:00 timestamp
-  weekNumber: number; // 1 ~ 4
+  weekNumber: number; // 1 ~ weekCount
   dayIndex: number; // 0 (Mon) ~ 6 (Sun)
   type: WorkoutType;
   distanceKm: number | null;
@@ -31,6 +31,7 @@ export const DEFAULT_FALLBACK_LTHR_PACE_SEC_PER_KM = 360;
 
 export interface PlanGeneratorInput {
   startDate: Date; // 내일 KST 00:00 timestamp (Mon-Sun 이어야 함은 X, 요일 shift 자동 처리)
+  weekCount: number; // M11 Phase 1: 4 ~ 24
   weeklyFrequency: number; // 3 | 4 | 5
   baselineWeeklyKm: number;
   lthrPaceSecPerKm: number | null; // 없으면 pseudo 계산 필요 → 호출자가 넘김
@@ -58,13 +59,14 @@ function mondayZeroDayIndex(date: Date): number {
 }
 
 /**
- * 4주 플랜 생성.
+ * 트레이닝 플랜 생성 (기간 weekCount 주 자유 지정).
  * 각 주는 startDate 기준 7일씩 슬라이스. dayIndex 는 실제 요일에 맞춰 매칭.
- * race taper: targetDate 가 마지막 주 내에 있으면 Wk4 볼륨을 targetDate 까지 선형 감소, race 당일 rest.
+ * race taper: targetDate 가 마지막 주 창 내에 있으면 볼륨을 targetDate 까지 선형 감소, race 당일 rest.
  */
 export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
   const {
     startDate,
+    weekCount,
     weeklyFrequency,
     baselineWeeklyKm,
     lthrPaceSecPerKm,
@@ -83,18 +85,20 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
   const patternSum = patternRatioSum(pattern);
   const ratioNorm = patternSum > 0 ? 1 / patternSum : 1;
 
+  const progression = computeWeeklyProgression(weekCount);
+  const totalDays = weekCount * 7;
+
   const workouts: GeneratedWorkout[] = [];
   const RACE_TAPER_WINDOW_DAYS = 6; // race day 기준 이전 6일이 pre-race taper 구간.
 
   // race day 기준 pre-taper window [targetDate - 6..targetDate - 1] 내에 있는
-  // workout slot 을 전체 4주 범위에서 시간순으로 수집하고 선형 factor (0.6 → ~0) 매핑.
-  // 이렇게 하면 startDate 요일과 race 요일 misalignment (예: Wk3 마지막 주말이 race 전 2일)
-  // 상황에서도 실제 race 직전 workout 이 taper 대상이 됨.
+  // workout slot 을 전체 플랜 범위에서 시간순으로 수집하고 선형 factor (0.6 → ~0) 매핑.
+  // startDate 요일과 race 요일 misalignment 상황에서도 실제 race 직전 workout 이 taper 대상이 됨.
   const raceTaperFactorByTime = new Map<number, number>();
   if (targetDate !== null) {
     const taperStart = addDays(targetDate, -RACE_TAPER_WINDOW_DAYS);
     const preRaceDates: Date[] = [];
-    for (let offset = 0; offset < 28; offset++) {
+    for (let offset = 0; offset < totalDays; offset++) {
       const date = addDays(startDate, offset);
       if (date < taperStart || date >= targetDate) continue;
       const dayIdx = mondayZeroDayIndex(date);
@@ -110,8 +114,8 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
     });
   }
 
-  for (let week = 0; week < 4; week++) {
-    const weekMult = WEEKLY_MULTIPLIERS[week];
+  for (let week = 0; week < weekCount; week++) {
+    const weekMult = progression.multipliers[week];
     const weekBaseKm = baselineWeeklyKm * weekMult;
     const weekStart = addDays(startDate, week * 7);
 
@@ -179,10 +183,11 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         workoutKm = baselineWeeklyKm * normalizedRatio * raceTaperFactor;
       }
 
-      // M8: Wk3 (peak) long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시 (taper 우선).
+      // M8: peak 주 long run 은 목표별 최소 거리 보장. taper 창에 있으면 무시 (taper 우선).
+      // M11 Phase 1: peak 주는 weekCount 기반 progression 이 결정 (기본 taper 직전 주).
       if (
         slot.type === "long" &&
-        week === 2 &&
+        week === progression.peakWeekIdx &&
         raceTaperFactor === undefined &&
         input.targetDistance !== null &&
         input.targetDistance in PEAK_LONG_MIN_KM

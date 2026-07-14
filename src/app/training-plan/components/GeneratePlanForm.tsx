@@ -6,6 +6,10 @@ import { C, FONT_BODY, FONT_DISPLAY, FONT_MONO } from "../theme";
 import { MicroLabel } from "./atoms";
 
 const TARGET_DISTANCES = ["", "5K", "10K", "HM", "FM"] as const;
+// M11 Phase 1 (#222): 자주 사용하는 기간 프리셋. 정밀 조정은 우측 정수 입력.
+const WEEK_COUNT_PRESETS = [4, 8, 12, 16] as const;
+const WEEK_COUNT_MIN = 4;
+const WEEK_COUNT_MAX = 24;
 
 interface Props {
   hasActivePlan: boolean;
@@ -14,6 +18,10 @@ interface Props {
 export default function GeneratePlanForm({ hasActivePlan }: Props) {
   const router = useRouter();
   const [freq, setFreq] = useState<3 | 4 | 5>(4);
+  // M11 Phase 1: 편집 중 clamp 는 UX 훼손 (예: "20" 타이핑 시 "2" → clamp 4 → append "0" → 40 → clamp 24).
+  // 편집 중에는 raw 문자열을 유지, submit / blur 시점에만 정규화.
+  const [weekCount, setWeekCount] = useState<number>(4);
+  const [weekCountText, setWeekCountText] = useState<string>("4");
   const [distance, setDistance] = useState<string>("");
   const [date, setDate] = useState<string>("");
   const [error, setError] = useState<string | null>(null);
@@ -30,7 +38,19 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
     if (busy) return; // guard: 이미 요청 진행 중.
     setError(null);
     setSubmitting(true);
-    const payload: Record<string, unknown> = { weeklyFrequency: freq };
+    // Submit 시점에도 weekCountText 를 최종 정규화 (blur 가 안 났을 수도 있음).
+    const parsedWc = Number.parseInt(weekCountText, 10);
+    const effectiveWeekCount = Number.isFinite(parsedWc)
+      ? Math.max(WEEK_COUNT_MIN, Math.min(WEEK_COUNT_MAX, parsedWc))
+      : weekCount;
+    if (effectiveWeekCount !== weekCount) {
+      setWeekCount(effectiveWeekCount);
+      setWeekCountText(String(effectiveWeekCount));
+    }
+    const payload: Record<string, unknown> = {
+      weeklyFrequency: freq,
+      weekCount: effectiveWeekCount,
+    };
     if (distance) payload.targetDistance = distance;
     if (distance && date) payload.targetDate = date;
     try {
@@ -99,6 +119,98 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
           </div>
         </div>
 
+        {/* Duration (M11 Phase 1: weekCount 4~24) */}
+        <div>
+          <MicroLabel color={C.mid} className="mb-4">
+            Plan duration
+          </MicroLabel>
+          <div className="flex flex-wrap items-stretch gap-2 md:gap-3 mt-5">
+            {WEEK_COUNT_PRESETS.map((wc) => (
+              <button
+                key={wc}
+                type="button"
+                onClick={() => {
+                  setWeekCount(wc);
+                  setWeekCountText(String(wc));
+                }}
+                className="flex-1 min-w-[72px] py-3 transition-colors"
+                style={{
+                  fontFamily: FONT_DISPLAY,
+                  fontSize: 22,
+                  fontWeight: 800,
+                  border: `1px solid ${weekCount === wc ? C.primary : C.border}`,
+                  background: weekCount === wc ? `${C.primary}11` : "transparent",
+                  color: weekCount === wc ? C.primary : C.mid,
+                  cursor: "pointer",
+                }}
+              >
+                {wc}
+                <span
+                  style={{
+                    fontSize: 10,
+                    fontFamily: FONT_BODY,
+                    fontWeight: 500,
+                    display: "block",
+                    color: C.lo,
+                    marginTop: 4,
+                  }}
+                >
+                  weeks
+                </span>
+              </button>
+            ))}
+            <div className="flex items-center gap-2 min-w-[120px]">
+              <input
+                type="number"
+                min={WEEK_COUNT_MIN}
+                max={WEEK_COUNT_MAX}
+                step={1}
+                value={weekCountText}
+                onChange={(e) => {
+                  const raw = e.target.value;
+                  setWeekCountText(raw);
+                  const n = Number.parseInt(raw, 10);
+                  if (
+                    Number.isFinite(n) &&
+                    n >= WEEK_COUNT_MIN &&
+                    n <= WEEK_COUNT_MAX
+                  ) {
+                    setWeekCount(n);
+                  }
+                }}
+                onBlur={() => {
+                  const n = Number.parseInt(weekCountText, 10);
+                  const clamped = Number.isFinite(n)
+                    ? Math.max(WEEK_COUNT_MIN, Math.min(WEEK_COUNT_MAX, n))
+                    : weekCount;
+                  setWeekCount(clamped);
+                  setWeekCountText(String(clamped));
+                }}
+                aria-label="플랜 기간(주)"
+                className="w-full px-3 py-2"
+                style={{
+                  background: "transparent",
+                  border: `1px solid ${C.border}`,
+                  color: C.hi,
+                  fontFamily: FONT_MONO,
+                  fontSize: 15,
+                  textAlign: "center",
+                }}
+              />
+              <span
+                style={{
+                  fontSize: 10,
+                  fontFamily: FONT_BODY,
+                  fontWeight: 500,
+                  color: C.lo,
+                }}
+              >
+                4~24
+              </span>
+            </div>
+          </div>
+        </div>
+
         {/* Target */}
         <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
           <div>
@@ -158,7 +270,7 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
                 fontWeight: 500,
               }}
             >
-              Wk4 창 내여야 taper 적용 (오늘 +22~28일)
+              마지막 주 창 내여야 taper 적용 (내일부터 {weekCount}주 중 최종 7일)
             </div>
           </div>
         </div>

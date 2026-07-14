@@ -56,6 +56,7 @@ export interface ActivePlanPayload {
     planId: string;
     startDate: string;
     endDate: string;
+    weekCount: number; // M11 Phase 1: 4 ~ 24 (기존 record 는 4 로 백필됨)
     weeklyFrequency: number;
     targetDistance?: string;
     targetDate?: string;
@@ -75,6 +76,7 @@ export interface HistoryItem {
   planId: string;
   startDate: string;
   endDate: string;
+  weekCount: number;
   weeklyFrequency: number;
   targetDistance: string | null;
   targetDate: string | null;

@@ -17,6 +17,12 @@ const ACTIVE_PLAN_LOCK_KEY = 761101; // pg_advisory_xact_lock 키 (임의 상수
 const TARGET_DISTANCES = ["5K", "10K", "HM", "FM"] as const;
 type TargetDistance = (typeof TARGET_DISTANCES)[number];
 
+// M11 Phase 1 (#222): weekCount 유효 범위. 하한 4 (기존 최소 케이스),
+// 상한 24 (Marathon prep 통상 최대 - 진행 정확도/사용성 균형).
+const WEEK_COUNT_MIN = 4;
+const WEEK_COUNT_MAX = 24;
+const WEEK_COUNT_DEFAULT = 4;
+
 /**
  * KST 벽시계 날짜(YYYY-MM-DD)에 해당하는 UTC midnight instant.
  * Prisma `@db.Date` 컬럼은 date-only 라 UTC 기준으로 잘림 → 이 helper 로 저장하면
@@ -34,6 +40,7 @@ function dateOnlyToKstStart(dateOnly: Date): Date {
 
 interface GenerateInput {
   weeklyFrequency?: number;
+  weekCount?: number; // M11 Phase 1: 4 ~ 24
   targetDistance?: string;
   targetDate?: string; // "YYYY-MM-DD"
 }
@@ -75,6 +82,18 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   const weeklyFrequency = Math.min(5, Math.max(3, Math.round(rawFreq)));
   const targetDistance = validateTargetDistance(input.targetDistance);
 
+  // M11 Phase 1: weekCount validate (4~24, 정수, 기본 4).
+  const rawWeekCount = input.weekCount ?? WEEK_COUNT_DEFAULT;
+  if (!Number.isFinite(rawWeekCount)) {
+    throw new Error(`유효하지 않은 weekCount: ${input.weekCount} (정수 4~24 필요)`);
+  }
+  const weekCount = Math.round(rawWeekCount);
+  if (weekCount < WEEK_COUNT_MIN || weekCount > WEEK_COUNT_MAX) {
+    throw new Error(
+      `weekCount 는 ${WEEK_COUNT_MIN} ~ ${WEEK_COUNT_MAX} 범위여야 합니다. 현재 값: ${input.weekCount}`
+    );
+  }
+
   const targetDate =
     input.targetDate !== undefined ? parseKstDate(input.targetDate) : null;
   if (input.targetDate !== undefined && targetDate === null) {
@@ -99,17 +118,21 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   );
 
   const startDate = new Date(todayKST().getTime() + DAY_MS); // 내일
-  const endDate = new Date(startDate.getTime() + 27 * DAY_MS);
-  const week4Start = new Date(startDate.getTime() + 21 * DAY_MS);
+  // M11 Phase 1: 기간 커스텀. endDate = startDate + (weekCount*7 - 1)일.
+  const totalDays = weekCount * 7;
+  const endDate = new Date(startDate.getTime() + (totalDays - 1) * DAY_MS);
+  const finalWeekStart = new Date(
+    startDate.getTime() + (weekCount - 1) * 7 * DAY_MS
+  );
 
-  // targetDate 는 Wk4 창(21~27일차) 내에 있어야 tapering 이 의미 있음.
+  // targetDate 는 마지막 주 창 [finalWeekStart ~ endDate] 내에 있어야 tapering 이 의미 있음.
   // 그 외 시점(과거, 너무 가까움, plan 창 밖) 은 mutation 전에 명시적으로 거부.
   // (silent null 대체 시 사용자의 active plan 이 archived 되고 race 요청이 무시된 plan 이 저장됨)
-  if (targetDate !== null && (targetDate < week4Start || targetDate > endDate)) {
-    const wk4StartStr = ymdKST(week4Start);
+  if (targetDate !== null && (targetDate < finalWeekStart || targetDate > endDate)) {
+    const finalStartStr = ymdKST(finalWeekStart);
     const endStr = ymdKST(endDate);
     throw new Error(
-      `targetDate 는 Wk4 창 [${wk4StartStr} ~ ${endStr}] 내에 있어야 합니다. ` +
+      `targetDate 는 마지막 주 창 [${finalStartStr} ~ ${endStr}] 내에 있어야 합니다. ` +
         `현재 값: ${input.targetDate}. 더 가까운 race 는 별도 대응 필요.`
     );
   }
@@ -117,6 +140,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
 
   const workouts = generatePlan({
     startDate,
+    weekCount,
     weeklyFrequency,
     baselineWeeklyKm: scaled.finalBase,
     lthrPaceSecPerKm: lthrPace,
@@ -153,6 +177,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
       data: {
         startDate: toUtcDateOnly(startDate),
         endDate: toUtcDateOnly(endDate),
+        weekCount,
         weeklyFrequency,
         targetDistance: targetDistance,
         targetDate: effectiveTargetDate !== null ? toUtcDateOnly(effectiveTargetDate) : null,
@@ -182,7 +207,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     return { plan, archivedPreviousPlanIds: archivedActive.map((p) => p.id) };
   });
 
-  const byWeek = [1, 2, 3, 4].map((wk) => {
+  const byWeek = Array.from({ length: weekCount }, (_, i) => i + 1).map((wk) => {
     const list = workouts.filter((w) => w.weekNumber === wk);
     const totalKm =
       Math.round(list.reduce((sum, w) => sum + (w.distanceKm ?? 0), 0) * 10) / 10;
@@ -197,6 +222,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     planId: result.plan.id,
     startDate: ymdKST(startDate),
     endDate: ymdKST(endDate),
+    weekCount,
     weeklyFrequency,
     targetDistance: targetDistance ?? undefined,
     targetDate: effectiveTargetDate !== null ? ymdKST(effectiveTargetDate) : undefined,
@@ -333,6 +359,7 @@ export async function getActiveTrainingPlan() {
       planId: plan.id,
       startDate: ymdKST(plan.startDate),
       endDate: ymdKST(plan.endDate),
+      weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
       targetDistance: plan.targetDistance ?? undefined,
       targetDate: plan.targetDate !== null ? ymdKST(plan.targetDate) : undefined,

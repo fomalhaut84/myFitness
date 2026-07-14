@@ -71,7 +71,7 @@ export default async function TrainingPlanPage() {
         <SectionHeader
           number="02"
           kicker="Current block"
-          title="4-Week Ledger"
+          title={active.plan ? `${active.plan.weekCount}-Week Ledger` : "Current Ledger"}
           meta={
             active.plan
               ? `${active.plan.startDate} → ${active.plan.endDate}`
