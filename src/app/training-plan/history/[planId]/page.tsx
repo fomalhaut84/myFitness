@@ -76,6 +76,7 @@ export default async function ArchivedPlanDetailPage({ params }: Props) {
       planId: plan.planId,
       startDate: plan.startDate,
       endDate: plan.endDate,
+      weekCount: plan.weekCount,
       weeklyFrequency: plan.weeklyFrequency,
       targetDistance: plan.targetDistance ?? undefined,
       targetDate: plan.targetDate ?? undefined,
@@ -141,7 +142,8 @@ export default async function ArchivedPlanDetailPage({ params }: Props) {
           className="p-6 md:p-10"
           style={{ border: `1px solid ${C.border}`, background: C.panel }}
         >
-          <div className="grid grid-cols-2 md:grid-cols-4 gap-6 md:gap-8">
+          <div className="grid grid-cols-2 md:grid-cols-5 gap-6 md:gap-8">
+            <StatItem label="기간" value={plan.weekCount} unit="주" />
             <StatItem
               label="주간 빈도"
               value={plan.weeklyFrequency}
@@ -200,12 +202,12 @@ export default async function ArchivedPlanDetailPage({ params }: Props) {
         </div>
       </section>
 
-      {/* 4주 캘린더 */}
+      {/* 주별 캘린더 */}
       <section>
         <SectionHeader
           number="02"
           kicker="Workouts"
-          title="4-Week Ledger"
+          title={`${plan.weekCount}-Week Ledger`}
           meta={
             plan.status === "archived"
               ? "frozen · matching cutoff = 후속 plan 생성 시점"

@@ -467,7 +467,7 @@ server.tool(
 
 server.tool(
   "generate_training_plan",
-  "4주 트레이닝 플랜을 결정적으로 생성 + DB 저장. 입력: weeklyFrequency(3~5, 기본 4), targetDistance(5K/10K/HM/FM, optional), targetDate(YYYY-MM-DD, targetDistance 필수). 기존 active plan 은 archived 처리. Wk1 baseline / Wk2 +10% / Wk3 +10% / Wk4 taper. LTHR pace 기반 zone/pace 배분. race 목표 있고 targetDate 가 plan 창 내면 Wk4 는 targetDate 까지 선형 감소 + race 당일 rest.",
+  "트레이닝 플랜을 결정적으로 생성 + DB 저장 (M11 Phase 1: 기간 커스텀 4~24주). 입력: weeklyFrequency(3~5, 기본 4), weekCount(4~24, 기본 4), targetDistance(5K/10K/HM/FM, optional), targetDate(YYYY-MM-DD, targetDistance 필수). 기존 active plan 은 archived 처리. 마지막 1~2주는 taper, 나머지는 baseline → +20% 선형 램프. LTHR pace 기반 zone/pace 배분. race 목표 있고 targetDate 가 마지막 주 창 내면 targetDate 까지 선형 감소 + race 당일 rest.",
   {
     weeklyFrequency: z
       .number()
@@ -476,6 +476,13 @@ server.tool(
       .max(5)
       .optional()
       .describe("주간 러닝 횟수 (3~5, 기본 4)"),
+    weekCount: z
+      .number()
+      .int()
+      .min(4)
+      .max(24)
+      .optional()
+      .describe("플랜 기간 주수 (4~24, 기본 4)"),
     targetDistance: z
       .enum(["5K", "10K", "HM", "FM"])
       .optional()
@@ -484,7 +491,7 @@ server.tool(
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
       .optional()
-      .describe("race 예정일 YYYY-MM-DD (targetDistance 와 함께만)"),
+      .describe("race 예정일 YYYY-MM-DD (targetDistance 와 함께, 마지막 주 창 내)"),
   },
   async (args) => generateTrainingPlan(args)
 );

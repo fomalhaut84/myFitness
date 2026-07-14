@@ -15,6 +15,7 @@ export interface HistoryItem {
   planId: string;
   startDate: string;
   endDate: string;
+  weekCount: number;
   weeklyFrequency: number;
   targetDistance: string | null;
   targetDate: string | null;
@@ -35,7 +36,7 @@ export async function fetchArchivedHistory(): Promise<HistoryItem[]> {
       },
     }),
     // 각 plan 의 후속 plan createdAt 을 activity 매칭 창 상한으로 사용.
-    // 사용자가 4주 블록 종료 전에 재생성하면 원 endDate 까지의 후속 활동이
+    // 사용자가 plan 종료 전에 재생성하면 원 endDate 까지의 후속 활동이
     // 이전 plan 완료율에 산입되어 시간 지날수록 완료율이 변동됨 → 방지.
     prisma.trainingPlan.findMany({
       orderBy: { createdAt: "asc" },
@@ -94,6 +95,7 @@ export async function fetchArchivedHistory(): Promise<HistoryItem[]> {
         planId: plan.id,
         startDate: ymdKST(plan.startDate),
         endDate: ymdKST(plan.endDate),
+        weekCount: plan.weekCount,
         weeklyFrequency: plan.weeklyFrequency,
         targetDistance: plan.targetDistance ?? null,
         targetDate:

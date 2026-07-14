@@ -8,6 +8,8 @@ import { generateTrainingPlan } from "@/mcp/tools/training-plan";
 
 const BODY_SCHEMA = z.object({
   weeklyFrequency: z.number().int().min(3).max(5).optional(),
+  // M11 Phase 1 (#222): weekCount 4~24 (기본 4).
+  weekCount: z.number().int().min(4).max(24).optional(),
   targetDistance: z.enum(["5K", "10K", "HM", "FM"]).optional(),
   targetDate: z
     .string()
@@ -16,12 +18,14 @@ const BODY_SCHEMA = z.object({
 });
 
 // generateTrainingPlan 이 명시적으로 throw 하는 사용자 입력 관련 오류 시그니처.
-// (targetDate 형식 오류 / targetDistance 누락 / Wk4 창 밖 targetDate)
+// (weekCount 범위 / targetDate 형식 오류 / targetDistance 누락 / 마지막 주 창 밖 targetDate)
 function isUserInputError(msg: string): boolean {
   return (
     msg.includes("유효하지 않은 targetDate") ||
     msg.includes("targetDate 를 지정하려면") ||
-    msg.includes("targetDate 는 Wk4 창")
+    msg.includes("targetDate 는 마지막 주 창") ||
+    msg.includes("weekCount 는") ||
+    msg.includes("유효하지 않은 weekCount")
   );
 }
 
