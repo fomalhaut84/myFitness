@@ -93,7 +93,31 @@ for (const w of week1Tempos) {
   console.log(`  ${w.paceSecPerKm} (target race pace=300, 반드시 300 이 아니어야 함)`);
 }
 
-// --- 6. FM time 목표 peak long min 승격 (Codex P2 회귀) ----------------------
+// --- 6b. baseline ≤ target (이미 도달) 회귀 (Codex 릴리즈 P2) ----------------
+// 사용자가 baseline 5:00/km 인 상태에서 10K 60:00 목표 (target 6:00/km) 를 설정하면
+// tempo/interval 이 target=360 sec/km (느림) 로 강제되던 문제. 이제는 null 반환 →
+// LTHR 기반 기본 zone 페이스 유지.
+const conservativePlan = generatePlan({
+  ...baseInput,
+  recentAvgPaceSecPerKm: 300, // 5:00/km 러너
+  goalType: "time",
+  timeGoal: {
+    distance: "10K",
+    targetTimeSec: 3600, // 60:00 → 6:00/km (baseline 보다 느림)
+    targetDate: "2026-09-25",
+  },
+});
+const week1TempoConservative = conservativePlan.find(
+  (w) => w.type === "tempo" && w.weekNumber === 1,
+);
+console.log(
+  "\n[time regression: already met] baseline 5:00/km + target 6:00/km → Wk1 tempo pace (sec/km):",
+);
+console.log(
+  `  ${week1TempoConservative?.paceSecPerKm} (target 360 이면 안 되고, LTHR 기반 기본 페이스여야 함)`,
+);
+
+// --- 7. FM time 목표 peak long min 승격 (Codex P2 회귀) ----------------------
 // FM time 목표에서 peak 주 long slot 이 PEAK_LONG_MIN_KM['FM']=27 이상이어야.
 const fmTimePlan = generatePlan({
   ...baseInput,
