@@ -146,27 +146,20 @@ async function updateSyncMetadata(
   });
 
   // #220: oldestFetchedDate 는 atomic LEAST 로 monotonic (concurrent syncAll 시 이전 값 보존).
-  // Codex bot P2 (PR #239 #4700219384): read-modify-write 로 두 sync 겹치면
-  // 나중 쓰기가 더 최신 startDate 로 이전 값을 덮어써 backfill 정보를 잃음.
+  // Codex bot P2 (PR #239): read-modify-write 로 두 sync 겹치면 이전 값을 덮어써 backfill 이력 손실.
+  //
+  // Codex bot P2 (PR #240 #4700366975): firstRecordDate seed 제거.
+  // 오래된 record 1개 + 최근 짧은 sync 케이스에서 firstRecordDate 로 seed 하면 실제 API 로
+  // fetch 하지 않은 중간 window 를 커버로 오인 → 이후 minHistoryDays 검사 skip. semantic 상
+  // oldestFetchedDate 는 **실제 API 호출 startDate** 만 반영해야 함. 마이그레이션은 historyShortfall
+  // fallback (한 번 backfill 유도) 으로 자연 정착.
+  //
   // user_profile 은 date 없음 → skip.
   if (dataType === "user_profile") return;
 
-  // 마이그레이션 seed 후보: prev=null 인 pre-#220 record 는 firstRecordDate 로 실제 커버 proxy 반영.
-  // 이후 write 에서는 startDate 만으로 충분 (semantic: 실제 API 호출 범위).
-  // read → candidate 계산 → SQL LEAST 갱신. 도중 concurrent 갱신은 SQL LEAST 가 안전 처리.
-  const existing = await prisma.syncMetadata.findUnique({
-    where: { dataType },
-    select: { oldestFetchedDate: true },
-  });
-  let candidate: Date = startDate;
-  if (existing?.oldestFetchedDate === null) {
-    const first = await firstRecordDate(dataType);
-    if (first !== null && first < startDate) candidate = first;
-  }
-
   await prisma.$executeRaw`
     UPDATE "SyncMetadata"
-    SET "oldestFetchedDate" = LEAST(COALESCE("oldestFetchedDate", ${candidate}), ${candidate})
+    SET "oldestFetchedDate" = LEAST(COALESCE("oldestFetchedDate", ${startDate}), ${startDate})
     WHERE "dataType" = ${dataType}
   `;
 }
@@ -251,13 +244,12 @@ export async function syncAll(
     // #209/#220: 기존 성공 sync 가 있어도 실제 fetch 커버 window 가 부족하면 강제 backfill.
     // user_profile 은 대상 아님 (스냅샷).
     //
-    // #220 판정 기준: oldestFetchedDate > requiredStart (실제 fetch 커버 기반, record 유무 무관).
-    // 기존 record 는 oldestFetchedDate === null 이라 첫 실행 시 firstRecordDate fallback 으로
-    // 초기화 후 upsert 로 채워짐 (다음 실행부터 정확한 판정).
+    // #220 판정 기준: oldestFetchedDate > requiredStart (실제 API 호출 커버).
+    // pre-#220 record (oldestFetchedDate === null) 는 실제 커버 불명 → 안전을 위해
+    // 한 번은 backfill 하여 oldestFetchedDate baseline 확립 (이후는 정확한 판정).
     //
-    // Codex bot P2 (PR #218, #4690117542): first === null (record 없는 계정) 매주 backfill
-    // 무의미 → oldestFetchedDate 이 null 이거나 record 도 null 인 경우는 fetch 커버 정보가
-    // 없어 판정 불가로 skip (성공 sync 이력 존재 신호를 신뢰).
+    // Codex bot P2 (PR #218 #4690117542, PR #240 #4700366975): record 자체 없는 계정 은
+    // 매주 무의미 API 호출 방지. record 있고 실제 API 커버 불명일 때만 backfill 1회.
     let historyShortfall = false;
     if (
       options?.minHistoryDays &&
@@ -265,9 +257,14 @@ export async function syncAll(
       dataType !== "user_profile"
     ) {
       const requiredStart = daysAgo(options.minHistoryDays);
-      const coveredFrom =
-        meta?.oldestFetchedDate ?? (await firstRecordDate(dataType));
-      if (coveredFrom && coveredFrom > requiredStart) {
+      if (
+        meta?.oldestFetchedDate === null ||
+        meta?.oldestFetchedDate === undefined
+      ) {
+        // 마이그레이션 첫 사이클: 실제 record 가 있으면 커버 불명 → backfill 1회.
+        const first = await firstRecordDate(dataType);
+        if (first !== null) historyShortfall = true;
+      } else if (meta.oldestFetchedDate > requiredStart) {
         historyShortfall = true;
       }
     }
