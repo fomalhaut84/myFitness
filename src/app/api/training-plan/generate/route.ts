@@ -10,8 +10,8 @@ const BODY_SCHEMA = z.object({
   weeklyFrequency: z.number().int().min(3).max(5).optional(),
   // M11 Phase 1 (#222): weekCount 4~24 (기본 4).
   weekCount: z.number().int().min(4).max(24).optional(),
-  // M11 Phase 2 (#232): 목표 유형 + 페이로드.
-  goalType: z.enum(["distance", "time", "endurance"]).optional(),
+  // M11 Phase 2 (#232) + Phase 2-b (#236): 목표 유형 + 페이로드.
+  goalType: z.enum(["distance", "time", "endurance", "weight_loss"]).optional(),
   targetDistance: z.enum(["5K", "10K", "HM", "FM"]).optional(),
   targetDate: z
     .string()
@@ -33,6 +33,11 @@ const BODY_SCHEMA = z.object({
         .optional(),
     })
     .optional(),
+  weightLossGoal: z
+    .object({
+      intensityMode: z.enum(["light", "standard", "intense"]),
+    })
+    .optional(),
 });
 
 // generateTrainingPlan 이 명시적으로 throw 하는 사용자 입력 관련 오류 시그니처.
@@ -46,7 +51,8 @@ function isUserInputError(msg: string): boolean {
     msg.includes("유효하지 않은 weekCount") ||
     msg.includes("goalType 은") ||
     msg.includes("time 목표") ||
-    msg.includes("endurance 목표")
+    msg.includes("endurance 목표") ||
+    msg.includes("weight_loss 목표")
   );
 }
 

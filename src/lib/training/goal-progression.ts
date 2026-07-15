@@ -8,11 +8,23 @@ import type { WorkoutType } from "./workout-patterns";
 
 // ─── Goal 타입 ─────────────────────────────────────────────────────────────
 
-export type GoalType = "distance" | "time" | "endurance";
+export type GoalType = "distance" | "time" | "endurance" | "weight_loss";
+
+// M11 Phase 2-b (#236): weight_loss 강도 재조정 모드.
+export type IntensityMode = "light" | "standard" | "intense";
+export const INTENSITY_MODES: readonly IntensityMode[] = [
+  "light",
+  "standard",
+  "intense",
+];
 
 export interface DistanceGoalValue {
   // distance 는 별도 goalValue 페이로드 없음 (targetDistance / targetDate 컬럼 재사용).
   // Prisma Json 컬럼과의 호환을 위해 최소한의 sentinel 은 두지 않고 null 로 저장.
+}
+
+export interface WeightLossGoalValue {
+  intensityMode: IntensityMode;
 }
 
 export interface TimeGoalValue {
@@ -55,6 +67,13 @@ export function validateTimeGoal(v: TimeGoalValue): string | null {
   const impliedPace = v.targetTimeSec / (distanceMeters / 1000);
   if (impliedPace < minPossibleSecPerKm) {
     return `time 목표가 비현실적으로 빠릅니다 (평균 ${Math.round(impliedPace)}sec/km). targetTimeSec 값 확인 필요.`;
+  }
+  return null;
+}
+
+export function validateWeightLossGoal(v: WeightLossGoalValue): string | null {
+  if (!INTENSITY_MODES.includes(v.intensityMode)) {
+    return `weight_loss 목표 intensityMode 는 ${INTENSITY_MODES.join("/")} 중 하나여야 합니다. 현재: ${v.intensityMode}`;
   }
   return null;
 }

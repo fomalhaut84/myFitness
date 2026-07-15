@@ -139,3 +139,68 @@ console.log("\n[FM time regression] peak week long slot km (min 27 필요):");
 for (const w of peakLongs) {
   console.log(`  Wk${w.weekNumber}: ${w.distanceKm} km`);
 }
+
+// --- 8. weight_loss light: 전 workout km 이 정확히 base × 0.8 -----------------
+const baseControl = generatePlan({
+  ...baseInput,
+  weekCount: 4,
+  weeklyFrequency: 5, // 5x 패턴 (interval 있음)
+});
+const weightLoss_light = generatePlan({
+  ...baseInput,
+  weekCount: 4,
+  weeklyFrequency: 5,
+  goalType: "weight_loss",
+  weightLossGoal: { intensityMode: "light" },
+});
+console.log("\n[weight_loss light] Wk1 workout km (base vs light × 0.8):");
+const baseWk1 = baseControl.filter((w) => w.weekNumber === 1 && w.type !== "rest");
+const lightWk1 = weightLoss_light.filter((w) => w.weekNumber === 1 && w.type !== "rest");
+for (let i = 0; i < baseWk1.length; i++) {
+  const b = baseWk1[i].distanceKm ?? 0;
+  const l = lightWk1[i].distanceKm ?? 0;
+  const expected = Math.round(b * 0.8 * 10) / 10;
+  console.log(`  ${baseWk1[i].type}: base ${b} → light ${l} (expected ${expected})`);
+}
+
+// --- 9. weight_loss standard: interval slot 이 easy 로 치환 ------------------
+const weightLoss_standard = generatePlan({
+  ...baseInput,
+  weekCount: 4,
+  weeklyFrequency: 5,
+  goalType: "weight_loss",
+  weightLossGoal: { intensityMode: "standard" },
+});
+const stdIntervals = weightLoss_standard.filter((w) => w.type === "interval");
+const stdEasyCount = weightLoss_standard.filter((w) => w.type === "easy").length;
+const baseIntervals = baseControl.filter((w) => w.type === "interval").length;
+const baseEasy = baseControl.filter((w) => w.type === "easy").length;
+console.log("\n[weight_loss standard] interval slot 치환 검증:");
+console.log(`  base: interval=${baseIntervals}, easy=${baseEasy}`);
+console.log(
+  `  standard: interval=${stdIntervals.length} (0 이어야 함), easy=${stdEasyCount} (${baseEasy + baseIntervals} 이어야 함)`,
+);
+
+// --- 10. weight_loss intense: base 와 완전 동일 ---------------------------
+const weightLoss_intense = generatePlan({
+  ...baseInput,
+  weekCount: 4,
+  weeklyFrequency: 5,
+  goalType: "weight_loss",
+  weightLossGoal: { intensityMode: "intense" },
+});
+let mismatch = 0;
+for (let i = 0; i < baseControl.length; i++) {
+  const b = baseControl[i];
+  const w = weightLoss_intense[i];
+  if (
+    b.type !== w.type ||
+    b.distanceKm !== w.distanceKm ||
+    b.paceSecPerKm !== w.paceSecPerKm
+  ) {
+    mismatch++;
+  }
+}
+console.log(
+  `\n[weight_loss intense] base 와 workout 완전 동일 여부: ${mismatch === 0 ? "✓ (0 mismatch)" : `✗ (${mismatch} mismatch)`}`,
+);

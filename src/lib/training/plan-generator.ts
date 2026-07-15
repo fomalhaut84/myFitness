@@ -21,6 +21,7 @@ import {
   type EnduranceGoalValue,
   type GoalType,
   type TimeGoalValue,
+  type WeightLossGoalValue,
 } from "./goal-progression";
 
 export interface GeneratedWorkout {
@@ -51,6 +52,8 @@ export interface PlanGeneratorInput {
   goalType?: GoalType;
   timeGoal?: TimeGoalValue;
   enduranceGoal?: EnduranceGoalValue;
+  // M11 Phase 2-b (#236): weight_loss 강도 재조정 페이로드.
+  weightLossGoal?: WeightLossGoalValue;
 }
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -88,6 +91,7 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
     goalType = "distance",
     timeGoal,
     enduranceGoal,
+    weightLossGoal,
   } = input;
 
   const lthrPace =
@@ -256,6 +260,28 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         );
       }
 
+      // M11 Phase 2-b (#236) weight_loss: intensityMode 별 재조정.
+      // - light : 전 주간 볼륨 -20% (× 0.8). 강도 유지 → 회복/diet 시간 확보.
+      // - standard : 볼륨 유지, interval → easy 로 다운그레이드. 고강도 제거 = 회복 여유.
+      //             kcal 소모는 계속 진행. 5x 패턴에만 interval 존재.
+      // - intense : 조정 없음. 감량은 순수 diet 로, 훈련 원 로직 유지.
+      // race taper 창에 있으면 race 준비 우선 → weight_loss 조정 skip.
+      let effectiveSlotType = slot.type;
+      if (
+        goalType === "weight_loss" &&
+        weightLossGoal !== undefined &&
+        raceTaperFactor === undefined
+      ) {
+        if (weightLossGoal.intensityMode === "light") {
+          workoutKm *= 0.8;
+        } else if (
+          weightLossGoal.intensityMode === "standard" &&
+          slot.type === "interval"
+        ) {
+          effectiveSlotType = "easy";
+        }
+      }
+
       const distanceKm = Math.round(workoutKm * 10) / 10;
 
       // M11 Phase 2 time: tempo/interval 페이스를 baseline → target 으로 개선.
@@ -265,19 +291,19 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
       if (
         goalType === "time" &&
         timeTargetPace !== null &&
-        (slot.type === "tempo" || slot.type === "interval")
+        (effectiveSlotType === "tempo" || effectiveSlotType === "interval")
       ) {
         const improved = targetPaceForWeek(
-          slot.type,
+          effectiveSlotType,
           recentAvgPaceSecPerKm,
           timeTargetPace,
           week,
           growthWeeks,
         );
-        paceSecPerKm = improved ?? paceZoneFor(slot.type, lthrPace)?.paceSecPerKm ?? null;
-        zone = paceZoneFor(slot.type, lthrPace)?.zone ?? null;
+        paceSecPerKm = improved ?? paceZoneFor(effectiveSlotType, lthrPace)?.paceSecPerKm ?? null;
+        zone = paceZoneFor(effectiveSlotType, lthrPace)?.zone ?? null;
       } else {
-        const pz = paceZoneFor(slot.type, lthrPace);
+        const pz = paceZoneFor(effectiveSlotType, lthrPace);
         paceSecPerKm = pz?.paceSecPerKm ?? null;
         zone = pz?.zone ?? null;
       }
@@ -286,13 +312,13 @@ export function generatePlan(input: PlanGeneratorInput): GeneratedWorkout[] {
         date,
         weekNumber: week + 1,
         dayIndex: dayIdx,
-        type: slot.type,
+        type: effectiveSlotType,
         distanceKm,
         paceSecPerKm,
         zone,
         intervalDesc:
-          slot.type === "interval" ? intervalDescFor(distanceKm) : null,
-        notes: notesFor(slot.type),
+          effectiveSlotType === "interval" ? intervalDescFor(distanceKm) : null,
+        notes: notesFor(effectiveSlotType),
       });
     }
   }

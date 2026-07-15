@@ -467,7 +467,7 @@ server.tool(
 
 server.tool(
   "generate_training_plan",
-  "트레이닝 플랜을 결정적으로 생성 + DB 저장 (M11 Phase 2: goalType 확장). 입력: weeklyFrequency(3~5, 기본 4), weekCount(4~24, 기본 4), goalType(distance|time|endurance, 기본 distance) + 유형별 페이로드. distance: targetDistance/targetDate. time: timeGoal{distance, targetTimeSec, targetDate} — tempo/interval 페이스를 baseline → target 으로 주차별 선형 개선. endurance: enduranceGoal{targetLongRunKm, targetDate?} — long slot 을 baseline → target 으로 ramp. 기존 active plan 은 archived 처리. race 목표 있고 targetDate 가 마지막 주 창 내면 targetDate 까지 선형 감소 + race 당일 rest.",
+  "트레이닝 플랜을 결정적으로 생성 + DB 저장 (M11 Phase 2-b: goalType 4 유형). 입력: weeklyFrequency(3~5, 기본 4), weekCount(4~24, 기본 4), goalType(distance|time|endurance|weight_loss, 기본 distance) + 유형별 페이로드. distance: targetDistance/targetDate. time: timeGoal{distance, targetTimeSec, targetDate} — tempo/interval 페이스 개선. endurance: enduranceGoal{targetLongRunKm, targetDate?} — long slot ramp. weight_loss: weightLossGoal{intensityMode: light|standard|intense} — UserProfile.targetWeight 필수, light=볼륨-20% / standard=interval→easy / intense=조정없음. 기존 active plan 은 archived 처리.",
   {
     weeklyFrequency: z
       .number()
@@ -484,7 +484,7 @@ server.tool(
       .optional()
       .describe("플랜 기간 주수 (4~24, 기본 4)"),
     goalType: z
-      .enum(["distance", "time", "endurance"])
+      .enum(["distance", "time", "endurance", "weight_loss"])
       .optional()
       .describe("목표 유형 (기본 distance)"),
     targetDistance: z
@@ -514,6 +514,12 @@ server.tool(
       })
       .optional()
       .describe("endurance 유형 페이로드 (long run 최대 목표 km, optional race 예정일)"),
+    weightLossGoal: z
+      .object({
+        intensityMode: z.enum(["light", "standard", "intense"]),
+      })
+      .optional()
+      .describe("weight_loss 유형 페이로드 (intensityMode 필수, UserProfile.targetWeight 필요)"),
   },
   async (args) => generateTrainingPlan(args)
 );

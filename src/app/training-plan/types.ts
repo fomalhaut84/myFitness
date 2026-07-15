@@ -2,8 +2,9 @@
 
 import type { WorkoutType } from "./theme";
 
-// M11 Phase 2 (#232): 목표 유형별 페이로드.
-export type GoalType = "distance" | "time" | "endurance";
+// M11 Phase 2 (#232) + Phase 2-b (#236): 목표 유형별 페이로드.
+export type GoalType = "distance" | "time" | "endurance" | "weight_loss";
+export type IntensityMode = "light" | "standard" | "intense";
 
 export interface TimeGoalPayload {
   distance: string; // "5K" | "10K" | "HM" | "FM"
@@ -16,7 +17,15 @@ export interface EnduranceGoalPayload {
   targetDate?: string | null; // optional
 }
 
-export type GoalValuePayload = TimeGoalPayload | EnduranceGoalPayload | null;
+export interface WeightLossGoalPayload {
+  intensityMode: IntensityMode;
+}
+
+export type GoalValuePayload =
+  | TimeGoalPayload
+  | EnduranceGoalPayload
+  | WeightLossGoalPayload
+  | null;
 
 export type WorkoutStatus =
   | "completed"
