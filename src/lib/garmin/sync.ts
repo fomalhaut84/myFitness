@@ -125,34 +125,12 @@ async function updateSyncMetadata(
 ): Promise<void> {
   const now = new Date();
 
-  // #220: oldestFetchedDate = MIN(기존 값, startDate). 첫 write (prev === null) 인 경우
-  // 는 pre-#220 record 마이그레이션 — firstRecordDate 로 실제 커버 범위 proxy 반영.
-  // user_profile 은 date 없음 → 유지 (upsert 시 undefined 로 미변경).
-  // Prisma 는 conditional min 을 지원하지 않아 read-modify-write.
-  let oldestFetchedDate: Date | undefined;
-  if (dataType !== "user_profile") {
-    const existing = await prisma.syncMetadata.findUnique({
-      where: { dataType },
-      select: { oldestFetchedDate: true },
-    });
-    const prev = existing?.oldestFetchedDate ?? null;
-    if (prev === null) {
-      // 초기 seed: startDate 와 실제 DB 최초 record 중 더 이른 쪽.
-      // 신규 계정 (record 없음) 은 startDate 그대로.
-      const first = await firstRecordDate(dataType);
-      oldestFetchedDate =
-        first !== null && first < startDate ? first : startDate;
-    } else {
-      oldestFetchedDate = startDate < prev ? startDate : prev;
-    }
-  }
-
+  // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
       lastSyncAt: now,
       lastSyncDate: endDate,
-      oldestFetchedDate,
       syncCount: { increment: syncCount },
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -161,12 +139,36 @@ async function updateSyncMetadata(
       dataType,
       lastSyncAt: now,
       lastSyncDate: endDate,
-      oldestFetchedDate,
       syncCount,
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
     },
   });
+
+  // #220: oldestFetchedDate 는 atomic LEAST 로 monotonic (concurrent syncAll 시 이전 값 보존).
+  // Codex bot P2 (PR #239 #4700219384): read-modify-write 로 두 sync 겹치면
+  // 나중 쓰기가 더 최신 startDate 로 이전 값을 덮어써 backfill 정보를 잃음.
+  // user_profile 은 date 없음 → skip.
+  if (dataType === "user_profile") return;
+
+  // 마이그레이션 seed 후보: prev=null 인 pre-#220 record 는 firstRecordDate 로 실제 커버 proxy 반영.
+  // 이후 write 에서는 startDate 만으로 충분 (semantic: 실제 API 호출 범위).
+  // read → candidate 계산 → SQL LEAST 갱신. 도중 concurrent 갱신은 SQL LEAST 가 안전 처리.
+  const existing = await prisma.syncMetadata.findUnique({
+    where: { dataType },
+    select: { oldestFetchedDate: true },
+  });
+  let candidate: Date = startDate;
+  if (existing?.oldestFetchedDate === null) {
+    const first = await firstRecordDate(dataType);
+    if (first !== null && first < startDate) candidate = first;
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "SyncMetadata"
+    SET "oldestFetchedDate" = LEAST(COALESCE("oldestFetchedDate", ${candidate}), ${candidate})
+    WHERE "dataType" = ${dataType}
+  `;
 }
 
 async function markError(
