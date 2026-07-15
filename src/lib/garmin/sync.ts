@@ -118,12 +118,14 @@ async function firstRecordDate(dataType: DataType): Promise<Date | null> {
 
 async function updateSyncMetadata(
   dataType: DataType,
+  startDate: Date,
   endDate: Date,
   syncCount: number,
   error?: string
 ): Promise<void> {
   const now = new Date();
 
+  // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
@@ -142,6 +144,31 @@ async function updateSyncMetadata(
       errorMessage: error ?? null,
     },
   });
+
+  // #220: oldestFetchedDate 는 atomic LEAST 로 monotonic (concurrent syncAll 시 이전 값 보존).
+  // Codex bot P2 (PR #239 #4700219384): read-modify-write 로 두 sync 겹치면
+  // 나중 쓰기가 더 최신 startDate 로 이전 값을 덮어써 backfill 정보를 잃음.
+  // user_profile 은 date 없음 → skip.
+  if (dataType === "user_profile") return;
+
+  // 마이그레이션 seed 후보: prev=null 인 pre-#220 record 는 firstRecordDate 로 실제 커버 proxy 반영.
+  // 이후 write 에서는 startDate 만으로 충분 (semantic: 실제 API 호출 범위).
+  // read → candidate 계산 → SQL LEAST 갱신. 도중 concurrent 갱신은 SQL LEAST 가 안전 처리.
+  const existing = await prisma.syncMetadata.findUnique({
+    where: { dataType },
+    select: { oldestFetchedDate: true },
+  });
+  let candidate: Date = startDate;
+  if (existing?.oldestFetchedDate === null) {
+    const first = await firstRecordDate(dataType);
+    if (first !== null && first < startDate) candidate = first;
+  }
+
+  await prisma.$executeRaw`
+    UPDATE "SyncMetadata"
+    SET "oldestFetchedDate" = LEAST(COALESCE("oldestFetchedDate", ${candidate}), ${candidate})
+    WHERE "dataType" = ${dataType}
+  `;
 }
 
 async function markError(
@@ -221,20 +248,26 @@ export async function syncAll(
       meta && meta.lastSyncDate.getTime() > 0
     );
 
-    // #209: 기존 성공 sync 가 있어도 history 가 요구 window 미만이면 강제 backfill.
+    // #209/#220: 기존 성공 sync 가 있어도 실제 fetch 커버 window 가 부족하면 강제 backfill.
     // user_profile 은 대상 아님 (스냅샷).
+    //
+    // #220 판정 기준: oldestFetchedDate > requiredStart (실제 fetch 커버 기반, record 유무 무관).
+    // 기존 record 는 oldestFetchedDate === null 이라 첫 실행 시 firstRecordDate fallback 으로
+    // 초기화 후 upsert 로 채워짐 (다음 실행부터 정확한 판정).
+    //
+    // Codex bot P2 (PR #218, #4690117542): first === null (record 없는 계정) 매주 backfill
+    // 무의미 → oldestFetchedDate 이 null 이거나 record 도 null 인 경우는 fetch 커버 정보가
+    // 없어 판정 불가로 skip (성공 sync 이력 존재 신호를 신뢰).
     let historyShortfall = false;
     if (
       options?.minHistoryDays &&
       hasSuccessfulSync &&
       dataType !== "user_profile"
     ) {
-      const first = await firstRecordDate(dataType);
       const requiredStart = daysAgo(options.minHistoryDays);
-      // first === null 은 record 없는 계정 (예: 수면 데이터 미기록) — 성공 sync 이력이
-      // 이미 있으므로 매주 backfill 은 무의미한 API 호출 (Codex bot P2 #4690117542).
-      // 실제 데이터가 있는데 짧게 fetch 된 케이스만 backfill 대상.
-      if (first && first > requiredStart) {
+      const coveredFrom =
+        meta?.oldestFetchedDate ?? (await firstRecordDate(dataType));
+      if (coveredFrom && coveredFrom > requiredStart) {
         historyShortfall = true;
       }
     }
@@ -280,7 +313,7 @@ export async function syncAll(
         SYNC_FNS[dataType](client, startDate, endDate)
       );
 
-      await updateSyncMetadata(dataType, endDate, synced);
+      await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
     } catch (error) {

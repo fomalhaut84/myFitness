@@ -55,14 +55,18 @@ model MetricChange {
 }
 
 model SyncMetadata {
-  id            String   @id @default(cuid())
-  dataType      String   @unique
-  lastSyncAt    DateTime
-  lastSyncDate  DateTime
-  syncCount     Int      @default(0)
-  status        String   @default("idle")
-  errorMessage  String?
-  updatedAt     DateTime @updatedAt
+  id                String   @id @default(cuid())
+  dataType          String   @unique
+  lastSyncAt        DateTime
+  lastSyncDate      DateTime
+  // #220: 실제 fetch 커버 범위의 최초 날짜. lastSyncDate 만으로는 짧게 sync 한 후
+  // 이전 데이터 부재를 구분 불가 → oldestFetchedDate 로 정확한 backfill 판정.
+  // 기존 record 는 null (첫 성공 sync 시 firstRecordDate fallback 으로 초기화).
+  oldestFetchedDate DateTime?
+  syncCount         Int      @default(0)
+  status            String   @default("idle")
+  errorMessage      String?
+  updatedAt         DateTime @updatedAt
 }
 
 model Activity {
