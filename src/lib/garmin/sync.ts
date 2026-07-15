@@ -11,6 +11,7 @@ import { syncBloodPressure } from "./fetchers/blood-pressure";
 import { syncUserProfile } from "./fetchers/user-profile";
 
 const INITIAL_HISTORY_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type DataType =
   | "daily_stats"
@@ -118,12 +119,14 @@ async function firstRecordDate(dataType: DataType): Promise<Date | null> {
 
 async function updateSyncMetadata(
   dataType: DataType,
+  startDate: Date,
   endDate: Date,
   syncCount: number,
   error?: string
 ): Promise<void> {
   const now = new Date();
 
+  // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
@@ -142,6 +145,45 @@ async function updateSyncMetadata(
       errorMessage: error ?? null,
     },
   });
+
+  // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.
+  // atomic UPDATE 로 concurrent syncAll safe (Codex P2 PR #239).
+  //
+  // 규칙 (Codex P2 PR #240 #4700500769 contiguity 요구):
+  //   1) 기존 범위 없음 (null) → 새 range 로 초기화.
+  //   2) 새 range 가 기존 범위와 adjacent 또는 overlap → merge (min oldest, max through).
+  //   3) 새 range 가 기존과 disjoint 이지만 최근 (endDate 가 today-1day 이상) → reset (recent
+  //      contiguous coverage 를 canonical 로. old 는 stale.).
+  //   4) disjoint + old → 무시 (기존 marker 유지).
+  //
+  // adjacency: date-only 이므로 [1 day] 여유. today-1day grace 는 cron 1 miss 허용.
+  //
+  // user_profile 은 date 없음 → skip.
+  if (dataType === "user_profile") return;
+
+  const recentThreshold = new Date(todayKST().getTime() - DAY_MS);
+
+  await prisma.$executeRaw`
+    UPDATE "SyncMetadata"
+    SET
+      "oldestFetchedDate" = CASE
+        WHEN "oldestFetchedDate" IS NULL OR "coveredThroughDate" IS NULL THEN ${startDate}
+        WHEN ${startDate}::timestamp <= "coveredThroughDate" + INTERVAL '1 day'
+         AND ${endDate}::timestamp >= "oldestFetchedDate" - INTERVAL '1 day'
+        THEN LEAST("oldestFetchedDate", ${startDate})
+        WHEN ${endDate}::timestamp >= ${recentThreshold}::timestamp THEN ${startDate}
+        ELSE "oldestFetchedDate"
+      END,
+      "coveredThroughDate" = CASE
+        WHEN "oldestFetchedDate" IS NULL OR "coveredThroughDate" IS NULL THEN ${endDate}
+        WHEN ${startDate}::timestamp <= "coveredThroughDate" + INTERVAL '1 day'
+         AND ${endDate}::timestamp >= "oldestFetchedDate" - INTERVAL '1 day'
+        THEN GREATEST("coveredThroughDate", ${endDate})
+        WHEN ${endDate}::timestamp >= ${recentThreshold}::timestamp THEN ${endDate}
+        ELSE "coveredThroughDate"
+      END
+    WHERE "dataType" = ${dataType}
+  `;
 }
 
 async function markError(
@@ -221,20 +263,31 @@ export async function syncAll(
       meta && meta.lastSyncDate.getTime() > 0
     );
 
-    // #209: 기존 성공 sync 가 있어도 history 가 요구 window 미만이면 강제 backfill.
+    // #209/#220: 기존 성공 sync 가 있어도 실제 fetch 커버 범위가 부족하면 강제 backfill.
     // user_profile 은 대상 아님 (스냅샷).
+    //
+    // 커버 범위 = [oldestFetchedDate, coveredThroughDate] (contiguous, PR #240 Codex P2).
+    // shortfall 판정:
+    //   1. 마이그레이션 pre-#220: coveredThroughDate 또는 oldestFetchedDate === null →
+    //      record 있으면 backfill 1회 (record 없는 계정은 skip, 무한 API 호출 방지)
+    //   2. lower bound: oldestFetchedDate > requiredStart → 과거 커버 부족
+    //   3. upper bound: coveredThroughDate < today - 1day → 최근 gap 존재 (예: /api/sync 로
+    //      옛 disjoint range 만 fetch 된 상태)
     let historyShortfall = false;
     if (
       options?.minHistoryDays &&
       hasSuccessfulSync &&
       dataType !== "user_profile"
     ) {
-      const first = await firstRecordDate(dataType);
       const requiredStart = daysAgo(options.minHistoryDays);
-      // first === null 은 record 없는 계정 (예: 수면 데이터 미기록) — 성공 sync 이력이
-      // 이미 있으므로 매주 backfill 은 무의미한 API 호출 (Codex bot P2 #4690117542).
-      // 실제 데이터가 있는데 짧게 fetch 된 케이스만 backfill 대상.
-      if (first && first > requiredStart) {
+      const graceThreshold = new Date(todayKST().getTime() - DAY_MS);
+      if (!meta?.oldestFetchedDate || !meta?.coveredThroughDate) {
+        const first = await firstRecordDate(dataType);
+        if (first !== null) historyShortfall = true;
+      } else if (
+        meta.oldestFetchedDate > requiredStart ||
+        meta.coveredThroughDate < graceThreshold
+      ) {
         historyShortfall = true;
       }
     }
@@ -280,7 +333,7 @@ export async function syncAll(
         SYNC_FNS[dataType](client, startDate, endDate)
       );
 
-      await updateSyncMetadata(dataType, endDate, synced);
+      await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
     } catch (error) {

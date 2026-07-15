@@ -55,14 +55,19 @@ model MetricChange {
 }
 
 model SyncMetadata {
-  id            String   @id @default(cuid())
-  dataType      String   @unique
-  lastSyncAt    DateTime
-  lastSyncDate  DateTime
-  syncCount     Int      @default(0)
-  status        String   @default("idle")
-  errorMessage  String?
-  updatedAt     DateTime @updatedAt
+  id                 String   @id @default(cuid())
+  dataType           String   @unique
+  lastSyncAt         DateTime
+  lastSyncDate       DateTime
+  // #220: 실제 fetch 커버 범위 [oldestFetchedDate, coveredThroughDate] (contiguous).
+  // 새 fetch 는 adjacent/overlap 인 경우만 merge, 그 외 disjoint 는 무시 (혹은 recent
+  // 도달 시 reset). Codex bot P2 (PR #240) contiguity 요구 대응.
+  oldestFetchedDate  DateTime?
+  coveredThroughDate DateTime?
+  syncCount          Int      @default(0)
+  status             String   @default("idle")
+  errorMessage       String?
+  updatedAt          DateTime @updatedAt
 }
 
 model Activity {
