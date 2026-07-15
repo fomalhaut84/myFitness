@@ -17,7 +17,7 @@ export interface HistoryItem {
   endDate: string;
   weekCount: number;
   weeklyFrequency: number;
-  goalType: "distance" | "time" | "endurance"; // M11 Phase 2
+  goalType: "distance" | "time" | "endurance" | "weight_loss"; // M11 Phase 2 + 2-b
   goalValue: unknown; // 유형별 JSON payload (null 가능)
   targetDistance: string | null;
   targetDate: string | null;
@@ -99,7 +99,7 @@ export async function fetchArchivedHistory(): Promise<HistoryItem[]> {
         endDate: ymdKST(plan.endDate),
         weekCount: plan.weekCount,
         weeklyFrequency: plan.weeklyFrequency,
-        goalType: plan.goalType as "distance" | "time" | "endurance",
+        goalType: plan.goalType as "distance" | "time" | "endurance" | "weight_loss",
         goalValue: plan.goalValue ?? null,
         targetDistance: plan.targetDistance ?? null,
         targetDate:

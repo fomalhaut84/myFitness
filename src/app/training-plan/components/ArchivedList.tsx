@@ -30,6 +30,12 @@ function renderGoalBadge(p: HistoryItem): React.ReactNode {
       );
     }
   }
+  if (p.goalType === "weight_loss" && p.goalValue) {
+    const g = p.goalValue as { intensityMode?: string };
+    if (typeof g.intensityMode === "string") {
+      return <MicroLabel color={C.primary}>intensity · {g.intensityMode}</MicroLabel>;
+    }
+  }
   return null;
 }
 

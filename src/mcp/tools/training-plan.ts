@@ -14,9 +14,12 @@ import { scaleBaseline, type TargetDistance as ScaleTarget } from "../../lib/tra
 import {
   validateTimeGoal,
   validateEnduranceGoal,
+  validateWeightLossGoal,
   type EnduranceGoalValue,
   type GoalType,
+  type IntensityMode,
   type TimeGoalValue,
+  type WeightLossGoalValue,
 } from "../../lib/training/goal-progression";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -64,9 +67,18 @@ interface GenerateInput {
     targetLongRunKm?: number;
     targetDate?: string;
   };
+  // goalType == "weight_loss" 시 사용 (M11 Phase 2-b #236).
+  weightLossGoal?: {
+    intensityMode?: string;
+  };
 }
 
-const GOAL_TYPES: readonly GoalType[] = ["distance", "time", "endurance"];
+const GOAL_TYPES: readonly GoalType[] = [
+  "distance",
+  "time",
+  "endurance",
+  "weight_loss",
+];
 
 /**
  * KST 자정 Date 로 변환. 유효하지 않으면 null.
@@ -130,6 +142,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   // Wk4 창 검증은 공통 로직 (기존 finalWeekStart 규칙) 이라 하나로 통합.
   let timeGoal: TimeGoalValue | undefined;
   let enduranceGoal: EnduranceGoalValue | undefined;
+  let weightLossGoal: WeightLossGoalValue | undefined;
   let unifiedTargetDateStr: string | undefined;
   let unifiedTargetDistance: TargetDistance | null = targetDistance;
 
@@ -159,8 +172,7 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     timeGoal = candidate;
     unifiedTargetDateStr = candidate.targetDate;
     unifiedTargetDistance = dist;
-  } else {
-    // endurance
+  } else if (goalType === "endurance") {
     const raw = input.enduranceGoal;
     if (!raw || raw.targetLongRunKm === undefined) {
       throw new Error("endurance 목표는 enduranceGoal.targetLongRunKm 이 필수입니다.");
@@ -173,6 +185,30 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     if (err !== null) throw new Error(err);
     enduranceGoal = candidate;
     unifiedTargetDateStr = candidate.targetDate;
+  } else {
+    // weight_loss — UserProfile targetWeight 재사용, goalValue 는 intensityMode 만.
+    const raw = input.weightLossGoal;
+    if (!raw || raw.intensityMode === undefined) {
+      throw new Error(
+        "weight_loss 목표는 weightLossGoal.intensityMode 가 필수입니다 (light/standard/intense).",
+      );
+    }
+    const candidate: WeightLossGoalValue = {
+      intensityMode: raw.intensityMode as IntensityMode,
+    };
+    const err = validateWeightLossGoal(candidate);
+    if (err !== null) throw new Error(err);
+    // UserProfile.targetWeight pre-check (감량 목표 → 목표 체중 필수).
+    const wlProfile = await prisma.userProfile.findFirst({
+      select: { targetWeight: true },
+    });
+    if (wlProfile?.targetWeight === null || wlProfile?.targetWeight === undefined) {
+      throw new Error(
+        "weight_loss 목표는 UserProfile.targetWeight 가 먼저 설정되어야 합니다. /settings/profile 에서 지정하세요.",
+      );
+    }
+    weightLossGoal = candidate;
+    // targetDate 는 별도 지정 안 함 (UserProfile.targetDate 참조는 향후 옵션).
   }
 
   const targetDate =
@@ -194,8 +230,11 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
   // M8: 목표 거리에 맞춰 baseline 스케일 (히스토리 sanity cap 포함).
   // M11 Phase 2: time 목표는 unifiedTargetDistance (timeGoal.distance) 로 스케일. endurance 는
   // 사용자 지정 targetLongRunKm 이 우선이라 distance 배율 미적용 (null 로 skip).
+  // M11 Phase 2-b: weight_loss 도 스케일 skip (감량 중 무리한 볼륨 확장 방지).
   const scaleTargetDistance: ScaleTarget | null =
-    goalType === "endurance" ? null : (unifiedTargetDistance as ScaleTarget | null);
+    goalType === "endurance" || goalType === "weight_loss"
+      ? null
+      : (unifiedTargetDistance as ScaleTarget | null);
   const scaled = scaleBaseline(
     baseline.weeklyKm,
     scaleTargetDistance,
@@ -230,12 +269,16 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     baselineWeeklyKm: scaled.finalBase,
     lthrPaceSecPerKm: lthrPace,
     recentAvgPaceSecPerKm: baseline.recentAvgPace,
-    // distance/time: unifiedTargetDistance (5K/10K/HM/FM). endurance: null (사용 안함).
-    targetDistance: goalType === "endurance" ? null : unifiedTargetDistance,
+    // distance/time: unifiedTargetDistance (5K/10K/HM/FM). endurance/weight_loss: null.
+    targetDistance:
+      goalType === "endurance" || goalType === "weight_loss"
+        ? null
+        : unifiedTargetDistance,
     targetDate: effectiveTargetDate,
     goalType,
     timeGoal,
     enduranceGoal,
+    weightLossGoal,
   });
 
   // generatePlan 의 lthrPace 결정 로직과 정확히 일치시켜 DB 헤더와 실제 workout pace 가 정합.
@@ -276,7 +319,9 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
               targetLongRunKm: enduranceGoal.targetLongRunKm,
               targetDate: enduranceGoal.targetDate ?? null,
             }
-          : undefined;
+          : goalType === "weight_loss" && weightLossGoal !== undefined
+            ? { intensityMode: weightLossGoal.intensityMode }
+            : undefined;
 
     const plan = await tx.trainingPlan.create({
       data: {
@@ -286,8 +331,11 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
         weeklyFrequency,
         goalType,
         goalValue: goalValueForDb,
-        // targetDistance 는 distance/time 유형에서만 채움. endurance 는 null.
-        targetDistance: goalType === "endurance" ? null : unifiedTargetDistance,
+        // targetDistance 는 distance/time 유형에서만 채움. endurance/weight_loss 는 null.
+        targetDistance:
+          goalType === "endurance" || goalType === "weight_loss"
+            ? null
+            : unifiedTargetDistance,
         targetDate: effectiveTargetDate !== null ? toUtcDateOnly(effectiveTargetDate) : null,
         // M8: DB 저장 baselineWeeklyKm 은 최종 스케일된 값 (실제 생성에 사용된 값과 일치).
         baselineWeeklyKm: scaled.finalBase,
@@ -331,7 +379,9 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
       ? { ...timeGoal }
       : goalType === "endurance" && enduranceGoal !== undefined
         ? { ...enduranceGoal }
-        : undefined;
+        : goalType === "weight_loss" && weightLossGoal !== undefined
+          ? { ...weightLossGoal }
+          : undefined;
 
   const payload = {
     planId: result.plan.id,
@@ -342,7 +392,9 @@ export async function generateTrainingPlan(input: GenerateInput = {}) {
     goalType,
     goalValue: goalValueForPayload,
     targetDistance:
-      goalType === "endurance" ? undefined : unifiedTargetDistance ?? undefined,
+      goalType === "endurance" || goalType === "weight_loss"
+        ? undefined
+        : unifiedTargetDistance ?? undefined,
     targetDate: effectiveTargetDate !== null ? ymdKST(effectiveTargetDate) : undefined,
     baselineWeeklyKm: scaled.finalBase,
     scaledForTarget: scaled.scaledForTarget,

@@ -11,14 +11,33 @@ const WEEK_COUNT_PRESETS = [4, 8, 12, 16] as const;
 const WEEK_COUNT_MIN = 4;
 const WEEK_COUNT_MAX = 24;
 
-// M11 Phase 2 (#232): 목표 유형 옵션.
+// M11 Phase 2 (#232) + Phase 2-b (#236): 목표 유형 옵션.
 const GOAL_TYPES = [
   { value: "distance", label: "Distance", desc: "race 거리 기반 (기존)" },
   { value: "time", label: "Time", desc: "기록 목표 (페이스 개선)" },
   { value: "endurance", label: "Endurance", desc: "long run 최대 거리" },
+  { value: "weight_loss", label: "Weight loss", desc: "감량 병행 (강도 조정)" },
 ] as const;
 type GoalType = (typeof GOAL_TYPES)[number]["value"];
 const TIME_GOAL_DISTANCES = ["5K", "10K", "HM", "FM"] as const;
+const INTENSITY_MODES = [
+  {
+    value: "light",
+    label: "Light",
+    desc: "볼륨 -20% (강도 유지). 회복/diet 시간 확보.",
+  },
+  {
+    value: "standard",
+    label: "Standard",
+    desc: "볼륨 유지, interval → easy. kcal 소모 유지 + 강도 완화.",
+  },
+  {
+    value: "intense",
+    label: "Intense",
+    desc: "조정 없음. 감량은 diet 로, 훈련 유지.",
+  },
+] as const;
+type IntensityMode = (typeof INTENSITY_MODES)[number]["value"];
 
 interface Props {
   hasActivePlan: boolean;
@@ -54,6 +73,8 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
   // endurance 유형
   const [enduranceKmText, setEnduranceKmText] = useState<string>("");
   const [enduranceDate, setEnduranceDate] = useState<string>("");
+  // weight_loss 유형 (M11 Phase 2-b)
+  const [intensityMode, setIntensityMode] = useState<IntensityMode>("standard");
 
   const [error, setError] = useState<string | null>(null);
   const [submitting, setSubmitting] = useState(false);
@@ -103,7 +124,7 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
         targetTimeSec: targetSec,
         targetDate: timeDate,
       };
-    } else {
+    } else if (goalType === "endurance") {
       const km = Number.parseFloat(enduranceKmText);
       if (!Number.isFinite(km) || km <= 0) {
         setError("endurance 목표 targetLongRunKm 을 숫자 (예: 25) 로 입력하세요.");
@@ -113,6 +134,9 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
       const enduranceGoal: Record<string, unknown> = { targetLongRunKm: km };
       if (enduranceDate) enduranceGoal.targetDate = enduranceDate;
       payload.enduranceGoal = enduranceGoal;
+    } else {
+      // weight_loss — UserProfile.targetWeight 는 서버에서 pre-check 함.
+      payload.weightLossGoal = { intensityMode };
     }
     try {
       const res = await fetch("/api/training-plan/generate", {
@@ -525,6 +549,55 @@ export default function GeneratePlanForm({ hasActivePlan }: Props) {
               >
                 race 지정 시 마지막 주 창 내여야 함 (선택)
               </div>
+            </div>
+          </div>
+        )}
+
+        {/* Weight-loss goal (M11 Phase 2-b) */}
+        {goalType === "weight_loss" && (
+          <div>
+            <MicroLabel color={C.mid} className="mb-3">
+              Intensity mode
+            </MicroLabel>
+            <div className="flex flex-col gap-2 mt-4">
+              {INTENSITY_MODES.map((m) => (
+                <button
+                  key={m.value}
+                  type="button"
+                  onClick={() => setIntensityMode(m.value)}
+                  className="py-3 px-4 text-left transition-colors"
+                  style={{
+                    fontFamily: FONT_BODY,
+                    border: `1px solid ${intensityMode === m.value ? C.primary : C.border}`,
+                    background: intensityMode === m.value ? `${C.primary}11` : "transparent",
+                    color: intensityMode === m.value ? C.primary : C.mid,
+                    cursor: "pointer",
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700 }}>{m.label}</div>
+                  <div
+                    style={{
+                      fontSize: 11,
+                      marginTop: 2,
+                      color: C.lo,
+                      fontWeight: 500,
+                    }}
+                  >
+                    {m.desc}
+                  </div>
+                </button>
+              ))}
+            </div>
+            <div
+              style={{
+                fontSize: 11,
+                color: C.lo,
+                marginTop: 10,
+                fontFamily: FONT_BODY,
+                fontWeight: 500,
+              }}
+            >
+              목표 체중은 <a href="/settings/profile" style={{ color: C.primary, textDecoration: "underline" }}>설정 &gt; 프로필</a> 에서 지정하세요 (미설정 시 400 오류).
             </div>
           </div>
         )}
