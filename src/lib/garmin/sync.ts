@@ -11,6 +11,7 @@ import { syncBloodPressure } from "./fetchers/blood-pressure";
 import { syncUserProfile } from "./fetchers/user-profile";
 
 const INITIAL_HISTORY_DAYS = 365;
+const DAY_MS = 24 * 60 * 60 * 1000;
 
 type DataType =
   | "daily_stats"
@@ -145,21 +146,42 @@ async function updateSyncMetadata(
     },
   });
 
-  // #220: oldestFetchedDate 는 atomic LEAST 로 monotonic (concurrent syncAll 시 이전 값 보존).
-  // Codex bot P2 (PR #239): read-modify-write 로 두 sync 겹치면 이전 값을 덮어써 backfill 이력 손실.
+  // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.
+  // atomic UPDATE 로 concurrent syncAll safe (Codex P2 PR #239).
   //
-  // Codex bot P2 (PR #240 #4700366975): firstRecordDate seed 제거.
-  // 오래된 record 1개 + 최근 짧은 sync 케이스에서 firstRecordDate 로 seed 하면 실제 API 로
-  // fetch 하지 않은 중간 window 를 커버로 오인 → 이후 minHistoryDays 검사 skip. semantic 상
-  // oldestFetchedDate 는 **실제 API 호출 startDate** 만 반영해야 함. 마이그레이션은 historyShortfall
-  // fallback (한 번 backfill 유도) 으로 자연 정착.
+  // 규칙 (Codex P2 PR #240 #4700500769 contiguity 요구):
+  //   1) 기존 범위 없음 (null) → 새 range 로 초기화.
+  //   2) 새 range 가 기존 범위와 adjacent 또는 overlap → merge (min oldest, max through).
+  //   3) 새 range 가 기존과 disjoint 이지만 최근 (endDate 가 today-1day 이상) → reset (recent
+  //      contiguous coverage 를 canonical 로. old 는 stale.).
+  //   4) disjoint + old → 무시 (기존 marker 유지).
+  //
+  // adjacency: date-only 이므로 [1 day] 여유. today-1day grace 는 cron 1 miss 허용.
   //
   // user_profile 은 date 없음 → skip.
   if (dataType === "user_profile") return;
 
+  const recentThreshold = new Date(todayKST().getTime() - DAY_MS);
+
   await prisma.$executeRaw`
     UPDATE "SyncMetadata"
-    SET "oldestFetchedDate" = LEAST(COALESCE("oldestFetchedDate", ${startDate}), ${startDate})
+    SET
+      "oldestFetchedDate" = CASE
+        WHEN "oldestFetchedDate" IS NULL OR "coveredThroughDate" IS NULL THEN ${startDate}
+        WHEN ${startDate}::timestamp <= "coveredThroughDate" + INTERVAL '1 day'
+         AND ${endDate}::timestamp >= "oldestFetchedDate" - INTERVAL '1 day'
+        THEN LEAST("oldestFetchedDate", ${startDate})
+        WHEN ${endDate}::timestamp >= ${recentThreshold}::timestamp THEN ${startDate}
+        ELSE "oldestFetchedDate"
+      END,
+      "coveredThroughDate" = CASE
+        WHEN "oldestFetchedDate" IS NULL OR "coveredThroughDate" IS NULL THEN ${endDate}
+        WHEN ${startDate}::timestamp <= "coveredThroughDate" + INTERVAL '1 day'
+         AND ${endDate}::timestamp >= "oldestFetchedDate" - INTERVAL '1 day'
+        THEN GREATEST("coveredThroughDate", ${endDate})
+        WHEN ${endDate}::timestamp >= ${recentThreshold}::timestamp THEN ${endDate}
+        ELSE "coveredThroughDate"
+      END
     WHERE "dataType" = ${dataType}
   `;
 }
@@ -241,15 +263,16 @@ export async function syncAll(
       meta && meta.lastSyncDate.getTime() > 0
     );
 
-    // #209/#220: 기존 성공 sync 가 있어도 실제 fetch 커버 window 가 부족하면 강제 backfill.
+    // #209/#220: 기존 성공 sync 가 있어도 실제 fetch 커버 범위가 부족하면 강제 backfill.
     // user_profile 은 대상 아님 (스냅샷).
     //
-    // #220 판정 기준: oldestFetchedDate > requiredStart (실제 API 호출 커버).
-    // pre-#220 record (oldestFetchedDate === null) 는 실제 커버 불명 → 안전을 위해
-    // 한 번은 backfill 하여 oldestFetchedDate baseline 확립 (이후는 정확한 판정).
-    //
-    // Codex bot P2 (PR #218 #4690117542, PR #240 #4700366975): record 자체 없는 계정 은
-    // 매주 무의미 API 호출 방지. record 있고 실제 API 커버 불명일 때만 backfill 1회.
+    // 커버 범위 = [oldestFetchedDate, coveredThroughDate] (contiguous, PR #240 Codex P2).
+    // shortfall 판정:
+    //   1. 마이그레이션 pre-#220: coveredThroughDate 또는 oldestFetchedDate === null →
+    //      record 있으면 backfill 1회 (record 없는 계정은 skip, 무한 API 호출 방지)
+    //   2. lower bound: oldestFetchedDate > requiredStart → 과거 커버 부족
+    //   3. upper bound: coveredThroughDate < today - 1day → 최근 gap 존재 (예: /api/sync 로
+    //      옛 disjoint range 만 fetch 된 상태)
     let historyShortfall = false;
     if (
       options?.minHistoryDays &&
@@ -257,14 +280,14 @@ export async function syncAll(
       dataType !== "user_profile"
     ) {
       const requiredStart = daysAgo(options.minHistoryDays);
-      if (
-        meta?.oldestFetchedDate === null ||
-        meta?.oldestFetchedDate === undefined
-      ) {
-        // 마이그레이션 첫 사이클: 실제 record 가 있으면 커버 불명 → backfill 1회.
+      const graceThreshold = new Date(todayKST().getTime() - DAY_MS);
+      if (!meta?.oldestFetchedDate || !meta?.coveredThroughDate) {
         const first = await firstRecordDate(dataType);
         if (first !== null) historyShortfall = true;
-      } else if (meta.oldestFetchedDate > requiredStart) {
+      } else if (
+        meta.oldestFetchedDate > requiredStart ||
+        meta.coveredThroughDate < graceThreshold
+      ) {
         historyShortfall = true;
       }
     }
