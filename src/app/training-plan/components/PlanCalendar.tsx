@@ -7,6 +7,7 @@ import type {
   ActivePlanWorkout,
   EnduranceGoalPayload,
   TimeGoalPayload,
+  WeightLossGoalPayload,
 } from "../types";
 import { MicroLabel } from "./atoms";
 import WorkoutEditModal from "./WorkoutEditModal";
@@ -54,6 +55,40 @@ function renderGoalBanner(
         </div>
         <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}>
           tempo/interval 페이스 개선 progression
+        </span>
+      </div>
+    );
+  }
+  if (goalType === "weight_loss" && plan.goalValue) {
+    const g = plan.goalValue as WeightLossGoalPayload;
+    return (
+      <div
+        className="p-5 md:p-6 flex flex-col md:flex-row md:items-center md:justify-between gap-3"
+        style={{ background: "#00000022" }}
+      >
+        <div className="flex items-center gap-3">
+          <span
+            className="inline-block w-2 h-2 shrink-0"
+            style={{ background: C.primary }}
+          />
+          <MicroLabel color={C.primary}>Weight-loss target</MicroLabel>
+          <span
+            style={{
+              fontFamily: FONT_BODY,
+              fontSize: 13,
+              color: C.hi,
+              fontWeight: 500,
+            }}
+          >
+            Intensity mode · {g.intensityMode}
+          </span>
+        </div>
+        <span style={{ fontFamily: FONT_MONO, fontSize: 11, color: C.lo }}>
+          {g.intensityMode === "light"
+            ? "볼륨 -20% (강도 유지)"
+            : g.intensityMode === "standard"
+              ? "interval → easy 치환"
+              : "조정 없음 (diet 중심)"}
         </span>
       </div>
     );
