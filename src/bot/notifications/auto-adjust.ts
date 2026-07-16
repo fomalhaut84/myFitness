@@ -302,10 +302,21 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     // M13 Phase 2: 오늘 실제 TrainingWorkout 조회. Accept 시 이 row 를 update.
     // planWorkout.type/distanceKm 은 payload 에 있지만 workoutId 는 없어 별도 조회.
     // 원 필드 스냅샷도 함께 fetch (Accept 시 덮어씀에 따른 데이터 손실 방지, PR #250 P2).
+    //
+    // Codex bot PR #250 재리뷰 P2: recommend 와 workout lookup 사이에 plan 재생성이
+    // 일어나면 다른 plan 의 workout 을 잡아 target 이 어긋남. base.planId 로 명시 필터.
     const todayStr = ymdKST(todayKST());
+    const expectedPlanId = payload.base.planId;
+    if (!expectedPlanId) {
+      console.warn(
+        "[auto-adjust] base.planId 없음 (예상 밖 — hasActivePlan 이미 검증) → skip",
+      );
+      return;
+    }
     const todayWorkout = await prisma.trainingWorkout.findFirst({
       where: {
         date: new Date(`${todayStr}T00:00:00.000Z`),
+        planId: expectedPlanId,
         plan: { status: "active" },
       },
       select: {
@@ -319,9 +330,9 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       },
     });
     if (!todayWorkout) {
-      // hasActivePlan/todayWorkoutExists 로 이미 gated 됐지만 race condition 대비.
+      // hasActivePlan/todayWorkoutExists 로 gated + planId 필터 후에도 미매칭 → 재생성 window.
       console.warn(
-        `[auto-adjust] TrainingWorkout row 조회 실패 (date=${todayStr}) — skip`,
+        `[auto-adjust] TrainingWorkout 조회 실패 (date=${todayStr}, planId=${expectedPlanId}) — plan 재생성 가능성 → skip`,
       );
       return;
     }
