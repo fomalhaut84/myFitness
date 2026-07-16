@@ -30,6 +30,9 @@ const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const TIMEOUT_MS = 180_000;
 const DEFAULT_CHANNEL = "default";
 
+/** 단일 askAdvisor CLI 호출 최대 시간 (외부 소비자용 export). */
+export const ASK_ADVISOR_TIMEOUT_MS = TIMEOUT_MS;
+
 interface ClaudeResponse {
   result: string;
   sessionId: string | null;
@@ -184,6 +187,19 @@ function envBool(key: string): boolean {
   return raw === "1" || raw.toLowerCase() === "true";
 }
 
+/** 외부 소비자용 (report-job 대기 예산 계산 등). env 반영, clamp 로직 재사용. */
+export function getAskAdvisorMaxRetries(): number {
+  return envInt("ASK_ADVISOR_MAX_RETRIES", 2, 0, 5);
+}
+
+/**
+ * askAdvisor 최악의 경우 총 소요 시간 (재시도 전부 포함).
+ * 180s × (1 + maxRetries). MAX_RETRIES=2 default 시 540s.
+ */
+export function getAskAdvisorMaxTotalBudgetMs(): number {
+  return TIMEOUT_MS * (1 + getAskAdvisorMaxRetries());
+}
+
 /**
  * #197/#200/#244: askAdvisor guard wrapper — minTurns 검증 + 재시도 (강화 프롬프트) + 응답 필터.
  * 실패 로그에 Claude CLI session_id 포함 (#244 F4).
@@ -196,7 +212,7 @@ export async function askAdvisor(
 ): Promise<ClaudeResponse> {
   const channel = options.channel ?? DEFAULT_CHANNEL;
   const minTurns = options.minTurns ?? 0;
-  const maxRetries = envInt("ASK_ADVISOR_MAX_RETRIES", 2, 0, 5);
+  const maxRetries = getAskAdvisorMaxRetries();
   const boostFirst = envBool("ASK_ADVISOR_BOOST_FIRST");
 
   let lastResponse: ClaudeResponse | null = null;

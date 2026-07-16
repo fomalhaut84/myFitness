@@ -1,6 +1,14 @@
 import { EventEmitter } from "node:events";
 import type { ReportJob } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { getAskAdvisorMaxTotalBudgetMs } from "@/lib/ai/claude-advisor";
+
+// #244 Codex P2: askAdvisor 실제 소요 시간 (env ASK_ADVISOR_MAX_RETRIES 반영) 기반으로
+// waiter / orphan 예산을 dynamic 계산 → env override 시에도 정합.
+// preSync (~60s) + waiter 여유 (100s) → 총 buffer 160s.
+const PRESYNC_BUFFER_MS = 60_000;
+const WAIT_BUFFER_MS = 100_000;
+const TOTAL_BUFFER_MS = PRESYNC_BUFFER_MS + WAIT_BUFFER_MS;
 
 /**
  * M#191: 리포트 생성 비동기 job 인프라.
@@ -184,13 +192,13 @@ export async function getReportJob(jobId: string): Promise<ReportJob | null> {
  * cron 이 web 과 동시 실행 시나리오 방어. 이미 running job 은 완료 대기.
  * TimeoutMs 초과 시 마지막 스냅샷 반환 (호출자가 null result 로 처리).
  *
- * 예산: askAdvisor TIMEOUT_MS 180s × (1 + MAX_RETRIES=2) = 540s + preSync ~60s +
- * 여유 100s → 기본 720s (12분). #244 로 MAX_RETRIES 1→2 상향 (Codex bot P2 PR #247).
- * env ASK_ADVISOR_MAX_RETRIES 를 default 이상으로 올릴 시 이 값도 함께 재검토.
+ * 예산: askAdvisor 실제 max budget × (1 + MAX_RETRIES) + preSync + 여유.
+ * env ASK_ADVISOR_MAX_RETRIES=5 (상한) 시 자동으로 1240s (약 20분) 로 확장 →
+ * 소비자가 override 안 해도 정합 (Codex bot P2 PR #247 재리뷰).
  */
 export async function waitForJobCompletion(
   jobId: string,
-  timeoutMs = 720_000,
+  timeoutMs = getAskAdvisorMaxTotalBudgetMs() + TOTAL_BUFFER_MS,
   pollIntervalMs = 2000,
 ): Promise<ReportJob | null> {
   const started = Date.now();
@@ -221,13 +229,12 @@ export async function getActiveReportJob(params: {
 }
 
 /**
- * askAdvisor 최대 실행 시간 × (1 + MAX_RETRIES) + preSync 여유. 이 시간 초과된
- * pending/running job 은 orphan 으로 간주 후 failed 마킹.
- * #244 로 MAX_RETRIES 1→2 상향 → askAdvisor 최대 180s × 3 = 540s + preSync 60s +
- * 여유 100s → 12분 (720s). 정상 완료 job 을 잘못 죽이지 않으면서 pm2 restart 로
- * orphan 된 job 은 여전히 감지 (원 5분에서 확대).
+ * askAdvisor 실제 max budget × (1 + MAX_RETRIES) + preSync 여유. env 반영 dynamic 계산.
+ * MAX_RETRIES=2 default → 700s (약 12분). env 상한 (5) 시 자동 20분 확장.
+ * 정상 완료 job 을 잘못 죽이지 않으면서 pm2 restart 로 orphan 된 job 은 여전히 감지.
  */
-export const ORPHAN_TIMEOUT_MS = 12 * 60 * 1000;
+export const ORPHAN_TIMEOUT_MS =
+  getAskAdvisorMaxTotalBudgetMs() + TOTAL_BUFFER_MS;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
