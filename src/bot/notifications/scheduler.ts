@@ -2,6 +2,7 @@ import cron from "node-cron";
 import type { Bot } from "grammy";
 import { generateMorningReport, generateEveningReport } from "../../lib/daily-report";
 import { generateWeeklyReport } from "../../lib/weekly-report";
+import { runAutoAdjustProposal } from "./auto-adjust";
 import { mdToHtml } from "../utils/telegram";
 import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error";
 
@@ -71,7 +72,7 @@ async function sendOneWithRetry(
   throw lastErr ?? new Error("sendOneWithRetry: 재시도 모두 실패 (원인 미상)");
 }
 
-async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
+export async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
   const ids = getChatIds();
   let sent = 0;
   let failed = 0;
@@ -152,7 +153,14 @@ export function startBotScheduler(bot: Bot) {
     { timezone: "Asia/Seoul" }
   );
 
+  // M13 Phase 1 (#243): auto-adjust 사전 알림 (06:30 KST, 모닝 리포트 08:00 전).
+  // 조정 필요 시만 push (조용한 skip). Phase 2 에서 accept/reject flow 추가.
+  const autoAdjustSchedule = process.env.AUTO_ADJUST_CRON ?? "30 6 * * *";
+  cron.schedule(autoAdjustSchedule, () => runAutoAdjustProposal(bot), {
+    timezone: "Asia/Seoul",
+  });
+
   console.log(
-    `[bot-cron] 알림 스케줄 등록 완료 (모닝=${morningSchedule}, 이브닝=${eveningSchedule}, 주간=${weeklySchedule}, TZ=Asia/Seoul)`
+    `[bot-cron] 알림 스케줄 등록 완료 (모닝=${morningSchedule}, 이브닝=${eveningSchedule}, 주간=${weeklySchedule}, auto-adjust=${autoAdjustSchedule}, TZ=Asia/Seoul)`
   );
 }
