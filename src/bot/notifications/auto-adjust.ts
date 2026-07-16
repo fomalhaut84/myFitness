@@ -191,6 +191,16 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     const text = result.content[0]?.text ?? "{}";
     const payload = JSON.parse(text) as RecommendationPayload;
 
+    // Codex P2 (PR #245 #4709917570): 계획된 rest / race day 는 recommendTodayWorkout 이
+    // fallback easy 를 base 로 쓰기 때문에 injury 상승 시 adjusted=true 로 잘못 트리거.
+    // M13 스펙 "제외 사항" 에 race day 자동 조정 제외 명시. plan.todayIsRestPlanned 우선 skip.
+    if (payload.factors.plan.todayIsRestPlanned) {
+      console.log(
+        `[auto-adjust] todayIsRestPlanned=true — 계획된 rest/race day, skip (date=${payload.date})`,
+      );
+      return;
+    }
+
     if (!payload.recommendation.adjusted) {
       console.log(
         `[auto-adjust] adjusted=false — 조정 불필요, skip (date=${payload.date})`,
