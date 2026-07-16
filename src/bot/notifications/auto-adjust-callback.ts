@@ -4,11 +4,25 @@
 
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
+import { todayKST, ymdKST } from "@/lib/garmin/utils";
 import { sanitizeError } from "../utils/error";
 import { CALLBACK_PREFIX } from "./auto-adjust";
 
 const SNOOZE_MS = 60 * 60 * 1000;
 const NOTES_PREFIX = "M13 auto-adjust";
+
+// #249 Codex bot PR #250 P2: callback TTL. cron 이 아직 expired 마킹 안 했더라도 이 시각 넘긴
+// adjustment 는 callback 에서도 accept/snooze 거부. TTL_HOURS 는 cron 과 동일.
+const TTL_HOURS = 8;
+
+/** proposedAt 이 TTL 밖 (8h 초과 or 자정 KST 지남) 이면 true. */
+function isTtlExpired(proposedAt: Date): boolean {
+  const now = Date.now();
+  if (now - proposedAt.getTime() > TTL_HOURS * 60 * 60 * 1000) return true;
+  const midnight = new Date(`${ymdKST(todayKST())}T00:00:00+09:00`);
+  if (proposedAt < midnight) return true;
+  return false;
+}
 
 interface Adjustment {
   id: string;
@@ -158,6 +172,7 @@ export function registerAutoAdjustCallback(bot: Bot): void {
           id: true,
           workoutId: true,
           decision: true,
+          proposedAt: true,
           proposedType: true,
           proposedDistanceKm: true,
           proposedPaceSecPerKm: true,
@@ -179,6 +194,31 @@ export function registerAutoAdjustCallback(bot: Bot): void {
       ) {
         await ctx.answerCallbackQuery({
           text: `이미 처리됨: ${adj.decision}`,
+        });
+        return;
+      }
+      // Codex bot PR #250 재리뷰 P2: TTL 체크. cron 이 아직 expired 마킹 못 한 경우에도
+      // callback 에서 accept/snooze 거부. best-effort 로 decision=expired 마킹.
+      if (isTtlExpired(adj.proposedAt)) {
+        try {
+          await prisma.workoutAdjustment.updateMany({
+            where: {
+              id: adj.id,
+              decision: { in: ["pending", "snoozed"] },
+            },
+            data: {
+              decision: "expired",
+              decidedAt: new Date(),
+              snoozeUntil: null,
+            },
+          });
+        } catch (expireErr) {
+          console.warn(
+            `[auto-adjust-callback] TTL expire mark 실패 (무시): ${sanitizeError(expireErr)}`,
+          );
+        }
+        await ctx.answerCallbackQuery({
+          text: "⏰ 제안 유효 시간이 지났습니다. 계획을 반영하지 않았습니다.",
         });
         return;
       }

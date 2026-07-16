@@ -328,6 +328,26 @@ function CalendarCell({
         >
           휴식
         </span>
+        {isAutoAdjusted && (
+          // Codex bot PR #250 재리뷰 P3: rest 로 downgrade 된 workout 도 뱃지 노출
+          // (auto-adjust 주요 결과 중 하나). 일반 휴식과 구분.
+          <div
+            className="absolute top-1.5 left-2 md:top-2 md:left-3 text-[8px] md:text-[9px]"
+            style={{
+              fontFamily: FONT_MONO,
+              fontWeight: 700,
+              color: C.primary,
+              letterSpacing: "0.06em",
+              padding: "1px 4px",
+              border: `1px solid ${C.primary}66`,
+              background: `${C.primary}14`,
+              borderRadius: 2,
+            }}
+            title="M13 auto-adjust 로 rest 로 조정된 workout"
+          >
+            AUTO-ADJUSTED
+          </div>
+        )}
         {isToday && (
           <div
             className="absolute bottom-1.5 md:bottom-3 left-2.5 md:left-4 text-[8px] md:text-[10px]"
