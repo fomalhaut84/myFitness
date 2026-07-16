@@ -184,12 +184,13 @@ export async function getReportJob(jobId: string): Promise<ReportJob | null> {
  * cron 이 web 과 동시 실행 시나리오 방어. 이미 running job 은 완료 대기.
  * TimeoutMs 초과 시 마지막 스냅샷 반환 (호출자가 null result 로 처리).
  *
- * 예산: askAdvisor TIMEOUT_MS 180s × (1 + MAX_RETRIES=1) = 360s + preSync ~60s +
- * 여유 → 기본 480s. #197 재시도 도입 이후 240s 로는 부족 (Codex bot P2).
+ * 예산: askAdvisor TIMEOUT_MS 180s × (1 + MAX_RETRIES=2) = 540s + preSync ~60s +
+ * 여유 100s → 기본 720s (12분). #244 로 MAX_RETRIES 1→2 상향 (Codex bot P2 PR #247).
+ * env ASK_ADVISOR_MAX_RETRIES 를 default 이상으로 올릴 시 이 값도 함께 재검토.
  */
 export async function waitForJobCompletion(
   jobId: string,
-  timeoutMs = 480_000,
+  timeoutMs = 720_000,
   pollIntervalMs = 2000,
 ): Promise<ReportJob | null> {
   const started = Date.now();
@@ -220,12 +221,13 @@ export async function getActiveReportJob(params: {
 }
 
 /**
- * askAdvisor 최대 실행 시간 (180s) + preSync 여유. 이 시간 초과된 pending/running
- * job 은 orphan 으로 간주 후 failed 마킹.
- * askAdvisor TIMEOUT_MS = 180s 이라 5분 (300s) cutoff 은 정상 완료 job 을 잘못
- * 죽이지 않으면서 pm2 restart 로 orphan 된 job 은 빠르게 감지.
+ * askAdvisor 최대 실행 시간 × (1 + MAX_RETRIES) + preSync 여유. 이 시간 초과된
+ * pending/running job 은 orphan 으로 간주 후 failed 마킹.
+ * #244 로 MAX_RETRIES 1→2 상향 → askAdvisor 최대 180s × 3 = 540s + preSync 60s +
+ * 여유 100s → 12분 (720s). 정상 완료 job 을 잘못 죽이지 않으면서 pm2 restart 로
+ * orphan 된 job 은 여전히 감지 (원 5분에서 확대).
  */
-export const ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
+export const ORPHAN_TIMEOUT_MS = 12 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
