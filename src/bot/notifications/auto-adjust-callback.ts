@@ -49,21 +49,38 @@ function reasonText(reason: unknown): string | null {
   return null;
 }
 
+/**
+ * Atomic decision transition (Codex bot PR #250 재리뷰 P1).
+ * `updateMany` + WHERE decision IN [pending, snoozed] 로 conditional update.
+ * count===0 이면 다른 callback 이 먼저 결정 → caller 는 no-op 안내.
+ */
+const ALREADY_DECIDED = "⚠️ 이미 다른 요청으로 결정된 제안입니다.";
+
 async function handleAccept(adj: Adjustment): Promise<string> {
   if (!adj.workoutId) {
     // Phase 2 는 workoutId 없이 제안 발송 안 함. defensive.
     return "workoutId 가 없어 계획을 반영할 수 없습니다.";
   }
   const reason = reasonText(adj.reason);
-  // 원 코칭 노트 보존: prefix 라인 + 빈 줄 + 원 notes. PR #250 P2 (원 데이터 손실 방지).
   const adjustLine = reason ? `${NOTES_PREFIX}: ${reason}` : NOTES_PREFIX;
   const notes = adj.originalNotes
     ? `${adjustLine}\n\n${adj.originalNotes}`
     : adjustLine;
-  // TrainingWorkout 업데이트 (autoAdjusted=true, PR #250 P1) + WorkoutAdjustment.decision 갱신 단일 트랜잭션.
-  await prisma.$transaction([
-    prisma.trainingWorkout.update({
-      where: { id: adj.workoutId },
+
+  // 트랜잭션 내부에서 conditional adjustment update → 성공 시에만 workout update.
+  // 다른 콜백이 이미 결정했으면 count=0 → transaction rollback 없이 그대로 반환.
+  const outcome = await prisma.$transaction(async (tx) => {
+    const upd = await tx.workoutAdjustment.updateMany({
+      where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
+      data: {
+        decision: "accepted",
+        decidedAt: new Date(),
+        snoozeUntil: null,
+      },
+    });
+    if (upd.count === 0) return { updated: false };
+    await tx.trainingWorkout.update({
+      where: { id: adj.workoutId! },
       data: {
         type: adj.proposedType,
         distanceKm: adj.proposedDistanceKm,
@@ -73,40 +90,38 @@ async function handleAccept(adj: Adjustment): Promise<string> {
         notes,
         autoAdjusted: true,
       },
-    }),
-    prisma.workoutAdjustment.update({
-      where: { id: adj.id },
-      data: {
-        decision: "accepted",
-        decidedAt: new Date(),
-        snoozeUntil: null,
-      },
-    }),
-  ]);
-  return "✅ 오늘 workout 을 조정된 값으로 반영했습니다.";
+    });
+    return { updated: true };
+  });
+  return outcome.updated
+    ? "✅ 오늘 workout 을 조정된 값으로 반영했습니다."
+    : ALREADY_DECIDED;
 }
 
 async function handleReject(adj: Adjustment): Promise<string> {
-  await prisma.workoutAdjustment.update({
-    where: { id: adj.id },
+  const upd = await prisma.workoutAdjustment.updateMany({
+    where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
     data: {
       decision: "rejected",
       decidedAt: new Date(),
       snoozeUntil: null,
     },
   });
-  return "❌ 조정 제안을 거절했습니다. 원 계획을 유지합니다.";
+  return upd.count > 0
+    ? "❌ 조정 제안을 거절했습니다. 원 계획을 유지합니다."
+    : ALREADY_DECIDED;
 }
 
 async function handleSnooze(adj: Adjustment): Promise<string> {
   const snoozeUntil = new Date(Date.now() + SNOOZE_MS);
-  await prisma.workoutAdjustment.update({
-    where: { id: adj.id },
+  const upd = await prisma.workoutAdjustment.updateMany({
+    where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
     data: {
       decision: "snoozed",
       snoozeUntil,
     },
   });
+  if (upd.count === 0) return ALREADY_DECIDED;
   return `💤 1시간 뒤 (~${snoozeUntil.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}) 재알림합니다.`;
 }
 

@@ -6,7 +6,7 @@
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { sanitizeError } from "../utils/error";
-import { buildAutoAdjustKeyboard, typeKo } from "./auto-adjust";
+import { buildAutoAdjustKeyboard, escapeHtml, typeKo } from "./auto-adjust";
 import { sendToAllWithKeyboard } from "./scheduler";
 import { todayKST, ymdKST } from "@/lib/garmin/utils";
 
@@ -32,11 +32,11 @@ function formatSnoozeMessage(adj: {
   reason: unknown;
 }): string {
   const paceStr = formatPace(adj.proposedPaceSecPerKm);
-  const parts: string[] = [typeKo(adj.proposedType)];
+  const parts: string[] = [escapeHtml(typeKo(adj.proposedType))];
   if (adj.proposedDistanceKm !== null) parts.push(`${adj.proposedDistanceKm}km`);
-  if (paceStr) parts.push(`${paceStr}/km`);
-  if (adj.proposedZone) parts.push(adj.proposedZone);
-  if (adj.proposedIntervalDesc) parts.push(adj.proposedIntervalDesc);
+  if (paceStr) parts.push(`${escapeHtml(paceStr)}/km`);
+  if (adj.proposedZone) parts.push(escapeHtml(adj.proposedZone));
+  if (adj.proposedIntervalDesc) parts.push(escapeHtml(adj.proposedIntervalDesc));
 
   const reasonObj = adj.reason as
     | { adjustmentReason?: string; rationale?: string }
@@ -48,7 +48,7 @@ function formatSnoozeMessage(adj: {
     `⏰ <b>Auto-adjust 재알림</b> (Snooze 만료)`,
     "",
     `<b>조정 제안</b>: ${parts.join(" · ")}`,
-    ...(reasonLine ? ["", `<b>이유</b>: ${reasonLine}`] : []),
+    ...(reasonLine ? ["", `<b>이유</b>: ${escapeHtml(reasonLine)}`] : []),
     "",
     `<i>아래 버튼으로 계획 반영 여부를 선택하세요.</i>`,
   ].join("\n");

@@ -99,6 +99,19 @@ interface RecommendationPayload {
   rationale: string;
 }
 
+/**
+ * Telegram HTML parse mode 에서 안전한 escape (Codex bot PR #250 재리뷰 P2).
+ * dynamic 값 (rationale, factor detail, workout notes 등) 에 < > & 가 있으면 parse
+ * 실패 → 메시지 전체 전송 실패 → 사용자에게 keyboard 도달 X. 모든 사용자 노출 문자열을
+ * escape 후 조합.
+ */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
 /** workoutType 을 한글로. Missing 시 원문 그대로. cron 재알림에서도 재사용 (PR #250 P1). */
 export const TYPE_KO: Record<string, string> = {
   easy: "이지",
@@ -121,12 +134,15 @@ function formatWorkoutLine(
   zone: string | undefined,
   intervalDesc: string | undefined,
 ): string {
-  const parts: string[] = [typeKo(type)];
+  const parts: string[] = [escapeHtml(typeKo(type))];
   if (distanceKm !== undefined) parts.push(`${distanceKm}km`);
-  if (paceRange) parts.push(`${paceRange.min}~${paceRange.max}/km`);
-  else if (paceStr) parts.push(`${paceStr}/km`);
-  if (zone) parts.push(zone);
-  if (intervalDesc) parts.push(intervalDesc);
+  if (paceRange)
+    parts.push(
+      `${escapeHtml(paceRange.min)}~${escapeHtml(paceRange.max)}/km`,
+    );
+  else if (paceStr) parts.push(`${escapeHtml(paceStr)}/km`);
+  if (zone) parts.push(escapeHtml(zone));
+  if (intervalDesc) parts.push(escapeHtml(intervalDesc));
   return parts.join(" · ");
 }
 
@@ -151,11 +167,11 @@ export function formatAutoAdjustMessage(
   const rea = payload.factors.readiness;
   const injStr =
     inj.score !== null
-      ? `${inj.score}${inj.label ? ` (${inj.label})` : ""}`
+      ? `${inj.score}${inj.label ? ` (${escapeHtml(inj.label)})` : ""}`
       : "N/A";
   const reaStr =
     rea.score !== null
-      ? `${rea.score}${rea.label ? ` (${rea.label})` : ""}`
+      ? `${rea.score}${rea.label ? ` (${escapeHtml(rea.label)})` : ""}`
       : "N/A";
 
   const baseLine = formatWorkoutLine(
@@ -188,12 +204,11 @@ export function formatAutoAdjustMessage(
       ? [
           "",
           `<b>주요 요인</b>:`,
-          ...topFactors
-            .slice(0, 3)
-            .map(
-              (f) =>
-                `• ${FACTOR_KO[f.factor] ?? f.factor} ${f.score}${f.detail ? ` (${f.detail})` : ""}`,
-            ),
+          ...topFactors.slice(0, 3).map((f) => {
+            const name = escapeHtml(FACTOR_KO[f.factor] ?? f.factor);
+            const detail = f.detail ? ` (${escapeHtml(f.detail)})` : "";
+            return `• ${name} ${f.score}${detail}`;
+          }),
         ]
       : [];
 
@@ -206,8 +221,8 @@ export function formatAutoAdjustMessage(
     "",
     `<b>원 계획</b> (${source}): ${baseLine}`,
     `<b>조정 제안</b>: ${recLine}`,
-    ...(reason ? ["", `<b>이유</b>: ${reason}`] : []),
-    ...(rationale ? ["", rationale] : []),
+    ...(reason ? ["", `<b>이유</b>: ${escapeHtml(reason)}`] : []),
+    ...(rationale ? ["", escapeHtml(rationale)] : []),
     "",
     `<i>아래 버튼으로 계획 반영 여부를 선택하세요.</i>`,
   ].join("\n");
