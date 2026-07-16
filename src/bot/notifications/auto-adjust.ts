@@ -8,6 +8,7 @@ import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
 import { getInjuryRiskScore } from "@/mcp/tools/injury-risk";
+import { preSyncForReport } from "@/lib/daily-report";
 import { sanitizeError } from "../utils/error";
 import { sendToAll } from "./scheduler";
 
@@ -178,6 +179,13 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       console.log("[auto-adjust] disabled by UserProfile.autoAdjustEnabled=false");
       return;
     }
+
+    // Codex P2 (PR #245 #4709832686): 06:30 cron 이 06:00 웹 sync 완료 전 or
+    // 사용자가 sync 이후 sleep 업로드하면 stale readiness/injury data 로 잘못된
+    // 조정 제안 or 필요한 down-scale skip. 모닝 리포트와 동일한 preSyncForReport
+    // 재사용 (sleep/daily_stats/heart_rate/activities 어제~오늘 range).
+    // 실패 시 warn 후 진행 (기존 daily-report 패턴 그대로).
+    await preSyncForReport();
 
     const result = await recommendTodayWorkout();
     const text = result.content[0]?.text ?? "{}";
