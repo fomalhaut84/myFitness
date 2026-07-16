@@ -74,6 +74,8 @@ export interface ActivePlanWorkout {
   zone: string | null;
   status: WorkoutStatus;
   matched?: { distanceKm: number; actualPace: string | null };
+  // M13 Phase 2 (#249): auto-adjust 로 반영된 workout (notes prefix "M13 auto-adjust").
+  autoAdjusted?: boolean;
 }
 
 export interface ActivePlanPayload {

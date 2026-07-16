@@ -421,6 +421,9 @@ interface WorkoutStatusRow {
   zone: string | null;
   status: "completed" | "missed" | "pending" | "rest";
   matched?: { distanceKm: number; actualPace: string | null };
+  // M13 Phase 2 (#249): TrainingWorkout.autoAdjusted flag 노출 (notes prefix 파생은 사용자
+  // 편집으로 무너져 authoritative 아님, PR #250 P1).
+  autoAdjusted?: boolean;
 }
 
 export async function getActiveTrainingPlan() {
@@ -481,6 +484,7 @@ export async function getActiveTrainingPlan() {
       pace: w.paceSecPerKm !== null ? formatPace(w.paceSecPerKm) : null,
       zone: w.zone,
       status: "pending",
+      autoAdjusted: w.autoAdjusted,
     };
 
     if (w.type === "rest") {

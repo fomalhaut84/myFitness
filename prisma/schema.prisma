@@ -282,6 +282,52 @@ model TrainingWorkout {
   intervalDesc  String?                                // interval 세부 (e.g., "6x400m Z5")
   notes         String?                                // 짧은 코칭 노트 (한글)
 
+  // M13 Phase 2 (#249): auto-adjust accept 로 조정된 workout 표시. notes prefix 대신
+  // authoritative flag (사용자가 notes 를 편집해도 뱃지 정확).
+  autoAdjusted  Boolean      @default(false)
+  adjustments   WorkoutAdjustment[]
+
   @@unique([planId, date])
   @@index([date])
+}
+
+// M13 Phase 2 (#249): auto-adjust 제안 + confirm/reject/snooze 이력.
+model WorkoutAdjustment {
+  id                   String           @id @default(cuid())
+  // fallback (no active plan) 케이스는 Phase 2 에서 제안 skip 이지만, 향후 확장 대비 nullable.
+  workoutId            String?
+  workout              TrainingWorkout? @relation(fields: [workoutId], references: [id], onDelete: SetNull)
+  proposedAt           DateTime         @default(now())
+  decidedAt            DateTime?
+  decision             String           @default("pending") // "pending"|"accepted"|"rejected"|"snoozed"|"expired"
+
+  // 조정된 workout 스냅샷 (P2 이후 반영값).
+  proposedType         String
+  proposedDistanceKm   Float?
+  proposedPaceSecPerKm Int?
+  proposedZone         String?
+  proposedIntervalDesc String?
+
+  // Accept 시 원 workout 필드가 덮어써지므로 rollback / 감사용으로 함께 스냅샷 (PR #250 P2).
+  originalType         String?
+  originalDistanceKm   Float?
+  originalPaceSecPerKm Int?
+  originalZone         String?
+  originalIntervalDesc String?
+  originalNotes        String?
+
+  // 컨텍스트: injury/readiness score + top factors + adjustmentReason.
+  reason               Json?
+  rejectReason         String?
+
+  // Telegram callback 매칭용.
+  telegramMessageId    String?
+  telegramChatId       String?
+
+  // Snooze: now + 1h. cron 이 <= now 시 재전송 후 null 로 되돌림.
+  snoozeUntil          DateTime?
+
+  @@index([decision, snoozeUntil])
+  @@index([workoutId])
+  @@index([telegramMessageId])
 }

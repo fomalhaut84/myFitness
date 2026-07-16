@@ -10,6 +10,7 @@ import { registerSyncCommand } from "./commands/sync";
 import { registerReportCommand } from "./commands/report";
 import { registerAiCommands, handleAiQuestion } from "./commands/ai";
 import { isFoodInput, handleFoodInput } from "./commands/food";
+import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
 // ETIMEDOUT으로 누적되는 것을 방지하기 위해 IPv4 강제. keepAlive로 cron 호출 시
@@ -44,6 +45,9 @@ export function getBot(): Bot {
   registerSyncCommand(bot);
   registerReportCommand(bot);
   registerAiCommands(bot);
+
+  // M13 Phase 2 (#249): auto-adjust inline keyboard callback (Accept/Reject/Snooze).
+  registerAutoAdjustCallback(bot);
 
   // 자연어 fallback
   bot.on("message:text", async (ctx) => {

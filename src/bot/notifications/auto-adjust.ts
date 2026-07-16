@@ -1,16 +1,66 @@
-// M13 Phase 1 (#243): auto-adjust 사전 알림.
+// M13 Phase 1 (#243) + Phase 2 (#249): auto-adjust 사전 알림.
 // 아침 이른 시각 cron 이 recommendTodayWorkout() 을 실행 → 조정 필요 시 (recommendation.adjusted)
-// Telegram push 로 사용자에게 사전 안내. Phase 1 은 read-only — TrainingPlan 미변경.
+// Telegram push 로 사용자에게 사전 안내.
 //
-// Phase 2 에서 inline keyboard + accept/reject flow 추가 예정.
+// Phase 1 은 read-only. Phase 2 부터 inline keyboard (Accept/Reject/Snooze) + WorkoutAdjustment
+// 이력 저장 + Accept 시 TrainingWorkout 실제 update + Snooze DB 재전송 flow 추가.
 
 import type { Bot } from "grammy";
+import { InlineKeyboard } from "grammy";
 import prisma from "@/lib/prisma";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
 import { getInjuryRiskScore } from "@/mcp/tools/injury-risk";
 import { preSyncForReport } from "@/lib/daily-report";
+import { todayKST, ymdKST } from "@/lib/garmin/utils";
 import { sanitizeError } from "../utils/error";
-import { sendToAll } from "./scheduler";
+import { sendToAll, sendToAllWithKeyboard, type SendKeyboardResult } from "./scheduler";
+
+/** M13 Phase 2 callback_data prefix. 형식: `auto_adjust:<action>:<adjustmentId>` */
+export const CALLBACK_PREFIX = "auto_adjust";
+
+/** "M:SS" → sec. 실패 시 null. */
+function parsePaceMinSec(s: string): number | null {
+  const m = /^(\d+):(\d{1,2})$/.exec(s.trim());
+  if (!m) return null;
+  const min = Number(m[1]);
+  const sec = Number(m[2]);
+  if (!Number.isFinite(min) || !Number.isFinite(sec) || sec >= 60) return null;
+  return min * 60 + sec;
+}
+
+/**
+ * 조정 제안의 대표 pace (sec/km) 추출.
+ * recommendation.paceRange 는 { min: "M:SS", max: "M:SS" } 형식. 평균을 취해 단일 값 저장.
+ * paceRange 없고 조정 후 type 이 원 type 그대로면 base.pace 재사용 (조정 후에도 페이스 동일한 케이스).
+ * 조정 type 이 rest 또는 원 type 과 다르면 fallback 하지 않고 null (PR #250 pre-review P1).
+ * 예: 원 easy 5:00 + rest 로 조정 → paceSecPerKm=null (rest 인데 페이스 stale 방지).
+ */
+function extractProposedPaceSec(
+  rec: { type: string; paceRange?: { min: string; max: string } },
+  payload: { base: { type: string; pace?: string } },
+): number | null {
+  if (rec.type === "rest") return null;
+  if (rec.paceRange) {
+    const lo = parsePaceMinSec(rec.paceRange.min);
+    const hi = parsePaceMinSec(rec.paceRange.max);
+    if (lo !== null && hi !== null) return Math.round((lo + hi) / 2);
+    if (lo !== null) return lo;
+    if (hi !== null) return hi;
+  }
+  // paceRange 없을 때는 원 계획 그대로 유지되는 경우에만 base pace fallback.
+  if (rec.type === payload.base.type && payload.base.pace) {
+    return parsePaceMinSec(payload.base.pace);
+  }
+  return null;
+}
+
+/** Phase 2: Accept/Reject/Snooze 3-way inline keyboard 구성. */
+export function buildAutoAdjustKeyboard(adjustmentId: string): InlineKeyboard {
+  return new InlineKeyboard()
+    .text("✅ Accept", `${CALLBACK_PREFIX}:accept:${adjustmentId}`)
+    .text("❌ Reject", `${CALLBACK_PREFIX}:reject:${adjustmentId}`)
+    .text("💤 Snooze 1h", `${CALLBACK_PREFIX}:snooze:${adjustmentId}`);
+}
 
 interface InjuryPayload {
   topFactors?: Array<{ factor: string; score: number; detail?: string }>;
@@ -49,8 +99,21 @@ interface RecommendationPayload {
   rationale: string;
 }
 
-/** workoutType 을 한글로. Missing 시 원문 그대로. */
-const TYPE_KO: Record<string, string> = {
+/**
+ * Telegram HTML parse mode 에서 안전한 escape (Codex bot PR #250 재리뷰 P2).
+ * dynamic 값 (rationale, factor detail, workout notes 등) 에 < > & 가 있으면 parse
+ * 실패 → 메시지 전체 전송 실패 → 사용자에게 keyboard 도달 X. 모든 사용자 노출 문자열을
+ * escape 후 조합.
+ */
+export function escapeHtml(s: string): string {
+  return s
+    .replace(/&/g, "&amp;")
+    .replace(/</g, "&lt;")
+    .replace(/>/g, "&gt;");
+}
+
+/** workoutType 을 한글로. Missing 시 원문 그대로. cron 재알림에서도 재사용 (PR #250 P1). */
+export const TYPE_KO: Record<string, string> = {
   easy: "이지",
   long: "롱런",
   tempo: "템포",
@@ -59,7 +122,7 @@ const TYPE_KO: Record<string, string> = {
   rest: "휴식",
 };
 
-function typeKo(t: string): string {
+export function typeKo(t: string): string {
   return TYPE_KO[t] ?? t;
 }
 
@@ -71,12 +134,15 @@ function formatWorkoutLine(
   zone: string | undefined,
   intervalDesc: string | undefined,
 ): string {
-  const parts: string[] = [typeKo(type)];
+  const parts: string[] = [escapeHtml(typeKo(type))];
   if (distanceKm !== undefined) parts.push(`${distanceKm}km`);
-  if (paceRange) parts.push(`${paceRange.min}~${paceRange.max}/km`);
-  else if (paceStr) parts.push(`${paceStr}/km`);
-  if (zone) parts.push(zone);
-  if (intervalDesc) parts.push(intervalDesc);
+  if (paceRange)
+    parts.push(
+      `${escapeHtml(paceRange.min)}~${escapeHtml(paceRange.max)}/km`,
+    );
+  else if (paceStr) parts.push(`${escapeHtml(paceStr)}/km`);
+  if (zone) parts.push(escapeHtml(zone));
+  if (intervalDesc) parts.push(escapeHtml(intervalDesc));
   return parts.join(" · ");
 }
 
@@ -101,11 +167,11 @@ export function formatAutoAdjustMessage(
   const rea = payload.factors.readiness;
   const injStr =
     inj.score !== null
-      ? `${inj.score}${inj.label ? ` (${inj.label})` : ""}`
+      ? `${inj.score}${inj.label ? ` (${escapeHtml(inj.label)})` : ""}`
       : "N/A";
   const reaStr =
     rea.score !== null
-      ? `${rea.score}${rea.label ? ` (${rea.label})` : ""}`
+      ? `${rea.score}${rea.label ? ` (${escapeHtml(rea.label)})` : ""}`
       : "N/A";
 
   const baseLine = formatWorkoutLine(
@@ -138,12 +204,11 @@ export function formatAutoAdjustMessage(
       ? [
           "",
           `<b>주요 요인</b>:`,
-          ...topFactors
-            .slice(0, 3)
-            .map(
-              (f) =>
-                `• ${FACTOR_KO[f.factor] ?? f.factor} ${f.score}${f.detail ? ` (${f.detail})` : ""}`,
-            ),
+          ...topFactors.slice(0, 3).map((f) => {
+            const name = escapeHtml(FACTOR_KO[f.factor] ?? f.factor);
+            const detail = f.detail ? ` (${escapeHtml(f.detail)})` : "";
+            return `• ${name} ${f.score}${detail}`;
+          }),
         ]
       : [];
 
@@ -156,10 +221,10 @@ export function formatAutoAdjustMessage(
     "",
     `<b>원 계획</b> (${source}): ${baseLine}`,
     `<b>조정 제안</b>: ${recLine}`,
-    ...(reason ? ["", `<b>이유</b>: ${reason}`] : []),
-    ...(rationale ? ["", rationale] : []),
+    ...(reason ? ["", `<b>이유</b>: ${escapeHtml(reason)}`] : []),
+    ...(rationale ? ["", escapeHtml(rationale)] : []),
     "",
-    `<i>Phase 2 부터 Accept/Reject 버튼 제공 예정.</i>`,
+    `<i>아래 버튼으로 계획 반영 여부를 선택하세요.</i>`,
   ].join("\n");
 }
 
@@ -180,6 +245,25 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       return;
     }
 
+    // Codex bot PR #250 7라운드 P2: 오늘 workout 이 이미 auto-adjust accept 된 상태면
+    // 재제안 X. 그대로 두면 recommendTodayWorkout 이 accepted workout 을 새 base 로 쓰고
+    // 부상 위험 남아있으면 easy → recovery → rest 로 반복 down-scaling.
+    const preCheckDate = new Date(`${ymdKST(todayKST())}T00:00:00.000Z`);
+    const alreadyAccepted = await prisma.trainingWorkout.findFirst({
+      where: {
+        date: preCheckDate,
+        plan: { status: "active" },
+        autoAdjusted: true,
+      },
+      select: { id: true },
+    });
+    if (alreadyAccepted) {
+      console.log(
+        "[auto-adjust] 오늘 workout 이 이미 accept 됨 — skip (재하향 방지)",
+      );
+      return;
+    }
+
     // Codex P2 (PR #245 #4709832686): 06:30 cron 이 06:00 웹 sync 완료 전 or
     // 사용자가 sync 이후 sleep 업로드하면 stale readiness/injury data 로 잘못된
     // 조정 제안 or 필요한 down-scale skip. 모닝 리포트와 동일한 preSyncForReport
@@ -197,6 +281,18 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     if (payload.factors.plan.todayIsRestPlanned) {
       console.log(
         `[auto-adjust] todayIsRestPlanned=true — 계획된 rest/race day, skip (date=${payload.date})`,
+      );
+      return;
+    }
+
+    // M13 Phase 2 (#249): 실제 계획된 workout 이 있을 때만 제안 (no-plan / no-workout fallback skip).
+    // Accept 시 update 대상 없으면 audit 만 남고 사용자 혼란 → 발송 자체 skip.
+    if (
+      !payload.factors.plan.hasActivePlan ||
+      !payload.factors.plan.todayWorkoutExists
+    ) {
+      console.log(
+        `[auto-adjust] no active plan / no today workout — Phase 2 skip (date=${payload.date})`,
       );
       return;
     }
@@ -222,8 +318,80 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       );
     }
 
+    // M13 Phase 2: 오늘 실제 TrainingWorkout 조회. Accept 시 이 row 를 update.
+    // planWorkout.type/distanceKm 은 payload 에 있지만 workoutId 는 없어 별도 조회.
+    // 원 필드 스냅샷도 함께 fetch (Accept 시 덮어씀에 따른 데이터 손실 방지, PR #250 P2).
+    //
+    // Codex bot PR #250 재리뷰 P2: recommend 와 workout lookup 사이에 plan 재생성이
+    // 일어나면 다른 plan 의 workout 을 잡아 target 이 어긋남. base.planId 로 명시 필터.
+    const todayStr = ymdKST(todayKST());
+    const expectedPlanId = payload.base.planId;
+    if (!expectedPlanId) {
+      console.warn(
+        "[auto-adjust] base.planId 없음 (예상 밖 — hasActivePlan 이미 검증) → skip",
+      );
+      return;
+    }
+    const todayWorkout = await prisma.trainingWorkout.findFirst({
+      where: {
+        date: new Date(`${todayStr}T00:00:00.000Z`),
+        planId: expectedPlanId,
+        plan: { status: "active" },
+      },
+      select: {
+        id: true,
+        type: true,
+        distanceKm: true,
+        paceSecPerKm: true,
+        zone: true,
+        intervalDesc: true,
+        notes: true,
+      },
+    });
+    if (!todayWorkout) {
+      // hasActivePlan/todayWorkoutExists 로 gated + planId 필터 후에도 미매칭 → 재생성 window.
+      console.warn(
+        `[auto-adjust] TrainingWorkout 조회 실패 (date=${todayStr}, planId=${expectedPlanId}) — plan 재생성 가능성 → skip`,
+      );
+      return;
+    }
+
     const message = formatAutoAdjustMessage(payload, topFactors);
-    const sendResult = await sendToAll(bot, message);
+    const rec = payload.recommendation;
+
+    // M13 Phase 2: WorkoutAdjustment insert (decision=pending). 전송 실패 시 별도 처리.
+    const adjustment = await prisma.workoutAdjustment.create({
+      data: {
+        workoutId: todayWorkout.id,
+        decision: "pending",
+        proposedType: rec.type,
+        proposedDistanceKm: rec.distanceKm ?? null,
+        proposedPaceSecPerKm: extractProposedPaceSec(rec, payload),
+        proposedZone: rec.zone ?? null,
+        proposedIntervalDesc: rec.intervalDesc ?? null,
+        // 원 workout 스냅샷 (Accept 되면 in-place update 로 소실 → rollback/감사용).
+        originalType: todayWorkout.type,
+        originalDistanceKm: todayWorkout.distanceKm,
+        originalPaceSecPerKm: todayWorkout.paceSecPerKm,
+        originalZone: todayWorkout.zone,
+        originalIntervalDesc: todayWorkout.intervalDesc,
+        originalNotes: todayWorkout.notes,
+        reason: {
+          injury: payload.factors.injury,
+          readiness: payload.factors.readiness,
+          topFactors,
+          adjustmentReason: rec.adjustmentReason ?? null,
+          rationale: payload.rationale,
+        },
+      },
+    });
+
+    const keyboard = buildAutoAdjustKeyboard(adjustment.id);
+    const sendResult: SendKeyboardResult = await sendToAllWithKeyboard(
+      bot,
+      message,
+      keyboard,
+    );
 
     // 조용한 실패 방지 (기존 runReportCron 패턴): 전송 대상 없음 or 전부 실패 시 escalate.
     if (sendResult.total === 0) {
@@ -236,8 +404,24 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       );
     }
 
-    // AIAdvice audit trail. category=auto_adjust_proposal.
-    // 전송은 이미 성공 → DB 실패가 outer catch 로 새면 사용자에게 오탐 실패 알림 감. 별도 격리.
+    // Callback 매칭용 message id / chat id 저장. best-effort — 실패해도 사용자 알림 유지.
+    if (sendResult.first) {
+      try {
+        await prisma.workoutAdjustment.update({
+          where: { id: adjustment.id },
+          data: {
+            telegramMessageId: String(sendResult.first.messageId),
+            telegramChatId: sendResult.first.chatId,
+          },
+        });
+      } catch (dbErr) {
+        console.error(
+          `[auto-adjust] adjustment ${adjustment.id} messageId 저장 실패: ${sanitizeError(dbErr)}`,
+        );
+      }
+    }
+
+    // AIAdvice audit trail. category=auto_adjust_proposal. 별도 격리 (기존 패턴).
     try {
       await prisma.aIAdvice.create({
         data: {
@@ -254,7 +438,7 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     }
 
     console.log(
-      `[auto-adjust] proposal sent date=${payload.date} sent=${sendResult.sent}/${sendResult.total}`,
+      `[auto-adjust] proposal sent date=${payload.date} sent=${sendResult.sent}/${sendResult.total} adjustment=${adjustment.id}`,
     );
   } catch (error) {
     const msg = sanitizeError(error);
