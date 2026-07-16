@@ -80,6 +80,13 @@ const PLAN_ARCHIVED =
 const STALE_EDIT =
   "⚠️ 이 제안 이후 workout 이 수동으로 편집됐습니다. 자동 조정을 반영하지 않았습니다.";
 
+/** 트랜잭션 내부에서 workout update 가 race 로 실패했을 때 tx rollback 유도. */
+class ConcurrentEditError extends Error {
+  constructor() {
+    super("workout snapshot no longer matches at update time");
+  }
+}
+
 async function handleAccept(adj: Adjustment): Promise<string> {
   if (!adj.workoutId) {
     // Phase 2 는 workoutId 없이 제안 발송 안 함. defensive.
@@ -92,64 +99,86 @@ async function handleAccept(adj: Adjustment): Promise<string> {
     : adjustLine;
 
   // 트랜잭션 내부: (1) plan 활성 + workout 값이 여전히 스냅샷과 일치하는지 확인
-  // (2) conditional adjustment update (3) workout update. 하나라도 실패 시 rollback.
-  const outcome = await prisma.$transaction(async (tx) => {
-    // (1) workout row 최신 상태 fetch. active plan 소속 + 원 스냅샷과 값 일치 확인.
-    // Codex bot PR #250 재리뷰 P2: 사용자가 web UI 로 workout 편집 후 Accept 하면
-    // 편집이 덮어써지고 originalNotes 병합이 stale. 스냅샷 미스매치면 refuse.
-    const current = await tx.trainingWorkout.findFirst({
-      where: { id: adj.workoutId!, plan: { status: "active" } },
-      select: {
-        id: true,
-        type: true,
-        distanceKm: true,
-        paceSecPerKm: true,
-        zone: true,
-        intervalDesc: true,
-        notes: true,
-        autoAdjusted: true,
-      },
-    });
-    if (!current) return { updated: false, reason: "not_active" as const };
-    if (
-      current.type !== adj.originalType ||
-      current.distanceKm !== adj.originalDistanceKm ||
-      current.paceSecPerKm !== adj.originalPaceSecPerKm ||
-      current.zone !== adj.originalZone ||
-      current.intervalDesc !== adj.originalIntervalDesc ||
-      current.notes !== adj.originalNotes ||
-      current.autoAdjusted
-    ) {
-      return { updated: false, reason: "stale_edit" as const };
-    }
+  // (2) conditional adjustment update (3) workout update — atomic snapshot WHERE.
+  // 하나라도 실패 시 rollback.
+  let outcome:
+    | { updated: true }
+    | {
+        updated: false;
+        reason: "not_active" | "stale_edit" | "already_decided";
+      };
+  try {
+    outcome = await prisma.$transaction(async (tx) => {
+      // (1) workout row 최신 상태 fetch. active plan 소속 + 원 스냅샷과 값 일치 확인.
+      const current = await tx.trainingWorkout.findFirst({
+        where: { id: adj.workoutId!, plan: { status: "active" } },
+        select: {
+          id: true,
+          type: true,
+          distanceKm: true,
+          paceSecPerKm: true,
+          zone: true,
+          intervalDesc: true,
+          notes: true,
+          autoAdjusted: true,
+        },
+      });
+      if (!current) return { updated: false, reason: "not_active" as const };
+      if (
+        current.type !== adj.originalType ||
+        current.distanceKm !== adj.originalDistanceKm ||
+        current.paceSecPerKm !== adj.originalPaceSecPerKm ||
+        current.zone !== adj.originalZone ||
+        current.intervalDesc !== adj.originalIntervalDesc ||
+        current.notes !== adj.originalNotes ||
+        current.autoAdjusted
+      ) {
+        return { updated: false, reason: "stale_edit" as const };
+      }
 
-    // (2) conditional adjustment update (동시 콜백 race).
-    const upd = await tx.workoutAdjustment.updateMany({
-      where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
-      data: {
-        decision: "accepted",
-        decidedAt: new Date(),
-        snoozeUntil: null,
-      },
-    });
-    if (upd.count === 0)
-      return { updated: false, reason: "already_decided" as const };
+      // (2) conditional adjustment update (동시 콜백 race).
+      const upd = await tx.workoutAdjustment.updateMany({
+        where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
+        data: {
+          decision: "accepted",
+          decidedAt: new Date(),
+          snoozeUntil: null,
+        },
+      });
+      if (upd.count === 0)
+        return { updated: false, reason: "already_decided" as const };
 
-    // (3) workout update.
-    await tx.trainingWorkout.update({
-      where: { id: adj.workoutId! },
-      data: {
-        type: adj.proposedType,
-        distanceKm: adj.proposedDistanceKm,
-        paceSecPerKm: adj.proposedPaceSecPerKm,
-        zone: adj.proposedZone,
-        intervalDesc: adj.proposedIntervalDesc,
-        notes,
-        autoAdjusted: true,
-      },
+      // (3) atomic snapshot-guarded workout update. read-committed 하에서 (1) 이후 커밋된
+      // web edit 을 잡아냄. WHERE 에 원 필드 전체 매칭 → 불일치 시 count=0 → throw 로 rollback.
+      // Codex bot PR #250 6라운드 P2.
+      const wUpd = await tx.trainingWorkout.updateMany({
+        where: {
+          id: adj.workoutId!,
+          type: adj.originalType,
+          distanceKm: adj.originalDistanceKm,
+          paceSecPerKm: adj.originalPaceSecPerKm,
+          zone: adj.originalZone,
+          intervalDesc: adj.originalIntervalDesc,
+          notes: adj.originalNotes,
+          autoAdjusted: false,
+        },
+        data: {
+          type: adj.proposedType,
+          distanceKm: adj.proposedDistanceKm,
+          paceSecPerKm: adj.proposedPaceSecPerKm,
+          zone: adj.proposedZone,
+          intervalDesc: adj.proposedIntervalDesc,
+          notes,
+          autoAdjusted: true,
+        },
+      });
+      if (wUpd.count === 0) throw new ConcurrentEditError();
+      return { updated: true };
     });
-    return { updated: true };
-  });
+  } catch (err) {
+    if (err instanceof ConcurrentEditError) return STALE_EDIT;
+    throw err;
+  }
   if (outcome.updated)
     return "✅ 오늘 workout 을 조정된 값으로 반영했습니다.";
   if (outcome.reason === "not_active") return PLAN_ARCHIVED;
