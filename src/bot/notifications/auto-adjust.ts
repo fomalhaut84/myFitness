@@ -245,6 +245,25 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       return;
     }
 
+    // Codex bot PR #250 7라운드 P2: 오늘 workout 이 이미 auto-adjust accept 된 상태면
+    // 재제안 X. 그대로 두면 recommendTodayWorkout 이 accepted workout 을 새 base 로 쓰고
+    // 부상 위험 남아있으면 easy → recovery → rest 로 반복 down-scaling.
+    const preCheckDate = new Date(`${ymdKST(todayKST())}T00:00:00.000Z`);
+    const alreadyAccepted = await prisma.trainingWorkout.findFirst({
+      where: {
+        date: preCheckDate,
+        plan: { status: "active" },
+        autoAdjusted: true,
+      },
+      select: { id: true },
+    });
+    if (alreadyAccepted) {
+      console.log(
+        "[auto-adjust] 오늘 workout 이 이미 accept 됨 — skip (재하향 방지)",
+      );
+      return;
+    }
+
     // Codex P2 (PR #245 #4709832686): 06:30 cron 이 06:00 웹 sync 완료 전 or
     // 사용자가 sync 이후 sleep 업로드하면 stale readiness/injury data 로 잘못된
     // 조정 제안 or 필요한 down-scale skip. 모닝 리포트와 동일한 preSyncForReport
