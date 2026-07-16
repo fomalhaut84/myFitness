@@ -149,8 +149,9 @@ async function handleAccept(adj: Adjustment): Promise<string> {
         return { updated: false, reason: "already_decided" as const };
 
       // (3) atomic snapshot-guarded workout update. read-committed 하에서 (1) 이후 커밋된
-      // web edit 을 잡아냄. WHERE 에 원 필드 전체 매칭 → 불일치 시 count=0 → throw 로 rollback.
-      // Codex bot PR #250 6라운드 P2.
+      // web edit / plan 재생성/취소도 잡아냄. WHERE 에 원 필드 + plan.status="active"
+      // 전체 매칭 → 불일치 시 count=0 → throw 로 rollback.
+      // Codex bot PR #250 6/8라운드 P2.
       const wUpd = await tx.trainingWorkout.updateMany({
         where: {
           id: adj.workoutId!,
@@ -161,6 +162,7 @@ async function handleAccept(adj: Adjustment): Promise<string> {
           intervalDesc: adj.originalIntervalDesc,
           notes: adj.originalNotes,
           autoAdjusted: false,
+          plan: { status: "active" },
         },
         data: {
           type: adj.proposedType,
