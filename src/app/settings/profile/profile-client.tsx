@@ -19,6 +19,8 @@ interface ProfileValues {
   targetWeeklyKm: number | null;
   targetVO2max: number | null;
   personalGoalNote: string; // 빈 문자열 = 미설정
+  // M13 Phase 1 (#243): auto-adjust 사전 알림 활성 여부
+  autoAdjustEnabled: boolean;
 }
 
 interface GarminMeta {
@@ -122,6 +124,7 @@ export default function ProfileClient({
     targetVO2max:
       init.targetVO2max === null ? "" : String(init.targetVO2max),
     personalGoalNote: init.personalGoalNote,
+    autoAdjustEnabled: init.autoAdjustEnabled,
   });
   // initial 값이 바뀌면 (router.refresh 등) form 재초기화.
   // initialKey로 변경 감지 → 렌더 중 setState (React 권장 derived state 패턴).
@@ -130,7 +133,8 @@ export default function ProfileClient({
     `${initial.maxHR}|${initial.lthr}|${initial.lthrPace}|` +
     `${initial.restingHRBase}|${initial.targetCalories}|${initial.targetWeight}|` +
     `${initial.targetDate}|${initial.birthDate}|${initial.height}|${initial.name}|` +
-    `${initial.targetAvgPace}|${initial.targetWeeklyKm}|${initial.targetVO2max}|${initial.personalGoalNote}`;
+    `${initial.targetAvgPace}|${initial.targetWeeklyKm}|${initial.targetVO2max}|${initial.personalGoalNote}|` +
+    `${initial.autoAdjustEnabled}`;
   const [prevKey, setPrevKey] = useState(initialKey);
   if (prevKey !== initialKey) {
     // 렌더 중 setState (React 권장 패턴: derived state from props change)
@@ -184,6 +188,7 @@ export default function ProfileClient({
       targetWeeklyKm: toNumOrNull(values.targetWeeklyKm),
       targetVO2max: toNumOrNull(values.targetVO2max),
       personalGoalNote: values.personalGoalNote.trim(),
+      autoAdjustEnabled: values.autoAdjustEnabled,
     };
 
     setSaving(true);
@@ -421,6 +426,22 @@ export default function ProfileClient({
               maxLength={500}
               rows={2}
             />
+          </Field>
+
+          {/* M13 Phase 1 (#243): auto-adjust 사전 알림 토글 */}
+          <Field
+            label="Auto-adjust 사전 알림"
+            hint="아침 06:30 부상 위험/readiness 저하 시 조정 제안 Telegram push. Phase 2 부터 Accept/Reject flow."
+          >
+            <label className="inline-flex items-center gap-2 text-sm">
+              <input
+                type="checkbox"
+                checked={values.autoAdjustEnabled}
+                onChange={(e) => setField("autoAdjustEnabled", e.target.checked)}
+                className="w-4 h-4"
+              />
+              <span>{values.autoAdjustEnabled ? "활성" : "비활성"}</span>
+            </label>
           </Field>
         </section>
 

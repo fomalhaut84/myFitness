@@ -41,8 +41,8 @@ const EVENING_PROMPT = `이브닝 리포트를 작성해줘.
 
 간결한 마크다운으로 작성.`;
 
-/** 리포트 생성 전 최신 데이터 싱크 */
-async function preSyncForReport(): Promise<void> {
+/** 리포트/조언 생성 전 최신 데이터 싱크. auto-adjust cron 도 재사용. */
+export async function preSyncForReport(): Promise<void> {
   try {
     console.log("[report] 리포트 전 데이터 싱크 시작");
     await syncAll({

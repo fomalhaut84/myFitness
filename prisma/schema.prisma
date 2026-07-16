@@ -27,6 +27,8 @@ model UserProfile {
   targetWeeklyKm   Float?            // 주간 러닝 거리 목표 (km/week)
   targetVO2max     Float?            // VO2max 목표
   personalGoalNote String?           // 커스텀 텍스트 목표 (자유 입력)
+  // M13 Phase 1 (#243): auto-adjust 사전 알림 활성화 여부 (기본 활성).
+  autoAdjustEnabled Boolean          @default(true)
   // Garmin 자동 싱크 (#85)
   vo2maxRunning        Float?    // Garmin VO2max
   maxHRSource          String?   // "manual" | "garmin"

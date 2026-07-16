@@ -33,6 +33,8 @@ export default async function ProfilePage() {
         targetWeeklyKm: profile?.targetWeeklyKm ?? null,
         targetVO2max: profile?.targetVO2max ?? null,
         personalGoalNote: profile?.personalGoalNote ?? "",
+        // M13 Phase 1 (#243): autoAdjust 사전 알림 활성 여부 (DEFAULT true).
+        autoAdjustEnabled: profile?.autoAdjustEnabled ?? true,
       }}
       garminMeta={{
         maxHRSource: profile?.maxHRSource ?? null,

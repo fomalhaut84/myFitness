@@ -53,6 +53,8 @@ const PATCH_SCHEMA = z.object({
   targetWeeklyKm: z.number().positive().max(500).nullable().optional(),
   targetVO2max: z.number().positive().max(90).nullable().optional(),
   personalGoalNote: z.string().trim().max(500).nullable().optional(),
+  // M13 Phase 1 (#243): auto-adjust 사전 알림 토글.
+  autoAdjustEnabled: z.boolean().optional(),
 });
 
 const DEFAULT_NAME = "사용자";
@@ -198,6 +200,9 @@ export async function PATCH(request: Request) {
       updatePayload.personalGoalNote =
         data.personalGoalNote === "" ? null : data.personalGoalNote;
     }
+    // M13 Phase 1 (#243): autoAdjust 토글 passthrough.
+    if (data.autoAdjustEnabled !== undefined)
+      updatePayload.autoAdjustEnabled = data.autoAdjustEnabled;
 
     // 변경 이력 기록 대상 필드 수집 (#85)
     const trackedFields: Array<{ field: MetricField; old: number | null; new: number | null }> = [];
