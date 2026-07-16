@@ -21,6 +21,8 @@ export interface PlanDetailWorkout {
   zone: string | null;
   status: WorkoutStatus;
   matched?: { distanceKm: number; actualPace: string | null };
+  // M13 Phase 2 (#249): TrainingWorkout.autoAdjusted flag (PR #250 P1).
+  autoAdjusted?: boolean;
 }
 
 export interface PlanDetailResponse {
@@ -122,6 +124,7 @@ export async function fetchPlanDetail(
       pace: w.paceSecPerKm !== null ? formatPace(w.paceSecPerKm) : null,
       zone: w.zone,
       status: "pending",
+      autoAdjusted: w.autoAdjusted,
     };
 
     if (w.type === "rest") {

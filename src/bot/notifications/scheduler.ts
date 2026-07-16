@@ -1,8 +1,9 @@
 import cron from "node-cron";
-import type { Bot } from "grammy";
+import type { Bot, InlineKeyboard } from "grammy";
 import { generateMorningReport, generateEveningReport } from "../../lib/daily-report";
 import { generateWeeklyReport } from "../../lib/weekly-report";
 import { runAutoAdjustProposal } from "./auto-adjust";
+import { runAutoAdjustMaintenance } from "./auto-adjust-cron";
 import { mdToHtml } from "../utils/telegram";
 import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error";
 
@@ -88,6 +89,44 @@ export async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
   return { sent, failed, total: ids.length };
 }
 
+export interface SendKeyboardResult extends SendResult {
+  /** 첫 번째 성공 전송의 chatId + messageId (callback 매칭용). 모두 실패 시 undefined. */
+  first?: { chatId: string; messageId: number };
+}
+
+/**
+ * inline keyboard 첨부 전송. HTML fallback 없음 (HTML 이 실패해도 keyboard 는 유지).
+ * 재시도 로직 없이 단순 전송 — 재시도 필요 시 개별 확장.
+ * 첫 성공 결과만 캡처 (M13 Phase 2 는 사용자 1명 기준).
+ */
+export async function sendToAllWithKeyboard(
+  bot: Bot,
+  text: string,
+  keyboard: InlineKeyboard,
+): Promise<SendKeyboardResult> {
+  const ids = getChatIds();
+  const html = truncate(text);
+  let sent = 0;
+  let failed = 0;
+  let first: SendKeyboardResult["first"];
+  for (const chatId of ids) {
+    try {
+      const msg = await bot.api.sendMessage(chatId, html, {
+        parse_mode: "HTML",
+        reply_markup: keyboard,
+      });
+      sent++;
+      if (!first) first = { chatId, messageId: msg.message_id };
+    } catch (err) {
+      failed++;
+      console.error(
+        `[bot] keyboard 메시지 전송 실패 (${chatId}): ${sanitizeError(err)}`,
+      );
+    }
+  }
+  return { sent, failed, total: ids.length, first };
+}
+
 /** 리포트 cron 콜백 공통 처리: 단계별 로그 + 실패 시 텔레그램 알림 (조용한 실패 차단) */
 async function runReportCron(
   bot: Bot,
@@ -154,13 +193,26 @@ export function startBotScheduler(bot: Bot) {
   );
 
   // M13 Phase 1 (#243): auto-adjust 사전 알림 (06:30 KST, 모닝 리포트 08:00 전).
-  // 조정 필요 시만 push (조용한 skip). Phase 2 에서 accept/reject flow 추가.
+  // 조정 필요 시만 push (조용한 skip). Phase 2 부터 accept/reject/snooze flow (#249).
   const autoAdjustSchedule = process.env.AUTO_ADJUST_CRON ?? "30 6 * * *";
   cron.schedule(autoAdjustSchedule, () => runAutoAdjustProposal(bot), {
     timezone: "Asia/Seoul",
   });
 
+  // M13 Phase 2 (#249): 5분 주기 snooze 재전송 + TTL expire 유지 cron.
+  const maintenanceSchedule =
+    process.env.AUTO_ADJUST_MAINTENANCE_CRON ?? "*/5 * * * *";
+  cron.schedule(
+    maintenanceSchedule,
+    () => {
+      runAutoAdjustMaintenance(bot).catch((err) => {
+        console.error(`[auto-adjust-cron] tick 실패: ${sanitizeError(err)}`);
+      });
+    },
+    { timezone: "Asia/Seoul" },
+  );
+
   console.log(
-    `[bot-cron] 알림 스케줄 등록 완료 (모닝=${morningSchedule}, 이브닝=${eveningSchedule}, 주간=${weeklySchedule}, auto-adjust=${autoAdjustSchedule}, TZ=Asia/Seoul)`
+    `[bot-cron] 알림 스케줄 등록 완료 (모닝=${morningSchedule}, 이브닝=${eveningSchedule}, 주간=${weeklySchedule}, auto-adjust=${autoAdjustSchedule}, maintenance=${maintenanceSchedule}, TZ=Asia/Seoul)`
   );
 }
