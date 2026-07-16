@@ -41,16 +41,23 @@ M13 은 **아침 시점에 오늘 workout 을 자동 평가 → 필요 시 down-
 
 **요구사항**:
 - Phase 1 알림에 Telegram inline keyboard (Accept / Reject / Snooze) 추가
+- **제안 발송 범위 축소**: `todayIsRestPlanned=true` 뿐 아니라 **실제 계획된 TrainingWorkout 이 있을 때만** 제안 (fallback base 인 no-plan 케이스 skip). 이유: Accept 시 실제 update 대상이 없으면 audit 만 남고 사용자 혼란
 - Callback 처리:
-  - **Accept**: 오늘 `TrainingWorkout` 을 조정된 값으로 update (type/distanceKm/paceSecPerKm/notes). `notes` 에 "M13 auto-adjust: <reason>" prefix
-  - **Reject**: 원 계획 유지, reject reason 축적 (개선 지표)
-  - **Snooze**: 1시간 후 재알림 (재평가 없이 재전송)
+  - **Accept**: 오늘 `TrainingWorkout` 을 조정된 값으로 update (type/distanceKm/paceSecPerKm/notes/zone/intervalDesc). `notes` 에 "M13 auto-adjust: <reason>" prefix
+  - **Reject**: 원 계획 유지. UI 에서 선택 이유 텍스트 입력 시 rejectReason 축적 (개선 지표)
+  - **Snooze**: DB `snoozeUntil = now + 1h` 저장 → 5분 주기 cron 이 due 되면 원 메시지 재전송 (재평가 없이). pm2 restart 생존.
 - 신규 model `WorkoutAdjustment`:
   ```
-  id, workoutId (fk), proposedAt, decidedAt?, decision ("accepted"|"rejected"|"snoozed"|"expired")
-  proposedType, proposedDistanceKm, proposedPaceSecPerKm, reason (Json snapshot of factors)
+  id, workoutId (fk, nullable — fallback 케이스는 미사용 이지만 향후 확장 대비), proposedAt,
+  decidedAt?, decision ("pending"|"accepted"|"rejected"|"snoozed"|"expired"),
+  proposedType, proposedDistanceKm, proposedPaceSecPerKm, proposedZone, proposedIntervalDesc,
+  reason Json (factors snapshot),
+  rejectReason?, telegramMessageId?, telegramChatId?, snoozeUntil DateTime?
   ```
-- Web UI: `/training-plan` 페이지에 조정된 workout 표시 (마감 dashed border + "auto-adjusted" 뱃지)
+- **TTL 자동 처리**: 5분 cron (snooze re-send cron 과 통합) 이 다음 조건 pending → expired:
+  - 자정 KST 지남 (당일 workout 시각 지남)
+  - 또는 proposedAt+8h 초과 (안전망)
+- Web UI: `/training-plan` 페이지에 조정된 workout 표시 (dashed border + "auto-adjusted" 뱃지). PlanCalendar 에서 workout.notes 에 "M13 auto-adjust" prefix 있으면 렌더링.
 
 ### Phase 3 — Analytics & 임계값 튜닝
 
