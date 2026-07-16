@@ -85,8 +85,11 @@ async function processSnoozed(
       `snooze 재전송 실패 (${sendResult.failed}/${sendResult.total})`,
     );
   }
-  await prisma.workoutAdjustment.update({
-    where: { id: adj.id },
+  // Codex bot PR #250 재리뷰 P2: send 와 이 update 사이에 사용자가 이전 message 에서
+  // Accept/Reject 를 눌러 최종 결정이 났을 수 있음. 조건 없이 pending 으로 되돌리면 결정을
+  // 덮어씀 → 여전히 snoozed 상태일 때만 conditional update.
+  const upd = await prisma.workoutAdjustment.updateMany({
+    where: { id: adj.id, decision: "snoozed" },
     data: {
       decision: "pending",
       snoozeUntil: null,
@@ -97,6 +100,12 @@ async function processSnoozed(
       telegramChatId: sendResult.first?.chatId ?? null,
     },
   });
+  if (upd.count === 0) {
+    console.log(
+      `[auto-adjust-cron] snooze 재전송 후 이미 결정된 상태 (concurrent) adj=${adj.id}`,
+    );
+    return;
+  }
   console.log(`[auto-adjust-cron] snooze 재전송 완료 adj=${adj.id}`);
 }
 

@@ -56,6 +56,9 @@ function reasonText(reason: unknown): string | null {
  */
 const ALREADY_DECIDED = "⚠️ 이미 다른 요청으로 결정된 제안입니다.";
 
+const PLAN_ARCHIVED =
+  "⚠️ 대상 workout 이 archived 된 plan 소속입니다. 조정을 반영하지 않았습니다.";
+
 async function handleAccept(adj: Adjustment): Promise<string> {
   if (!adj.workoutId) {
     // Phase 2 는 workoutId 없이 제안 발송 안 함. defensive.
@@ -67,9 +70,17 @@ async function handleAccept(adj: Adjustment): Promise<string> {
     ? `${adjustLine}\n\n${adj.originalNotes}`
     : adjustLine;
 
-  // 트랜잭션 내부에서 conditional adjustment update → 성공 시에만 workout update.
-  // 다른 콜백이 이미 결정했으면 count=0 → transaction rollback 없이 그대로 반환.
+  // 트랜잭션 내부: (1) plan 활성 확인 (2) conditional adjustment update
+  // (3) workout update. 하나라도 실패 시 rollback (Codex bot PR #250 P2).
   const outcome = await prisma.$transaction(async (tx) => {
+    // (1) workout 이 여전히 active plan 소속인지 확인 (regenerate/cancel 후 stale accept 방지).
+    const stillActive = await tx.trainingWorkout.findFirst({
+      where: { id: adj.workoutId!, plan: { status: "active" } },
+      select: { id: true },
+    });
+    if (!stillActive) return { updated: false, reason: "not_active" as const };
+
+    // (2) conditional adjustment update (동시 콜백 race).
     const upd = await tx.workoutAdjustment.updateMany({
       where: { id: adj.id, decision: { in: ["pending", "snoozed"] } },
       data: {
@@ -78,7 +89,10 @@ async function handleAccept(adj: Adjustment): Promise<string> {
         snoozeUntil: null,
       },
     });
-    if (upd.count === 0) return { updated: false };
+    if (upd.count === 0)
+      return { updated: false, reason: "already_decided" as const };
+
+    // (3) workout update.
     await tx.trainingWorkout.update({
       where: { id: adj.workoutId! },
       data: {
@@ -93,9 +107,9 @@ async function handleAccept(adj: Adjustment): Promise<string> {
     });
     return { updated: true };
   });
-  return outcome.updated
-    ? "✅ 오늘 workout 을 조정된 값으로 반영했습니다."
-    : ALREADY_DECIDED;
+  if (outcome.updated)
+    return "✅ 오늘 workout 을 조정된 값으로 반영했습니다.";
+  return outcome.reason === "not_active" ? PLAN_ARCHIVED : ALREADY_DECIDED;
 }
 
 async function handleReject(adj: Adjustment): Promise<string> {
