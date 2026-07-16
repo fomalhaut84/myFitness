@@ -16,7 +16,8 @@ const TOTAL_BUFFER_MS = PRESYNC_BUFFER_MS + WAIT_BUFFER_MS;
  * - createOrGetReportJob: 중복 방지 (같은 category+reportDate 로 pending/running 있으면 그 job 반환).
  * - runReportJob: 백그라운드 실행. status 전이 + EventEmitter 로 SSE 브릿지.
  * - subscribeToJob: SSE endpoint 가 사용. 이벤트 수신 → 클라이언트 push.
- * - sweepOrphanedJobs: 앱 부팅 시 orphan (pm2 restart 중 running 이었던 job) 을 failed 로 마킹.
+ * - sweepOrphanedJobs: 앱 부팅 시 orphan 을 failed 로 마킹.
+ *   pending / running 별 cutoff 분리 (pending 은 짧게, running 은 dynamic).
  *
  * Process-local EventEmitter — pm2 fork 단일 프로세스에서 SSE endpoint 와 runner 가 같은 프로세스라 정합.
  */
@@ -229,30 +230,45 @@ export async function getActiveReportJob(params: {
 }
 
 /**
- * askAdvisor 실제 max budget × (1 + MAX_RETRIES) + preSync 여유. env 반영 dynamic 계산.
- * MAX_RETRIES=2 default → 700s (약 12분). env 상한 (5) 시 자동 20분 확장.
- * 정상 완료 job 을 잘못 죽이지 않으면서 pm2 restart 로 orphan 된 job 은 여전히 감지.
+ * running orphan cutoff: askAdvisor 실제 max budget × (1 + MAX_RETRIES) + preSync 여유.
+ * env 반영 dynamic 계산. MAX_RETRIES=2 default → 700s (약 12분). env 상한 (5) 시 자동 20분.
+ * 정상 실행 중 job (heartbeat 갱신됨) 은 안전, pm2 restart 등으로 heartbeat 끊긴 것만 처리.
  */
 export const ORPHAN_TIMEOUT_MS =
   getAskAdvisorMaxTotalBudgetMs() + TOTAL_BUFFER_MS;
+
+/**
+ * pending orphan cutoff: createOrGetReportJob 로 pending row 만 만든 뒤 runReportJob 시작
+ * 전에 프로세스가 죽으면 heartbeat 도 못 켬. 이후 호출이 이 pending 을 찾으면 replacement
+ * 안 만들어 category+date 리포트 생성이 stuck (Codex bot P2 PR #247 재리뷰).
+ * pending 은 heartbeat 필요 없으므로 5분 cutoff 로 충분 (짧게 유지해 복구 창 최소화).
+ */
+export const PENDING_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
- * pm2 restart 등으로 orphan 된 running/pending job 을 failed 로 마킹.
+ * pm2 restart 등으로 orphan 된 pending/running job 을 failed 로 마킹.
  * 부팅 1회 + periodic (5분 주기) 두 방식 병행.
  *
- * P2#5: updatedAt 기준 판정. runner heartbeat 이 30s 마다 touch 하므로 정상 실행
- * 중인 job (preSync + askAdvisor 로 몇 분 걸리는 것) 은 안전. heartbeat 이 5분 이상
- * 안 온 job 만 orphan 처리.
+ * status 별 cutoff 분리:
+ *   - running: ORPHAN_TIMEOUT_MS (heartbeat 갱신되어야 안전)
+ *   - pending: PENDING_ORPHAN_TIMEOUT_MS (짧게, 실행 시작 전 crash 케이스 빠른 복구)
+ *
+ * updatedAt 기준 판정. runner heartbeat 이 30s 마다 touch 하므로 정상 running job 안전.
  */
 export async function sweepOrphanedJobs(
-  timeoutMs: number = ORPHAN_TIMEOUT_MS,
+  runningTimeoutMs: number = ORPHAN_TIMEOUT_MS,
+  pendingTimeoutMs: number = PENDING_ORPHAN_TIMEOUT_MS,
 ): Promise<number> {
-  const cutoff = new Date(Date.now() - timeoutMs);
+  const now = Date.now();
+  const runningCutoff = new Date(now - runningTimeoutMs);
+  const pendingCutoff = new Date(now - pendingTimeoutMs);
   const result = await prisma.reportJob.updateMany({
     where: {
-      status: { in: ["pending", "running"] },
-      updatedAt: { lt: cutoff },
+      OR: [
+        { status: "running", updatedAt: { lt: runningCutoff } },
+        { status: "pending", updatedAt: { lt: pendingCutoff } },
+      ],
     },
     data: {
       status: "failed",
@@ -262,7 +278,7 @@ export async function sweepOrphanedJobs(
   });
   if (result.count > 0) {
     console.log(
-      `[report-job] swept ${result.count} orphaned job(s) (timeout=${timeoutMs}ms)`,
+      `[report-job] swept ${result.count} orphaned job(s) (running_cutoff=${runningTimeoutMs}ms pending_cutoff=${pendingTimeoutMs}ms)`,
     );
   }
   return result.count;
