@@ -230,20 +230,24 @@ export async function getActiveReportJob(params: {
 }
 
 /**
- * running orphan cutoff: askAdvisor 실제 max budget × (1 + MAX_RETRIES) + preSync 여유.
- * env 반영 dynamic 계산. MAX_RETRIES=2 default → 700s (약 12분). env 상한 (5) 시 자동 20분.
- * 정상 실행 중 job (heartbeat 갱신됨) 은 안전, pm2 restart 등으로 heartbeat 끊긴 것만 처리.
+ * running orphan cutoff: heartbeat interval × safety factor.
+ *
+ * Live running job 은 runReportJob 이 HEARTBEAT_INTERVAL_MS (30s) 마다 updatedAt 을
+ * touch → 이 값 이내에 heartbeat 안 오면 pm2 restart 등으로 죽은 것. askAdvisor 총
+ * budget (수 분~20분) 과 무관 (Codex bot P2 PR #247 4라운드) — 그 budget 만큼 기다리면
+ * pm2 restart 후 다음 호출이 stale running row 를 찾아 그 창 동안 blocked.
+ *
+ * 30s × 6 = 180s (3분). 5 개 heartbeat miss 까지 허용 후 orphan 처리.
  */
-export const ORPHAN_TIMEOUT_MS =
-  getAskAdvisorMaxTotalBudgetMs() + TOTAL_BUFFER_MS;
+export const ORPHAN_TIMEOUT_MS = HEARTBEAT_INTERVAL_MS * 6;
 
 /**
  * pending orphan cutoff: createOrGetReportJob 로 pending row 만 만든 뒤 runReportJob 시작
  * 전에 프로세스가 죽으면 heartbeat 도 못 켬. 이후 호출이 이 pending 을 찾으면 replacement
  * 안 만들어 category+date 리포트 생성이 stuck (Codex bot P2 PR #247 재리뷰).
- * pending 은 heartbeat 필요 없으므로 5분 cutoff 로 충분 (짧게 유지해 복구 창 최소화).
+ * pending 은 heartbeat 필요 없으므로 3분 cutoff 로 충분 (running 과 동일 창).
  */
-export const PENDING_ORPHAN_TIMEOUT_MS = 5 * 60 * 1000;
+export const PENDING_ORPHAN_TIMEOUT_MS = 3 * 60 * 1000;
 const SWEEP_INTERVAL_MS = 5 * 60 * 1000;
 
 /**
