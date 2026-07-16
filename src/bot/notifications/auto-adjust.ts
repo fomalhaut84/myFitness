@@ -179,13 +179,7 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       return;
     }
 
-    // recommendTodayWorkout + getInjuryRiskScore 병렬 (topFactors 반환용, F6).
-    // recommend-today-workout 이 내부적으로 injury 를 호출하지만 topFactors 는 propagate 하지 않음.
-    // 중복 호출 비용은 소량 (~수십 ms). shape 변경 없이 스펙 F6 충족.
-    const [result, injuryResult] = await Promise.all([
-      recommendTodayWorkout(),
-      getInjuryRiskScore(),
-    ]);
+    const result = await recommendTodayWorkout();
     const text = result.content[0]?.text ?? "{}";
     const payload = JSON.parse(text) as RecommendationPayload;
 
@@ -196,14 +190,17 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
       return;
     }
 
-    const injuryText = injuryResult.content[0]?.text ?? "{}";
+    // topFactors 는 부가 정보 (F6). 실패해도 조정 제안 자체는 전달되어야 함 (Codex P2 PR #245).
+    // recommend-today-workout 이 이미 core 정보를 가지고 있으므로 injury fetch 는 best-effort.
     let topFactors: InjuryPayload["topFactors"] = [];
     try {
+      const injuryResult = await getInjuryRiskScore();
+      const injuryText = injuryResult.content[0]?.text ?? "{}";
       const injuryPayload = JSON.parse(injuryText) as InjuryPayload;
       topFactors = injuryPayload.topFactors ?? [];
-    } catch (parseErr) {
+    } catch (injErr) {
       console.warn(
-        `[auto-adjust] injury payload parse 실패 — topFactors 생략: ${sanitizeError(parseErr)}`,
+        `[auto-adjust] injury topFactors fetch 실패 — 요인 라인 생략 후 진행: ${sanitizeError(injErr)}`,
       );
     }
 
