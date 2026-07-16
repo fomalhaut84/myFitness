@@ -212,7 +212,14 @@ async function handleSnooze(adj: Adjustment): Promise<string> {
     },
   });
   if (upd.count === 0) return ALREADY_DECIDED;
-  return `💤 1시간 뒤 (~${snoozeUntil.toLocaleTimeString("ko-KR", { hour: "2-digit", minute: "2-digit" })}) 재알림합니다.`;
+  // Codex P3 PR #250 9라운드: KST 명시 (서버 TZ 가 UTC 일 경우 사용자에게 22:30 처럼
+  // 잘못 보이는 것 방지).
+  const kstStr = snoozeUntil.toLocaleTimeString("ko-KR", {
+    hour: "2-digit",
+    minute: "2-digit",
+    timeZone: "Asia/Seoul",
+  });
+  return `💤 1시간 뒤 (~${kstStr}) 재알림합니다.`;
 }
 
 /**
