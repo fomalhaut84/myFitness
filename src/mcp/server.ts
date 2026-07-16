@@ -60,6 +60,8 @@ interface ToolCallContext {
   args?: unknown;
   /** SDK 가 handler 우회로 전송하는 response 를 캡처하여 후처리 시 파싱 */
   capturedResponse?: unknown;
+  /** #244 F4: 이 tool_call 이 소속된 HTTP 세션 id (있으면). stdio 는 null. askAdvisor 실패 로그와 grep 매칭용. */
+  sid?: string | null;
 }
 const toolCallStorage = new AsyncLocalStorage<ToolCallContext>();
 
@@ -153,7 +155,10 @@ function logSdkBypass(ctx: ToolCallContext): void {
  * transport.send 를 tap 해 SDK 응답 캡처. Stdio/HTTP transport 모두 공통.
  * server.connect(transport) 이후 호출해야 SDK 가 등록한 onmessage 를 감쌈.
  */
-function attachToolCallInstrumentation(transport: unknown): void {
+function attachToolCallInstrumentation(
+  transport: unknown,
+  getSid: () => string | null = () => null,
+): void {
   const t = transport as {
     onmessage?: (msg: unknown, extra?: unknown) => void | Promise<void>;
     send: (msg: unknown, ...rest: unknown[]) => Promise<void>;
@@ -190,6 +195,7 @@ function attachToolCallInstrumentation(transport: unknown): void {
           handlerInvoked: false,
           toolName: req.params?.name,
           args: req.params?.arguments,
+          sid: getSid(),
         };
         await toolCallStorage.run(ctx, async () => {
           await originalOnMessage(msg, extra);
@@ -231,6 +237,8 @@ export function createMyFitnessMcpServer(): McpServer {
       if (ctx) ctx.handlerInvoked = true;
 
       const traceId = newTraceId();
+      // #244 F4: 각 tool_call 로그에 sid 포함 → askAdvisor 실패 로그의 session 과 grep 매칭.
+      const sid = ctx?.sid ?? null;
       const start = Date.now();
       try {
         const result = await (
@@ -248,6 +256,7 @@ export function createMyFitnessMcpServer(): McpServer {
             {
               tool: toolName,
               traceId,
+              sid,
               latency_ms: Date.now() - start,
               status: "error",
               args: summarizeArgs(handlerArgs[0]),
@@ -263,6 +272,7 @@ export function createMyFitnessMcpServer(): McpServer {
             {
               tool: toolName,
               traceId,
+              sid,
               latency_ms: Date.now() - start,
               status: "ok",
               args: summarizeArgs(handlerArgs[0]),
@@ -276,6 +286,7 @@ export function createMyFitnessMcpServer(): McpServer {
           {
             tool: toolName,
             traceId,
+            sid,
             latency_ms: Date.now() - start,
             status: "error",
             args: summarizeArgs(handlerArgs[0]),
@@ -679,7 +690,9 @@ async function startHttp(): Promise<void> {
             };
             const s = createMyFitnessMcpServer();
             await s.connect(transport);
-            attachToolCallInstrumentation(transport);
+            // #244 F4: sid getter 로 tool_call 로그에 세션 매칭. onsessioninitialized 후
+            // assignedSid 가 채워짐 (tool_call 은 초기화 후에만 발생).
+            attachToolCallInstrumentation(transport, () => assignedSid ?? null);
           } else if (resolution === "expired") {
             // Session id 는 있지만 서버에 없음 (sweeper 정리 or 프로세스 재시작).
             // MCP 표준: 404 로 클라이언트가 stale 세션 폐기 후 재초기화하도록 시그널.
