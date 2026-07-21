@@ -71,12 +71,21 @@ const NETWORK_PATTERNS = [
   /network/i,
 ];
 // Garmin 재인증 실패: withReauth 이 재시도 후에도 401/403, 또는 login 자체 실패.
+// isGarminAuthError 는 Garmin context 에서만 호출되므로 bare `Unauthorized` / status=40x
+// 도 포함 (Codex bot PR #257 P2) — 실제 GarminConnect 라이브러리는 문구에 'garmin' 을
+// 안 붙임. context 가 이미 Garmin 인 걸 신뢰.
 const GARMIN_AUTH_PATTERNS = [
   /Invalid\s+credentials/i,
   /Account\s+locked/i,
   /GARMIN_EMAIL\s+and\s+GARMIN_PASSWORD/i,
   /garmin.*login.*fail/i,
   /garmin.*(?:401|403|unauthorized)/i,
+  // bare 상태 코드 / 상태 문구
+  /\bunauthorized\b/i,
+  /\bforbidden\b/i,
+  /status\s*(?:code)?\s*[:=]?\s*40[13]\b/i,
+  /\b40[13]\b\s*(?:unauthorized|forbidden)/i,
+  /Request\s+failed\s+with\s+status\s+code\s+40[13]/i,
 ];
 
 function anyMatch(msg: string, patterns: RegExp[]): boolean {
@@ -98,8 +107,16 @@ export function classifyClaudeError(err: unknown): FailureCategory {
   return "unknown";
 }
 
-/** Garmin 관련 실패 문자열 여부. syncAll 상위 catch 에서 사용. */
+/**
+ * Garmin 관련 실패 여부. syncAll 상위 catch 에서 사용.
+ * error 객체에 `status` (401/403) 가 있으면 문자열 매칭 없이도 인정 — withReauth 가
+ * 재시도 후 원 에러를 그대로 throw 하는 케이스 (Codex bot PR #257 P2).
+ */
 export function isGarminAuthError(err: unknown): boolean {
+  if (err && typeof err === "object" && "status" in err) {
+    const status = (err as { status?: unknown }).status;
+    if (status === 401 || status === 403) return true;
+  }
   const msg = err instanceof Error ? err.message : String(err);
   return anyMatch(msg, GARMIN_AUTH_PATTERNS);
 }
