@@ -59,8 +59,8 @@ export function getBot(): Bot {
       return;
     }
 
-    // 그 외 텍스트 → AI 질문
-    await handleAiQuestion(ctx, text);
+    // 그 외 텍스트 → AI 질문 (#253: bot 참조 전달로 인증 만료 감지 시 관리자 alert 가능).
+    await handleAiQuestion(ctx, text, { bot });
   });
 
   return bot;

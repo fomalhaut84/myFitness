@@ -7,7 +7,7 @@ import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { sanitizeError } from "../utils/error";
 import { buildAutoAdjustKeyboard, escapeHtml, typeKo } from "./auto-adjust";
-import { sendToAllWithKeyboard } from "./scheduler";
+import { sendToAllWithKeyboard } from "./send";
 import { todayKST, ymdKST } from "@/lib/garmin/utils";
 
 const TTL_HOURS = 8;
