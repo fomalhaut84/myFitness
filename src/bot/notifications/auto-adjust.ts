@@ -14,8 +14,8 @@ import { preSyncForReport } from "@/lib/daily-report";
 import { todayKST, ymdKST } from "@/lib/garmin/utils";
 import {
   formatUserFriendlyError,
-  notifyAdminIfAuthExpired,
-} from "@/lib/ai/claude-auth-monitor";
+  notifyAdminIfKnownFailure,
+} from "@/lib/monitoring/admin-alerts";
 import { sanitizeError } from "../utils/error";
 import { sendToAll, sendToAllWithKeyboard, type SendKeyboardResult } from "./send";
 
@@ -273,7 +273,8 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     // 조정 제안 or 필요한 down-scale skip. 모닝 리포트와 동일한 preSyncForReport
     // 재사용 (sleep/daily_stats/heart_rate/activities 어제~오늘 range).
     // 실패 시 warn 후 진행 (기존 daily-report 패턴 그대로).
-    await preSyncForReport();
+    // #256: bot 전달 → Garmin 재인증 실패 시 관리자 alert 자동 감지.
+    await preSyncForReport({ notifyBot: bot });
 
     const result = await recommendTodayWorkout();
     const text = result.content[0]?.text ?? "{}";
@@ -448,7 +449,7 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     const msg = sanitizeError(error);
     console.error(`[auto-adjust] 실패: ${msg}`);
     // #253: 인증 만료면 관리자 alert. best-effort.
-    void notifyAdminIfAuthExpired(bot, error).catch(() => {});
+    void notifyAdminIfKnownFailure(bot, error).catch(() => {});
     try {
       const friendly = formatUserFriendlyError(error);
       await sendToAll(bot, `❌ Auto-adjust 알림 실패\n${friendly}`);

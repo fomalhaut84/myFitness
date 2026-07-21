@@ -7,8 +7,8 @@ import {
 import { generateWeeklyReport } from "../../lib/weekly-report";
 import {
   formatUserFriendlyError,
-  notifyAdminIfAuthExpired,
-} from "../../lib/ai/claude-auth-monitor";
+  notifyAdminIfKnownFailure,
+} from "../../lib/monitoring/admin-alerts";
 import { mdToHtml, replyLong } from "../utils/telegram";
 
 let isProcessing = false;
@@ -52,12 +52,18 @@ const REPORT_LABEL: Record<ReportType, string> = {
   weekly: "주간",
 };
 
-async function runReportFromAiCommand(type: ReportType): Promise<string> {
+async function runReportFromAiCommand(
+  type: ReportType,
+  notifyBot?: Bot,
+): Promise<string> {
   // force=true: /ai 로 명시 요청은 항상 새로 생성. 기존 record 는 $transaction 안
   // deleteMany + create 로 update-like 처리 (사용자 요구 사항 그대로).
-  if (type === "morning") return generateMorningReport(true);
-  if (type === "evening") return generateEveningReport(true);
-  return generateWeeklyReport(true);
+  // #256 Codex bot PR #258 P2: notifyBot 전달 → preSync 중 Garmin 실패 시 admin alert.
+  if (type === "morning")
+    return generateMorningReport(true, undefined, { notifyBot });
+  if (type === "evening")
+    return generateEveningReport(true, undefined, { notifyBot });
+  return generateWeeklyReport(true, { notifyBot });
 }
 
 export function registerAiCommands(bot: Bot) {
@@ -109,7 +115,7 @@ export async function handleAiQuestion(
       : null;
     if (reportType) {
       await ctx.reply(`📝 ${REPORT_LABEL[reportType]} 리포트 생성 중...`);
-      const result = await runReportFromAiCommand(reportType);
+      const result = await runReportFromAiCommand(reportType, options?.bot);
       const html = mdToHtml(result);
       await replyLong(ctx as Parameters<typeof replyLong>[0], html, true);
       await ctx.reply(`✅ ${REPORT_LABEL[reportType]} 리포트 저장 완료`);
@@ -124,7 +130,7 @@ export async function handleAiQuestion(
     // 인증 만료면 관리자에게 rate-limited alert (best-effort, catch 내부에서 무시).
     const rawMsg = error instanceof Error ? error.message : String(error);
     console.error(`[handleAiQuestion] 실패: ${rawMsg}`);
-    void notifyAdminIfAuthExpired(options?.bot, error).catch(() => {});
+    void notifyAdminIfKnownFailure(options?.bot, error).catch(() => {});
     const friendly = formatUserFriendlyError(error);
     try {
       await ctx.reply(friendly);

@@ -8,8 +8,8 @@ import { mdToHtml } from "../utils/telegram";
 import { sanitizeError } from "../utils/error";
 import {
   formatUserFriendlyError,
-  notifyAdminIfAuthExpired,
-} from "@/lib/ai/claude-auth-monitor";
+  notifyAdminIfKnownFailure,
+} from "@/lib/monitoring/admin-alerts";
 // #253: sendToAll/sendToAllWithKeyboard 은 별도 send.ts 로 이동 (auth-monitor 와 순환 import 방지).
 // 기존 소비자를 위해 re-export.
 export {
@@ -52,7 +52,7 @@ async function runReportCron(
     const msg = sanitizeError(error);
     console.error(`[bot-cron] ${label} 에러: ${msg}`);
     // #253: 인증 만료면 관리자 alert (rate-limited). best-effort.
-    void notifyAdminIfAuthExpired(bot, error).catch(() => {});
+    void notifyAdminIfKnownFailure(bot, error).catch(() => {});
     // 조용한 실패 차단: 사용자에게 카테고리 매핑 문구 (기존 raw msg 대체).
     try {
       const friendly = formatUserFriendlyError(error);
@@ -68,7 +68,11 @@ export function startBotScheduler(bot: Bot) {
   const morningSchedule = process.env.MORNING_REPORT_CRON ?? "0 8 * * *";
   cron.schedule(
     morningSchedule,
-    () => runReportCron(bot, "모닝 리포트", "☀️", () => generateMorningReport()),
+    // #256: notifyBot 전달 → preSyncForReport 내부 syncAll 이 Garmin 재인증 실패 감지 시 admin alert.
+    () =>
+      runReportCron(bot, "모닝 리포트", "☀️", () =>
+        generateMorningReport(false, undefined, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 
@@ -76,7 +80,10 @@ export function startBotScheduler(bot: Bot) {
   const eveningSchedule = process.env.EVENING_REPORT_CRON ?? "0 23 * * *";
   cron.schedule(
     eveningSchedule,
-    () => runReportCron(bot, "이브닝 리포트", "🌙", () => generateEveningReport()),
+    () =>
+      runReportCron(bot, "이브닝 리포트", "🌙", () =>
+        generateEveningReport(false, undefined, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 
@@ -84,7 +91,10 @@ export function startBotScheduler(bot: Bot) {
   const weeklySchedule = process.env.REPORT_CRON ?? "0 7 * * 1";
   cron.schedule(
     weeklySchedule,
-    () => runReportCron(bot, "주간 리포트", "📊", () => generateWeeklyReport()),
+    () =>
+      runReportCron(bot, "주간 리포트", "📊", () =>
+        generateWeeklyReport(false, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 

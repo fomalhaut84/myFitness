@@ -1,7 +1,9 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
+import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
 import { daysAgo, formatDate, todayKST } from "./utils";
+import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -246,6 +248,11 @@ export async function syncAll(
      * user_profile 은 스냅샷이라 무관.
      */
     minHistoryDays?: number;
+    /**
+     * #256: 각 dataType 실패 시 관리자에게 Telegram alert 발송 시도용 Bot 참조.
+     * 미제공 시 알림 skip (서버 로그만). Garmin 재인증 실패 자동 감지 목적.
+     */
+    notifyBot?: Bot;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
@@ -343,6 +350,14 @@ export async function syncAll(
       await markError(dataType, message);
       console.error(`[${dataType}] 싱크 실패:`, message);
       results.push({ dataType, synced: 0, error: message });
+      // #256: Garmin 재인증 실패 자동 감지 → 관리자 alert (rate-limited).
+      // 사전 리뷰 P1: context 가 Garmin 이 명확한 이 지점에서는 dispatcher (classifyClaudeError
+      // 우선) 대신 Garmin 전용 wrapper 직접 호출. classifyClaudeError 의 `unauthorized`
+      // /`authentication` 패턴이 Garmin `Unauthorized` 를 claude_auth_expired 로 오분류 방지.
+      // notifyBot 미제공 시 서버 로그만. 첫 실패에서 발송 후 이후 dataType 실패는 rate-limit.
+      void notifyGarminAuthFailedIfNeeded(options?.notifyBot, error).catch(
+        () => {},
+      );
       // 하나 실패해도 나머지 진행
     }
   }
