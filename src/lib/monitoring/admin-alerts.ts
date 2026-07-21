@@ -71,10 +71,14 @@ const NETWORK_PATTERNS = [
   /network/i,
 ];
 // Garmin 재인증 실패: withReauth 이 재시도 후에도 401/403, 또는 login 자체 실패.
-// isGarminAuthError 는 Garmin context 에서만 호출되므로 bare `Unauthorized` / status=40x
-// 도 포함 (Codex bot PR #257 P2) — 실제 GarminConnect 라이브러리는 문구에 'garmin' 을
-// 안 붙임. context 가 이미 Garmin 인 걸 신뢰.
+// isGarminAuthError 는 Garmin context 에서만 호출 → bare 상태 문구 + 라이브러리 문구 포함.
+//
+// @flow-js/garmin-connect 실제 throw 문구 (node_modules/.../HttpClient.js:339, :367):
+//   "login failed (Ticket not found or MFA), please check username and password"
+//   "login failed (AccountLocked)..."
+// → 'garmin' 문자열 없음 → 명시 패턴 추가 (Codex bot PR #257 재리뷰 P2).
 const GARMIN_AUTH_PATTERNS = [
+  // Legacy 문구
   /Invalid\s+credentials/i,
   /Account\s+locked/i,
   /GARMIN_EMAIL\s+and\s+GARMIN_PASSWORD/i,
@@ -86,6 +90,12 @@ const GARMIN_AUTH_PATTERNS = [
   /status\s*(?:code)?\s*[:=]?\s*40[13]\b/i,
   /\b40[13]\b\s*(?:unauthorized|forbidden)/i,
   /Request\s+failed\s+with\s+status\s+code\s+40[13]/i,
+  // @flow-js/garmin-connect 실 문구
+  /login\s+failed/i,
+  /Ticket\s+not\s+found/i,
+  /\bMFA\b/,
+  /AccountLocked/i,
+  /check\s+username\s+and\s+password/i,
 ];
 
 function anyMatch(msg: string, patterns: RegExp[]): boolean {

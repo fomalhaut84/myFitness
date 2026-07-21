@@ -68,7 +68,11 @@ export function startBotScheduler(bot: Bot) {
   const morningSchedule = process.env.MORNING_REPORT_CRON ?? "0 8 * * *";
   cron.schedule(
     morningSchedule,
-    () => runReportCron(bot, "모닝 리포트", "☀️", () => generateMorningReport()),
+    // #256: notifyBot 전달 → preSyncForReport 내부 syncAll 이 Garmin 재인증 실패 감지 시 admin alert.
+    () =>
+      runReportCron(bot, "모닝 리포트", "☀️", () =>
+        generateMorningReport(false, undefined, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 
@@ -76,7 +80,10 @@ export function startBotScheduler(bot: Bot) {
   const eveningSchedule = process.env.EVENING_REPORT_CRON ?? "0 23 * * *";
   cron.schedule(
     eveningSchedule,
-    () => runReportCron(bot, "이브닝 리포트", "🌙", () => generateEveningReport()),
+    () =>
+      runReportCron(bot, "이브닝 리포트", "🌙", () =>
+        generateEveningReport(false, undefined, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 
@@ -84,7 +91,10 @@ export function startBotScheduler(bot: Bot) {
   const weeklySchedule = process.env.REPORT_CRON ?? "0 7 * * 1";
   cron.schedule(
     weeklySchedule,
-    () => runReportCron(bot, "주간 리포트", "📊", () => generateWeeklyReport()),
+    () =>
+      runReportCron(bot, "주간 리포트", "📊", () =>
+        generateWeeklyReport(false, { notifyBot: bot }),
+      ),
     { timezone: "Asia/Seoul" }
   );
 

@@ -66,7 +66,8 @@ async function generateReport(
   category: string,
   prompt: string,
   force = false,
-  reportDate?: string
+  reportDate?: string,
+  notifyBot?: import("grammy").Bot,
 ): Promise<string> {
   const dateStr = kstDateStr();
   // reportDate 명시됐으면 그것 사용 (UI 재생성 버튼 등 자정 넘김 케이스).
@@ -85,7 +86,8 @@ async function generateReport(
   }
 
   console.log(`[${category}] preSync 시작 (target=${targetDate})`);
-  await preSyncForReport();
+  // #256: notifyBot 전달 → Garmin 재인증 실패 시 관리자 alert (bot 있을 때만).
+  await preSyncForReport({ notifyBot });
   console.log(`[${category}] preSync 완료, askAdvisor 시작`);
 
   // cron 채널은 단발 강제 — 매번 fresh 세션 (이전 호출 컨텍스트 오염 차단)
@@ -127,8 +129,9 @@ async function runReportViaJob(params: {
   force: boolean;
   reportDate: string;
   background: boolean;
+  notifyBot?: import("grammy").Bot;
 }): Promise<{ job: ReportJob; result: string | null }> {
-  const { category, prompt, force, reportDate, background } = params;
+  const { category, prompt, force, reportDate, background, notifyBot } = params;
 
   const { job, created } = await createOrGetReportJob({
     category,
@@ -141,7 +144,7 @@ async function runReportViaJob(params: {
 
   if (shouldRun) {
     const runner = runReportJob(job.id, async () => {
-      await generateReport(category, prompt, force, reportDate);
+      await generateReport(category, prompt, force, reportDate, notifyBot);
       const advice = await prisma.aIAdvice.findFirst({
         where: { category, reportDate },
         orderBy: { createdAt: "desc" },
@@ -211,6 +214,7 @@ function buildReportError(category: string, job: ReportJob): Error {
 export async function generateMorningReport(
   force = false,
   reportDate?: string,
+  options?: { notifyBot?: import("grammy").Bot },
 ): Promise<string> {
   const { result, job } = await runReportViaJob({
     category: "morning_report",
@@ -218,6 +222,7 @@ export async function generateMorningReport(
     force,
     reportDate: reportDate ?? kstDateStr(),
     background: false,
+    notifyBot: options?.notifyBot,
   });
   if (!result) throw buildReportError("morning_report", job);
   return result;
@@ -226,12 +231,14 @@ export async function generateMorningReport(
 export async function generateEveningReport(
   force = false,
   reportDate?: string,
+  options?: { notifyBot?: import("grammy").Bot },
 ): Promise<string> {
   const { result, job } = await runReportViaJob({
     category: "evening_report",
     prompt: EVENING_PROMPT,
     force,
     reportDate: reportDate ?? kstDateStr(),
+    notifyBot: options?.notifyBot,
     background: false,
   });
   if (!result) throw buildReportError("evening_report", job);
