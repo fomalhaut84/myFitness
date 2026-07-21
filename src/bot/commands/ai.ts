@@ -7,8 +7,8 @@ import {
 import { generateWeeklyReport } from "../../lib/weekly-report";
 import {
   formatUserFriendlyError,
-  notifyAdminIfAuthExpired,
-} from "../../lib/ai/claude-auth-monitor";
+  notifyAdminIfKnownFailure,
+} from "../../lib/monitoring/admin-alerts";
 import { mdToHtml, replyLong } from "../utils/telegram";
 
 let isProcessing = false;
@@ -124,7 +124,7 @@ export async function handleAiQuestion(
     // 인증 만료면 관리자에게 rate-limited alert (best-effort, catch 내부에서 무시).
     const rawMsg = error instanceof Error ? error.message : String(error);
     console.error(`[handleAiQuestion] 실패: ${rawMsg}`);
-    void notifyAdminIfAuthExpired(options?.bot, error).catch(() => {});
+    void notifyAdminIfKnownFailure(options?.bot, error).catch(() => {});
     const friendly = formatUserFriendlyError(error);
     try {
       await ctx.reply(friendly);

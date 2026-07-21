@@ -41,14 +41,20 @@ const EVENING_PROMPT = `이브닝 리포트를 작성해줘.
 
 간결한 마크다운으로 작성.`;
 
-/** 리포트/조언 생성 전 최신 데이터 싱크. auto-adjust cron 도 재사용. */
-export async function preSyncForReport(): Promise<void> {
+/**
+ * 리포트/조언 생성 전 최신 데이터 싱크. auto-adjust cron 도 재사용.
+ * #256: notifyBot 이 있으면 Garmin 재인증 실패 자동 감지 → 관리자 alert.
+ */
+export async function preSyncForReport(
+  options?: { notifyBot?: import("grammy").Bot },
+): Promise<void> {
   try {
     console.log("[report] 리포트 전 데이터 싱크 시작");
     await syncAll({
       startDate: daysAgoKST(1),
       endDate: todayKST(),
       dataTypes: ["sleep", "daily_stats", "heart_rate", "activities"],
+      notifyBot: options?.notifyBot,
     });
     console.log("[report] 리포트 전 데이터 싱크 완료");
   } catch (error) {

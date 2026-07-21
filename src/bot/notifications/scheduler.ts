@@ -8,8 +8,8 @@ import { mdToHtml } from "../utils/telegram";
 import { sanitizeError } from "../utils/error";
 import {
   formatUserFriendlyError,
-  notifyAdminIfAuthExpired,
-} from "@/lib/ai/claude-auth-monitor";
+  notifyAdminIfKnownFailure,
+} from "@/lib/monitoring/admin-alerts";
 // #253: sendToAll/sendToAllWithKeyboard 은 별도 send.ts 로 이동 (auth-monitor 와 순환 import 방지).
 // 기존 소비자를 위해 re-export.
 export {
@@ -52,7 +52,7 @@ async function runReportCron(
     const msg = sanitizeError(error);
     console.error(`[bot-cron] ${label} 에러: ${msg}`);
     // #253: 인증 만료면 관리자 alert (rate-limited). best-effort.
-    void notifyAdminIfAuthExpired(bot, error).catch(() => {});
+    void notifyAdminIfKnownFailure(bot, error).catch(() => {});
     // 조용한 실패 차단: 사용자에게 카테고리 매핑 문구 (기존 raw msg 대체).
     try {
       const friendly = formatUserFriendlyError(error);
