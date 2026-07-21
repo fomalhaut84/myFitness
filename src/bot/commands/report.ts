@@ -13,9 +13,11 @@ export function registerReportCommand(bot: Bot) {
       if (type === "morning" || type === "evening") {
         await ctx.reply(`🔄 ${type === "morning" ? "모닝" : "이브닝"} 리포트 재생성 중...`);
         try {
-          const result = type === "morning"
-            ? await generateMorningReport(true)
-            : await generateEveningReport(true);
+          // #256 Codex bot PR #258 P2: 수동 재생성도 preSync Garmin 실패 시 admin alert.
+          const result =
+            type === "morning"
+              ? await generateMorningReport(true, undefined, { notifyBot: bot })
+              : await generateEveningReport(true, undefined, { notifyBot: bot });
           const html = mdToHtml(result);
           await replyLong(ctx, `✅ 재생성 완료\n\n${html}`, true);
         } catch (error) {
