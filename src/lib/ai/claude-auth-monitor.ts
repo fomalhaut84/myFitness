@@ -110,76 +110,81 @@ export async function notifyAdminIfAuthExpired(
   const errMsg = err instanceof Error ? err.message : String(err);
   const now = new Date();
 
+  const errSnippet = errMsg.slice(0, 200);
+
+  // 사전 리뷰 P1 대응: bot 참조 없으면 (webapp 경로) rate-limit 예약하지 않음 →
+  // admin 이 실제로 알림 못 받은 채 lockout 방지. 서버 로그만.
+  if (!bot) {
+    console.warn(
+      `[claude-auth] EXPIRED (bot 없음, alert skip): ${errSnippet}`,
+    );
+    return;
+  }
+
   try {
-    // Rate-limit 체크 (DB persistent, pm2 restart 생존).
-    const existing = await prisma.systemAlertState.findUnique({
-      where: { alertType: AUTH_ALERT_TYPE },
-      select: { lastAlertAt: true },
+    // Codex P2 (PR #254) 대응: 두 concurrent 실패가 동일 stale row 를 읽고 둘 다 발송하면
+    // 중복 알림 + rate-limit 우회. UPDATE ... WHERE lastAlertAt < cutoff 로 slot 을 원자적
+    // 예약. 예약 실패 (다른 caller 가 방금 예약 or 아직 1시간 안 지남) → skip.
+    // Row 자체가 없으면 INSERT — unique 제약이 concurrent 두 caller 중 하나만 성공 허용.
+    const cutoff = new Date(now.getTime() - RATE_LIMIT_MS);
+    const updated = await prisma.systemAlertState.updateMany({
+      where: {
+        alertType: AUTH_ALERT_TYPE,
+        lastAlertAt: { lt: cutoff },
+      },
+      data: { lastAlertAt: now, lastErrorMsg: errSnippet },
     });
-    if (
-      existing &&
-      now.getTime() - existing.lastAlertAt.getTime() < RATE_LIMIT_MS
-    ) {
-      // 이미 최근 1시간 내 알림 발송됨 → 서버 로그만.
+    let reserved = updated.count > 0;
+    if (!reserved) {
+      // updateMany count=0: row 없음 또는 아직 rate-limit 내. 첫 발생 케이스 대비 INSERT 시도.
+      try {
+        await prisma.systemAlertState.create({
+          data: {
+            alertType: AUTH_ALERT_TYPE,
+            lastAlertAt: now,
+            lastErrorMsg: errSnippet,
+          },
+        });
+        reserved = true;
+      } catch {
+        // Unique 제약 위반 → row 존재 + 아직 rate-limit 내. 다른 caller 가 방금 예약.
+        reserved = false;
+      }
+    }
+    if (!reserved) {
       console.warn(
-        `[claude-auth] EXPIRED (rate-limited, last=${existing.lastAlertAt.toISOString()}): ${errMsg.slice(0, 200)}`,
+        `[claude-auth] EXPIRED (rate-limited): ${errSnippet}`,
       );
       return;
     }
 
-    // 알림 push (bot 없으면 skip). 실제 발송 성공 여부를 별도 tracking — 사전 리뷰 P1:
-    // bot=undefined 또는 sendToAll 이 sent=0 반환 (chat 별 실패는 내부 catch) 인 경우
-    // rate-limit 을 소진하면 실제로 admin 이 알림을 못 받은 채 최대 1시간 lockout.
-    const errSnippet = errMsg.slice(0, 200);
-    let actuallyDelivered = false;
-    if (bot) {
-      const message = [
-        `⚠️ <b>Claude 인증 만료 감지</b>`,
-        `시각: ${nowKstDisplay()} (KST)`,
-        "",
-        `서버에서 아래 명령 실행 필요:`,
-        `<code>claude login</code>`,
-        "",
-        `<b>에러</b>: ${errSnippet}`,
-      ].join("\n");
-      try {
-        const r = await sendToAll(bot, message);
-        actuallyDelivered = r.sent > 0;
-        if (!actuallyDelivered) {
-          console.warn(
-            `[claude-auth] admin alert 전송 대상 없음/전부 실패 (sent=${r.sent}/total=${r.total}) — rate-limit 유예`,
-          );
-        }
-      } catch (sendErr) {
-        console.error(
-          `[claude-auth] admin alert 전송 실패: ${sanitizeError(sendErr)}`,
+    // 예약 성공 → 알림 발송. 전송 실패 시 rate-limit 유지 (다음 재시도는 1시간 후).
+    // Telegram 자체 장애 시 반복 push 로 상황 악화 방지 + 서버 로그로 fallback.
+    const message = [
+      `⚠️ <b>Claude 인증 만료 감지</b>`,
+      `시각: ${nowKstDisplay()} (KST)`,
+      "",
+      `서버에서 아래 명령 실행 필요:`,
+      `<code>claude login</code>`,
+      "",
+      `<b>에러</b>: ${errSnippet}`,
+    ].join("\n");
+    try {
+      const r = await sendToAll(bot, message);
+      if (r.sent === 0) {
+        console.warn(
+          `[claude-auth] admin alert 전송 실패 (sent=0/total=${r.total}) — rate-limit 유지, 서버 로그 확인 필요`,
+        );
+      } else {
+        console.warn(
+          `[claude-auth] EXPIRED — admin alert 발송 (${errSnippet})`,
         );
       }
-    } else {
-      console.warn(
-        "[claude-auth] bot 참조 없음 (webapp 경로) — alert skip, rate-limit 유예",
+    } catch (sendErr) {
+      console.error(
+        `[claude-auth] admin alert 전송 예외: ${sanitizeError(sendErr)} — rate-limit 유지`,
       );
     }
-
-    if (!actuallyDelivered) {
-      // 실 발송이 없으면 rate-limit 소진하지 않음 → 다음 실패 시 즉시 재시도.
-      return;
-    }
-
-    console.warn(
-      `[claude-auth] EXPIRED — admin alert 발송 (${errSnippet})`,
-    );
-
-    // DB upsert — 실 발송 성공 시에만 rate-limit 시작.
-    await prisma.systemAlertState.upsert({
-      where: { alertType: AUTH_ALERT_TYPE },
-      update: { lastAlertAt: now, lastErrorMsg: errSnippet },
-      create: {
-        alertType: AUTH_ALERT_TYPE,
-        lastAlertAt: now,
-        lastErrorMsg: errSnippet,
-      },
-    });
   } catch (dbErr) {
     console.error(
       `[claude-auth] rate-limit 상태 조회/저장 실패: ${sanitizeError(dbErr)}`,
