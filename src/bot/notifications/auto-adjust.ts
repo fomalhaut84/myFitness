@@ -12,8 +12,12 @@ import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
 import { getInjuryRiskScore } from "@/mcp/tools/injury-risk";
 import { preSyncForReport } from "@/lib/daily-report";
 import { todayKST, ymdKST } from "@/lib/garmin/utils";
+import {
+  formatUserFriendlyError,
+  notifyAdminIfAuthExpired,
+} from "@/lib/ai/claude-auth-monitor";
 import { sanitizeError } from "../utils/error";
-import { sendToAll, sendToAllWithKeyboard, type SendKeyboardResult } from "./scheduler";
+import { sendToAll, sendToAllWithKeyboard, type SendKeyboardResult } from "./send";
 
 /** M13 Phase 2 callback_data prefix. 형식: `auto_adjust:<action>:<adjustmentId>` */
 export const CALLBACK_PREFIX = "auto_adjust";
@@ -443,8 +447,11 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
   } catch (error) {
     const msg = sanitizeError(error);
     console.error(`[auto-adjust] 실패: ${msg}`);
+    // #253: 인증 만료면 관리자 alert. best-effort.
+    void notifyAdminIfAuthExpired(bot, error).catch(() => {});
     try {
-      await sendToAll(bot, `❌ Auto-adjust 알림 실패: ${msg.slice(0, 500)}`);
+      const friendly = formatUserFriendlyError(error);
+      await sendToAll(bot, `❌ Auto-adjust 알림 실패\n${friendly}`);
     } catch (notifyErr) {
       console.error(
         `[auto-adjust] 에러 알림 전송도 실패: ${sanitizeError(notifyErr)}`,
