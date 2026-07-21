@@ -67,7 +67,9 @@ const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석
  * `user_profile` 은 activities 앞에 위치 → LTHR/maxHR auto-detect 갱신을 먼저
  * 반영해야 syncActivities 가 정확한 intensityLabel/Zone 산출.
  */
-async function preSyncForWeekly(): Promise<void> {
+async function preSyncForWeekly(
+  options?: { notifyBot?: import("grammy").Bot },
+): Promise<void> {
   const NON_PROFILE_TYPES = [
     "sleep",
     "daily_stats",
@@ -76,6 +78,8 @@ async function preSyncForWeekly(): Promise<void> {
     "blood_pressure",
     "body_composition",
   ] as const;
+  // #256: Garmin 재인증 실패 감지 → 관리자 alert (bot 있을 때만). 3 단계 syncAll 에 모두 전달.
+  const notifyBot = options?.notifyBot;
   try {
     // Step 1a: user_profile 을 먼저 sync — activities intensityLabel/Zone 계산
     // 시 fresh LTHR/maxHR 참조하도록. profile 실패 시 activities 는 step 1b 에서
@@ -85,6 +89,7 @@ async function preSyncForWeekly(): Promise<void> {
       endDate: todayKST(),
       dataTypes: ["user_profile"],
       bootstrapNewTypes: true,
+      notifyBot,
     });
     const profileFailed = step1a.some((r) => r.error);
     if (profileFailed) {
@@ -105,6 +110,7 @@ async function preSyncForWeekly(): Promise<void> {
       // #209: get_pace_progression 90일, get_training_load_trend/injury_risk 28일 등
       // 가장 큰 요구 window (90일) 기준. 짧게 sync 된 상태 (예: /api/sync 1일) 도 backfill.
       minHistoryDays: 90,
+      notifyBot,
     });
 
     // Step 2: 실패 타입 skip + 최근 1일 강제 refresh.
@@ -132,6 +138,7 @@ async function preSyncForWeekly(): Promise<void> {
         startDate: daysAgoKST(1),
         endDate: todayKST(),
         dataTypes: step2Types as ("user_profile" | (typeof NON_PROFILE_TYPES)[number])[],
+        notifyBot,
       });
     }
     console.log("[weekly-report] 데이터 싱크 완료");
@@ -147,6 +154,7 @@ async function preSyncForWeekly(): Promise<void> {
 async function generateAndSaveWeekly(
   reportDate: string,
   force = false,
+  notifyBot?: import("grammy").Bot,
 ): Promise<void> {
   // #210: daily-report generateReport 와 대칭 — force=false 면 기존 record 재사용.
   // 기존엔 항상 delete+create 라 "주간 생성" 버튼 (force=false) 클릭 시 기존 리포트
@@ -161,7 +169,8 @@ async function generateAndSaveWeekly(
     }
   }
   // #203: 최신 데이터 sync (daily-report preSync 와 대칭).
-  await preSyncForWeekly();
+  // #256: notifyBot 전달 → Garmin 재인증 실패 시 관리자 alert.
+  await preSyncForWeekly({ notifyBot });
   resetSession("cron-weekly");
   // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
   // num_turns=1 만 확실한 hallucination (tool 없이 답변).
@@ -193,8 +202,9 @@ async function runWeeklyViaJob(params: {
   force: boolean;
   reportDate: string;
   background: boolean;
+  notifyBot?: import("grammy").Bot;
 }): Promise<{ job: ReportJob; result: string | null }> {
-  const { force, reportDate, background } = params;
+  const { force, reportDate, background, notifyBot } = params;
   const { job, created } = await createOrGetReportJob({
     category: "weekly_report",
     reportDate,
@@ -203,7 +213,7 @@ async function runWeeklyViaJob(params: {
   const shouldRun = created && job.status === "pending";
   if (shouldRun) {
     const runner = runReportJob(job.id, async () => {
-      await generateAndSaveWeekly(reportDate, force);
+      await generateAndSaveWeekly(reportDate, force, notifyBot);
       const advice = await prisma.aIAdvice.findFirst({
         where: { category: "weekly_report", reportDate },
         orderBy: { createdAt: "desc" },
@@ -245,9 +255,13 @@ export async function startWeeklyReportJob(params: {
 }
 
 /** cron / 완료 대기 흐름. #212: /ai 리포트 명시 요청 시 force=true 지원 (daily 와 대칭). */
-export async function generateWeeklyReport(force = false): Promise<string> {
+export async function generateWeeklyReport(
+  force = false,
+  options?: { notifyBot?: import("grammy").Bot },
+): Promise<string> {
   const { result, job } = await runWeeklyViaJob({
     force,
+    notifyBot: options?.notifyBot,
     reportDate: kstDateStr(),
     background: false,
   });
