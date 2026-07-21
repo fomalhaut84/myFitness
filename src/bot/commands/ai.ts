@@ -5,6 +5,10 @@ import {
   generateEveningReport,
 } from "../../lib/daily-report";
 import { generateWeeklyReport } from "../../lib/weekly-report";
+import {
+  formatUserFriendlyError,
+  notifyAdminIfAuthExpired,
+} from "../../lib/ai/claude-auth-monitor";
 import { mdToHtml, replyLong } from "../utils/telegram";
 
 let isProcessing = false;
@@ -65,7 +69,10 @@ export function registerAiCommands(bot: Bot) {
     }
     // #212: /ai 명시적 진입에서만 리포트 감지. bot/index.ts 자연어 fallback 은
     // 감지 skip → 오탐으로 인한 강제 재생성/덮어쓰기 원천 차단 (Codex bot P2).
-    await handleAiQuestion(ctx, question, { detectReportRequest: true });
+    await handleAiQuestion(ctx, question, {
+      detectReportRequest: true,
+      bot,
+    });
   });
 
   bot.command("reset", async (ctx) => {
@@ -83,7 +90,7 @@ export async function handleAiQuestion(
     chat: { id: number };
   },
   question: string,
-  options?: { detectReportRequest?: boolean },
+  options?: { detectReportRequest?: boolean; bot?: Bot },
 ) {
   if (isProcessing) {
     await ctx.reply("⏳ 이전 질문 처리 중입니다. 잠시 후 다시 시도해주세요.");
@@ -113,10 +120,14 @@ export async function handleAiQuestion(
     const html = mdToHtml(result);
     await replyLong(ctx as Parameters<typeof replyLong>[0], html, true);
   } catch (error) {
-    const msg = error instanceof Error ? error.message : String(error);
-    // 사용자 알림 reply 자체도 실패 가능 — 그 경우는 bot.catch 또는 unhandledRejection으로 위임.
+    // #253: 원본 message 는 서버 로그, 사용자에게는 카테고리 매핑 문구.
+    // 인증 만료면 관리자에게 rate-limited alert (best-effort, catch 내부에서 무시).
+    const rawMsg = error instanceof Error ? error.message : String(error);
+    console.error(`[handleAiQuestion] 실패: ${rawMsg}`);
+    void notifyAdminIfAuthExpired(options?.bot, error).catch(() => {});
+    const friendly = formatUserFriendlyError(error);
     try {
-      await ctx.reply(`❌ AI 오류: ${msg.slice(0, 200)}`);
+      await ctx.reply(friendly);
     } catch {
       // ignore — outer handler 가 로깅
     }

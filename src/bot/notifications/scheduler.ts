@@ -1,131 +1,24 @@
 import cron from "node-cron";
-import type { Bot, InlineKeyboard } from "grammy";
+import type { Bot } from "grammy";
 import { generateMorningReport, generateEveningReport } from "../../lib/daily-report";
 import { generateWeeklyReport } from "../../lib/weekly-report";
 import { runAutoAdjustProposal } from "./auto-adjust";
 import { runAutoAdjustMaintenance } from "./auto-adjust-cron";
 import { mdToHtml } from "../utils/telegram";
-import { sanitizeError, isNetworkError, isHtmlParseError } from "../utils/error";
-
-const MAX_MSG = 4096;
-// 시도 사이 sleep 시간. 총 시도 = RETRY_DELAYS_MS.length + 1 = 4회 (초기 + 3 재시도).
-// HTML→plain 전환(attempt--)이 발동하면 최악의 경우 5회까지 늘어날 수 있으나, plain
-// 페이로드는 parse_mode 없이 전송되므로 HTML parse 에러가 재발할 수 없어 1회 추가에 그침.
-const RETRY_DELAYS_MS = [2000, 8000, 30000];
-const MAX_ATTEMPTS = RETRY_DELAYS_MS.length + 1;
-
-function getChatIds(): string[] {
-  return (process.env.TELEGRAM_ALLOWED_CHAT_IDS ?? "")
-    .split(",")
-    .map((id) => id.trim())
-    .filter(Boolean);
-}
-
-interface SendResult {
-  sent: number;
-  failed: number;
-  total: number;
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
-function truncate(text: string): string {
-  return text.length > MAX_MSG ? text.slice(0, MAX_MSG - 3) + "..." : text;
-}
-
-async function sendOneWithRetry(
-  bot: Bot,
-  chatId: string,
-  htmlText: string
-): Promise<void> {
-  const html = truncate(htmlText);
-  const plain = truncate(htmlText.replace(/<[^>]*>/g, ""));
-  let useHtml = true;
-  let lastErr: unknown;
-  for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
-    try {
-      if (useHtml) {
-        await bot.api.sendMessage(chatId, html, { parse_mode: "HTML" });
-      } else {
-        await bot.api.sendMessage(chatId, plain);
-      }
-      return;
-    } catch (err) {
-      lastErr = err;
-      // HTML parse 에러 → 같은 시도 횟수로 plain 모드 전환 (백오프 없이 즉시 재시도)
-      if (useHtml && isHtmlParseError(err)) {
-        useHtml = false;
-        attempt--;
-        continue;
-      }
-      if (!isNetworkError(err) || attempt === MAX_ATTEMPTS - 1) {
-        throw err;
-      }
-      const delay = RETRY_DELAYS_MS[attempt];
-      console.warn(
-        `[bot] 전송 재시도 ${attempt + 1}/${MAX_ATTEMPTS} (${chatId}, ${delay}ms 후): ${sanitizeError(err)}`
-      );
-      await sleep(delay);
-    }
-  }
-  throw lastErr ?? new Error("sendOneWithRetry: 재시도 모두 실패 (원인 미상)");
-}
-
-export async function sendToAll(bot: Bot, text: string): Promise<SendResult> {
-  const ids = getChatIds();
-  let sent = 0;
-  let failed = 0;
-  for (const chatId of ids) {
-    try {
-      await sendOneWithRetry(bot, chatId, text);
-      sent++;
-    } catch (err) {
-      failed++;
-      console.error(`[bot] 메시지 전송 실패 (${chatId}): ${sanitizeError(err)}`);
-    }
-  }
-  return { sent, failed, total: ids.length };
-}
-
-export interface SendKeyboardResult extends SendResult {
-  /** 첫 번째 성공 전송의 chatId + messageId (callback 매칭용). 모두 실패 시 undefined. */
-  first?: { chatId: string; messageId: number };
-}
-
-/**
- * inline keyboard 첨부 전송. HTML fallback 없음 (HTML 이 실패해도 keyboard 는 유지).
- * 재시도 로직 없이 단순 전송 — 재시도 필요 시 개별 확장.
- * 첫 성공 결과만 캡처 (M13 Phase 2 는 사용자 1명 기준).
- */
-export async function sendToAllWithKeyboard(
-  bot: Bot,
-  text: string,
-  keyboard: InlineKeyboard,
-): Promise<SendKeyboardResult> {
-  const ids = getChatIds();
-  const html = truncate(text);
-  let sent = 0;
-  let failed = 0;
-  let first: SendKeyboardResult["first"];
-  for (const chatId of ids) {
-    try {
-      const msg = await bot.api.sendMessage(chatId, html, {
-        parse_mode: "HTML",
-        reply_markup: keyboard,
-      });
-      sent++;
-      if (!first) first = { chatId, messageId: msg.message_id };
-    } catch (err) {
-      failed++;
-      console.error(
-        `[bot] keyboard 메시지 전송 실패 (${chatId}): ${sanitizeError(err)}`,
-      );
-    }
-  }
-  return { sent, failed, total: ids.length, first };
-}
+import { sanitizeError } from "../utils/error";
+import {
+  formatUserFriendlyError,
+  notifyAdminIfAuthExpired,
+} from "@/lib/ai/claude-auth-monitor";
+// #253: sendToAll/sendToAllWithKeyboard 은 별도 send.ts 로 이동 (auth-monitor 와 순환 import 방지).
+// 기존 소비자를 위해 re-export.
+export {
+  sendToAll,
+  sendToAllWithKeyboard,
+  type SendResult,
+  type SendKeyboardResult,
+} from "./send";
+import { sendToAll } from "./send";
 
 /** 리포트 cron 콜백 공통 처리: 단계별 로그 + 실패 시 텔레그램 알림 (조용한 실패 차단) */
 async function runReportCron(
@@ -158,9 +51,12 @@ async function runReportCron(
   } catch (error) {
     const msg = sanitizeError(error);
     console.error(`[bot-cron] ${label} 에러: ${msg}`);
-    // 조용한 실패 차단: 사용자에게 에러 알림 (sendToAll 자체도 실패할 수 있음)
+    // #253: 인증 만료면 관리자 alert (rate-limited). best-effort.
+    void notifyAdminIfAuthExpired(bot, error).catch(() => {});
+    // 조용한 실패 차단: 사용자에게 카테고리 매핑 문구 (기존 raw msg 대체).
     try {
-      await sendToAll(bot, `❌ ${label} 생성 실패: ${msg.slice(0, 500)}`);
+      const friendly = formatUserFriendlyError(error);
+      await sendToAll(bot, `❌ ${label} 생성 실패\n${friendly}`);
     } catch (notifyErr) {
       console.error(`[bot-cron] ${label} 에러 알림 전송도 실패: ${sanitizeError(notifyErr)}`);
     }

@@ -331,3 +331,13 @@ model WorkoutAdjustment {
   @@index([workoutId])
   @@index([telegramMessageId])
 }
+
+// #253: 관리자 alert rate-limit 상태 (Claude 인증 만료 등).
+// alertType 별 단일 row upsert 로 lastAlertAt tracking. pm2 restart 후에도 유지.
+model SystemAlertState {
+  id           String   @id @default(cuid())
+  alertType    String   @unique  // e.g. "claude_auth_expired"
+  lastAlertAt  DateTime
+  lastErrorMsg String?              // 진단용, 200자 이내
+  updatedAt    DateTime @updatedAt
+}
