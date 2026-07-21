@@ -11,7 +11,12 @@ export function registerSyncCommand(bot: Bot) {
       const yesterday = new Date(today);
       yesterday.setDate(yesterday.getDate() - 1);
 
-      const results = await syncAll({ startDate: yesterday, endDate: today });
+      // #256 Codex bot 릴리즈 PR #258 P2: 수동 /sync 도 Garmin 재인증 실패 시 admin alert.
+      const results = await syncAll({
+        startDate: yesterday,
+        endDate: today,
+        notifyBot: bot,
+      });
       const total = results.reduce((s, r) => s + r.synced, 0);
       const failed = results.filter((r) => r.error).length;
 
