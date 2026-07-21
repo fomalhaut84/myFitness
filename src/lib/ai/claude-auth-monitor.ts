@@ -158,8 +158,13 @@ export async function notifyAdminIfAuthExpired(
       return;
     }
 
-    // 예약 성공 → 알림 발송. 전송 실패 시 rate-limit 유지 (다음 재시도는 1시간 후).
-    // Telegram 자체 장애 시 반복 push 로 상황 악화 방지 + 서버 로그로 fallback.
+    // 예약 성공 → 알림 발송. 전송 실패 (sent=0) 시 예약 해제 — Codex bot PR #254 재리뷰 P2:
+    // TELEGRAM_ALLOWED_CHAT_IDS 미설정 or Telegram 일시 장애 상태에서 rate-limit 을 유지하면
+    // admin 이 한 명도 알림을 못 받은 채 1시간 lockout. 실 발송 성공한 경우만 소진.
+    //
+    // 해제 방식: conditional deleteMany WHERE lastAlertAt=우리가_예약한_now.
+    // Concurrent caller 가 재예약했다면 lastAlertAt 이 변경되어 있어 delete 대상 X (그 caller
+    // 가 정상 소유). row 자체가 사라지면 다음 실패에서 첫 INSERT 경로로 즉시 재시도 가능.
     const message = [
       `⚠️ <b>Claude 인증 만료 감지</b>`,
       `시각: ${nowKstDisplay()} (KST)`,
@@ -169,11 +174,13 @@ export async function notifyAdminIfAuthExpired(
       "",
       `<b>에러</b>: ${errSnippet}`,
     ].join("\n");
+    let delivered = false;
     try {
       const r = await sendToAll(bot, message);
-      if (r.sent === 0) {
+      delivered = r.sent > 0;
+      if (!delivered) {
         console.warn(
-          `[claude-auth] admin alert 전송 실패 (sent=0/total=${r.total}) — rate-limit 유지, 서버 로그 확인 필요`,
+          `[claude-auth] admin alert 전송 실패 (sent=0/total=${r.total}) — 예약 해제 후 재시도 유예`,
         );
       } else {
         console.warn(
@@ -182,8 +189,20 @@ export async function notifyAdminIfAuthExpired(
       }
     } catch (sendErr) {
       console.error(
-        `[claude-auth] admin alert 전송 예외: ${sanitizeError(sendErr)} — rate-limit 유지`,
+        `[claude-auth] admin alert 전송 예외: ${sanitizeError(sendErr)} — 예약 해제`,
       );
+    }
+    if (!delivered) {
+      try {
+        await prisma.systemAlertState.deleteMany({
+          where: { alertType: AUTH_ALERT_TYPE, lastAlertAt: now },
+        });
+      } catch (rollbackErr) {
+        // 해제 실패는 로그만 — 최악의 경우 1시간 lockout 이지만 발송 이력 자체는 남음.
+        console.error(
+          `[claude-auth] 예약 해제 실패: ${sanitizeError(rollbackErr)}`,
+        );
+      }
     }
   } catch (dbErr) {
     console.error(
