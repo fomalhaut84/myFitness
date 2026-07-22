@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
+import { isRunningType } from "@/lib/activity/running-types";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
@@ -55,7 +56,10 @@ export default async function ActivityDetailPage({ params }: PageProps) {
 
   // #261: 같은 코스 활동 매칭 (GPS 시작점 반경 + 거리 유사, 또는 같은 routeTag).
   // 기존 M4-10 은 activityType + distance ±10% 만 사용 (지역 무관, 오탐 다수) → 대체.
-  const similarRaw = await findSimilarActivities(id, { limit: 10 });
+  // Codex P2: 러닝 계열에서만 호출 (non-running 활동은 섹션 자체를 렌더 안 함 → 쿼리 비용 절감).
+  const similarRaw = isRunningType(activity.activityType)
+    ? await findSimilarActivities(id, { limit: 10 })
+    : [];
   const similarActivities = similarRaw.map((a) => ({
     id: a.id,
     name: a.name,

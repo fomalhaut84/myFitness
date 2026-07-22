@@ -8,6 +8,7 @@ import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
 import SplitChart from "@/components/activity/SplitChart";
 import { formatPace } from "@/lib/format";
+import { isRunningType } from "@/lib/activity/running-types";
 
 interface ActivityData {
   id: string;
@@ -172,8 +173,9 @@ export default function ActivityDetailClient({
         </div>
       )}
 
-      {/* #261: 같은 코스 활동 비교 (러닝만, GPS 매칭 또는 routeTag). */}
-      {activity.activityType.includes("running") && (
+      {/* #261: 같은 코스 활동 비교 (러닝 계열만, GPS 매칭 또는 routeTag).
+          Codex P2: `.includes("running")` 는 virtual_run/obstacle_run 을 놓치므로 공용 predicate 사용. */}
+      {isRunningType(activity.activityType) && (
         <SameCourseComparison current={activity} similar={similarActivities} />
       )}
 

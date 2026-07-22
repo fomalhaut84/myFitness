@@ -7,6 +7,7 @@
 
 import type { Activity } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { isRunningType } from "@/lib/activity/running-types";
 
 const DEFAULT_RADIUS_METERS = 150; // 같은 시작점으로 볼 반경
 const DEFAULT_DISTANCE_TOLERANCE = 0.1; // 거리 ±10% 이내 = 같은 코스
@@ -16,22 +17,6 @@ const EARTH_RADIUS_M = 6371_000;
 const CANDIDATE_SCAN_CAP = 500;
 // 대상 활동 기준 앞뒤 2년 = 4년 창. 계절/연도 대비 목적. Codex P1 #1: now 가 아니라 활동 startTime 기준.
 const CANDIDATE_WINDOW_YEARS = 2;
-
-/** 러닝 계열 activityType 통합 (Garmin: track_running / street_running / trail_running 등). */
-const RUNNING_TYPES = new Set([
-  "running",
-  "track_running",
-  "street_running",
-  "trail_running",
-  "indoor_running",
-  "treadmill_running",
-  "virtual_run",
-  "obstacle_run",
-]);
-
-function isRunningType(t: string): boolean {
-  return RUNNING_TYPES.has(t) || t.includes("running");
-}
 
 export interface StartLocation {
   lat: number;
