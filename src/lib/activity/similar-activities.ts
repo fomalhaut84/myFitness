@@ -170,31 +170,53 @@ export async function findSimilarActivities(
   const windowEnd = new Date(current.startTime);
   windowEnd.setFullYear(windowEnd.getFullYear() + CANDIDATE_WINDOW_YEARS);
 
-  const candidates = await prisma.activity.findMany({
-    where: {
-      id: { not: activityId },
-      startTime: { gte: windowStart, lte: windowEnd },
-      OR: [
-        // Running 계열 candidates (auto-match 대상).
-        { activityType: { contains: "running" } },
-        { activityType: { in: ["virtual_run", "obstacle_run"] } },
-        // 태그 매칭 (activityType 제한 없음 — 사용자가 명시).
-        ...(currentTag ? [{ routeTag: currentTag }] : []),
-      ],
-    },
-    orderBy: { startTime: "desc" },
-    select: SIMILAR_SELECT,
-    // Codex P1 #2: 사용자별 러닝 커버 가능한 상한 (수백~수천). 드물게 뛴 코스도 놓치지 않도록.
-    take: CANDIDATE_SCAN_CAP,
-  });
+  // Codex P2: 태그 매칭과 러닝 계열 매칭을 분리 쿼리. 통합 쿼리에서 `take` 상한이
+  // 오래된 tagged 레코드를 최신 러닝 500 건에 밀려 빠뜨릴 수 있음. 태그는 사용자 명시
+  // 의도이므로 (a) 상한 없이 (b) 날짜 창 무시 정확 매칭.
+  const [taggedMatches, runningCandidates] = await Promise.all([
+    currentTag
+      ? prisma.activity.findMany({
+          where: {
+            id: { not: activityId },
+            routeTag: currentTag,
+          },
+          orderBy: { startTime: "desc" },
+          select: SIMILAR_SELECT,
+        })
+      : Promise.resolve([] as SimilarActivity[]),
+    prisma.activity.findMany({
+      where: {
+        id: { not: activityId },
+        startTime: { gte: windowStart, lte: windowEnd },
+        OR: [
+          { activityType: { contains: "running" } },
+          { activityType: { in: ["virtual_run", "obstacle_run"] } },
+        ],
+      },
+      orderBy: { startTime: "desc" },
+      select: SIMILAR_SELECT,
+      // Codex P1 #2: 사용자별 러닝 커버 가능한 상한 (수백~수천). 드물게 뛴 코스도 놓치지 않도록.
+      take: CANDIDATE_SCAN_CAP,
+    }),
+  ]);
 
-  const matched = candidates.filter((c) => {
-    // Tag 매칭 (routeTag 동일 + 값 있음) — activityType 무관.
-    if (currentTag && c.routeTag === currentTag) return true;
-    // Auto 매칭 (GPS + 거리)
-    if (!currentLoc) return false;
-    return isSameCourse(current, c, radiusMeters, distanceTolerance);
-  });
+  const autoMatches = currentLoc
+    ? runningCandidates.filter((c) =>
+        isSameCourse(current, c, radiusMeters, distanceTolerance),
+      )
+    : [];
 
-  return matched.slice(0, limit);
+  // 태그 매칭이 auto 매칭보다 강한 신호 (사용자 의도) — 태그 먼저.
+  // 두 세트 중복 제거는 id 기반.
+  const seen = new Set<string>();
+  const merged: SimilarActivity[] = [];
+  for (const a of [...taggedMatches, ...autoMatches]) {
+    if (seen.has(a.id)) continue;
+    seen.add(a.id);
+    merged.push(a);
+  }
+  // 최근순 재정렬 (tagged 는 window 밖일 수도 있으므로 startTime desc).
+  merged.sort((x, y) => y.startTime.getTime() - x.startTime.getTime());
+
+  return merged.slice(0, limit);
 }
