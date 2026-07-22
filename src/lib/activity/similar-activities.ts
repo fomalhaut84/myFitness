@@ -158,6 +158,28 @@ export async function findSimilarActivities(
   // Codex P2: 태그 매칭과 러닝 계열 매칭을 분리 쿼리. 통합 쿼리에서 `take` 상한이
   // 오래된 tagged 레코드를 최신 러닝 500 건에 밀려 빠뜨릴 수 있음. 태그는 사용자 명시
   // 의도이므로 (a) 상한 없이 (b) 날짜 창 무시 정확 매칭.
+  //
+  // 러닝 후보 쿼리: distance ±tolerance 를 DB 사이드 프리필터로 추가 (Codex 릴리즈
+  // 리뷰 P2). 500+ 러닝 사용자에서 매칭 대상은 사실상 거리 유사인 활동뿐이므로,
+  // in-memory 필터 이전에 DB 에서 좁혀 놓지 않으면 500 상한이 오래된 매칭을 밀어낸다.
+  // distance 가 null 인 활동은 매칭 대상이 될 수 없어 (isSameCourse 도 조기 반환) 제외.
+  const runningWhere = {
+    id: { not: activityId },
+    startTime: { gte: windowStart, lte: windowEnd },
+    OR: [
+      { activityType: { contains: "running" } },
+      { activityType: { in: ["virtual_run", "obstacle_run"] } },
+    ],
+    ...(current.distance !== null
+      ? {
+          distance: {
+            gte: current.distance * (1 - distanceTolerance),
+            lte: current.distance * (1 + distanceTolerance),
+          },
+        }
+      : {}),
+  };
+
   const [taggedMatches, runningCandidates] = await Promise.all([
     currentTag
       ? prisma.activity.findMany({
@@ -170,17 +192,11 @@ export async function findSimilarActivities(
         })
       : Promise.resolve([] as SimilarActivity[]),
     prisma.activity.findMany({
-      where: {
-        id: { not: activityId },
-        startTime: { gte: windowStart, lte: windowEnd },
-        OR: [
-          { activityType: { contains: "running" } },
-          { activityType: { in: ["virtual_run", "obstacle_run"] } },
-        ],
-      },
+      where: runningWhere,
       orderBy: { startTime: "desc" },
       select: SIMILAR_SELECT,
-      // Codex P1 #2: 사용자별 러닝 커버 가능한 상한 (수백~수천). 드물게 뛴 코스도 놓치지 않도록.
+      // Codex P1 #2: 사용자별 러닝 커버 가능한 상한. 릴리즈 리뷰 P2 대응으로 distance 프리필터를
+      // 추가했으므로 이 상한은 사실상 손댈 필요 없는 방어선.
       take: CANDIDATE_SCAN_CAP,
     }),
   ]);
