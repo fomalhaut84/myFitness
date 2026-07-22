@@ -103,11 +103,14 @@ model Activity {
   estimatedZone   Int?                // 대표 Zone (1~5, 가중 평균)
   intensityScore  Float?              // 강도 점수 (0~100, TRIMP 유사)
   intensityLabel  String?             // recovery|easy|tempo|threshold|interval|max
+  // #261: 사용자 커스텀 코스명 태그. 같은 GPS/거리 클러스터 + 같은 태그 = 같은 코스로 취급.
+  routeTag        String?
   rawData         Json?
   createdAt       DateTime @default(now())
 
   @@index([activityType, startTime])
   @@index([startTime])
+  @@index([routeTag])
 }
 
 model DailySummary {

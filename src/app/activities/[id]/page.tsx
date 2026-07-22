@@ -2,6 +2,7 @@ import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
@@ -43,6 +44,8 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       estimatedZone: true,
       intensityScore: true,
       intensityLabel: true,
+      // #261: 사용자 커스텀 코스명 태그
+      routeTag: true,
     },
   });
 
@@ -50,32 +53,20 @@ export default async function ActivityDetailPage({ params }: PageProps) {
     notFound();
   }
 
-  // M4-10: 이전 동일 유형 활동과 비교 (러닝만, 거리 ±10%, 최근 3개)
-  const isRunning = activity.activityType.includes("running");
-  const similarActivities =
-    isRunning && activity.distance && activity.distance > 0
-      ? await prisma.activity.findMany({
-          where: {
-            activityType: activity.activityType,
-            distance: {
-              gte: activity.distance * 0.9,
-              lte: activity.distance * 1.1,
-            },
-            startTime: { lt: activity.startTime },
-          },
-          orderBy: { startTime: "desc" },
-          take: 3,
-          select: {
-            name: true,
-            startTime: true,
-            avgPace: true,
-            avgHR: true,
-            duration: true,
-            distance: true,
-            intensityLabel: true,
-          },
-        })
-      : [];
+  // #261: 같은 코스 활동 매칭 (GPS 시작점 반경 + 거리 유사, 또는 같은 routeTag).
+  // 기존 M4-10 은 activityType + distance ±10% 만 사용 (지역 무관, 오탐 다수) → 대체.
+  const similarRaw = await findSimilarActivities(id, { limit: 10 });
+  const similarActivities = similarRaw.map((a) => ({
+    id: a.id,
+    name: a.name,
+    startTime: a.startTime,
+    avgPace: a.avgPace,
+    avgHR: a.avgHR,
+    duration: a.duration,
+    distance: a.distance,
+    intensityLabel: a.intensityLabel,
+    routeTag: a.routeTag,
+  }));
 
   return (
     <div>
@@ -97,8 +88,10 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           zoneDistribution: parseZoneDistribution(activity.zoneDistribution),
         }}
         similarActivities={similarActivities.map((a) => ({
+          id: a.id,
           name: a.name,
           date: formatDateLocal(a.startTime),
+          startTimeIso: a.startTime.toISOString(),
           avgPace: a.avgPace,
           avgHR: a.avgHR,
           duration: a.duration,
@@ -106,6 +99,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
             ? Number((a.distance / 1000).toFixed(2))
             : null,
           intensityLabel: a.intensityLabel,
+          routeTag: a.routeTag,
         }))}
       />
     </div>

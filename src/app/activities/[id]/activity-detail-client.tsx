@@ -1,6 +1,8 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
+import { useRouter } from "next/navigation";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
@@ -35,16 +37,21 @@ interface ActivityData {
   estimatedZone: number | null;
   intensityScore: number | null;
   intensityLabel: string | null;
+  // #261: 사용자 커스텀 코스명 태그
+  routeTag: string | null;
 }
 
 interface SimilarActivity {
+  id: string;
   name: string;
   date: string;
+  startTimeIso: string;
   avgPace: number | null;
   avgHR: number | null;
   duration: number;
   distanceKm: number | null;
   intensityLabel: string | null;
+  routeTag: string | null;
 }
 
 interface Props {
@@ -165,14 +172,10 @@ export default function ActivityDetailClient({
         </div>
       )}
 
-      {/* M4-10: 이전 활동 비교 (러닝만) */}
-      {activity.activityType.includes("running") &&
-        similarActivities.length > 0 && (
-          <PreviousComparison
-            current={activity}
-            similar={similarActivities}
-          />
-        )}
+      {/* #261: 같은 코스 활동 비교 (러닝만, GPS 매칭 또는 routeTag). */}
+      {activity.activityType.includes("running") && (
+        <SameCourseComparison current={activity} similar={similarActivities} />
+      )}
 
       {/* AI 평가 */}
       <div className="mt-6">
@@ -316,14 +319,14 @@ function IntensityBreakdown({
   );
 }
 
-function PreviousComparison({
+function SameCourseComparison({
   current,
   similar,
 }: {
   current: ActivityData;
   similar: SimilarActivity[];
 }) {
-  // 이전 활동 평균과 비교
+  // 델타 계산 (매칭 활동 있을 때만).
   const prevPaces = similar
     .map((a) => a.avgPace)
     .filter((p): p is number => p !== null);
@@ -338,7 +341,6 @@ function PreviousComparison({
     prevHRs.length > 0
       ? Math.round(prevHRs.reduce((s, h) => s + h, 0) / prevHRs.length)
       : null;
-
   const paceDelta =
     current.avgPace !== null && avgPrevPace !== null
       ? Math.round(current.avgPace - avgPrevPace)
@@ -350,104 +352,257 @@ function PreviousComparison({
 
   return (
     <div className="mt-6">
-      <h2 className="text-lg font-semibold mb-3">이전 활동 비교</h2>
-      <div className="bg-card border border-border rounded-xl p-5">
-        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
-          유사 거리 최근 {similar.length}회 대비
-        </div>
-
-        {/* 델타 카드 */}
-        {(paceDelta !== null || hrDelta !== null) && (
-          <div className="grid grid-cols-2 gap-3 mb-4">
-            {paceDelta !== null && (
-              <div className="bg-surface rounded-lg p-3 text-center">
-                <div className="text-[10px] text-dim mb-1">페이스 변화</div>
-                <div
-                  className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
-                    paceDelta < 0
-                      ? "text-accent"
-                      : paceDelta > 0
-                        ? "text-red-400"
-                        : "text-sub"
-                  }`}
-                >
-                  {paceDelta < 0 ? "" : "+"}
-                  {paceDelta}
-                  <span className="text-[11px] text-dim font-normal ml-1">
-                    초/km
-                  </span>
-                </div>
-                <div className="text-[10px] text-dim">
-                  {paceDelta < 0 ? "빨라짐" : paceDelta > 0 ? "느려짐" : "동일"}
-                </div>
-              </div>
-            )}
-            {hrDelta !== null && (
-              <div className="bg-surface rounded-lg p-3 text-center">
-                <div className="text-[10px] text-dim mb-1">심박 변화</div>
-                <div
-                  className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
-                    hrDelta < 0
-                      ? "text-accent"
-                      : hrDelta > 0
-                        ? "text-yellow-400"
-                        : "text-sub"
-                  }`}
-                >
-                  {hrDelta > 0 ? "+" : ""}
-                  {hrDelta}
-                  <span className="text-[11px] text-dim font-normal ml-1">
-                    bpm
-                  </span>
-                </div>
-                <div className="text-[10px] text-dim">
-                  {hrDelta < 0
-                    ? "심박 낮아짐"
-                    : hrDelta > 0
-                      ? "심박 높아짐"
-                      : "동일"}
-                </div>
-              </div>
-            )}
-          </div>
-        )}
-
-        {/* 이전 활동 목록 */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-[12px]">
-            <thead>
-              <tr className="text-dim border-b border-border">
-                <th className="text-left py-2 font-normal">날짜</th>
-                <th className="text-left py-2 font-normal">이름</th>
-                <th className="text-right py-2 font-normal">거리</th>
-                <th className="text-right py-2 font-normal">페이스</th>
-                <th className="text-right py-2 font-normal">HR</th>
-                <th className="text-right py-2 font-normal">강도</th>
-              </tr>
-            </thead>
-            <tbody>
-              {similar.map((a, i) => (
-                <tr key={`${a.date}-${i}`} className="border-b border-border/50">
-                  <td className="py-2 text-dim">{a.date.slice(5)}</td>
-                  <td className="py-2">{a.name}</td>
-                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {a.distanceKm ?? "—"}
-                  </td>
-                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {a.avgPace ? formatPace(a.avgPace) : "—"}
-                  </td>
-                  <td className="text-right font-[family-name:var(--font-geist-mono)]">
-                    {a.avgHR ?? "—"}
-                  </td>
-                  <td className="text-right text-dim">
-                    {a.intensityLabel ?? "—"}
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+      <div className="flex items-baseline justify-between mb-3">
+        <h2 className="text-lg font-semibold">
+          이 코스의 다른 기록{" "}
+          <span className="text-[11px] text-dim font-normal ml-1">
+            (같은 시작점 ±10% 거리 또는 같은 태그)
+          </span>
+        </h2>
       </div>
+      <div className="bg-card border border-border rounded-xl p-5">
+        {/* 코스 태그 편집 */}
+        <RouteTagEditor
+          activityId={current.id}
+          initialTag={current.routeTag}
+        />
+
+        {similar.length === 0 ? (
+          <div className="text-[13px] text-dim text-center py-6">
+            아직 이 코스에서 뛴 다른 기록이 없어요. 자주 뛰는 코스에 태그를
+            붙여두면 이후 활동이 자동으로 함께 표시됩니다.
+          </div>
+        ) : (
+          <>
+            <div className="text-[11px] text-dim tracking-wider uppercase mt-4 mb-4">
+              최근 {similar.length}회 대비
+            </div>
+
+            {/* 델타 카드 */}
+            {(paceDelta !== null || hrDelta !== null) && (
+              <div className="grid grid-cols-2 gap-3 mb-4">
+                {paceDelta !== null && (
+                  <div className="bg-surface rounded-lg p-3 text-center">
+                    <div className="text-[10px] text-dim mb-1">페이스 변화</div>
+                    <div
+                      className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
+                        paceDelta < 0
+                          ? "text-accent"
+                          : paceDelta > 0
+                            ? "text-red-400"
+                            : "text-sub"
+                      }`}
+                    >
+                      {paceDelta < 0 ? "" : "+"}
+                      {paceDelta}
+                      <span className="text-[11px] text-dim font-normal ml-1">
+                        초/km
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-dim">
+                      {paceDelta < 0
+                        ? "빨라짐"
+                        : paceDelta > 0
+                          ? "느려짐"
+                          : "동일"}
+                    </div>
+                  </div>
+                )}
+                {hrDelta !== null && (
+                  <div className="bg-surface rounded-lg p-3 text-center">
+                    <div className="text-[10px] text-dim mb-1">심박 변화</div>
+                    <div
+                      className={`text-lg font-semibold font-[family-name:var(--font-geist-mono)] ${
+                        hrDelta < 0
+                          ? "text-accent"
+                          : hrDelta > 0
+                            ? "text-yellow-400"
+                            : "text-sub"
+                      }`}
+                    >
+                      {hrDelta > 0 ? "+" : ""}
+                      {hrDelta}
+                      <span className="text-[11px] text-dim font-normal ml-1">
+                        bpm
+                      </span>
+                    </div>
+                    <div className="text-[10px] text-dim">
+                      {hrDelta < 0
+                        ? "심박 낮아짐"
+                        : hrDelta > 0
+                          ? "심박 높아짐"
+                          : "동일"}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
+
+            {/* 활동 목록 (클릭 시 해당 활동 페이지로) */}
+            <div className="overflow-x-auto">
+              <table className="w-full text-[12px]">
+                <thead>
+                  <tr className="text-dim border-b border-border">
+                    <th className="text-left py-2 font-normal">날짜</th>
+                    <th className="text-left py-2 font-normal">이름</th>
+                    <th className="text-right py-2 font-normal">거리</th>
+                    <th className="text-right py-2 font-normal">페이스</th>
+                    <th className="text-right py-2 font-normal">HR</th>
+                    <th className="text-right py-2 font-normal">강도</th>
+                  </tr>
+                </thead>
+                <tbody>
+                  {similar.map((a) => (
+                    <tr
+                      key={a.id}
+                      className="border-b border-border/50 hover:bg-surface/50 transition-colors"
+                    >
+                      <td className="py-2 text-dim">
+                        <Link
+                          href={`/activities/${a.id}`}
+                          className="hover:text-bright transition-colors"
+                        >
+                          {a.date.slice(5)}
+                        </Link>
+                      </td>
+                      <td className="py-2">
+                        <Link
+                          href={`/activities/${a.id}`}
+                          className="hover:text-bright transition-colors"
+                        >
+                          {a.name}
+                          {a.routeTag && (
+                            <span
+                              className="ml-2 text-[10px] text-accent border border-accent/40 rounded px-1 py-0.5"
+                              title={`코스 태그: ${a.routeTag}`}
+                            >
+                              #{a.routeTag}
+                            </span>
+                          )}
+                        </Link>
+                      </td>
+                      <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                        {a.distanceKm ?? "—"}
+                      </td>
+                      <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                        {a.avgPace ? formatPace(a.avgPace) : "—"}
+                      </td>
+                      <td className="text-right font-[family-name:var(--font-geist-mono)]">
+                        {a.avgHR ?? "—"}
+                      </td>
+                      <td className="text-right text-dim">
+                        {a.intensityLabel ?? "—"}
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            </div>
+          </>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function RouteTagEditor({
+  activityId,
+  initialTag,
+}: {
+  activityId: string;
+  initialTag: string | null;
+}) {
+  const router = useRouter();
+  const [tag, setTag] = useState(initialTag ?? "");
+  const [editing, setEditing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+
+  async function save() {
+    if (saving) return;
+    const trimmed = tag.trim();
+    if (trimmed === (initialTag ?? "")) {
+      setEditing(false);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/activities/${activityId}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ routeTag: trimmed || null }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `요청 실패 (${res.status})`);
+      }
+      setEditing(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
+
+  if (!editing) {
+    return (
+      <div className="flex items-center gap-3">
+        <span className="text-[11px] text-dim tracking-wider uppercase">
+          코스 태그
+        </span>
+        {initialTag ? (
+          <span className="text-[13px] text-accent">#{initialTag}</span>
+        ) : (
+          <span className="text-[13px] text-dim">미지정</span>
+        )}
+        <button
+          type="button"
+          onClick={() => setEditing(true)}
+          className="text-[11px] text-dim hover:text-bright transition-colors underline"
+        >
+          편집
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="flex items-center gap-2 flex-wrap">
+      <span className="text-[11px] text-dim tracking-wider uppercase">
+        코스 태그
+      </span>
+      <input
+        type="text"
+        value={tag}
+        maxLength={60}
+        onChange={(e) => setTag(e.target.value)}
+        placeholder="예: 우리 동네 5K"
+        className="bg-surface border border-border rounded px-2 py-1 text-[13px] font-[family-name:var(--font-geist-mono)]"
+      />
+      <button
+        type="button"
+        onClick={save}
+        disabled={saving}
+        className="px-3 py-1 rounded text-[12px] border border-accent/40 text-accent hover:bg-accent/10 transition-colors disabled:opacity-50"
+      >
+        {saving ? "저장 중..." : "저장"}
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          setTag(initialTag ?? "");
+          setEditing(false);
+          setError(null);
+        }}
+        className="px-3 py-1 rounded text-[12px] border border-border text-dim hover:text-bright transition-colors"
+      >
+        취소
+      </button>
+      {error && (
+        <span className="text-[11px] text-red-400 w-full mt-1">{error}</span>
+      )}
     </div>
   );
 }
