@@ -59,7 +59,7 @@ export function haversineMeters(
   return EARTH_RADIUS_M * c;
 }
 
-/** Projected activity shape — findSimilarActivities 반환 및 내부 매칭에 필요한 필드만. */
+/** 공개 반환 shape — 렌더에 필요한 필드만. rawData 는 제외 (GPS 는 매칭 단계에서만 필요). */
 export type SimilarActivity = Pick<
   Activity,
   | "id"
@@ -72,8 +72,10 @@ export type SimilarActivity = Pick<
   | "avgPace"
   | "intensityLabel"
   | "routeTag"
-  | "rawData"
 >;
+
+/** 내부 매칭 후보 — isSameCourse 를 위해 rawData 포함. */
+type MatchCandidate = SimilarActivity & Pick<Activity, "rawData">;
 
 /**
  * 활동 두 개가 "같은 코스" 인지 판정.
@@ -83,8 +85,8 @@ export type SimilarActivity = Pick<
  * GPS 없는 활동 (실내) 은 false.
  */
 export function isSameCourse(
-  a: SimilarActivity,
-  b: SimilarActivity,
+  a: MatchCandidate,
+  b: MatchCandidate,
   radiusMeters = DEFAULT_RADIUS_METERS,
   distanceTolerance = DEFAULT_DISTANCE_TOLERANCE,
 ): boolean {
@@ -106,8 +108,8 @@ export interface SimilarActivitiesOptions {
   distanceTolerance?: number;
 }
 
-/** Prisma select — SimilarActivity 프로젝션. Codex P1 #3: rawData 외 대형 Json blob (splitSummaries, zoneDistribution) 제외. */
-const SIMILAR_SELECT = {
+/** 렌더 전용 select — rawData 없음. 태그 매칭 (GPS 검사 불필요) 과 최종 반환에 사용. */
+const RENDER_SELECT = {
   id: true,
   name: true,
   activityType: true,
@@ -118,9 +120,16 @@ const SIMILAR_SELECT = {
   avgPace: true,
   intensityLabel: true,
   routeTag: true,
-  // rawData 는 GPS 추출용 (Prisma 는 Json 서브필드 select 미지원 → 전체 로드).
+} as const;
+
+/** 매칭 후보 select — RENDER_SELECT + rawData (GPS 추출용). Codex P1 #3: splitSummaries/zoneDistribution 등 대형 Json 제외. */
+const MATCH_SELECT = {
+  ...RENDER_SELECT,
   rawData: true,
 } as const;
+
+/** 태그 쿼리 상한: limit + dedupe 여유. rawData 없는 슬림 payload 라 상한을 좀 넉넉히 잡아도 안전. */
+const TAG_MATCH_CAP = 50;
 
 /**
  * `activityId` 와 같은 코스로 판정되는 활동 목록. 최근순.
@@ -139,7 +148,7 @@ export async function findSimilarActivities(
 
   const current = await prisma.activity.findUnique({
     where: { id: activityId },
-    select: SIMILAR_SELECT,
+    select: MATCH_SELECT,
   });
   if (!current) return [];
 
@@ -181,6 +190,8 @@ export async function findSimilarActivities(
   };
 
   const [taggedMatches, runningCandidates] = await Promise.all([
+    // 태그 쿼리: rawData 미필요 (GPS 검사 안 함) → RENDER_SELECT + Codex P2: 렌더 상한 부여.
+    // 헤비 태그 사용 (같은 태그 100+ 활동) 시 rawData 대량 로드 방지.
     currentTag
       ? prisma.activity.findMany({
           where: {
@@ -188,23 +199,24 @@ export async function findSimilarActivities(
             routeTag: currentTag,
           },
           orderBy: { startTime: "desc" },
-          select: SIMILAR_SELECT,
+          select: RENDER_SELECT,
+          take: Math.max(limit, TAG_MATCH_CAP),
         })
       : Promise.resolve([] as SimilarActivity[]),
     prisma.activity.findMany({
       where: runningWhere,
       orderBy: { startTime: "desc" },
-      select: SIMILAR_SELECT,
+      select: MATCH_SELECT,
       // Codex P1 #2: 사용자별 러닝 커버 가능한 상한. 릴리즈 리뷰 P2 대응으로 distance 프리필터를
       // 추가했으므로 이 상한은 사실상 손댈 필요 없는 방어선.
       take: CANDIDATE_SCAN_CAP,
     }),
   ]);
 
-  const autoMatches = currentLoc
-    ? runningCandidates.filter((c) =>
-        isSameCourse(current, c, radiusMeters, distanceTolerance),
-      )
+  const autoMatches: SimilarActivity[] = currentLoc
+    ? runningCandidates
+        .filter((c) => isSameCourse(current, c, radiusMeters, distanceTolerance))
+        .map(stripRawData)
     : [];
 
   // 태그 매칭이 auto 매칭보다 강한 신호 (사용자 의도) — 태그 먼저.
@@ -220,4 +232,11 @@ export async function findSimilarActivities(
   merged.sort((x, y) => y.startTime.getTime() - x.startTime.getTime());
 
   return merged.slice(0, limit);
+}
+
+/** MatchCandidate → SimilarActivity (rawData 제거). */
+function stripRawData(c: MatchCandidate): SimilarActivity {
+  const { rawData: _rawData, ...rest } = c;
+  void _rawData;
+  return rest;
 }
