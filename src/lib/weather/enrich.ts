@@ -85,14 +85,15 @@ export async function enrichActivityWeather(
     };
   }
 
-  const sample = await fetchArchiveWeather(
+  const result = await fetchArchiveWeather(
     loc.lat,
     loc.lng,
     opts.startTime,
     opts.duration,
   );
-  if (!sample) {
-    // API 실패 — weatherFetchedAt null 유지, 다음 backfill 에서 재시도.
+
+  if (result.kind === "transient") {
+    // 재시도 가능 — weatherFetchedAt null 유지, 다음 cron/backfill 에서 재시도.
     return {
       wristUpdated: wristResult.wristUpdated,
       weatherFetched: false,
@@ -100,6 +101,24 @@ export async function enrichActivityWeather(
     };
   }
 
+  if (result.kind === "terminal") {
+    // Codex P1 (#269 후속): 재시도 무의미한 실패 (4xx, invalid coord, out-of-range date 등)
+    // 는 sentinel 로 저장. cron 이 매 tick 같은 permanent 실패에 걸려 스타베이션 되는 것 방지.
+    await prisma.activity.update({
+      where: { id: opts.activityId },
+      data: {
+        weatherFetchedAt: new Date(),
+        weatherSource: `failed:${result.reason}`,
+      },
+    });
+    return {
+      wristUpdated: wristResult.wristUpdated,
+      weatherFetched: false,
+      weatherSkipped: null,
+    };
+  }
+
+  const sample = result.sample;
   await prisma.activity.update({
     where: { id: opts.activityId },
     data: {
