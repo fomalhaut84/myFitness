@@ -20,10 +20,7 @@
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
-import { enrichActivityWeather } from "../src/lib/weather/enrich";
-import { getActivityStartUtc } from "../src/lib/weather/open-meteo";
-
-const SLEEP_MS = 200;
+import { runWeatherBackfill } from "../src/lib/weather/enrich";
 
 function parseArg(name: string): string | null {
   const idx = process.argv.indexOf(name);
@@ -33,10 +30,6 @@ function parseArg(name: string): string | null {
 
 function hasFlag(name: string): boolean {
   return process.argv.includes(name);
-}
-
-async function sleep(ms: number): Promise<void> {
-  return new Promise((r) => setTimeout(r, ms));
 }
 
 /** positive integer (>=1) 파싱. 잘못된 값이면 즉시 에러로 종료 — 의도치 않은 전량 처리 방지. */
@@ -66,73 +59,22 @@ async function main() {
   const skip = parseNonNegInt(parseArg("--skip"), "--skip") ?? 0;
   const dryRun = hasFlag("--dry-run");
 
-  const rows = await prisma.activity.findMany({
-    // Codex P2 후속 (#269): activityType 필터 제거 — cycling/hiking 등 GPS 있는 non-running
-    // 활동도 sync 경로에서 weather 를 안 채우므로 backfill 이 유일한 경로.
-    where: {
-      weatherFetchedAt: null,
-    },
-    // Codex P2 (#269): asc 로 오래된 활동부터 처리. desc 는 최근 실패 (예: archive 지연) 가
-    // --limit 배치를 매번 차지해 오래된 활동이 영영 도달하지 못하는 starvation 유발.
-    orderBy: { startTime: "asc" },
-    select: {
-      id: true,
-      name: true,
-      startTime: true,
-      duration: true,
-      rawData: true,
-      activityType: true,
-    },
-    // Codex P2 (#269): --skip N 으로 앞쪽 permanent 실패 건너뛰기 지원.
-    ...(skip > 0 ? { skip } : {}),
-    ...(limit !== undefined ? { take: limit } : {}),
+  const result = await runWeatherBackfill({
+    limit,
+    skip,
+    dryRun,
+    verbose: true,
   });
 
+  const status = dryRun ? " [dry-run]" : "";
   console.log(
-    `backfill-weather: 대상 ${rows.length} 건${skip > 0 ? ` (skip ${skip})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${dryRun ? " [dry-run]" : ""}`,
+    `backfill-weather: 대상 ${result.candidates} 건${skip > 0 ? ` (skip ${skip})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${status}`,
   );
-
-  if (dryRun) {
-    for (const r of rows.slice(0, 10)) {
-      console.log(`  · ${r.startTime.toISOString()} ${r.activityType} "${r.name}"`);
-    }
-    if (rows.length > 10) console.log(`  ... 외 ${rows.length - 10} 건`);
-    return;
+  if (!dryRun) {
+    console.log(
+      `완료: 성공 ${result.ok}, 스킵 ${result.skipped} (GPS 없음/이미 fetched), 실패 ${result.failed}`,
+    );
   }
-
-  let ok = 0;
-  let skipped = 0;
-  let failed = 0;
-  for (let i = 0; i < rows.length; i++) {
-    const r = rows[i];
-    try {
-      const res = await enrichActivityWeather({
-        activityId: r.id,
-        rawData: r.rawData,
-        // Codex P2 (#269): DB.startTime 은 KST 하드코딩. 국외 활동 대응 위해 rawData.startTimeGMT 우선.
-        startTime: getActivityStartUtc(r.rawData, r.startTime),
-        duration: r.duration,
-      });
-      if (res.weatherFetched) ok++;
-      else if (res.weatherSkipped) skipped++;
-      else failed++;
-    } catch (err) {
-      failed++;
-      console.warn(
-        `  ! ${r.startTime.toISOString()} activity ${r.id} 실패: ${err instanceof Error ? err.message : String(err)}`,
-      );
-    }
-    if ((i + 1) % 20 === 0 || i === rows.length - 1) {
-      console.log(
-        `  진행 ${i + 1}/${rows.length} — 성공 ${ok}, 스킵 ${skipped}, 실패 ${failed}`,
-      );
-    }
-    await sleep(SLEEP_MS);
-  }
-
-  console.log(
-    `완료: 성공 ${ok}, 스킵 ${skipped} (GPS 없음/이미 fetched), 실패 ${failed}`,
-  );
 }
 
 main()

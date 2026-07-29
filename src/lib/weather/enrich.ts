@@ -8,6 +8,7 @@ import prisma from "@/lib/prisma";
 import {
   fetchArchiveWeather,
   getActivityStartLocation,
+  getActivityStartUtc,
   parseWristTemps,
 } from "@/lib/weather/open-meteo";
 
@@ -118,4 +119,92 @@ export async function enrichActivityWeather(
     weatherFetched: true,
     weatherSkipped: null,
   };
+}
+
+export interface RunBackfillOptions {
+  limit?: number;
+  skip?: number;
+  sleepMs?: number;
+  /** 진행 로그 출력 여부. cron 은 조용히 (false), script 는 true. */
+  verbose?: boolean;
+  /** dryRun 이면 대상 카운트만 반환, DB update 없음. */
+  dryRun?: boolean;
+}
+
+export interface RunBackfillResult {
+  candidates: number;
+  ok: number;
+  skipped: number;
+  failed: number;
+}
+
+/**
+ * weather backfill 공용 러너. scripts/backfill-weather.ts + cron.ts 에서 재사용.
+ * Codex P1 (#269): sync 루프에서 외부 API 를 뺐으므로 자동 enrichment 경로가 없어졌음.
+ * cron 은 sync 후 이 함수를 소규모 limit 으로 호출해 신규 활동을 백그라운드에서 채움.
+ */
+export async function runWeatherBackfill(
+  opts: RunBackfillOptions = {},
+): Promise<RunBackfillResult> {
+  const skip = opts.skip ?? 0;
+  const limit = opts.limit;
+  const sleepMs = opts.sleepMs ?? 200;
+  const verbose = opts.verbose ?? false;
+
+  const rows = await prisma.activity.findMany({
+    where: { weatherFetchedAt: null },
+    orderBy: { startTime: "asc" },
+    select: {
+      id: true,
+      name: true,
+      startTime: true,
+      duration: true,
+      rawData: true,
+      activityType: true,
+    },
+    ...(skip > 0 ? { skip } : {}),
+    ...(limit !== undefined ? { take: limit } : {}),
+  });
+
+  const result: RunBackfillResult = {
+    candidates: rows.length,
+    ok: 0,
+    skipped: 0,
+    failed: 0,
+  };
+
+  if (opts.dryRun) return result;
+
+  for (let i = 0; i < rows.length; i++) {
+    const r = rows[i];
+    try {
+      const res = await enrichActivityWeather({
+        activityId: r.id,
+        rawData: r.rawData,
+        // DB.startTime 은 KST 하드코딩되어 국외 활동 UTC 어긋남. rawData.startTimeGMT 우선.
+        startTime: getActivityStartUtc(r.rawData, r.startTime),
+        duration: r.duration,
+      });
+      if (res.weatherFetched) result.ok++;
+      else if (res.weatherSkipped) result.skipped++;
+      else result.failed++;
+    } catch (err) {
+      result.failed++;
+      if (verbose) {
+        console.warn(
+          `  ! ${r.startTime.toISOString()} activity ${r.id} 실패: ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
+    }
+    if (verbose && ((i + 1) % 20 === 0 || i === rows.length - 1)) {
+      console.log(
+        `  진행 ${i + 1}/${rows.length} — 성공 ${result.ok}, 스킵 ${result.skipped}, 실패 ${result.failed}`,
+      );
+    }
+    if (sleepMs > 0 && i < rows.length - 1) {
+      await new Promise((r) => setTimeout(r, sleepMs));
+    }
+  }
+
+  return result;
 }
