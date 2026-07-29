@@ -5,7 +5,8 @@
  *
  * 조건:
  *  - weatherFetchedAt IS NULL (아직 시도 안 했거나 이전 시도 실패)
- *  - running-family (activityType contains "running" or virtual_run/obstacle_run)
+ *  - 모든 activityType — running/cycling/hiking 등 GPS 있는 모든 활동 대상. 실내는
+ *    첫 시도에 no-gps sentinel 저장으로 이후 스킵 (Codex P2 후속 #269).
  *
  * 정책:
  *  - GPS 없는 실내 활동: 손목 온도만 반영, weatherFetchedAt 은 갱신 안 함
@@ -66,12 +67,10 @@ async function main() {
   const dryRun = hasFlag("--dry-run");
 
   const rows = await prisma.activity.findMany({
+    // Codex P2 후속 (#269): activityType 필터 제거 — cycling/hiking 등 GPS 있는 non-running
+    // 활동도 sync 경로에서 weather 를 안 채우므로 backfill 이 유일한 경로.
     where: {
       weatherFetchedAt: null,
-      OR: [
-        { activityType: { contains: "running" } },
-        { activityType: { in: ["virtual_run", "obstacle_run"] } },
-      ],
     },
     // Codex P2 (#269): asc 로 오래된 활동부터 처리. desc 는 최근 실패 (예: archive 지연) 가
     // --limit 배치를 매번 차지해 오래된 활동이 영영 도달하지 못하는 starvation 유발.
