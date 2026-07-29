@@ -1,6 +1,8 @@
 // #269: 활동 저장 후 손목 온도 + 외부 기상 필드 보강.
-// - sync/backfill 양쪽에서 재사용.
-// - 실패는 상위로 throw 하지 않음 (sync 흐름 보호). 상위가 try-catch 로 wrap.
+// - parseAndSaveWristTemps: 네트워크 X, sync 안전. 손목 온도만.
+// - enrichActivityWeather: 외부 API 호출 포함. backfill 스크립트 전용.
+// - Codex P1 (#269 후속): sync 경로에서 외부 API 를 호출하면 timeout × N 활동 만큼 sync 가
+//   정지 → 100 활동 = 최대 13분. sync 는 wrist 만, weather 는 backfill 에서 처리.
 
 import prisma from "@/lib/prisma";
 import {
@@ -8,6 +10,33 @@ import {
   getActivityStartLocation,
   parseWristTemps,
 } from "@/lib/weather/open-meteo";
+
+export interface WristSaveResult {
+  wristUpdated: boolean;
+}
+
+/**
+ * sync 안전 (I/O = DB update 1건, 네트워크 없음). Garmin rawData 에서 손목 온도만 파싱해 저장.
+ * 저장할 값이 없으면 no-op. weather 는 별도 backfill 스크립트가 처리.
+ */
+export async function parseAndSaveWristTemps(
+  activityId: string,
+  rawData: unknown,
+): Promise<WristSaveResult> {
+  const wrist = parseWristTemps(rawData);
+  const wristPayload: {
+    wristTempMaxC?: number | null;
+    wristTempMinC?: number | null;
+  } = {};
+  if (wrist.max !== null) wristPayload.wristTempMaxC = wrist.max;
+  if (wrist.min !== null) wristPayload.wristTempMinC = wrist.min;
+  if (Object.keys(wristPayload).length === 0) return { wristUpdated: false };
+  await prisma.activity.update({
+    where: { id: activityId },
+    data: wristPayload,
+  });
+  return { wristUpdated: true };
+}
 
 export interface EnrichOptions {
   activityId: string;
@@ -24,28 +53,18 @@ export interface EnrichResult {
   weatherSkipped: "no-gps" | "already" | null;
 }
 
+/**
+ * 손목 + 외부 기상 통합 보강. 외부 API 호출 포함 → **sync 경로에서 호출 금지** (Codex P1).
+ * backfill 스크립트 전용.
+ */
 export async function enrichActivityWeather(
   opts: EnrichOptions,
 ): Promise<EnrichResult> {
-  const wrist = parseWristTemps(opts.rawData);
-  const wristPayload: {
-    wristTempMaxC?: number | null;
-    wristTempMinC?: number | null;
-  } = {};
-  if (wrist.max !== null) wristPayload.wristTempMaxC = wrist.max;
-  if (wrist.min !== null) wristPayload.wristTempMinC = wrist.min;
-
-  // 손목 온도만 있는 경우도 우선 반영 (원본 값 존재 → 저장).
-  if (Object.keys(wristPayload).length > 0) {
-    await prisma.activity.update({
-      where: { id: opts.activityId },
-      data: wristPayload,
-    });
-  }
+  const wristResult = await parseAndSaveWristTemps(opts.activityId, opts.rawData);
 
   if (opts.alreadyFetched) {
     return {
-      wristUpdated: Object.keys(wristPayload).length > 0,
+      wristUpdated: wristResult.wristUpdated,
       weatherFetched: false,
       weatherSkipped: "already",
     };
@@ -54,13 +73,12 @@ export async function enrichActivityWeather(
   const loc = getActivityStartLocation(opts.rawData);
   if (!loc) {
     // GPS 없음 (실내). backfill 이 반복 실행돼도 다시 잡히지 않도록 sentinel 을 세팅.
-    // weatherFetchedAt 은 시도했다는 사실만 기록, weather* 값은 null 유지.
     await prisma.activity.update({
       where: { id: opts.activityId },
       data: { weatherFetchedAt: new Date(), weatherSource: "no-gps" },
     });
     return {
-      wristUpdated: Object.keys(wristPayload).length > 0,
+      wristUpdated: wristResult.wristUpdated,
       weatherFetched: false,
       weatherSkipped: "no-gps",
     };
@@ -75,7 +93,7 @@ export async function enrichActivityWeather(
   if (!sample) {
     // API 실패 — weatherFetchedAt null 유지, 다음 backfill 에서 재시도.
     return {
-      wristUpdated: Object.keys(wristPayload).length > 0,
+      wristUpdated: wristResult.wristUpdated,
       weatherFetched: false,
       weatherSkipped: null,
     };
@@ -96,7 +114,7 @@ export async function enrichActivityWeather(
   });
 
   return {
-    wristUpdated: Object.keys(wristPayload).length > 0,
+    wristUpdated: wristResult.wristUpdated,
     weatherFetched: true,
     weatherSkipped: null,
   };
