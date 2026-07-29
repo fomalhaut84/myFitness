@@ -16,6 +16,13 @@ import {
 // 저장 후 재시도 중단. 매 tick 30 건 batch 를 오래된 실패가 무한 점유하는 스타베이션 방지.
 const MAX_WEATHER_ATTEMPTS = 5;
 
+// Codex P2 (#269): fire-and-forget backfill 이 다중 프로세스/시퀀셜 syncAll 에 의해 동시 실행되면
+// 동일 row 를 각자 read → 중복 API 호출 + attempts/sentinel 갱신 race (성공 update 를 실패 sentinel
+// 이 덮어쓸 수 있음). 프로젝트 기존 패턴 (SystemAlertState atomic reserve) 로 전 프로세스 단일
+// 실행 보장. TTL 로 크래시 프로세스가 lock 을 영구 점유하지 않도록 self-heal.
+const BACKFILL_LOCK_ALERT_TYPE = "weather_backfill_lock";
+const BACKFILL_LOCK_TTL_MS = 10 * 60 * 1000; // 10분 — 30건 배치 여유
+
 export interface WristSaveResult {
   wristUpdated: boolean;
 }
@@ -192,6 +199,71 @@ export async function runWeatherBackfill(
   const sleepMs = opts.sleepMs ?? 200;
   const verbose = opts.verbose ?? false;
 
+  // Lock 획득 (cross-process). dry-run 은 read-only 라 lock 불필요.
+  const empty: RunBackfillResult = { candidates: 0, ok: 0, skipped: 0, failed: 0 };
+  const claim = opts.dryRun ? new Date() : await tryAcquireBackfillLock();
+  if (!claim) {
+    if (verbose) {
+      console.log("[weather-backfill] 다른 실행자가 lock 보유 중 — 건너뜀");
+    }
+    return empty;
+  }
+
+  try {
+    return await runWeatherBackfillLocked(opts, skip, limit, sleepMs, verbose);
+  } finally {
+    if (!opts.dryRun) {
+      await releaseBackfillLock(claim);
+    }
+  }
+}
+
+/**
+ * SystemAlertState 원자적 예약 패턴 (project standard). 성공 시 우리가 세팅한 lastAlertAt 반환.
+ * TTL 초과된 stale lock 은 다른 프로세스가 이어받을 수 있음 (self-heal). 첫 실행 (row 없음) 은
+ * INSERT + unique 위반 방어 (동시 첫 실행) — 실패 시 재조회.
+ */
+async function tryAcquireBackfillLock(): Promise<Date | null> {
+  const now = new Date();
+  const cutoff = new Date(now.getTime() - BACKFILL_LOCK_TTL_MS);
+  // 1) 기존 row 갱신 시도 (TTL 만료된 lock 만 재획득).
+  const updated = await prisma.systemAlertState.updateMany({
+    where: { alertType: BACKFILL_LOCK_ALERT_TYPE, lastAlertAt: { lt: cutoff } },
+    data: { lastAlertAt: now },
+  });
+  if (updated.count === 1) return now;
+  // 2) row 없으면 INSERT 시도. 동시 INSERT 는 unique 위반 → null 반환 (누군가 이미 가짐).
+  try {
+    await prisma.systemAlertState.create({
+      data: { alertType: BACKFILL_LOCK_ALERT_TYPE, lastAlertAt: now },
+    });
+    return now;
+  } catch {
+    return null;
+  }
+}
+
+/** 우리가 세팅한 lastAlertAt 이 그대로 유지되고 있을 때만 (다른 프로세스가 재획득 안 했을 때) 해제. */
+async function releaseBackfillLock(claim: Date): Promise<void> {
+  try {
+    await prisma.systemAlertState.updateMany({
+      where: { alertType: BACKFILL_LOCK_ALERT_TYPE, lastAlertAt: claim },
+      data: { lastAlertAt: new Date(0) },
+    });
+  } catch (err) {
+    console.warn(
+      `[weather-backfill] lock 해제 실패: ${err instanceof Error ? err.message : String(err)}`,
+    );
+  }
+}
+
+async function runWeatherBackfillLocked(
+  opts: RunBackfillOptions,
+  skip: number,
+  limit: number | undefined,
+  sleepMs: number,
+  verbose: boolean,
+): Promise<RunBackfillResult> {
   const rows = await prisma.activity.findMany({
     where: { weatherFetchedAt: null },
     // #269 후속 (Codex P2): attempts 오름차순 (nulls first) — 미시도 활동이 우선.
