@@ -9,6 +9,7 @@ interface RunRow {
   startTime: Date;
   distance: number;
   avgPace: number;
+  routeTag: string | null;
 }
 
 interface PacePoint {
@@ -74,16 +75,17 @@ export async function getPaceProgression(args: { windowDays?: number } = {}) {
       distance: { not: null },
       avgPace: { not: null },
     },
-    select: { startTime: true, distance: true, avgPace: true, activityType: true },
+    // #267: routeTag 도 추출 (AI 가 코스별 진전 상황 인식)
+    select: { startTime: true, distance: true, avgPace: true, activityType: true, routeTag: true },
     orderBy: { startTime: "asc" },
   });
 
   const runs: RunRow[] = rows
     .filter(
-      (r): r is { startTime: Date; distance: number; avgPace: number; activityType: string } =>
+      (r): r is { startTime: Date; distance: number; avgPace: number; activityType: string; routeTag: string | null } =>
         r.distance !== null && r.avgPace !== null
     )
-    .map((r) => ({ startTime: r.startTime, distance: r.distance, avgPace: r.avgPace }));
+    .map((r) => ({ startTime: r.startTime, distance: r.distance, avgPace: r.avgPace, routeTag: r.routeTag }));
 
   const grouped = new Map<Bucket, RunRow[]>();
   for (const r of runs) {
@@ -106,6 +108,7 @@ export async function getPaceProgression(args: { windowDays?: number } = {}) {
     paceSecPerKm: Math.round(r.avgPace),
     paceFormatted: formatPace(r.avgPace),
     bucket: bucketOf(r.distance),
+    routeTag: r.routeTag,
   }));
 
   const payload = {

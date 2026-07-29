@@ -45,6 +45,8 @@ export async function getWeightLossStatus() {
           calories: true,
           intensityLabel: true,
           estimatedZone: true,
+          // #267: 코스 태그도 노출 (AI 가 코스별 반복 러닝 인식)
+          routeTag: true,
         },
         orderBy: { startTime: "desc" },
       }),
@@ -186,6 +188,7 @@ export async function getWeightLossStatus() {
         date: a.startTime.toISOString().slice(0, 10),
         label: a.intensityLabel,
         zone: a.estimatedZone,
+        routeTag: a.routeTag,
       })),
     },
     warnings,
