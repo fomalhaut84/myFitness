@@ -182,10 +182,13 @@ export async function fetchArchiveWeather(
       const status = response.status;
       const text = await response.text().catch(() => "");
       console.warn(`[weather] HTTP ${status} — ${text}`);
-      // 4xx = 요청 잘못 (invalid coord, date out of range) — 재시도 무의미.
-      // 5xx = 서버 오류 — 재시도 가능.
+      // 5xx = 서버 오류 → transient. 4xx 중 다음은 rate-limit/재시도 케이스 → transient:
+      //   408 Request Timeout, 425 Too Early, 429 Too Many Requests. 나머지 4xx 는 terminal.
+      // Codex P2 (#269): 429 는 특히 rate-limit 이므로 terminal 로 잘못 저장하면 backfill 이
+      // 영영 제외 → 스타베이션.
+      const isTransient4xx = status === 408 || status === 425 || status === 429;
       const kind: "terminal" | "transient" =
-        status >= 400 && status < 500 ? "terminal" : "transient";
+        status >= 500 || isTransient4xx ? "transient" : "terminal";
       return { kind, reason: `http-${status}` };
     }
     body = (await response.json()) as ArchiveResponse;
