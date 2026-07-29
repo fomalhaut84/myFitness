@@ -120,6 +120,7 @@ export async function getActivitySplits(args: { activityId: string }) {
         startTime: true,
         distance: true,
         duration: true,
+        routeTag: true,
       },
     });
   } catch (err) {
@@ -171,6 +172,7 @@ export async function getActivitySplits(args: { activityId: string }) {
     garminId: activity.garminId.toString(),
     activityType: activity.activityType,
     name: activity.name,
+    routeTag: activity.routeTag,
     startTime: activity.startTime.toISOString(),
     totalDistanceKm:
       activity.distance !== null

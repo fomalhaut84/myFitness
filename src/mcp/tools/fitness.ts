@@ -42,6 +42,8 @@ export async function getActivities(args: { days?: number; type?: string }) {
       estimatedZone: true,
       intensityLabel: true,
       intensityScore: true,
+      // #267: 사용자 커스텀 코스명 태그 (AI 가 태그로 활동 그룹 인식)
+      routeTag: true,
     },
   });
 
