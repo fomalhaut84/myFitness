@@ -4,6 +4,29 @@
 //   (past_days=... 지원, 92일 이내 과거 커버) 로 fallback. Codex P1 (#269) 대응.
 // - 에러는 상위에서 관용 처리 — sync 는 실패해도 계속 진행 (activity 자체는 저장).
 
+import { Agent, setGlobalDispatcher, buildConnector } from "undici";
+import { setDefaultResultOrder } from "node:dns";
+
+// #269 후속: 일부 Open-Meteo 호스트 (archive-api) 는 AAAA (IPv6) 도 응답하지만 우리 서버가
+// IPv6 outbound 안 되면 undici 가 IPv6 로 시도해 "fetch failed" (실측 441/484 실패). NODE_OPTIONS
+// 로 dns-result-order 지정은 tsx / undici DNS 캐시 등 이유로 반드시 반영되지 않아, 모듈 로드
+// 시점에 (a) Node DNS 기본을 IPv4 우선 (b) undici global dispatcher connect.family=4 로 이중 강제.
+// 우리 앱은 외부 API 호출 시 IPv6 필수 케이스 없음.
+try {
+  setDefaultResultOrder("ipv4first");
+} catch {
+  // Node < 18.13 등 미지원 환경 — 무시.
+}
+try {
+  // buildConnector 는 factory — TcpNetConnectOpts 의 host/port 는 connect 시점에 undici 가
+  // 주입한다. 정적 옵션은 family/socketPath 등만 부분 지정 가능하지만 TS 타입은 전체
+  // TcpNetConnectOpts 를 요구하므로 캐스팅.
+  const connect = buildConnector({ family: 4 } as buildConnector.BuildOptions);
+  setGlobalDispatcher(new Agent({ connect }));
+} catch {
+  // undici 미탑재 (매우 오래된 Node) — 무시.
+}
+
 const ARCHIVE_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive";
 const FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
 // Archive publish 지연 안전 마진 (실측 ~5일).
