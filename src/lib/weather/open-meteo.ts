@@ -1,11 +1,21 @@
-// #269: Open-Meteo Archive API 어댑터. 활동 시작 시점의 실제 기상 (온도/체감/습도/풍속/강수/날씨코드) 조회.
+// #269: Open-Meteo 기상 어댑터. 활동 시작 시점의 실제 기상 (온도/체감/습도/풍속/강수/날씨코드) 조회.
 // - 인증 불필요, 무료.
-// - Archive endpoint 는 과거 데이터. 실시간 예보와는 다름.
-// - 활동 시간대 커버 강수량은 시간별 배열 합산 (활동 시작~끝 시간 인덱스 범위).
+// - Archive endpoint 는 관측 데이터 저장에 ~5일 지연 존재. 그 이내 활동은 Forecast endpoint
+//   (past_days=... 지원, 92일 이내 과거 커버) 로 fallback. Codex P1 (#269) 대응.
 // - 에러는 상위에서 관용 처리 — sync 는 실패해도 계속 진행 (activity 자체는 저장).
 
 const ARCHIVE_ENDPOINT = "https://archive-api.open-meteo.com/v1/archive";
+const FORECAST_ENDPOINT = "https://api.open-meteo.com/v1/forecast";
+// Archive publish 지연 안전 마진 (실측 ~5일).
+const ARCHIVE_MIN_AGE_MS = 7 * 24 * 3600 * 1000;
 const DEFAULT_TIMEOUT_MS = 8000;
+
+/** 활동 시작 시각이 Archive 커버 가능한지 (관측 지연 반영). 오래됐으면 archive, 최근이면 forecast. */
+function pickEndpoint(startTimeUtc: Date, nowMs: number): string {
+  return nowMs - startTimeUtc.getTime() >= ARCHIVE_MIN_AGE_MS
+    ? ARCHIVE_ENDPOINT
+    : FORECAST_ENDPOINT;
+}
 
 export interface WeatherSample {
   tempC: number | null;
@@ -52,8 +62,10 @@ function pickAt(values: (number | null)[] | undefined, index: number): number | 
 
 /**
  * Codex P2: 활동이 걸친 각 시간 버킷을 실제 겹치는 초 비율로 가중해 강수량 합계.
- * 이전 sumAt 은 활동이 partial 하게 걸친 시간대에도 시간 전체의 mm 를 더해 과대 계상 +
- * 정각에 끝나는 활동에 다음 버킷까지 포함 (inclusive) 되는 문제.
+ * Open-Meteo hourly.precipitation[t] 는 **preceding hour 합계** — 즉 timestamp t 는
+ * `[t-1h, t)` 구간의 강수량. Codex 추가 P2 (#269): 이전 코드는 t 를 `[t, t+1h)` 로
+ * 취급해 강수를 1시간씩 앞당겨 기록. 예: 09:15-09:45 활동 → 09:00 버킷 (08:00-09:00) 이
+ * 아니라 10:00 버킷 (09:00-10:00) 이 실 노출 강수.
  */
 function precipProrated(
   hourly: ArchiveHourly,
@@ -71,9 +83,10 @@ function precipProrated(
     const t = times[i];
     if (!t) continue;
     // Open-Meteo hourly.time 은 "YYYY-MM-DDTHH:MM" (초·zone 없음). UTC 로 명시.
-    const hourStart = Date.parse(t + ":00Z");
-    if (!Number.isFinite(hourStart)) continue;
-    const hourEnd = hourStart + 3600 * 1000;
+    // precipitation[i] 는 [hourEnd - 1h, hourEnd) 구간의 합.
+    const hourEnd = Date.parse(t + ":00Z");
+    if (!Number.isFinite(hourEnd)) continue;
+    const hourStart = hourEnd - 3600 * 1000;
     if (hourEnd <= startMs || hourStart >= endMs) continue;
     const overlapStart = Math.max(startMs, hourStart);
     const overlapEnd = Math.min(endMs, hourEnd);
@@ -91,11 +104,13 @@ export interface FetchArchiveOptions {
   timeoutMs?: number;
   /** injection point for testing */
   fetchImpl?: typeof fetch;
+  /** now(). 테스트에서 시각 고정용. */
+  now?: number;
 }
 
 /**
  * 특정 GPS + 활동 시간대의 기상 요약을 반환. 실패 시 null (에러 throw 안 함 — 상위 sync 안전).
- * duration 은 초 단위. start 시각 (UTC) 부터 duration 만큼 커버하는 hourly 배열을 합산.
+ * duration 은 초 단위. Archive publish 지연 ~5일 이내 활동은 Forecast endpoint 로 fallback.
  */
 export async function fetchArchiveWeather(
   lat: number,
@@ -111,8 +126,10 @@ export async function fetchArchiveWeather(
   const startDate = toIsoDate(startTimeUtc);
   const endDate = toIsoDate(end);
   const startHourKey = hourKeyUtc(startTimeUtc);
+  const nowMs = opts.now ?? Date.now();
+  const endpoint = pickEndpoint(startTimeUtc, nowMs);
 
-  const url = new URL(ARCHIVE_ENDPOINT);
+  const url = new URL(endpoint);
   url.searchParams.set("latitude", lat.toString());
   url.searchParams.set("longitude", lng.toString());
   url.searchParams.set("start_date", startDate);

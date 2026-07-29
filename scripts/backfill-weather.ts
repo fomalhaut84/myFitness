@@ -46,7 +46,9 @@ async function main() {
         { activityType: { in: ["virtual_run", "obstacle_run"] } },
       ],
     },
-    orderBy: { startTime: "desc" },
+    // Codex P2 (#269): asc 로 오래된 활동부터 처리. desc 는 최근 실패 (예: archive 지연) 가
+    // --limit 배치를 매번 차지해 오래된 활동이 영영 도달하지 못하는 starvation 유발.
+    orderBy: { startTime: "asc" },
     select: {
       id: true,
       name: true,
