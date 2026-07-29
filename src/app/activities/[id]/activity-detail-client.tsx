@@ -40,6 +40,15 @@ interface ActivityData {
   intensityLabel: string | null;
   // #261: 사용자 커스텀 코스명 태그
   routeTag: string | null;
+  // #269: 손목 온도 (Garmin) + 외부 기상 (Open-Meteo)
+  wristTempMaxC: number | null;
+  wristTempMinC: number | null;
+  weatherTempC: number | null;
+  weatherApparentTempC: number | null;
+  weatherHumidityPct: number | null;
+  weatherWindMs: number | null;
+  weatherPrecipMm: number | null;
+  weatherCode: number | null;
 }
 
 interface SimilarActivity {
@@ -172,6 +181,9 @@ export default function ActivityDetailClient({
           <SplitChart activityId={activity.id} />
         </div>
       )}
+
+      {/* #269: 환경 (외부 기상 우선, 손목 온도 보조). 둘 다 null 이면 섹션 자체 숨김. */}
+      <EnvironmentSection activity={activity} />
 
       {/* #261: 같은 코스 활동 비교 (러닝 계열만, GPS 매칭 또는 routeTag).
           Codex P2: `.includes("running")` 는 virtual_run/obstacle_run 을 놓치므로 공용 predicate 사용. */}
@@ -605,6 +617,107 @@ function RouteTagEditor({
       {error && (
         <span className="text-[11px] text-red-400 w-full mt-1">{error}</span>
       )}
+    </div>
+  );
+}
+
+// #269: WMO weather interpretation code → 한글 라벨 요약.
+// https://open-meteo.com/en/docs 참조. 세부 분류는 묶어서 간결하게.
+function wmoLabel(code: number | null): string | null {
+  if (code === null) return null;
+  if (code === 0) return "맑음";
+  if (code >= 1 && code <= 3) return "구름";
+  if (code === 45 || code === 48) return "안개";
+  if (code >= 51 && code <= 57) return "이슬비";
+  if (code >= 61 && code <= 67) return "비";
+  if (code >= 71 && code <= 77) return "눈";
+  if (code >= 80 && code <= 82) return "소나기";
+  if (code >= 85 && code <= 86) return "눈 소나기";
+  if (code >= 95 && code <= 99) return "뇌우";
+  return null;
+}
+
+function EnvironmentSection({ activity }: { activity: ActivityData }) {
+  const hasWeather =
+    activity.weatherTempC !== null ||
+    activity.weatherApparentTempC !== null ||
+    activity.weatherHumidityPct !== null ||
+    activity.weatherWindMs !== null ||
+    activity.weatherPrecipMm !== null ||
+    activity.weatherCode !== null;
+  const hasWrist =
+    activity.wristTempMaxC !== null || activity.wristTempMinC !== null;
+
+  if (!hasWeather && !hasWrist) return null;
+
+  const wCondition = wmoLabel(activity.weatherCode);
+
+  return (
+    <div className="mt-6">
+      <h2 className="text-lg font-semibold mb-3">환경</h2>
+      <div className="bg-card border border-border rounded-xl p-5 space-y-3">
+        {hasWeather && (
+          <div>
+            <div className="text-[11px] text-dim tracking-wider uppercase mb-2">
+              기상 (Open-Meteo)
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] font-[family-name:var(--font-geist-mono)]">
+              {activity.weatherTempC !== null && (
+                <span>
+                  {activity.weatherTempC.toFixed(1)}
+                  <span className="text-dim ml-0.5">°C</span>
+                </span>
+              )}
+              {activity.weatherApparentTempC !== null && (
+                <span className="text-sub">
+                  체감 {activity.weatherApparentTempC.toFixed(1)}
+                  <span className="text-dim ml-0.5">°C</span>
+                </span>
+              )}
+              {activity.weatherHumidityPct !== null && (
+                <span>
+                  습도 {activity.weatherHumidityPct}
+                  <span className="text-dim ml-0.5">%</span>
+                </span>
+              )}
+              {activity.weatherWindMs !== null && (
+                <span>
+                  바람 {activity.weatherWindMs.toFixed(1)}
+                  <span className="text-dim ml-0.5">m/s</span>
+                </span>
+              )}
+              {activity.weatherPrecipMm !== null && (
+                <span>
+                  강수 {activity.weatherPrecipMm.toFixed(1)}
+                  <span className="text-dim ml-0.5">mm</span>
+                </span>
+              )}
+              {wCondition && <span className="text-accent">{wCondition}</span>}
+            </div>
+          </div>
+        )}
+        {hasWrist && (
+          <div>
+            <div className="text-[11px] text-dim tracking-wider uppercase mb-2">
+              손목 센서 (Garmin, 참고용)
+            </div>
+            <div className="flex flex-wrap gap-x-5 gap-y-1 text-[13px] font-[family-name:var(--font-geist-mono)] text-sub">
+              {activity.wristTempMaxC !== null && (
+                <span>
+                  최고 {activity.wristTempMaxC.toFixed(1)}
+                  <span className="text-dim ml-0.5">°C</span>
+                </span>
+              )}
+              {activity.wristTempMinC !== null && (
+                <span>
+                  최저 {activity.wristTempMinC.toFixed(1)}
+                  <span className="text-dim ml-0.5">°C</span>
+                </span>
+              )}
+            </div>
+          </div>
+        )}
+      </div>
     </div>
   );
 }

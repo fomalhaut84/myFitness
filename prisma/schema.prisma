@@ -105,6 +105,18 @@ model Activity {
   intensityLabel  String?             // recovery|easy|tempo|threshold|interval|max
   // #261: 사용자 커스텀 코스명 태그. 같은 GPS/거리 클러스터 + 같은 태그 = 같은 코스로 취급.
   routeTag        String?
+  // #269: 손목 측정 온도 (Garmin rawData 파싱). 햇빛/의류 영향으로 실제 기상과 다를 수 있음.
+  wristTempMaxC        Float?
+  wristTempMinC        Float?
+  // #269: 외부 기상 실측치 (Open-Meteo, 활동 시작 시점).
+  weatherTempC         Float?
+  weatherApparentTempC Float?
+  weatherHumidityPct   Int?
+  weatherWindMs        Float?
+  weatherPrecipMm      Float?              // 활동 duration 커버 시간대 누적 (mm)
+  weatherCode          Int?                // WMO weather interpretation code
+  weatherFetchedAt     DateTime?           // API 호출 성공 시각 — null 이면 backfill 대상
+  weatherSource        String?             // 예: "open-meteo"
   rawData         Json?
   createdAt       DateTime @default(now())
 

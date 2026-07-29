@@ -44,6 +44,15 @@ export async function getActivities(args: { days?: number; type?: string }) {
       intensityScore: true,
       // #267: 사용자 커스텀 코스명 태그 (AI 가 태그로 활동 그룹 인식)
       routeTag: true,
+      // #269: 손목 온도 (Garmin, 참고용) + 외부 기상 (Open-Meteo, 활동 시작 시점)
+      wristTempMaxC: true,
+      wristTempMinC: true,
+      weatherTempC: true,
+      weatherApparentTempC: true,
+      weatherHumidityPct: true,
+      weatherWindMs: true,
+      weatherPrecipMm: true,
+      weatherCode: true,
     },
   });
 
