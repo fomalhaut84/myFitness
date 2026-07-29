@@ -11,6 +11,11 @@ import { syncHeartRate } from "./fetchers/heart-rate";
 import { syncBodyComposition } from "./fetchers/body-composition";
 import { syncBloodPressure } from "./fetchers/blood-pressure";
 import { syncUserProfile } from "./fetchers/user-profile";
+import { runWeatherBackfill } from "@/lib/weather/enrich";
+
+// #269 Codex P2: syncAll 후 weather 자동 enrich. cron 이외 caller (daily/weekly 리포트 pre-sync
+// 등) 도 신규 활동이 즉시 weather 채워지도록. 각 호출 소규모 배치 (30 건) — 리포트 지연 방지.
+const WEATHER_BACKFILL_LIMIT_PER_SYNC = 30;
 
 const INITIAL_HISTORY_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
@@ -360,6 +365,21 @@ export async function syncAll(
       );
       // 하나 실패해도 나머지 진행
     }
+  }
+
+  // #269: weather 자동 enrich. cron/report pre-sync 등 모든 syncAll caller 에서 신규 활동이
+  // 즉시 채워지도록. 외부 API 실패해도 sync 결과 자체는 성공 유지.
+  try {
+    const wr = await runWeatherBackfill({
+      limit: WEATHER_BACKFILL_LIMIT_PER_SYNC,
+    });
+    if (wr.candidates > 0) {
+      console.log(
+        `[sync] weather backfill: 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
+      );
+    }
+  } catch (weatherErr) {
+    console.error("[sync] weather backfill 에러:", weatherErr);
   }
 
   return results;

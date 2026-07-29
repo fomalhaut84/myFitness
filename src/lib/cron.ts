@@ -1,10 +1,6 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
-import { runWeatherBackfill } from "@/lib/weather/enrich";
-
-// #269 Codex P1: sync 루프에서 외부 API 를 분리했으므로 자동 enrichment 경로 필요.
-// 매 sync 완료 후 소규모 배치로 처리 → 신규 GPS 활동이 다음 sync 사이클 안에 채워짐.
-const WEATHER_BACKFILL_LIMIT_PER_TICK = 30;
+// #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
 
 let isSyncing = false;
 let isRegistered = false;
@@ -41,21 +37,7 @@ export function startCronJobs() {
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;
         console.log(`[cron] 싱크 완료: ${total}건, 실패 ${failed}건`);
-
-        // #269 Codex P1: sync 후 weather backfill 소규모 배치. limit 만큼만 처리해
-        // 다음 sync tick 을 지연시키지 않음. 실패는 다음 tick 에서 재시도.
-        try {
-          const wr = await runWeatherBackfill({
-            limit: WEATHER_BACKFILL_LIMIT_PER_TICK,
-          });
-          if (wr.candidates > 0) {
-            console.log(
-              `[cron] weather backfill: 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
-            );
-          }
-        } catch (weatherErr) {
-          console.error("[cron] weather backfill 에러:", weatherErr);
-        }
+        // weather 자동 enrich 는 syncAll 내부에서 실행됨 (#269 후속).
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);
       } finally {
