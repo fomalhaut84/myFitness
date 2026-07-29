@@ -44,38 +44,47 @@ function hourKeyUtc(d: Date): string {
   return iso.slice(0, 13) + ":00";
 }
 
-/** 두 Date 사이 (start ≤ t ≤ end) 를 커버하는 hour key 배열. inclusive. */
-function hourKeysCovering(start: Date, end: Date): string[] {
-  const keys: string[] = [];
-  const cursor = new Date(start);
-  cursor.setUTCMinutes(0, 0, 0);
-  const stop = new Date(end);
-  stop.setUTCMinutes(0, 0, 0);
-  while (cursor.getTime() <= stop.getTime()) {
-    keys.push(hourKeyUtc(cursor));
-    cursor.setUTCHours(cursor.getUTCHours() + 1);
-  }
-  return keys;
-}
-
-function sumAt(values: (number | null)[] | undefined, indices: number[]): number | null {
-  if (!values) return null;
-  let sum = 0;
-  let count = 0;
-  for (const i of indices) {
-    const v = values[i];
-    if (typeof v === "number" && Number.isFinite(v)) {
-      sum += v;
-      count += 1;
-    }
-  }
-  return count > 0 ? sum : null;
-}
-
 function pickAt(values: (number | null)[] | undefined, index: number): number | null {
   if (!values) return null;
   const v = values[index];
   return typeof v === "number" && Number.isFinite(v) ? v : null;
+}
+
+/**
+ * Codex P2: 활동이 걸친 각 시간 버킷을 실제 겹치는 초 비율로 가중해 강수량 합계.
+ * 이전 sumAt 은 활동이 partial 하게 걸친 시간대에도 시간 전체의 mm 를 더해 과대 계상 +
+ * 정각에 끝나는 활동에 다음 버킷까지 포함 (inclusive) 되는 문제.
+ */
+function precipProrated(
+  hourly: ArchiveHourly,
+  start: Date,
+  end: Date,
+): number | null {
+  const precip = hourly.precipitation;
+  const times = hourly.time;
+  if (!precip || !times || times.length === 0) return null;
+  const startMs = start.getTime();
+  const endMs = end.getTime();
+  let total = 0;
+  let any = false;
+  for (let i = 0; i < times.length; i++) {
+    const t = times[i];
+    if (!t) continue;
+    // Open-Meteo hourly.time 은 "YYYY-MM-DDTHH:MM" (초·zone 없음). UTC 로 명시.
+    const hourStart = Date.parse(t + ":00Z");
+    if (!Number.isFinite(hourStart)) continue;
+    const hourEnd = hourStart + 3600 * 1000;
+    if (hourEnd <= startMs || hourStart >= endMs) continue;
+    const overlapStart = Math.max(startMs, hourStart);
+    const overlapEnd = Math.min(endMs, hourEnd);
+    const weight = (overlapEnd - overlapStart) / (3600 * 1000);
+    const v = precip[i];
+    if (typeof v === "number" && Number.isFinite(v)) {
+      total += v * weight;
+      any = true;
+    }
+  }
+  return any ? total : null;
 }
 
 export interface FetchArchiveOptions {
@@ -126,27 +135,22 @@ export async function fetchArchiveWeather(
   const timeout = setTimeout(() => controller.abort(), opts.timeoutMs ?? DEFAULT_TIMEOUT_MS);
   const doFetch = opts.fetchImpl ?? fetch;
 
+  // Codex P2: fetch 응답 헤더 수신 후 body 스트리밍이 stall 하면 이전 코드는 timeout 을
+  // 이미 clear 해 무한 대기. body 파싱까지 같은 try/finally 로 감싸 abort signal 유효.
   let response: Response;
+  let body: ArchiveResponse;
   try {
     response = await doFetch(url.toString(), { signal: controller.signal });
+    if (!response.ok) {
+      console.warn(`[weather] HTTP ${response.status} — ${await response.text().catch(() => "")}`);
+      return null;
+    }
+    body = (await response.json()) as ArchiveResponse;
   } catch (err) {
-    console.warn(`[weather] fetch 실패 (network/timeout): ${err instanceof Error ? err.message : String(err)}`);
+    console.warn(`[weather] fetch 실패 (network/timeout/parse): ${err instanceof Error ? err.message : String(err)}`);
     return null;
   } finally {
     clearTimeout(timeout);
-  }
-
-  if (!response.ok) {
-    console.warn(`[weather] HTTP ${response.status} — ${await response.text().catch(() => "")}`);
-    return null;
-  }
-
-  let body: ArchiveResponse;
-  try {
-    body = (await response.json()) as ArchiveResponse;
-  } catch (err) {
-    console.warn(`[weather] JSON parse 실패: ${err instanceof Error ? err.message : String(err)}`);
-    return null;
   }
 
   if (body.error) {
@@ -164,26 +168,33 @@ export async function fetchArchiveWeather(
     return null;
   }
 
-  const coverKeys = hourKeysCovering(startTimeUtc, end);
-  const coverIndices = coverKeys
-    .map((k) => times.indexOf(k))
-    .filter((i) => i >= 0);
-
-  return {
+  const humidityRaw = pickAt(hourly.relative_humidity_2m, startIndex);
+  const weatherCodeRaw = pickAt(hourly.weather_code, startIndex);
+  const sample: WeatherSample = {
     tempC: pickAt(hourly.temperature_2m, startIndex),
     apparentTempC: pickAt(hourly.apparent_temperature, startIndex),
-    humidityPct: (() => {
-      const v = pickAt(hourly.relative_humidity_2m, startIndex);
-      return v !== null ? Math.round(v) : null;
-    })(),
+    humidityPct: humidityRaw !== null ? Math.round(humidityRaw) : null,
     windMs: pickAt(hourly.wind_speed_10m, startIndex),
-    precipMm: sumAt(hourly.precipitation, coverIndices.length > 0 ? coverIndices : [startIndex]),
-    weatherCode: (() => {
-      const v = pickAt(hourly.weather_code, startIndex);
-      return v !== null ? Math.round(v) : null;
-    })(),
+    precipMm: precipProrated(hourly, startTimeUtc, end),
+    weatherCode: weatherCodeRaw !== null ? Math.round(weatherCodeRaw) : null,
     source: "open-meteo",
   };
+
+  // Codex P2: 응답은 유효하지만 모든 측정치가 null 인 경우 (배열 자체 누락 등) → fetch 실패로
+  // 취급. 이대로 저장하면 weatherFetchedAt 이 세팅되어 backfill 이 영영 재시도하지 않음.
+  const hasAny =
+    sample.tempC !== null ||
+    sample.apparentTempC !== null ||
+    sample.humidityPct !== null ||
+    sample.windMs !== null ||
+    sample.precipMm !== null ||
+    sample.weatherCode !== null;
+  if (!hasAny) {
+    console.warn(`[weather] 응답에 유효 측정치 없음 — retryable 로 취급`);
+    return null;
+  }
+
+  return sample;
 }
 
 /** 손목 온도 파싱 — Garmin activity rawData 의 maxTemperature/minTemperature. */
@@ -199,6 +210,25 @@ export function parseWristTemps(rawData: unknown): {
   const max = typeof raw.maxTemperature === "number" && Number.isFinite(raw.maxTemperature) ? raw.maxTemperature : null;
   const min = typeof raw.minTemperature === "number" && Number.isFinite(raw.minTemperature) ? raw.minTemperature : null;
   return { max, min };
+}
+
+/**
+ * 활동 rawData 에서 UTC 시작 시각 추출 (Garmin `startTimeGMT` = "YYYY-MM-DD HH:mm:ss" naive).
+ * Codex P2 (#269): DB.startTime 은 KST(+09:00) 로 하드코딩 저장돼 국외 활동의 UTC 가 어긋나므로,
+ * 기상 조회에는 반드시 rawData 의 GMT 값을 우선 사용.
+ */
+export function getActivityStartUtc(
+  rawData: unknown,
+  fallback: Date,
+): Date {
+  if (rawData && typeof rawData === "object") {
+    const raw = rawData as { startTimeGMT?: string | null };
+    if (typeof raw.startTimeGMT === "string" && raw.startTimeGMT.length > 0) {
+      const d = new Date(`${raw.startTimeGMT.replace(" ", "T")}+00:00`);
+      if (Number.isFinite(d.getTime())) return d;
+    }
+  }
+  return fallback;
 }
 
 /** 활동 rawData 에서 GPS 시작점 (Garmin: startLatitude/startLongitude). 실내 러닝은 null. */

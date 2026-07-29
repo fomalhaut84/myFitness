@@ -15,6 +15,7 @@
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
 import { enrichActivityWeather } from "../src/lib/weather/enrich";
+import { getActivityStartUtc } from "../src/lib/weather/open-meteo";
 
 const SLEEP_MS = 200;
 
@@ -78,7 +79,8 @@ async function main() {
       const res = await enrichActivityWeather({
         activityId: r.id,
         rawData: r.rawData,
-        startTime: r.startTime,
+        // Codex P2 (#269): DB.startTime 은 KST 하드코딩. 국외 활동 대응 위해 rawData.startTimeGMT 우선.
+        startTime: getActivityStartUtc(r.rawData, r.startTime),
         duration: r.duration,
       });
       if (res.weatherFetched) ok++;
