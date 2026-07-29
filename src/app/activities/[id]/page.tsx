@@ -47,6 +47,15 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       intensityLabel: true,
       // #261: 사용자 커스텀 코스명 태그
       routeTag: true,
+      // #269: 손목 온도 (Garmin) + 외부 기상 (Open-Meteo)
+      wristTempMaxC: true,
+      wristTempMinC: true,
+      weatherTempC: true,
+      weatherApparentTempC: true,
+      weatherHumidityPct: true,
+      weatherWindMs: true,
+      weatherPrecipMm: true,
+      weatherCode: true,
     },
   });
 

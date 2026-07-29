@@ -3,6 +3,8 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
 import { withRateLimit } from "../utils";
+import { enrichActivityWeather } from "@/lib/weather/enrich";
+import { getActivityStartUtc } from "@/lib/weather/open-meteo";
 
 const PAGE_SIZE = 20;
 
@@ -37,6 +39,9 @@ export async function syncActivities(
       const activityDate = a.startTimeLocal
         ? new Date(`${a.startTimeLocal.replace(" ", "T")}+09:00`)
         : new Date(`${a.startTimeGMT.replace(" ", "T")}+00:00`);
+      // Codex P2 (#269): 기상 조회는 실제 UTC 로. activityDate 는 KST 로 하드코딩되어
+      // 국외 활동에 대해 UTC 시각이 어긋남. rawData 의 startTimeGMT 우선.
+      const weatherStartUtc = getActivityStartUtc(a, activityDate);
 
       if (activityDate < startDate) {
         hasMore = false;
@@ -109,11 +114,28 @@ export async function syncActivities(
             intensityLabel: null,
           };
 
-      await prisma.activity.upsert({
+      const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
         update: { ...data, ...intensityData },
         create: { garminId: BigInt(a.activityId), ...data, ...intensityDataCreate },
+        select: { id: true, weatherFetchedAt: true },
       });
+
+      // #269: 손목 온도 파싱 + 외부 기상 fetch. 실패해도 sync 자체는 성공 유지.
+      // weather 는 이미 저장된 활동이면 재fetch 안 함 (weatherFetchedAt 기준).
+      try {
+        await enrichActivityWeather({
+          activityId: saved.id,
+          rawData: raw,
+          startTime: weatherStartUtc,
+          duration: data.duration,
+          alreadyFetched: saved.weatherFetchedAt !== null,
+        });
+      } catch (err) {
+        console.warn(
+          `[activities] weather enrich 실패 (activity ${saved.id}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
 
       synced++;
     }
