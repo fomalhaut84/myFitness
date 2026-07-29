@@ -367,20 +367,20 @@ export async function syncAll(
     }
   }
 
-  // #269: weather 자동 enrich. cron/report pre-sync 등 모든 syncAll caller 에서 신규 활동이
-  // 즉시 채워지도록. 외부 API 실패해도 sync 결과 자체는 성공 유지.
-  try {
-    const wr = await runWeatherBackfill({
-      limit: WEATHER_BACKFILL_LIMIT_PER_SYNC,
+  // #269 후속 Codex P1: weather backfill 은 fire-and-forget. await 하면 30 활동 × 8s timeout =
+  // 최대 4분 syncAll 지연 → 리포트 pipeline 정지 복귀. 백그라운드 실행으로 신규 활동이
+  // 나중에 채워짐 (transient 실패는 attempts 카운터 로테이션으로 스타베이션 없음).
+  void runWeatherBackfill({ limit: WEATHER_BACKFILL_LIMIT_PER_SYNC })
+    .then((wr) => {
+      if (wr.candidates > 0) {
+        console.log(
+          `[sync] weather backfill (bg): 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
+        );
+      }
+    })
+    .catch((weatherErr) => {
+      console.error("[sync] weather backfill (bg) 에러:", weatherErr);
     });
-    if (wr.candidates > 0) {
-      console.log(
-        `[sync] weather backfill: 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
-      );
-    }
-  } catch (weatherErr) {
-    console.error("[sync] weather backfill 에러:", weatherErr);
-  }
 
   return results;
 }

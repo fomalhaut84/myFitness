@@ -12,6 +12,10 @@ import {
   parseWristTemps,
 } from "@/lib/weather/open-meteo";
 
+// #269 후속: transient 실패 (timeout, 429, all-null 등) 를 이 횟수 초과로 축적하면 sentinel
+// 저장 후 재시도 중단. 매 tick 30 건 batch 를 오래된 실패가 무한 점유하는 스타베이션 방지.
+const MAX_WEATHER_ATTEMPTS = 5;
+
 export interface WristSaveResult {
   wristUpdated: boolean;
 }
@@ -93,7 +97,24 @@ export async function enrichActivityWeather(
   );
 
   if (result.kind === "transient") {
-    // 재시도 가능 — weatherFetchedAt null 유지, 다음 cron/backfill 에서 재시도.
+    // 재시도 가능 — attempt 카운터 증가. MAX 초과 시 sentinel 로 강등 (스타베이션 방지).
+    // 현재 attempts 를 read → +1. 5회 이상이면 fetchedAt 세팅해 backfill 제외.
+    const current = await prisma.activity.findUnique({
+      where: { id: opts.activityId },
+      select: { weatherAttempts: true },
+    });
+    const nextAttempts = (current?.weatherAttempts ?? 0) + 1;
+    const exceeded = nextAttempts >= MAX_WEATHER_ATTEMPTS;
+    await prisma.activity.update({
+      where: { id: opts.activityId },
+      data: exceeded
+        ? {
+            weatherAttempts: nextAttempts,
+            weatherFetchedAt: new Date(),
+            weatherSource: `failed:transient-max:${result.reason}`,
+          }
+        : { weatherAttempts: nextAttempts },
+    });
     return {
       wristUpdated: wristResult.wristUpdated,
       weatherFetched: false,
@@ -130,6 +151,7 @@ export async function enrichActivityWeather(
       weatherCode: sample.weatherCode,
       weatherFetchedAt: new Date(),
       weatherSource: sample.source,
+      weatherAttempts: null,
     },
   });
 
@@ -172,7 +194,10 @@ export async function runWeatherBackfill(
 
   const rows = await prisma.activity.findMany({
     where: { weatherFetchedAt: null },
-    orderBy: { startTime: "asc" },
+    // #269 후속 (Codex P2): attempts 오름차순 (nulls first) — 미시도 활동이 우선.
+    // 이후 startTime asc — 오래된 것부터. 같은 attempts 안에서 오래된 실패가 앞이지만
+    // 신규 활동 (attempts null) 이 항상 앞이라 스타베이션 없음.
+    orderBy: [{ weatherAttempts: { sort: "asc", nulls: "first" } }, { startTime: "asc" }],
     select: {
       id: true,
       name: true,
