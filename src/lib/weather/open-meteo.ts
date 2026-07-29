@@ -124,7 +124,11 @@ export async function fetchArchiveWeather(
 
   const end = new Date(startTimeUtc.getTime() + durationSec * 1000);
   const startDate = toIsoDate(startTimeUtc);
-  const endDate = toIsoDate(end);
+  // Codex P2 (#269): precipitation[t] 는 [t-1h, t) 합계라, 23시대에 끝난 활동의 강수는
+  // 다음날 00:00 버킷에 저장됨. end_date 를 최대 1시간 마진 뒤 날짜로 확장해 마지막
+  // 버킷까지 포함. Archive/Forecast 모두 안전.
+  const endWithBuffer = new Date(end.getTime() + 3600 * 1000);
+  const endDate = toIsoDate(endWithBuffer);
   const startHourKey = hourKeyUtc(startTimeUtc);
   const nowMs = opts.now ?? Date.now();
   const endpoint = pickEndpoint(startTimeUtc, nowMs);
