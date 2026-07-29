@@ -22,6 +22,9 @@ const MAX_WEATHER_ATTEMPTS = 5;
 // 실행 보장. TTL 로 크래시 프로세스가 lock 을 영구 점유하지 않도록 self-heal.
 const BACKFILL_LOCK_ALERT_TYPE = "weather_backfill_lock";
 const BACKFILL_LOCK_TTL_MS = 10 * 60 * 1000; // 10분 — 30건 배치 여유
+// Codex P1 (#269): 무제한 script run 대비 처리 중 주기적 lease 갱신 (heartbeat). 갱신 실패
+// (누군가 stale 로 재획득) 시 즉시 중단해 race 방지. TTL 절반 주기가 적당.
+const BACKFILL_RENEWAL_EVERY_N_ROWS = 5;
 
 export interface WristSaveResult {
   wristUpdated: boolean;
@@ -209,13 +212,19 @@ export async function runWeatherBackfill(
     return empty;
   }
 
+  const heartbeat: LockHeartbeat = { claim };
   try {
-    return await runWeatherBackfillLocked(opts, skip, limit, sleepMs, verbose);
+    return await runWeatherBackfillLocked(opts, skip, limit, sleepMs, verbose, heartbeat);
   } finally {
     if (!opts.dryRun) {
-      await releaseBackfillLock(claim);
+      await releaseBackfillLock(heartbeat.claim);
     }
   }
+}
+
+/** heartbeat 로 갱신되는 최신 claim 시각을 저장하는 mutable holder. */
+interface LockHeartbeat {
+  claim: Date;
 }
 
 /**
@@ -257,12 +266,26 @@ async function releaseBackfillLock(claim: Date): Promise<void> {
   }
 }
 
+/**
+ * 처리 중 lease 갱신. previous claim 이 그대로일 때만 갱신 성공 (다른 프로세스가 stale 로
+ * 재획득했으면 count=0 → null 반환 → 호출자는 중단해야 race 방지).
+ */
+async function renewBackfillLock(previous: Date): Promise<Date | null> {
+  const now = new Date();
+  const updated = await prisma.systemAlertState.updateMany({
+    where: { alertType: BACKFILL_LOCK_ALERT_TYPE, lastAlertAt: previous },
+    data: { lastAlertAt: now },
+  });
+  return updated.count === 1 ? now : null;
+}
+
 async function runWeatherBackfillLocked(
   opts: RunBackfillOptions,
   skip: number,
   limit: number | undefined,
   sleepMs: number,
   verbose: boolean,
+  heartbeat: LockHeartbeat,
 ): Promise<RunBackfillResult> {
   const rows = await prisma.activity.findMany({
     where: { weatherFetchedAt: null },
@@ -292,6 +315,19 @@ async function runWeatherBackfillLocked(
   if (opts.dryRun) return result;
 
   for (let i = 0; i < rows.length; i++) {
+    // Codex P1 (#269): 처리 중 lease 갱신. 갱신 실패면 stale 취급 재획득 발생 → 즉시 중단.
+    if (i > 0 && i % BACKFILL_RENEWAL_EVERY_N_ROWS === 0) {
+      const renewed = await renewBackfillLock(heartbeat.claim);
+      if (!renewed) {
+        if (verbose) {
+          console.log(
+            `[weather-backfill] lock lease 소실 (i=${i}) — 중단 (다른 프로세스 재획득)`,
+          );
+        }
+        break;
+      }
+      heartbeat.claim = renewed;
+    }
     const r = rows[i];
     try {
       const res = await enrichActivityWeather({
