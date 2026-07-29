@@ -1,5 +1,6 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
+// #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
 
 let isSyncing = false;
 let isRegistered = false;
@@ -36,6 +37,7 @@ export function startCronJobs() {
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;
         console.log(`[cron] 싱크 완료: ${total}건, 실패 ${failed}건`);
+        // weather 자동 enrich 는 syncAll 내부에서 실행됨 (#269 후속).
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);
       } finally {

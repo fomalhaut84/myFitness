@@ -109,6 +109,18 @@ export interface FetchArchiveOptions {
 }
 
 /**
+ * Codex P1 (#269): fetch 결과를 terminal / transient / ok 로 분리.
+ * cron/backfill 러너가 terminal 실패를 sentinel 로 저장해 스타베이션 방지.
+ * - ok: WeatherSample 획득
+ * - terminal: 재시도 무의미 (4xx bad request, invalid coord, 응답에 시간축 없음 등)
+ * - transient: 재시도 가능 (5xx, network, timeout, API 순간 장애, all-null 응답)
+ */
+export type WeatherFetchResult =
+  | { kind: "ok"; sample: WeatherSample }
+  | { kind: "terminal"; reason: string }
+  | { kind: "transient"; reason: string };
+
+/**
  * 특정 GPS + 활동 시간대의 기상 요약을 반환. 실패 시 null (에러 throw 안 함 — 상위 sync 안전).
  * duration 은 초 단위. Archive publish 지연 ~5일 이내 활동은 Forecast endpoint 로 fallback.
  */
@@ -118,9 +130,13 @@ export async function fetchArchiveWeather(
   startTimeUtc: Date,
   durationSec: number,
   opts: FetchArchiveOptions = {},
-): Promise<WeatherSample | null> {
-  if (!Number.isFinite(lat) || !Number.isFinite(lng)) return null;
-  if (!Number.isFinite(durationSec) || durationSec <= 0) return null;
+): Promise<WeatherFetchResult> {
+  if (!Number.isFinite(lat) || !Number.isFinite(lng)) {
+    return { kind: "terminal", reason: "invalid-coord" };
+  }
+  if (!Number.isFinite(durationSec) || durationSec <= 0) {
+    return { kind: "terminal", reason: "invalid-duration" };
+  }
 
   const end = new Date(startTimeUtc.getTime() + durationSec * 1000);
   const startDate = toIsoDate(startTimeUtc);
@@ -163,30 +179,43 @@ export async function fetchArchiveWeather(
   try {
     response = await doFetch(url.toString(), { signal: controller.signal });
     if (!response.ok) {
-      console.warn(`[weather] HTTP ${response.status} — ${await response.text().catch(() => "")}`);
-      return null;
+      const status = response.status;
+      const text = await response.text().catch(() => "");
+      console.warn(`[weather] HTTP ${status} — ${text}`);
+      // 5xx = 서버 오류 → transient. 4xx 중 다음은 rate-limit/재시도 케이스 → transient:
+      //   408 Request Timeout, 425 Too Early, 429 Too Many Requests. 나머지 4xx 는 terminal.
+      // Codex P2 (#269): 429 는 특히 rate-limit 이므로 terminal 로 잘못 저장하면 backfill 이
+      // 영영 제외 → 스타베이션.
+      const isTransient4xx = status === 408 || status === 425 || status === 429;
+      const kind: "terminal" | "transient" =
+        status >= 500 || isTransient4xx ? "transient" : "terminal";
+      return { kind, reason: `http-${status}` };
     }
     body = (await response.json()) as ArchiveResponse;
   } catch (err) {
     console.warn(`[weather] fetch 실패 (network/timeout/parse): ${err instanceof Error ? err.message : String(err)}`);
-    return null;
+    return { kind: "transient", reason: "network-or-parse" };
   } finally {
     clearTimeout(timeout);
   }
 
   if (body.error) {
     console.warn(`[weather] API error: ${body.reason ?? "unknown"}`);
-    return null;
+    // API 명시 error 는 대개 요청 문제 → terminal.
+    return { kind: "terminal", reason: `api-${body.reason ?? "unknown"}` };
   }
 
   const hourly = body.hourly;
   const times = hourly?.time ?? [];
-  if (!hourly || times.length === 0) return null;
+  if (!hourly || times.length === 0) {
+    return { kind: "transient", reason: "empty-hourly" };
+  }
 
   const startIndex = times.indexOf(startHourKey);
   if (startIndex < 0) {
     console.warn(`[weather] start hour ${startHourKey} 응답 시간축 미포함`);
-    return null;
+    // 시간축이 응답에 없는 건 요청 시각이 endpoint 커버 범위 밖 (미래 예보 부재 등) — terminal 로.
+    return { kind: "terminal", reason: "start-hour-missing" };
   }
 
   const humidityRaw = pickAt(hourly.relative_humidity_2m, startIndex);
@@ -201,8 +230,7 @@ export async function fetchArchiveWeather(
     source: "open-meteo",
   };
 
-  // Codex P2: 응답은 유효하지만 모든 측정치가 null 인 경우 (배열 자체 누락 등) → fetch 실패로
-  // 취급. 이대로 저장하면 weatherFetchedAt 이 세팅되어 backfill 이 영영 재시도하지 않음.
+  // Codex P2: 응답은 유효하지만 모든 측정치가 null 인 경우 (배열 자체 누락 등) → 재시도 가능.
   const hasAny =
     sample.tempC !== null ||
     sample.apparentTempC !== null ||
@@ -212,10 +240,10 @@ export async function fetchArchiveWeather(
     sample.weatherCode !== null;
   if (!hasAny) {
     console.warn(`[weather] 응답에 유효 측정치 없음 — retryable 로 취급`);
-    return null;
+    return { kind: "transient", reason: "all-null" };
   }
 
-  return sample;
+  return { kind: "ok", sample };
 }
 
 /** 손목 온도 파싱 — Garmin activity rawData 의 maxTemperature/minTemperature. */

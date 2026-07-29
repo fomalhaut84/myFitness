@@ -117,6 +117,7 @@ model Activity {
   weatherCode          Int?                // WMO weather interpretation code
   weatherFetchedAt     DateTime?           // API 호출 성공 시각 — null 이면 backfill 대상
   weatherSource        String?             // 예: "open-meteo"
+  weatherAttempts      Int?                // #269 후속: 실패 (transient) 누적 횟수. cron/sync backfill 이 fewer-attempts 순으로 우선 처리, MAX 초과 시 sentinel
   rawData         Json?
   createdAt       DateTime @default(now())
 
