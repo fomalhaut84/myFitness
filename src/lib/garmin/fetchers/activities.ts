@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
 import { withRateLimit } from "../utils";
+import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
 
 const PAGE_SIZE = 20;
 
@@ -109,11 +110,23 @@ export async function syncActivities(
             intensityLabel: null,
           };
 
-      await prisma.activity.upsert({
+      const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
         update: { ...data, ...intensityData },
         create: { garminId: BigInt(a.activityId), ...data, ...intensityDataCreate },
+        select: { id: true },
       });
+
+      // #269: 손목 온도 파싱만 sync 경로에서 처리 (I/O = DB update, 네트워크 없음).
+      // 외부 기상 fetch 는 backfill 스크립트가 담당 — Codex P1: sync 루프에서 Open-Meteo
+      // 8초 timeout 이 N 활동만큼 누적되면 syncAll 이 정지 (100 활동 = 최대 13분).
+      try {
+        await parseAndSaveWristTemps(saved.id, raw);
+      } catch (err) {
+        console.warn(
+          `[activities] 손목 온도 저장 실패 (activity ${saved.id}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+      }
 
       synced++;
     }

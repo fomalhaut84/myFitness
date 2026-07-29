@@ -120,6 +120,16 @@ export async function getActivitySplits(args: { activityId: string }) {
         startTime: true,
         distance: true,
         duration: true,
+        routeTag: true,
+        // #269: 활동 시점 대표 기상 (laps 마다 반복하지 않음)
+        wristTempMaxC: true,
+        wristTempMinC: true,
+        weatherTempC: true,
+        weatherApparentTempC: true,
+        weatherHumidityPct: true,
+        weatherWindMs: true,
+        weatherPrecipMm: true,
+        weatherCode: true,
       },
     });
   } catch (err) {
@@ -171,6 +181,7 @@ export async function getActivitySplits(args: { activityId: string }) {
     garminId: activity.garminId.toString(),
     activityType: activity.activityType,
     name: activity.name,
+    routeTag: activity.routeTag,
     startTime: activity.startTime.toISOString(),
     totalDistanceKm:
       activity.distance !== null
@@ -183,6 +194,15 @@ export async function getActivitySplits(args: { activityId: string }) {
     paceMinFormatted: minPace !== null ? formatPace(minPace) + "/km" : null,
     paceMaxFormatted: maxPace !== null ? formatPace(maxPace) + "/km" : null,
     paceAvgFormatted: avgPace !== null ? formatPace(avgPace) + "/km" : null,
+    // #269: 환경 (외부 기상 우선, 손목 온도 보조). null 이면 미보강 활동.
+    weatherTempC: activity.weatherTempC,
+    weatherApparentTempC: activity.weatherApparentTempC,
+    weatherHumidityPct: activity.weatherHumidityPct,
+    weatherWindMs: activity.weatherWindMs,
+    weatherPrecipMm: activity.weatherPrecipMm,
+    weatherCode: activity.weatherCode,
+    wristTempMaxC: activity.wristTempMaxC,
+    wristTempMinC: activity.wristTempMinC,
   };
 
   const response = {
