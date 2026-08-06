@@ -42,6 +42,14 @@ export async function getActivities(args: { days?: number; type?: string }) {
       estimatedZone: true,
       intensityLabel: true,
       intensityScore: true,
+      // #275: M2 러닝 다이나믹스 — 스키마·웹 UI 엔 있지만 AI 응답에 안 실려 "누락" 오답 발생.
+      avgCadence: true,
+      avgStrideLength: true,
+      avgVerticalOscillation: true,
+      avgGroundContactTime: true,
+      aerobicTE: true,
+      anaerobicTE: true,
+      avgRespirationRate: true,
       // #267: 사용자 커스텀 코스명 태그 (AI 가 태그로 활동 그룹 인식)
       routeTag: true,
       // #269: 손목 온도 (Garmin, 참고용) + 외부 기상 (Open-Meteo, 활동 시작 시점)
