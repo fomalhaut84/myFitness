@@ -39,8 +39,12 @@ async function main() {
 
   const rows = await prisma.activity.findMany({
     where: {
-      // 아직 러닝 다이나믹스가 안 채워진 활동만 (이미 값 있는 건 스킵).
-      // rawData null 인 아주 오래된 record 는 parseRunningDynamics 가 empty 반환 → 스킵.
+      // 대상 조건:
+      //  1) 필드 중 하나라도 null (아예 파싱 안 된 활동)
+      //  2) trainingEffect null (기존 backfill-m2-fields 는 이 필드 안 채움)
+      //  3) avgStrideLength > 10 — meters 라면 절대 나올 수 없는 값. cm 로 잘못 저장된 legacy
+      //     rows (기존 backfill-m2-fields 는 ÷100 없이 저장) 를 잡아내는 신호.
+      // rawData 자체가 없는 아주 오래된 record 는 parseRunningDynamics 가 empty 반환 → 스킵.
       OR: [
         { avgCadence: null },
         { avgStrideLength: null },
@@ -48,6 +52,8 @@ async function main() {
         { avgGroundContactTime: null },
         { aerobicTE: null },
         { anaerobicTE: null },
+        { trainingEffect: null },
+        { avgStrideLength: { gt: 10 } },
       ],
     },
     orderBy: { startTime: "desc" },
