@@ -8,12 +8,13 @@
  * 저장됨. rawData 는 이미 저장되어 있으므로 재파싱만으로 복구 가능 (Garmin API 재호출 X).
  *
  * 옵션:
- *  --limit N     상한 (positive integer). 미지정 시 전량.
- *  --after ISO   startTime 이 이 값보다 큰 row 만 대상 (stable cursor). 매 실행 마지막에 출력되는
- *                "next --after=..." 값을 다음 실행에 전달하면 mutating query 에서도 안전하게
- *                진행 가능. Codex P2 (#278): `skip N` offset 은 성공한 row 가 결과셋에서 빠지면
- *                실제 처리 대상이 밀려나 unprocessed row 를 건너뛰는 문제.
- *  --dry-run     대상만 출력.
+ *  --limit N            상한 (positive integer). 미지정 시 전량.
+ *  --after-id <cuid>    이 id 를 기준으로 (startTime, id) composite cursor. Codex P2 (#278):
+ *                       startTime 은 unique 아님 (동일 시각 여러 활동 가능) — startTime 단독 cursor
+ *                       는 tie 를 건너뛴다. id 로 lookup 해 composite 조건 적용.
+ *  --dry-run            대상만 출력.
+ *
+ * 배치 진행: 매 실행 종료 시 다음 커서용 `--after-id <cuid>` 를 출력.
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
@@ -38,19 +39,23 @@ function parsePositiveInt(raw: string | null, argName: string): number | undefin
   return n;
 }
 
-function parseIsoDate(raw: string | null, argName: string): Date | undefined {
-  if (raw === null) return undefined;
-  const d = new Date(raw);
-  if (!Number.isFinite(d.getTime())) {
-    throw new Error(`${argName} 은 유효한 ISO 8601 시각이어야 합니다 (got: "${raw}")`);
-  }
-  return d;
-}
-
 async function main() {
   const limit = parsePositiveInt(parseArg("--limit"), "--limit");
-  const after = parseIsoDate(parseArg("--after"), "--after");
+  const afterId = parseArg("--after-id") || undefined;
   const dryRun = hasFlag("--dry-run");
+
+  // --after-id 가 주어지면 그 row 의 startTime 을 조회해 composite cursor 구성.
+  let cursor: { startTime: Date; id: string } | undefined;
+  if (afterId) {
+    const anchor = await prisma.activity.findUnique({
+      where: { id: afterId },
+      select: { id: true, startTime: true },
+    });
+    if (!anchor) {
+      throw new Error(`--after-id "${afterId}" 로 활동을 찾을 수 없습니다`);
+    }
+    cursor = { startTime: anchor.startTime, id: anchor.id };
+  }
 
   const rows = await prisma.activity.findMany({
     where: {
@@ -73,13 +78,27 @@ async function main() {
             { avgStrideLength: { gt: 10 } },
           ],
         },
-        // Codex P2 stable cursor: --after 로 startTime 하한 부여. 이전 배치의
-        // 마지막 startTime 을 그대로 넘기면 다음 배치는 그 이후 row 만 처리.
-        ...(after ? [{ startTime: { gt: after } }] : []),
+        // Codex P2 composite cursor: startTime 은 unique 아니므로 (startTime, id) 로 tie-break.
+        // (startTime > cursor.startTime) OR (startTime == cursor.startTime AND id > cursor.id)
+        ...(cursor
+          ? [
+              {
+                OR: [
+                  { startTime: { gt: cursor.startTime } },
+                  {
+                    AND: [
+                      { startTime: cursor.startTime },
+                      { id: { gt: cursor.id } },
+                    ],
+                  },
+                ],
+              },
+            ]
+          : []),
       ],
     },
-    // asc 로 오래된 활동부터. --limit 사용 시 cursor 로 진행 (--after).
-    orderBy: { startTime: "asc" },
+    // asc (startTime, id) — cursor 와 같은 순서로 진행.
+    orderBy: [{ startTime: "asc" }, { id: "asc" }],
     select: {
       id: true,
       name: true,
@@ -91,7 +110,7 @@ async function main() {
   });
 
   console.log(
-    `backfill-running-dynamics: 대상 ${rows.length} 건${after ? ` (after ${after.toISOString()})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${dryRun ? " [dry-run]" : ""}`,
+    `backfill-running-dynamics: 대상 ${rows.length} 건${cursor ? ` (after-id ${cursor.id} @ ${cursor.startTime.toISOString()})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${dryRun ? " [dry-run]" : ""}`,
   );
 
   if (dryRun) {
@@ -142,9 +161,11 @@ async function main() {
 
   console.log(`완료: 갱신 ${updated}, rawData 에 값 없음 ${empty}`);
   if (rows.length > 0 && limit !== undefined && rows.length === limit) {
-    // 배치가 상한에 도달 — 다음 배치를 위한 stable cursor 안내.
-    const last = rows[rows.length - 1].startTime.toISOString();
-    console.log(`다음 배치: --after ${last} --limit ${limit}`);
+    // 배치가 상한에 도달 — 다음 배치용 composite cursor 안내.
+    const last = rows[rows.length - 1];
+    console.log(
+      `다음 배치: --after-id ${last.id} --limit ${limit}  (@ ${last.startTime.toISOString()})`,
+    );
   }
 }
 
