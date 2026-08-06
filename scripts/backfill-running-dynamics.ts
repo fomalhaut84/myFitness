@@ -2,7 +2,7 @@
  * #278: 이미 저장된 Activity 의 rawData 로부터 러닝 다이나믹스 필드를 재파싱.
  *
  * 실행:
- *   npx tsx scripts/backfill-running-dynamics.ts [--limit N] [--after <ISO>] [--dry-run]
+ *   npx tsx scripts/backfill-running-dynamics.ts [--limit N] [--after-id <cuid>] [--dry-run]
  *
  * 배경: 이전 fetcher 가 존재하지 않는 `summaryDTO.*` 경로에서 값을 찾아 전 활동이 null 로
  * 저장됨. rawData 는 이미 저장되어 있으므로 재파싱만으로 복구 가능 (Garmin API 재호출 X).
