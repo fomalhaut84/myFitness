@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
+import { parseRunningDynamics } from "@/lib/garmin/parse-running-dynamics";
 
 const PAGE_SIZE = 20;
 
@@ -51,7 +52,9 @@ export async function syncActivities(
       }
 
       const raw = a as unknown as Record<string, unknown>;
-      const summaryDTO = raw.summaryDTO as Record<string, unknown> | undefined;
+
+      // #278: 러닝 다이나믹스는 별도 유틸에서 파싱 (backfill 스크립트와 로직 공유).
+      const dyn = parseRunningDynamics(raw);
 
       const data = {
         activityType: a.activityType?.typeKey ?? "unknown",
@@ -68,15 +71,16 @@ export async function syncActivities(
             : null,
         avgSpeed: a.averageSpeed ? a.averageSpeed * 3.6 : null,
         elevationGain: a.elevationGain ?? null,
-        trainingEffect: (summaryDTO?.trainingEffect as number) ?? null,
+        trainingEffect: dyn.trainingEffect,
         vo2maxEstimate: (raw.vO2MaxValue as number) ?? null,
-        // M2: 러닝 다이나믹스
-        avgCadence: toInt(summaryDTO?.averageRunCadence),
-        avgStrideLength: toFloat(summaryDTO?.strideLength),
-        avgVerticalOscillation: toFloat(summaryDTO?.verticalOscillation),
-        avgGroundContactTime: toFloat(summaryDTO?.groundContactTime),
-        aerobicTE: toFloat(summaryDTO?.trainingEffect),
-        anaerobicTE: toFloat(summaryDTO?.anaerobicTrainingEffect),
+        // #278: M2 러닝 다이나믹스 — 실제 Garmin top-level 필드로부터 추출.
+        avgCadence: dyn.avgCadence,
+        avgStrideLength: dyn.avgStrideLength,
+        avgVerticalOscillation: dyn.avgVerticalOscillation,
+        avgGroundContactTime: dyn.avgGroundContactTime,
+        aerobicTE: dyn.aerobicTE,
+        anaerobicTE: dyn.anaerobicTE,
+        // rawData 에 avgRespirationRate 필드 없음 — 별도 endpoint 필요. 후속 이슈로 트래킹.
         avgRespirationRate: toFloat(raw.avgRespirationRate),
         lapCount: toInt(raw.lapCount),
         splitSummaries: a.splitSummaries

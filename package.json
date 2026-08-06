@@ -13,7 +13,8 @@
     "start": "next start",
     "lint": "eslint src/ --max-warnings 0",
     "typecheck": "tsc --noEmit",
-    "backfill:weather": "tsx scripts/backfill-weather.ts"
+    "backfill:weather": "tsx scripts/backfill-weather.ts",
+    "backfill:running-dynamics": "tsx scripts/backfill-running-dynamics.ts"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.16",
