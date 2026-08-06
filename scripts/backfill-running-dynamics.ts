@@ -1,17 +1,19 @@
 /**
  * #278: 이미 저장된 Activity 의 rawData 로부터 러닝 다이나믹스 필드를 재파싱.
  *
- * 실행: npx tsx scripts/backfill-running-dynamics.ts [--limit N] [--skip N] [--dry-run]
+ * 실행:
+ *   npx tsx scripts/backfill-running-dynamics.ts [--limit N] [--after <ISO>] [--dry-run]
  *
  * 배경: 이전 fetcher 가 존재하지 않는 `summaryDTO.*` 경로에서 값을 찾아 전 활동이 null 로
  * 저장됨. rawData 는 이미 저장되어 있으므로 재파싱만으로 복구 가능 (Garmin API 재호출 X).
  *
  * 옵션:
- *  --limit N   상한 (positive integer). 미지정 시 전량.
- *  --skip N    처음 N 건 건너뛰기. non-running 활동처럼 rawData 에 값이 없는 row 는 매번
- *              WHERE 조건을 통과 (필드 null 유지) → --limit 만으로는 진행 안 됨. --skip 로
- *              cursor 이동. weather backfill 과 동일 패턴.
- *  --dry-run   대상만 출력.
+ *  --limit N     상한 (positive integer). 미지정 시 전량.
+ *  --after ISO   startTime 이 이 값보다 큰 row 만 대상 (stable cursor). 매 실행 마지막에 출력되는
+ *                "next --after=..." 값을 다음 실행에 전달하면 mutating query 에서도 안전하게
+ *                진행 가능. Codex P2 (#278): `skip N` offset 은 성공한 row 가 결과셋에서 빠지면
+ *                실제 처리 대상이 밀려나 unprocessed row 를 건너뛰는 문제.
+ *  --dry-run     대상만 출력.
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
@@ -36,18 +38,18 @@ function parsePositiveInt(raw: string | null, argName: string): number | undefin
   return n;
 }
 
-function parseNonNegInt(raw: string | null, argName: string): number | undefined {
+function parseIsoDate(raw: string | null, argName: string): Date | undefined {
   if (raw === null) return undefined;
-  const n = Number(raw);
-  if (!Number.isFinite(n) || !Number.isInteger(n) || n < 0) {
-    throw new Error(`${argName} 은 0 이상의 정수여야 합니다 (got: "${raw}")`);
+  const d = new Date(raw);
+  if (!Number.isFinite(d.getTime())) {
+    throw new Error(`${argName} 은 유효한 ISO 8601 시각이어야 합니다 (got: "${raw}")`);
   }
-  return n;
+  return d;
 }
 
 async function main() {
   const limit = parsePositiveInt(parseArg("--limit"), "--limit");
-  const skip = parseNonNegInt(parseArg("--skip"), "--skip") ?? 0;
+  const after = parseIsoDate(parseArg("--after"), "--after");
   const dryRun = hasFlag("--dry-run");
 
   const rows = await prisma.activity.findMany({
@@ -58,19 +60,25 @@ async function main() {
       //  3) avgStrideLength > 10 — meters 라면 절대 나올 수 없는 값. cm 로 잘못 저장된 legacy
       //     rows (기존 backfill-m2-fields 는 ÷100 없이 저장) 를 잡아내는 신호.
       // rawData 자체가 없는 아주 오래된 record 는 parseRunningDynamics 가 empty 반환 → 스킵.
-      OR: [
-        { avgCadence: null },
-        { avgStrideLength: null },
-        { avgVerticalOscillation: null },
-        { avgGroundContactTime: null },
-        { aerobicTE: null },
-        { anaerobicTE: null },
-        { trainingEffect: null },
-        { avgStrideLength: { gt: 10 } },
+      AND: [
+        {
+          OR: [
+            { avgCadence: null },
+            { avgStrideLength: null },
+            { avgVerticalOscillation: null },
+            { avgGroundContactTime: null },
+            { aerobicTE: null },
+            { anaerobicTE: null },
+            { trainingEffect: null },
+            { avgStrideLength: { gt: 10 } },
+          ],
+        },
+        // Codex P2 stable cursor: --after 로 startTime 하한 부여. 이전 배치의
+        // 마지막 startTime 을 그대로 넘기면 다음 배치는 그 이후 row 만 처리.
+        ...(after ? [{ startTime: { gt: after } }] : []),
       ],
     },
-    // Codex P2: asc 로 오래된 활동부터. --limit 사용 시 rawData 값 없는 non-running
-    // 활동이 매번 앞을 차지해 진행 안 되는 문제를 --skip N cursor 로 해소.
+    // asc 로 오래된 활동부터. --limit 사용 시 cursor 로 진행 (--after).
     orderBy: { startTime: "asc" },
     select: {
       id: true,
@@ -79,12 +87,11 @@ async function main() {
       activityType: true,
       rawData: true,
     },
-    ...(skip > 0 ? { skip } : {}),
     ...(limit !== undefined ? { take: limit } : {}),
   });
 
   console.log(
-    `backfill-running-dynamics: 대상 ${rows.length} 건${skip > 0 ? ` (skip ${skip})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${dryRun ? " [dry-run]" : ""}`,
+    `backfill-running-dynamics: 대상 ${rows.length} 건${after ? ` (after ${after.toISOString()})` : ""}${limit !== undefined ? ` (limit ${limit})` : ""}${dryRun ? " [dry-run]" : ""}`,
   );
 
   if (dryRun) {
@@ -134,6 +141,11 @@ async function main() {
   }
 
   console.log(`완료: 갱신 ${updated}, rawData 에 값 없음 ${empty}`);
+  if (rows.length > 0 && limit !== undefined && rows.length === limit) {
+    // 배치가 상한에 도달 — 다음 배치를 위한 stable cursor 안내.
+    const last = rows[rows.length - 1].startTime.toISOString();
+    console.log(`다음 배치: --after ${last} --limit ${limit}`);
+  }
 }
 
 main()
