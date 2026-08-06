@@ -121,6 +121,14 @@ export async function getActivitySplits(args: { activityId: string }) {
         distance: true,
         duration: true,
         routeTag: true,
+        // #275: 활동 헤더에도 러닝 다이나믹스 요약 노출 (AI 폼/훈련효과 평가에 필요).
+        avgCadence: true,
+        avgStrideLength: true,
+        avgVerticalOscillation: true,
+        avgGroundContactTime: true,
+        aerobicTE: true,
+        anaerobicTE: true,
+        avgRespirationRate: true,
         // #269: 활동 시점 대표 기상 (laps 마다 반복하지 않음)
         wristTempMaxC: true,
         wristTempMinC: true,
@@ -194,6 +202,14 @@ export async function getActivitySplits(args: { activityId: string }) {
     paceMinFormatted: minPace !== null ? formatPace(minPace) + "/km" : null,
     paceMaxFormatted: maxPace !== null ? formatPace(maxPace) + "/km" : null,
     paceAvgFormatted: avgPace !== null ? formatPace(avgPace) + "/km" : null,
+    // #275: 러닝 다이나믹스 (활동 헤더 요약). 상세 lap 데이터는 laps[] 에.
+    avgCadence: activity.avgCadence,
+    avgStrideLength: activity.avgStrideLength,
+    avgVerticalOscillation: activity.avgVerticalOscillation,
+    avgGroundContactTime: activity.avgGroundContactTime,
+    aerobicTE: activity.aerobicTE,
+    anaerobicTE: activity.anaerobicTE,
+    avgRespirationRate: activity.avgRespirationRate,
     // #269: 환경 (외부 기상 우선, 손목 온도 보조). null 이면 미보강 활동.
     weatherTempC: activity.weatherTempC,
     weatherApparentTempC: activity.weatherApparentTempC,
