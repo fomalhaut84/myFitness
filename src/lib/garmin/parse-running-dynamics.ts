@@ -5,7 +5,7 @@
 
 export interface RunningDynamics {
   avgCadence: number | null;             // spm (steps per minute, 정수)
-  avgStrideLength: number | null;        // Garmin 기본 cm — 스키마는 m 라고 주석되어 있지만 저장값은 그대로 유지 (기존 값 변경 회피)
+  avgStrideLength: number | null;        // meters (schema 정의) — Garmin 은 cm 로 반환, 파서에서 ÷100 변환
   avgVerticalOscillation: number | null; // cm
   avgGroundContactTime: number | null;   // ms
   aerobicTE: number | null;              // 유산소 트레이닝 이펙트 (0~5)
@@ -49,8 +49,10 @@ export function parseRunningDynamics(rawData: unknown): RunningDynamics {
     toFloat(raw.averageRunningCadenceInStepsPerMinute) ??
     toFloat(summary.averageRunningCadenceInStepsPerMinute) ??
     toFloat(summary.averageRunCadence);
-  const strideLength =
+  // Garmin `avgStrideLength` 는 cm (실측 ~86 = 86cm). schema/UI 는 m 기준이므로 ÷100 변환.
+  const strideLengthCm =
     toFloat(raw.avgStrideLength) ?? toFloat(summary.strideLength);
+  const strideLength = strideLengthCm !== null ? strideLengthCm / 100 : null;
   const verticalOscillation =
     toFloat(raw.avgVerticalOscillation) ??
     toFloat(summary.verticalOscillation);
