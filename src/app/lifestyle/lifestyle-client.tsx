@@ -92,6 +92,10 @@ const MEAL_LABEL: Record<string, string> = {
 function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
   const totalKcal = logs.reduce((s, l) => s + (l.estimatedKcal ?? 0), 0);
   const hasEstimate = logs.some((l) => l.estimatedKcal !== null);
+  // Codex P2 (#283): null 항목이 있으면 총합을 완전한 하루 총량으로 오해할 수 있음.
+  // "총" 대신 "부분 합계" + "N개 추정 대기" 라벨 표시.
+  const missingCount = logs.filter((l) => l.estimatedKcal === null).length;
+  const isPartial = missingCount > 0;
   return (
     <div>
       <div className="flex items-baseline justify-between mb-3">
@@ -103,8 +107,13 @@ function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
         </h2>
         {hasEstimate && (
           <span className="text-[13px] font-[family-name:var(--font-geist-mono)]">
-            총 {totalKcal.toLocaleString("ko-KR")}
+            {isPartial ? "부분 합계" : "총"} {totalKcal.toLocaleString("ko-KR")}
             <span className="text-dim ml-1">kcal</span>
+            {isPartial && (
+              <span className="text-dim ml-2 text-[11px]">
+                ({missingCount}개 추정 대기)
+              </span>
+            )}
           </span>
         )}
       </div>
