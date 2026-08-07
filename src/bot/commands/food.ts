@@ -110,12 +110,19 @@ export async function handleFoodInput(
   //    조건부 updateMany 로 estimatedKcal 이 여전히 null 일 때만 갱신 → 수동 정정 보존.
   if (estimate) {
     try {
+      // Codex P2 (description race): AI 호출 중 사용자가 description 을 PATCH 로 바꿨으면
+      // 우리가 estimate 한 값은 old-desc 기준이라 stale. description/mealType 스냅샷 조건 추가.
       const updated = await prisma.foodLog.updateMany({
-        where: { id: log.id, estimatedKcal: null },
+        where: {
+          id: log.id,
+          estimatedKcal: null,
+          description,
+          mealType,
+        },
         data: { estimatedKcal: estimate.kcal },
       });
       if (updated.count === 0) {
-        // 사용자가 그 사이 수동 정정 → AI 결과 반영 안 함. 응답도 "실패" 경로 처럼.
+        // 사용자가 그 사이 수동 정정 or description 변경 → AI 결과 반영 안 함. "실패" 경로.
         estimate = null;
       }
     } catch (err) {

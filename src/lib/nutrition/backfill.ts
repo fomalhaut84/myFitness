@@ -112,8 +112,16 @@ export async function runFoodKcalBackfill(
       }
       // Codex P2 (race): findMany 이후 사용자가 웹에서 PATCH 로 수동 kcal 설정한 경우
       // 그 값을 stale AI 결과로 덮지 않도록 조건부 update. estimatedKcal 이 여전히 null 인 row 만 갱신.
+      // Codex P2 (description race): PATCH 로 description 이 바뀌면서 kcal 도 null 로 리셋된 케이스
+      // → estimatedKcal 조건만으로는 통과. description/mealType 스냅샷도 검사해 old-desc 기반
+      // AI 결과를 new-desc 로 덮지 않도록 방어.
       const updated = await prisma.foodLog.updateMany({
-        where: { id: r.id, estimatedKcal: null },
+        where: {
+          id: r.id,
+          estimatedKcal: null,
+          description: r.description,
+          mealType: r.mealType,
+        },
         data: { estimatedKcal: est.kcal },
       });
       if (updated.count === 0) {
