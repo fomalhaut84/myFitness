@@ -7,15 +7,21 @@
 //   단일 사용자 앱이라 큐 사이즈는 매우 작음 (~수십 date 이하).
 
 import prisma from "@/lib/prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 
 const ALERT_TYPE = "food_stale_recalc";
-// lastErrorMsg 는 200자 제한 (SystemAlertState 주석). 한 date=25자 → 안전 여유 6개 정도.
-// 6개 초과 시 오래된 것부터 밀어냄 (FIFO). 실제 운영에서 이 이상 쌓이면 서비스가 정말 병들어있음.
-const MAX_QUEUE = 6;
+// lastErrorMsg 는 200자 제한 (SystemAlertState 주석). 한 date=10자 → 안전 여유 15개.
+// 15개 초과 시 오래된 것부터 밀어냄 (FIFO). 실제 운영에서 이 이상 쌓이면 서비스가 정말 병들어있음.
+const MAX_QUEUE = 15;
 
-/** ISO 날짜(YYYY-MM-DD) 로 정규화 — 같은 KST-day 를 여러 번 큐에 넣지 않도록. */
+/**
+ * KST 기준 YYYY-MM-DD key 로 정규화.
+ * Codex P2 (#283): 이전 toISOString().slice(0,10) 은 UTC 날짜라 KST 00:00~08:59 log 의 date
+ * 를 전날로 잘못 저장 → cron 이 잘못된 date 를 재계산하고 큐에서 제거 → intended DailySummary
+ * 는 영영 stale.
+ */
 function toDayKey(date: Date): string {
-  return date.toISOString().slice(0, 10);
+  return ymdKST(date);
 }
 
 async function readQueue(): Promise<string[]> {
@@ -50,10 +56,12 @@ export async function markStaleRecalcDate(date: Date): Promise<void> {
   await writeQueue([...existing, key]);
 }
 
-/** cron 이 호출: 큐 전체를 반환 + 초기화. 성공 처리는 호출자 책임. */
+/** cron 이 호출: 큐 전체를 반환 + 초기화. 성공 처리는 호출자 책임.
+ *  반환 Date 는 각 KST-day 안에 위치한 UTC instant (KST 00:00) — recalculateCalorieBalance 가
+ *  내부 ymdKST(date) 로 다시 원래 KST-day 를 복원해 정합. */
 export async function drainStaleRecalcQueue(): Promise<Date[]> {
   const existing = await readQueue();
   if (existing.length === 0) return [];
   await writeQueue([]);
-  return existing.map((k) => new Date(`${k}T00:00:00.000Z`));
+  return existing.map((k) => new Date(`${k}T00:00:00+09:00`));
 }

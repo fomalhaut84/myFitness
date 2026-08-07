@@ -8,6 +8,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 
 const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
@@ -51,13 +52,23 @@ export async function PATCH(request: Request, ctx: Params) {
     });
 
     // 재계산 실패해도 update 자체는 성공 유지 (200 응답).
+    // Codex P2 (#283): 실패 시 stale-recalc 큐에 mark → cron 이 이어받아 재시도.
+    // 그렇지 않으면 historical 로그 (Garmin cron 2일 창 밖) 는 DailySummary 가 영영 stale.
     try {
       await recalculateCalorieBalance(updated.date, undefined, prisma);
     } catch (err) {
       console.warn(
-        `[api/food/${id}] 재계산 실패:`,
+        `[api/food/${id}] 재계산 실패 (큐에 mark):`,
         err instanceof Error ? err.message : String(err),
       );
+      try {
+        await markStaleRecalcDate(updated.date);
+      } catch (mErr) {
+        console.error(
+          `[api/food/${id}] stale-recalc 큐 기록 실패:`,
+          mErr instanceof Error ? mErr.message : String(mErr),
+        );
+      }
     }
 
     return NextResponse.json({ data: updated });
@@ -78,13 +89,22 @@ export async function DELETE(_request: Request, ctx: Params) {
       select: { date: true },
     });
 
+    // Codex P2 (#283): DELETE 도 동일하게 stale-recalc 큐 mark → cron 재시도.
     try {
       await recalculateCalorieBalance(deleted.date, undefined, prisma);
     } catch (err) {
       console.warn(
-        `[api/food/${id}] 재계산 실패:`,
+        `[api/food/${id}] 재계산 실패 (큐에 mark):`,
         err instanceof Error ? err.message : String(err),
       );
+      try {
+        await markStaleRecalcDate(deleted.date);
+      } catch (mErr) {
+        console.error(
+          `[api/food/${id}] stale-recalc 큐 기록 실패:`,
+          mErr instanceof Error ? mErr.message : String(mErr),
+        );
+      }
     }
 
     return NextResponse.json({ ok: true });
