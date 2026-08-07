@@ -130,28 +130,26 @@ export function parseKcalResponse(rawText: string): KcalEstimate | null {
   const total =
     typeof totalRaw === "number" && Number.isFinite(totalRaw) ? Math.round(totalRaw) : null;
   if (total === null || total < 0 || total > MAX_KCAL_SANITY) return null;
-  const items = Array.isArray(body.items)
-    ? body.items.map(toItem).filter((x): x is KcalItem => x !== null)
-    : [];
+  // Codex P2 (#283): items 배열 필수. 없으면 total 을 breakdown 으로 검증할 수 없고, 프롬프트도
+  // items 를 필수로 지시함.
+  if (!Array.isArray(body.items) || body.items.length === 0) return null;
+  const rawCount = body.items.length;
+  const items = body.items.map(toItem).filter((x): x is KcalItem => x !== null);
+  // Codex P2 (#283): raw 원소 중 하나라도 name/타입 문제로 toItem 이 걸러냈으면 응답 신뢰 불가.
+  if (items.length !== rawCount) return null;
   // Codex P2 (#283): 어느 항목이라도 kcal 이 null 이면 total 은 부분 합계라 신뢰 불가.
-  // 이 값을 저장하면 대시보드가 하루 총량으로 오해. reject → cron backfill 이 재시도, 또는
-  // 사용자가 /food_kcal 수동 입력.
-  if (items.some((it) => it.kcal === null)) {
-    return null;
-  }
+  if (items.some((it) => it.kcal === null)) return null;
   // Codex P2 (#283): item 별 kcal 이 음수거나 상한 초과면 total 이 우연히 정상 범위여도 무효.
   // 예: {items: [{kcal: -200}, {kcal: 700}], total_kcal: 500} 은 잘못된 응답.
   if (items.some((it) => it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL))) {
     return null;
   }
-  // Codex P2 (#283): 프롬프트가 total = sum(items) 로 정의. items 가 있으면 sum 이 total 과
-  // 근사해야 함. 5% 또는 최소 30 kcal 여유 (반올림/소수점 표현). 불일치는 AI 내부 부정합.
-  if (items.length > 0) {
-    const itemsSum = items.reduce((s, it) => s + (it.kcal ?? 0), 0);
-    const tolerance = Math.max(30, Math.round(total * 0.05));
-    if (Math.abs(itemsSum - total) > tolerance) {
-      return null;
-    }
+  // Codex P2 (#283): 프롬프트가 total = sum(items) 로 정의. sum 이 total 과 근사해야 함.
+  // 5% 또는 최소 30 kcal 여유 (반올림/소수점 표현). 불일치는 AI 내부 부정합.
+  const itemsSum = items.reduce((s, it) => s + (it.kcal ?? 0), 0);
+  const tolerance = Math.max(30, Math.round(total * 0.05));
+  if (Math.abs(itemsSum - total) > tolerance) {
+    return null;
   }
   return {
     kcal: total,
