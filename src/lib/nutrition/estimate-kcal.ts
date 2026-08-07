@@ -144,6 +144,15 @@ export function parseKcalResponse(rawText: string): KcalEstimate | null {
   if (items.some((it) => it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL))) {
     return null;
   }
+  // Codex P2 (#283): 프롬프트가 total = sum(items) 로 정의. items 가 있으면 sum 이 total 과
+  // 근사해야 함. 5% 또는 최소 30 kcal 여유 (반올림/소수점 표현). 불일치는 AI 내부 부정합.
+  if (items.length > 0) {
+    const itemsSum = items.reduce((s, it) => s + (it.kcal ?? 0), 0);
+    const tolerance = Math.max(30, Math.round(total * 0.05));
+    if (Math.abs(itemsSum - total) > tolerance) {
+      return null;
+    }
+  }
   return {
     kcal: total,
     confidence: pickConfidence(body.confidence),

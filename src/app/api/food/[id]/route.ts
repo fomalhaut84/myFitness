@@ -45,9 +45,13 @@ export async function PATCH(request: Request, ctx: Params) {
       );
     }
 
-    // Codex P2 (#283): description 변경만 있고 새 kcal 미제공이면 기존 kcal 은 이전 description
-    // 기준이라 stale. null 로 리셋 → cron/backfill 이 새 description 으로 재추정.
-    if (data.description !== undefined && data.estimatedKcal === undefined) {
+    // Codex P2 (#283): description/mealType 변경만 있고 새 kcal 미제공이면 기존 kcal 은 이전
+    // 컨텍스트 기준이라 stale. null 로 리셋 → cron/backfill 이 새 값으로 재추정.
+    // mealType 도 estimateKcalFromText 프롬프트 입력이므로 동일 처리.
+    if (
+      (data.description !== undefined || data.mealType !== undefined) &&
+      data.estimatedKcal === undefined
+    ) {
       data.estimatedKcal = null;
     }
 
