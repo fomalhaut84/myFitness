@@ -201,9 +201,12 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   }
 
   const label = log.mealType ? MEAL_LABEL[log.mealType] ?? log.mealType : "기타";
+  // Codex P2 (#283): 섹션 자체가 KST 기준으로 선택되므로 시각도 KST 로 고정.
+  // UTC 서버 SSR / 다른 TZ 브라우저 hydration mismatch 방지.
   const time = new Date(log.timeIso).toLocaleTimeString("ko-KR", {
     hour: "2-digit",
     minute: "2-digit",
+    timeZone: "Asia/Seoul",
   });
 
   return (
