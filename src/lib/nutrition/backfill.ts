@@ -37,31 +37,62 @@ export async function runFoodKcalBackfill(
   const verbose = opts.verbose ?? false;
   const cutoff = new Date(Date.now() - olderThanSec * 1000);
 
-  // Codex P2 (rotation): asc/desc 어느 쪽이든 permanent-fail row 가 매 tick 같은 slot 을 점유.
-  // 후보 pool 을 상한까지 fetch → in-memory shuffle → limit 만큼 처리 → 모든 row 가 tick 마다
-  // 동등한 확률로 시도됨. 단일 사용자 앱이라 pool cap 500 이면 충분.
-  const pool = await prisma.foodLog.findMany({
-    where: {
-      estimatedKcal: null,
-      createdAt: { lt: cutoff },
-    },
-    orderBy: { createdAt: "desc" },
-    select: {
-      id: true,
-      description: true,
-      mealType: true,
-      date: true,
-    },
-    take: ROTATION_POOL_CAP,
-  });
-  // Fisher–Yates shuffle (in-place).
-  for (let i = pool.length - 1; i > 0; i--) {
-    const j = Math.floor(Math.random() * (i + 1));
-    const tmp = pool[i];
-    pool[i] = pool[j];
-    pool[j] = tmp;
+  // Codex P2:
+  //  - limit 지정 (cron/스크립트 배치): pool cap 까지 fetch → in-memory shuffle → limit 하위집합.
+  //    permanent-fail row 가 slot 점유하는 문제를 로테이션으로 해소.
+  //  - limit 미지정 (전량 backfill): shuffle + cap 이면 500 밖 row 는 영영 미도달. 커서 페이지네이션
+  //    으로 모든 row 를 asc 순회.
+  const baseWhere = {
+    estimatedKcal: null,
+    createdAt: { lt: cutoff },
+  } as const;
+
+  const rows: Array<{
+    id: string;
+    description: string;
+    mealType: string | null;
+    date: Date;
+  }> = [];
+
+  if (limit !== undefined) {
+    const pool = await prisma.foodLog.findMany({
+      where: baseWhere,
+      orderBy: { createdAt: "desc" },
+      select: { id: true, description: true, mealType: true, date: true },
+      take: ROTATION_POOL_CAP,
+    });
+    // Fisher–Yates shuffle (in-place).
+    for (let i = pool.length - 1; i > 0; i--) {
+      const j = Math.floor(Math.random() * (i + 1));
+      const tmp = pool[i];
+      pool[i] = pool[j];
+      pool[j] = tmp;
+    }
+    rows.push(...pool.slice(0, limit));
+  } else {
+    // 전량 처리: cursor-based 페이지네이션 (id asc). 성공하면 결과셋에서 빠지지만 남은 row 는
+    // cursor 이후로 계속 진행되므로 이번 실행 안에서 놓치지 않음.
+    const PAGE = 100;
+    let cursorId: string | undefined = undefined;
+    for (;;) {
+      const page: Array<{
+        id: string;
+        description: string;
+        mealType: string | null;
+        date: Date;
+      }> = await prisma.foodLog.findMany({
+        where: baseWhere,
+        orderBy: { id: "asc" },
+        select: { id: true, description: true, mealType: true, date: true },
+        take: PAGE,
+        ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
+      });
+      if (page.length === 0) break;
+      rows.push(...page);
+      cursorId = page[page.length - 1].id;
+      if (page.length < PAGE) break;
+    }
   }
-  const rows = limit !== undefined ? pool.slice(0, limit) : pool;
 
   const result: RunFoodBackfillResult = { candidates: rows.length, ok: 0, failed: 0, recalcFailedDates: [] };
   if (opts.dryRun) return result;
