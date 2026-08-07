@@ -1,8 +1,11 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
 import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
+import { drainStaleRecalcQueue, markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 // #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
 // #283 후속 (Codex P1): FoodLog kcal null 재추정 — 봇의 첫 AI 호출이 transient 실패한 경우 회복.
+// #283 후속 (Codex P2): recalculateCalorieBalance 가 transient 실패한 date 를 큐에서 이어받아 재시도.
 
 const FOOD_KCAL_LIMIT_PER_TICK = 20;
 
@@ -53,6 +56,30 @@ export function startCronJobs() {
           }
         } catch (err) {
           console.error("[cron] food kcal backfill 에러:", err);
+        }
+
+        // #283 Codex P2: 큐에 쌓인 stale-recalc date 재시도. 실패 시 다시 mark → 다음 tick 이어받음.
+        try {
+          const dates = await drainStaleRecalcQueue();
+          for (const d of dates) {
+            try {
+              await recalculateCalorieBalance(d, undefined);
+              console.log(`[cron] stale recalc 성공: ${d.toISOString().slice(0, 10)}`);
+            } catch (recalcErr) {
+              console.error(
+                `[cron] stale recalc 재실패 (${d.toISOString().slice(0, 10)}):`,
+                recalcErr,
+              );
+              // 다음 tick 에서 다시 시도되도록 큐에 재삽입 (drain 은 이미 비웠음).
+              try {
+                await markStaleRecalcDate(d);
+              } catch {
+                // 큐 쓰기까지 실패면 로그로만.
+              }
+            }
+          }
+        } catch (err) {
+          console.error("[cron] stale recalc drain 에러:", err);
         }
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);

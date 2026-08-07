@@ -1,6 +1,37 @@
 import prisma from "../prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateKcalFromText, type KcalEstimate } from "@/lib/nutrition/estimate-kcal";
+import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+
+/**
+ * recalculateCalorieBalance 를 소규모 재시도. 최종 실패면 stale-recalc 큐에 date 를 기록해
+ * 다음 cron tick 이 이어받게 함.
+ */
+async function recalcWithRetry(date: Date, retries: number): Promise<boolean> {
+  for (let attempt = 0; attempt <= retries; attempt++) {
+    try {
+      await recalculateCalorieBalance(date, undefined, prisma);
+      return true;
+    } catch (err) {
+      if (attempt === retries) {
+        console.error(
+          `[bot/food] recalculate 최종 실패 (date ${date.toISOString()}): ${err instanceof Error ? err.message : String(err)}`,
+        );
+        try {
+          await markStaleRecalcDate(date);
+        } catch (mErr) {
+          console.error(
+            `[bot/food] stale-recalc 큐 기록 실패: ${mErr instanceof Error ? mErr.message : String(mErr)}`,
+          );
+        }
+        return false;
+      }
+      // 재시도 전 짧은 backoff
+      await new Promise((r) => setTimeout(r, 100 * (attempt + 1)));
+    }
+  }
+  return false;
+}
 
 const MEAL_PATTERNS = [
   { pattern: /^(아침|조식)/, type: "breakfast" },
@@ -72,16 +103,21 @@ export async function handleFoodInput(
     );
   }
 
-  // 3) 추정 성공 시 update + 칼로리 밸런스 재계산.
+  // 3) 추정 성공 시 조건부 update + 칼로리 밸런스 재계산.
   //    Codex P2: update 가 transient 실패하면 estimate 를 null 로 되돌려 사용자 응답이 "실패"
-  //    경로 (kcal 미확정 안내 + 수동 입력 유도) 로 가게. 그렇지 않으면 bot 이 "kcal 기록됨"
-  //    이라고 알리는데 DB 는 null → dashboard/리포트 총량에서 누락.
+  //    경로 로 가게. 그렇지 않으면 bot 이 "kcal 기록됨" 이라고 알리는데 DB 는 null → 누락.
+  //    Codex P2 (race): AI 호출 중 (~15s) 사용자가 웹에서 이 row 의 kcal 을 수동 정정할 수 있음.
+  //    조건부 updateMany 로 estimatedKcal 이 여전히 null 일 때만 갱신 → 수동 정정 보존.
   if (estimate) {
     try {
-      await prisma.foodLog.update({
-        where: { id: log.id },
+      const updated = await prisma.foodLog.updateMany({
+        where: { id: log.id, estimatedKcal: null },
         data: { estimatedKcal: estimate.kcal },
       });
+      if (updated.count === 0) {
+        // 사용자가 그 사이 수동 정정 → AI 결과 반영 안 함. 응답도 "실패" 경로 처럼.
+        estimate = null;
+      }
     } catch (err) {
       console.warn(
         "[bot/food] estimatedKcal update 실패:",
@@ -144,17 +180,14 @@ export async function handleFoodKcalCommand(
       data: { estimatedKcal: kcal },
       select: { date: true, description: true, mealType: true },
     });
-    try {
-      await recalculateCalorieBalance(updated.date, undefined, prisma);
-    } catch (err) {
-      console.warn(
-        "[bot/food_kcal] 재계산 실패:",
-        err instanceof Error ? err.message : String(err),
-      );
-    }
+    // Codex P2: 재계산 실패해도 kcal 은 이미 저장됨 → 백필이 이 row 를 다시 안 뽑음 →
+    // DailySummary 가 stale 로 남을 수 있음 (특히 historical 로그, cron 2일 창 밖).
+    // 즉시 1회 재시도. 그래도 실패면 사용자에게 명시 경고.
+    const recalcOk = await recalcWithRetry(updated.date, 1);
     const label = updated.mealType ? MEAL_LABELS[updated.mealType] ?? updated.mealType : "";
+    const tail = recalcOk ? "" : "\n⚠️ 일일 요약 재계산 실패 — 잠시 후 자동 재시도됩니다.";
     await ctx.reply(
-      `✏️ ${label} "${updated.description}" → ${kcal.toLocaleString("ko-KR")} kcal 로 수정됨`,
+      `✏️ ${label} "${updated.description}" → ${kcal.toLocaleString("ko-KR")} kcal 로 수정됨${tail}`,
     );
   } catch (err) {
     const msg = err instanceof Error ? err.message : String(err);

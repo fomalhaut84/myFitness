@@ -6,6 +6,7 @@
 import prisma from "@/lib/prisma";
 import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -144,14 +145,22 @@ export async function runFoodKcalBackfill(
   }
 
   // Codex P2: 1차 recalc 실패한 date 재시도. 동일 date 는 한 번만 호출 (Set 로 중복 제거).
+  // 최종 실패는 stale-recalc 큐에 mark 해 cron 이 이어받게 함.
   for (const iso of recalcFailedDates) {
     try {
       await recalculateCalorieBalance(new Date(iso), undefined, prisma);
     } catch (err) {
       result.recalcFailedDates.push(iso);
       console.error(
-        `[food-kcal] recalculate 최종 실패 (date ${iso}) — DailySummary stale 가능. 수동 재계산 필요: ${err instanceof Error ? err.message : String(err)}`,
+        `[food-kcal] recalculate 최종 실패 (date ${iso}) — DailySummary stale 가능: ${err instanceof Error ? err.message : String(err)}`,
       );
+      try {
+        await markStaleRecalcDate(new Date(iso));
+      } catch (mErr) {
+        console.error(
+          `[food-kcal] stale-recalc 큐 기록 실패: ${mErr instanceof Error ? mErr.message : String(mErr)}`,
+        );
+      }
     }
   }
 
