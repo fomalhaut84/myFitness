@@ -105,19 +105,25 @@ export function parseKcalResponse(rawText: string): KcalEstimate | null {
     .replace(/^```(?:json)?\s*/i, "")
     .replace(/\s*```$/i, "")
     .trim();
-  let body: AiJson;
+  let parsedUnknown: unknown;
   try {
-    body = JSON.parse(stripped) as AiJson;
+    parsedUnknown = JSON.parse(stripped);
   } catch {
     // JSON 아니면 응답 안에서 { ... } 블록 추출 시도
     const m = stripped.match(/\{[\s\S]*\}/);
     if (!m) return null;
     try {
-      body = JSON.parse(m[0]) as AiJson;
+      parsedUnknown = JSON.parse(m[0]);
     } catch {
       return null;
     }
   }
+  // Codex P1: JSON 이 "null" / 문자열 / 배열 등 non-object 로 유효 파싱되면 이후 dereference
+  // 가 throw → estimateKcalFromText 의 close 핸들러에서 uncaughtException 유출. 여기서 방어.
+  if (!parsedUnknown || typeof parsedUnknown !== "object" || Array.isArray(parsedUnknown)) {
+    return null;
+  }
+  const body = parsedUnknown as AiJson;
   const totalRaw = body.total_kcal;
   const total =
     typeof totalRaw === "number" && Number.isFinite(totalRaw) ? Math.round(totalRaw) : null;

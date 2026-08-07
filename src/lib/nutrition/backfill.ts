@@ -32,12 +32,15 @@ export async function runFoodKcalBackfill(
   const verbose = opts.verbose ?? false;
   const cutoff = new Date(Date.now() - olderThanSec * 1000);
 
+  // Codex P2 (rotation): 이전 orderBy asc + limit N 은 오래된 permanent-fail row 가 매 tick 슬롯을
+  // 점유해 신규 transient-fail 재추정을 굶겼음. desc 로 최신 실패를 우선 → 신규 로그가 빠르게 회복.
+  // 오래된 permanent-fail row 는 슬롯 하한 아래로 밀리지만, 애초에 파싱 불가라 손해 없음.
   const rows = await prisma.foodLog.findMany({
     where: {
       estimatedKcal: null,
       createdAt: { lt: cutoff },
     },
-    orderBy: { createdAt: "asc" },
+    orderBy: { createdAt: "desc" },
     select: {
       id: true,
       description: true,
@@ -61,10 +64,16 @@ export async function runFoodKcalBackfill(
         result.failed++;
         continue;
       }
-      await prisma.foodLog.update({
-        where: { id: r.id },
+      // Codex P2 (race): findMany 이후 사용자가 웹에서 PATCH 로 수동 kcal 설정한 경우
+      // 그 값을 stale AI 결과로 덮지 않도록 조건부 update. estimatedKcal 이 여전히 null 인 row 만 갱신.
+      const updated = await prisma.foodLog.updateMany({
+        where: { id: r.id, estimatedKcal: null },
         data: { estimatedKcal: est.kcal },
       });
+      if (updated.count === 0) {
+        // 사용자가 그 사이 수동 정정 → skip. 실패 카운트 아님.
+        continue;
+      }
       try {
         await recalculateCalorieBalance(r.date, undefined, prisma);
       } catch (err) {
