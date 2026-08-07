@@ -22,7 +22,12 @@ export interface RunFoodBackfillResult {
   candidates: number;
   ok: number;
   failed: number;
+  /** kcal 업데이트 성공했지만 최종 재계산도 실패한 date 목록 (ISO 문자열). */
+  recalcFailedDates: string[];
 }
+
+// Codex P2 (rotation): 매 실행 전체 후보 pool 을 이 상한까지 가져와 셔플. limit 이 하위집합.
+const ROTATION_POOL_CAP = 500;
 
 export async function runFoodKcalBackfill(
   opts: RunFoodBackfillOptions = {},
@@ -32,10 +37,10 @@ export async function runFoodKcalBackfill(
   const verbose = opts.verbose ?? false;
   const cutoff = new Date(Date.now() - olderThanSec * 1000);
 
-  // Codex P2 (rotation): 이전 orderBy asc + limit N 은 오래된 permanent-fail row 가 매 tick 슬롯을
-  // 점유해 신규 transient-fail 재추정을 굶겼음. desc 로 최신 실패를 우선 → 신규 로그가 빠르게 회복.
-  // 오래된 permanent-fail row 는 슬롯 하한 아래로 밀리지만, 애초에 파싱 불가라 손해 없음.
-  const rows = await prisma.foodLog.findMany({
+  // Codex P2 (rotation): asc/desc 어느 쪽이든 permanent-fail row 가 매 tick 같은 slot 을 점유.
+  // 후보 pool 을 상한까지 fetch → in-memory shuffle → limit 만큼 처리 → 모든 row 가 tick 마다
+  // 동등한 확률로 시도됨. 단일 사용자 앱이라 pool cap 500 이면 충분.
+  const pool = await prisma.foodLog.findMany({
     where: {
       estimatedKcal: null,
       createdAt: { lt: cutoff },
@@ -47,11 +52,20 @@ export async function runFoodKcalBackfill(
       mealType: true,
       date: true,
     },
-    ...(limit !== undefined ? { take: limit } : {}),
+    take: ROTATION_POOL_CAP,
   });
+  // Fisher–Yates shuffle (in-place).
+  for (let i = pool.length - 1; i > 0; i--) {
+    const j = Math.floor(Math.random() * (i + 1));
+    const tmp = pool[i];
+    pool[i] = pool[j];
+    pool[j] = tmp;
+  }
+  const rows = limit !== undefined ? pool.slice(0, limit) : pool;
 
-  const result: RunFoodBackfillResult = { candidates: rows.length, ok: 0, failed: 0 };
+  const result: RunFoodBackfillResult = { candidates: rows.length, ok: 0, failed: 0, recalcFailedDates: [] };
   if (opts.dryRun) return result;
+  const recalcFailedDates = new Set<string>();
 
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
@@ -77,10 +91,13 @@ export async function runFoodKcalBackfill(
       try {
         await recalculateCalorieBalance(r.date, undefined, prisma);
       } catch (err) {
-        // 재계산 실패는 카운트에만 반영 안 함 — 다음 사용자 조작에서 다시 재계산됨.
+        // Codex P2: 재계산 실패해도 kcal update 는 완료된 상태 → 다음 backfill 이 이 row 를 다시
+        // 선택하지 않음 → DailySummary 가 stale 로 남을 수 있음. date 를 수집해 loop 끝에 한 번
+        // 더 시도. 최종 실패면 result.recalcFailedDates 에 반환하고 error 로그.
+        recalcFailedDates.add(r.date.toISOString());
         if (verbose) {
           console.warn(
-            `  [food-kcal] recalculate 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
+            `  [food-kcal] recalculate 1차 실패 (log ${r.id}, retry 예정): ${err instanceof Error ? err.message : String(err)}`,
           );
         }
       }
@@ -92,6 +109,18 @@ export async function runFoodKcalBackfill(
           `  [food-kcal] estimate 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
         );
       }
+    }
+  }
+
+  // Codex P2: 1차 recalc 실패한 date 재시도. 동일 date 는 한 번만 호출 (Set 로 중복 제거).
+  for (const iso of recalcFailedDates) {
+    try {
+      await recalculateCalorieBalance(new Date(iso), undefined, prisma);
+    } catch (err) {
+      result.recalcFailedDates.push(iso);
+      console.error(
+        `[food-kcal] recalculate 최종 실패 (date ${iso}) — DailySummary stale 가능. 수동 재계산 필요: ${err instanceof Error ? err.message : String(err)}`,
+      );
     }
   }
 

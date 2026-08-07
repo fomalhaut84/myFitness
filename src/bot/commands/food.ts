@@ -73,6 +73,9 @@ export async function handleFoodInput(
   }
 
   // 3) 추정 성공 시 update + 칼로리 밸런스 재계산.
+  //    Codex P2: update 가 transient 실패하면 estimate 를 null 로 되돌려 사용자 응답이 "실패"
+  //    경로 (kcal 미확정 안내 + 수동 입력 유도) 로 가게. 그렇지 않으면 bot 이 "kcal 기록됨"
+  //    이라고 알리는데 DB 는 null → dashboard/리포트 총량에서 누락.
   if (estimate) {
     try {
       await prisma.foodLog.update({
@@ -84,6 +87,7 @@ export async function handleFoodInput(
         "[bot/food] estimatedKcal update 실패:",
         err instanceof Error ? err.message : String(err),
       );
+      estimate = null;
     }
   }
 
