@@ -1,67 +1,59 @@
-// #283 (Codex P2): recalculateCalorieBalance 가 transient 실패한 date 들을 저장해두는 큐.
-// - `/food_kcal` 봇 명령, backfill 스크립트 등 여러 경로에서 실패 시 여기에 date 를 mark.
-// - cron 이 매 tick 이 큐를 읽어 재시도 → 성공하면 date 제거.
-// - 스키마 신규 모델 없이 SystemAlertState 를 재활용:
-//     alertType="food_stale_recalc"
-//     lastErrorMsg  → JSON.stringify(sorted string[] of ISO dates)
-//   단일 사용자 앱이라 큐 사이즈는 매우 작음 (~수십 date 이하).
+// #283 (Codex P2): recalculateCalorieBalance 가 transient 실패한 date 큐.
+//
+// 원자성 요구사항 (Codex P2):
+//  1) 두 producer 가 다른 KST-day 를 동시에 mark 해도 소실 없음
+//  2) drain → recalc 사이 프로세스가 크래시해도 미처리 date 손실 없음
+//
+// 구현: 스키마 신규 모델 도입 없이 SystemAlertState 를 per-date row 로 사용.
+//   alertType = "food_stale_recalc:YYYY-MM-DD" (KST 기준)
+//   - mark: upsert (create) — unique 위반은 무해 (동일 date 중복 mark 방지)
+//   - list: findMany where startsWith
+//   - ack: 성공 후 개별 delete (소실 방지 = drain 후 leave-in-place, 성공만 삭제)
 
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 
-const ALERT_TYPE = "food_stale_recalc";
-// lastErrorMsg 는 200자 제한 (SystemAlertState 주석). 한 date=10자 → 안전 여유 15개.
-// 15개 초과 시 오래된 것부터 밀어냄 (FIFO). 실제 운영에서 이 이상 쌓이면 서비스가 정말 병들어있음.
-const MAX_QUEUE = 15;
+const ALERT_PREFIX = "food_stale_recalc:";
 
-/**
- * KST 기준 YYYY-MM-DD key 로 정규화.
- * Codex P2 (#283): 이전 toISOString().slice(0,10) 은 UTC 날짜라 KST 00:00~08:59 log 의 date
- * 를 전날로 잘못 저장 → cron 이 잘못된 date 를 재계산하고 큐에서 제거 → intended DailySummary
- * 는 영영 stale.
- */
+/** KST 기준 YYYY-MM-DD (예: 2026-08-07). */
 function toDayKey(date: Date): string {
   return ymdKST(date);
 }
 
-async function readQueue(): Promise<string[]> {
-  const row = await prisma.systemAlertState.findUnique({
-    where: { alertType: ALERT_TYPE },
-    select: { lastErrorMsg: true },
-  });
-  if (!row?.lastErrorMsg) return [];
-  try {
-    const parsed = JSON.parse(row.lastErrorMsg);
-    return Array.isArray(parsed) ? parsed.filter((x): x is string => typeof x === "string") : [];
-  } catch {
-    return [];
-  }
+function toAlertType(dayKey: string): string {
+  return `${ALERT_PREFIX}${dayKey}`;
 }
 
-async function writeQueue(dayKeys: string[]): Promise<void> {
-  const trimmed = dayKeys.slice(-MAX_QUEUE);
-  const body = JSON.stringify(trimmed);
+/** date 를 큐에 mark. 이미 있으면 no-op (idempotent). */
+export async function markStaleRecalcDate(date: Date): Promise<void> {
+  const dayKey = toDayKey(date);
+  const alertType = toAlertType(dayKey);
   const now = new Date();
   await prisma.systemAlertState.upsert({
-    where: { alertType: ALERT_TYPE },
-    create: { alertType: ALERT_TYPE, lastAlertAt: now, lastErrorMsg: body },
-    update: { lastAlertAt: now, lastErrorMsg: body },
+    where: { alertType },
+    create: { alertType, lastAlertAt: now, lastErrorMsg: dayKey },
+    update: { lastAlertAt: now },
   });
 }
 
-export async function markStaleRecalcDate(date: Date): Promise<void> {
-  const key = toDayKey(date);
-  const existing = await readQueue();
-  if (existing.includes(key)) return;
-  await writeQueue([...existing, key]);
+/**
+ * 큐에 남은 date 를 반환. **삭제하지 않는다** — 각 date 는 recalc 성공 후
+ * ackStaleRecalcDate 로 개별 확인. 프로세스 중단 시에도 미처리 date 손실 없음.
+ */
+export async function listStaleRecalcDates(): Promise<Date[]> {
+  const rows = await prisma.systemAlertState.findMany({
+    where: { alertType: { startsWith: ALERT_PREFIX } },
+    select: { alertType: true },
+    orderBy: { lastAlertAt: "asc" },
+  });
+  return rows
+    .map((r) => r.alertType.slice(ALERT_PREFIX.length))
+    .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
+    .map((k) => new Date(`${k}T00:00:00+09:00`));
 }
 
-/** cron 이 호출: 큐 전체를 반환 + 초기화. 성공 처리는 호출자 책임.
- *  반환 Date 는 각 KST-day 안에 위치한 UTC instant (KST 00:00) — recalculateCalorieBalance 가
- *  내부 ymdKST(date) 로 다시 원래 KST-day 를 복원해 정합. */
-export async function drainStaleRecalcQueue(): Promise<Date[]> {
-  const existing = await readQueue();
-  if (existing.length === 0) return [];
-  await writeQueue([]);
-  return existing.map((k) => new Date(`${k}T00:00:00+09:00`));
+/** recalc 성공한 date 를 큐에서 제거. */
+export async function ackStaleRecalcDate(date: Date): Promise<void> {
+  const alertType = toAlertType(toDayKey(date));
+  await prisma.systemAlertState.deleteMany({ where: { alertType } });
 }

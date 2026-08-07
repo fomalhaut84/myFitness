@@ -127,15 +127,9 @@ export async function handleFoodInput(
     }
   }
 
-  // 4) 칼로리 밸런스 재계산 (kcal 이 null 이어도 다른 항목으로 갱신 가능성).
-  try {
-    await recalculateCalorieBalance(now, undefined, prisma);
-  } catch (err) {
-    console.error(
-      "[bot/food] 칼로리 밸런스 재계산 실패:",
-      err instanceof Error ? err.message : String(err),
-    );
-  }
+  // 4) 칼로리 밸런스 재계산. Codex P2 (#283): recalcWithRetry 로 즉시 재시도 + 실패 시 큐 mark →
+  //    cron 이 이어받음 (kcal 이 성공 저장된 경우 backfill 은 이 row 를 다시 안 뽑기 때문).
+  await recalcWithRetry(now, 1);
 
   // 5) 사용자 응답.
   const label = MEAL_LABELS[mealType];
