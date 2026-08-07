@@ -36,24 +36,42 @@ export async function markStaleRecalcDate(date: Date): Promise<void> {
   });
 }
 
-/**
- * 큐에 남은 date 를 반환. **삭제하지 않는다** — 각 date 는 recalc 성공 후
- * ackStaleRecalcDate 로 개별 확인. 프로세스 중단 시에도 미처리 date 손실 없음.
- */
-export async function listStaleRecalcDates(): Promise<Date[]> {
-  const rows = await prisma.systemAlertState.findMany({
-    where: { alertType: { startsWith: ALERT_PREFIX } },
-    select: { alertType: true },
-    orderBy: { lastAlertAt: "asc" },
-  });
-  return rows
-    .map((r) => r.alertType.slice(ALERT_PREFIX.length))
-    .filter((k) => /^\d{4}-\d{2}-\d{2}$/.test(k))
-    .map((k) => new Date(`${k}T00:00:00+09:00`));
+/** Claim = 처리 시점 스냅샷 (date + claimedAt). ack 는 이 timestamp 보다 오래된 row 만 삭제. */
+export interface StaleRecalcClaim {
+  date: Date;
+  claimedAt: Date;
 }
 
-/** recalc 성공한 date 를 큐에서 제거. */
-export async function ackStaleRecalcDate(date: Date): Promise<void> {
-  const alertType = toAlertType(toDayKey(date));
-  await prisma.systemAlertState.deleteMany({ where: { alertType } });
+/**
+ * 큐에 남은 date 를 claim 형태로 반환. **삭제하지 않는다** — 각 claim 은 recalc 성공 후
+ * ackStaleRecalcClaim 로 조건부 확인. 프로세스 중단 시에도 미처리 date 손실 없음.
+ * Codex P2 (#283): claim 이후 새로 upsert 된 mark 는 lastAlertAt 이 갱신되므로
+ * ack 시 조건 (lastAlertAt <= claimedAt) 을 붙여 새 signal 을 실수로 지우지 않게.
+ */
+export async function listStaleRecalcDates(): Promise<StaleRecalcClaim[]> {
+  const rows = await prisma.systemAlertState.findMany({
+    where: { alertType: { startsWith: ALERT_PREFIX } },
+    select: { alertType: true, lastAlertAt: true },
+    orderBy: { lastAlertAt: "asc" },
+  });
+  const claims: StaleRecalcClaim[] = [];
+  for (const r of rows) {
+    const k = r.alertType.slice(ALERT_PREFIX.length);
+    if (!/^\d{4}-\d{2}-\d{2}$/.test(k)) continue;
+    claims.push({ date: new Date(`${k}T00:00:00+09:00`), claimedAt: r.lastAlertAt });
+  }
+  return claims;
+}
+
+/**
+ * recalc 성공한 claim 을 큐에서 제거. lastAlertAt 이 claimedAt 이하인 경우만.
+ * 즉 처리 중 다른 producer 가 새로 mark (upsert 로 lastAlertAt 갱신) 한 row 는 건드리지 않음.
+ * 반환값: 실제 삭제된 row 수 (0 이면 새 mark 로 인해 skip 됨 = 다음 tick 이 새 signal 처리).
+ */
+export async function ackStaleRecalcClaim(claim: StaleRecalcClaim): Promise<number> {
+  const alertType = toAlertType(toDayKey(claim.date));
+  const result = await prisma.systemAlertState.deleteMany({
+    where: { alertType, lastAlertAt: { lte: claim.claimedAt } },
+  });
+  return result.count;
 }

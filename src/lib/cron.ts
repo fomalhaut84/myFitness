@@ -1,7 +1,7 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
 import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
-import { listStaleRecalcDates, ackStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { listStaleRecalcDates, ackStaleRecalcClaim } from "@/lib/nutrition/stale-recalc";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 // #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
 // #283 후속 (Codex P1): FoodLog kcal null 재추정 — 봇의 첫 AI 호출이 transient 실패한 경우 회복.
@@ -60,18 +60,24 @@ export function startCronJobs() {
 
         // #283 Codex P2: 큐에 남은 stale-recalc date 재시도. list → 개별 recalc → 성공만 ack.
         // 실패 date 는 큐에 그대로 남아 다음 tick 이 이어받음 (프로세스 중단 시에도 소실 없음).
+        // Codex P2 (claim vs new mark): ack 는 claim 시점 (lastAlertAt) 이후 새 mark 가 없을 때만
+        // 삭제 — recalc 중 다른 producer 가 upsert 로 signal 갱신했으면 그 signal 보존.
         try {
-          const dates = await listStaleRecalcDates();
-          for (const d of dates) {
+          const claims = await listStaleRecalcDates();
+          for (const c of claims) {
+            const key = c.date.toISOString().slice(0, 10);
             try {
-              await recalculateCalorieBalance(d, undefined);
-              await ackStaleRecalcDate(d);
-              console.log(`[cron] stale recalc 성공: ${d.toISOString().slice(0, 10)}`);
+              await recalculateCalorieBalance(c.date, undefined);
+              const deleted = await ackStaleRecalcClaim(c);
+              if (deleted === 0) {
+                console.log(
+                  `[cron] stale recalc 성공: ${key} (처리 중 새 signal 발생 — 다음 tick 재시도)`,
+                );
+              } else {
+                console.log(`[cron] stale recalc 성공: ${key}`);
+              }
             } catch (recalcErr) {
-              console.error(
-                `[cron] stale recalc 재실패 (${d.toISOString().slice(0, 10)}):`,
-                recalcErr,
-              );
+              console.error(`[cron] stale recalc 재실패 (${key}):`, recalcErr);
               // ack 안 함 → 큐에 계속 남음 → 다음 tick 재시도.
             }
           }
