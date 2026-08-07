@@ -8,6 +8,8 @@ import { spawn } from "child_process";
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const DEFAULT_TIMEOUT_MS = 15_000;
 const MAX_KCAL_SANITY = 5000; // 5000 kcal 초과는 1인분 아님 (거의 확실히 오답)
+// Codex P2 (#283): item 별 상한. 1인분 한 항목이 3000 kcal 넘으면 오답 (예: -200/700 짝 등도 무효).
+const MAX_ITEM_KCAL = 3000;
 
 export interface KcalEstimateInput {
   description: string;
@@ -135,6 +137,11 @@ export function parseKcalResponse(rawText: string): KcalEstimate | null {
   // 이 값을 저장하면 대시보드가 하루 총량으로 오해. reject → cron backfill 이 재시도, 또는
   // 사용자가 /food_kcal 수동 입력.
   if (items.some((it) => it.kcal === null)) {
+    return null;
+  }
+  // Codex P2 (#283): item 별 kcal 이 음수거나 상한 초과면 total 이 우연히 정상 범위여도 무효.
+  // 예: {items: [{kcal: -200}, {kcal: 700}], total_kcal: 500} 은 잘못된 응답.
+  if (items.some((it) => it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL))) {
     return null;
   }
   return {
