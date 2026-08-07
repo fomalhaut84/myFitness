@@ -131,6 +131,12 @@ export function parseKcalResponse(rawText: string): KcalEstimate | null {
   const items = Array.isArray(body.items)
     ? body.items.map(toItem).filter((x): x is KcalItem => x !== null)
     : [];
+  // Codex P2 (#283): 어느 항목이라도 kcal 이 null 이면 total 은 부분 합계라 신뢰 불가.
+  // 이 값을 저장하면 대시보드가 하루 총량으로 오해. reject → cron backfill 이 재시도, 또는
+  // 사용자가 /food_kcal 수동 입력.
+  if (items.some((it) => it.kcal === null)) {
+    return null;
+  }
   return {
     kcal: total,
     confidence: pickConfidence(body.confidence),

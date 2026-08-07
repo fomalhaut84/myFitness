@@ -45,6 +45,12 @@ export async function PATCH(request: Request, ctx: Params) {
       );
     }
 
+    // Codex P2 (#283): description 변경만 있고 새 kcal 미제공이면 기존 kcal 은 이전 description
+    // 기준이라 stale. null 로 리셋 → cron/backfill 이 새 description 으로 재추정.
+    if (data.description !== undefined && data.estimatedKcal === undefined) {
+      data.estimatedKcal = null;
+    }
+
     const updated = await prisma.foodLog.update({
       where: { id },
       data,
