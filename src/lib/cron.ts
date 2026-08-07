@@ -1,6 +1,10 @@
 import cron from "node-cron";
 import { syncAll } from "@/lib/garmin/sync";
+import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
 // #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
+// #283 후속 (Codex P1): FoodLog kcal null 재추정 — 봇의 첫 AI 호출이 transient 실패한 경우 회복.
+
+const FOOD_KCAL_LIMIT_PER_TICK = 20;
 
 let isSyncing = false;
 let isRegistered = false;
@@ -38,6 +42,18 @@ export function startCronJobs() {
         const failed = results.filter((r) => r.error).length;
         console.log(`[cron] 싱크 완료: ${total}건, 실패 ${failed}건`);
         // weather 자동 enrich 는 syncAll 내부에서 실행됨 (#269 후속).
+
+        // #283 Codex P1: FoodLog kcal null 재추정. transient 실패로 남은 null 을 다음 sync tick 에서 회복.
+        try {
+          const foodRes = await runFoodKcalBackfill({ limit: FOOD_KCAL_LIMIT_PER_TICK });
+          if (foodRes.candidates > 0) {
+            console.log(
+              `[cron] food kcal backfill: 대상 ${foodRes.candidates}, 성공 ${foodRes.ok}, 실패 ${foodRes.failed}`,
+            );
+          }
+        } catch (err) {
+          console.error("[cron] food kcal backfill 에러:", err);
+        }
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);
       } finally {

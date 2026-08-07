@@ -137,10 +137,20 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   async function saveKcal() {
     if (saving) return;
     const trimmed = kcalInput.trim();
-    const n = trimmed === "" ? null : parseInt(trimmed, 10);
-    if (n !== null && (!Number.isFinite(n) || n < 0 || n > 10000)) {
-      setError("0~10000 사이 정수여야 합니다");
-      return;
+    let n: number | null;
+    if (trimmed === "") {
+      n = null;
+    } else {
+      // Codex P2: parseInt('650.5') = 650 처럼 잘라먹지 않도록 전체 문자열이 정수여야 통과.
+      if (!/^\d+$/.test(trimmed)) {
+        setError("0~10000 사이 정수여야 합니다");
+        return;
+      }
+      n = Number(trimmed);
+      if (!Number.isInteger(n) || n < 0 || n > 10000) {
+        setError("0~10000 사이 정수여야 합니다");
+        return;
+      }
     }
     setSaving(true);
     setError(null);
