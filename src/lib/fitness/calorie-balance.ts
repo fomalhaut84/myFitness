@@ -90,10 +90,10 @@ async function withSerializableRetry(
 async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
   const { summaryKey, kstDayStart, kstDayEnd } = kstDayBoundary(referenceDate);
 
-  const [summary, profile, intakeAgg] = await Promise.all([
+  const [summary, profile, intakeAgg, unestimatedCount] = await Promise.all([
     tx.dailySummary.findUnique({ where: { date: summaryKey } }),
     tx.userProfile.findFirst(),
-    // estimatedKcal이 있는 로그만 집계. null인 로그(예: 봇 미추정)는 섭취 계산에서 제외.
+    // estimatedKcal이 있는 로그만 집계.
     tx.foodLog.aggregate({
       where: {
         date: { gte: kstDayStart, lt: kstDayEnd },
@@ -101,6 +101,15 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
       },
       _sum: { estimatedKcal: true },
       _count: { _all: true },
+    }),
+    // Codex P2 (#283): 미추정 (kcal null) 로그가 하나라도 있으면 그날 intake 는 부분 합계 →
+    // 대시보드/리포트가 하루 완전 합계로 오해할 수 있음. 이 경우 intake/balance 를 null 로 두어
+    // 추정 완료 (backfill 성공) 전까지 misleading value 를 publish 하지 않도록.
+    tx.foodLog.count({
+      where: {
+        date: { gte: kstDayStart, lt: kstDayEnd },
+        estimatedKcal: null,
+      },
     }),
   ]);
 
@@ -111,11 +120,15 @@ async function doRecalc(referenceDate: Date, tx: TxClient): Promise<void> {
   const availableCalories =
     target !== null && active !== null ? target + active : null;
 
-  // kcal이 집계된 로그가 하나도 없으면 intake = null (0 kcal로 표시하지 않음)
+  // kcal이 집계된 로그가 하나도 없으면 intake = null (0 kcal로 표시하지 않음).
+  // 미추정 log 가 있어도 부분 합계 = misleading → null.
   const hasCountedLogs = intakeAgg._count._all > 0;
-  const estimatedIntakeCalories = hasCountedLogs
-    ? (intakeAgg._sum.estimatedKcal ?? 0)
-    : null;
+  const hasUnestimated = unestimatedCount > 0;
+  const estimatedIntakeCalories = hasUnestimated
+    ? null
+    : hasCountedLogs
+      ? (intakeAgg._sum.estimatedKcal ?? 0)
+      : null;
 
   const calorieBalance =
     estimatedIntakeCalories !== null && availableCalories !== null

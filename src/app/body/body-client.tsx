@@ -585,7 +585,7 @@ function FoodInput() {
   const [meal, setMeal] = useState("lunch");
   const [loading, setLoading] = useState(false);
   const [logs, setLogs] = useState<
-    { description: string; estimatedKcal: number; mealType: string }[]
+    { description: string; estimatedKcal: number | null; mealType: string }[]
   >([]);
 
   async function submit(e: React.FormEvent) {
@@ -654,8 +654,15 @@ function FoodInput() {
                 </span>
                 <span>{l.description}</span>
               </div>
+              {/* Codex P2 (#283): estimatedKcal 은 AI 실패 시 null. "~null kcal" 렌더 방지. */}
               <span className="font-[family-name:var(--font-geist-mono)]">
-                ~{l.estimatedKcal} <span className="text-dim">kcal</span>
+                {l.estimatedKcal !== null ? (
+                  <>
+                    ~{l.estimatedKcal} <span className="text-dim">kcal</span>
+                  </>
+                ) : (
+                  <span className="text-dim text-[11px]">추정 실패 · 재시도 예정</span>
+                )}
               </span>
             </div>
           ))}

@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -62,9 +63,7 @@ export async function POST(request: Request) {
       );
     }
 
-    // AI 칼로리 추정 (간단한 추정 — 향후 Claude로 대체 가능)
-    const estimatedKcal = estimateCalories(description);
-
+    // 사전 리뷰 P1-4: date 검증을 AI 호출 전에 해서 잘못된 date 에 15s AI 비용 낭비 방지.
     let foodDate = new Date();
     if (date) {
       foodDate = new Date(date);
@@ -75,6 +74,10 @@ export async function POST(request: Request) {
         );
       }
     }
+
+    // #283 (M14 Phase 1): Claude AI 로 kcal 추정. 실패 시 null (로그는 저장, 사용자가 나중에 수정 가능).
+    const estimate = await estimateKcalFromText({ description, mealType });
+    const estimatedKcal = estimate?.kcal ?? null;
 
     // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.
     // 직렬화 충돌(P2034) 시 자동 재시도로 동시 요청 안전 보장.
@@ -104,20 +107,3 @@ export async function POST(request: Request) {
   }
 }
 
-// 간단한 키워드 기반 칼로리 추정 (향후 AI로 교체)
-function estimateCalories(description: string): number {
-  const lower = description.toLowerCase();
-  let kcal = 500; // 기본값
-
-  if (lower.includes("샐러드") || lower.includes("salad")) kcal = 300;
-  else if (lower.includes("라면") || lower.includes("ramen")) kcal = 550;
-  else if (lower.includes("치킨") || lower.includes("chicken")) kcal = 700;
-  else if (lower.includes("밥") || lower.includes("rice")) kcal = 400;
-  else if (lower.includes("빵") || lower.includes("bread")) kcal = 350;
-  else if (lower.includes("커피") || lower.includes("coffee")) kcal = 100;
-  else if (lower.includes("간식") || lower.includes("snack")) kcal = 250;
-  else if (lower.includes("피자") || lower.includes("pizza")) kcal = 800;
-  else if (lower.includes("고기") || lower.includes("meat")) kcal = 600;
-
-  return kcal;
-}

@@ -9,7 +9,7 @@ import { registerWeightCommand } from "./commands/weight";
 import { registerSyncCommand } from "./commands/sync";
 import { registerReportCommand } from "./commands/report";
 import { registerAiCommands, handleAiQuestion } from "./commands/ai";
-import { isFoodInput, handleFoodInput } from "./commands/food";
+import { isFoodInput, handleFoodInput, handleFoodKcalCommand } from "./commands/food";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
@@ -52,6 +52,12 @@ export function getBot(): Bot {
   // 자연어 fallback
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
+
+    // #283: /food_kcal <id> <kcal> — 이전 로그 kcal 정정.
+    if (/^\/food_kcal(?:@\S+)?\b/.test(text)) {
+      await handleFoodKcalCommand(ctx, text);
+      return;
+    }
 
     // 식단 입력 감지
     if (isFoodInput(text)) {

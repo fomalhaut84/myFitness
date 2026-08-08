@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+import { todayKST } from "@/lib/garmin/utils";
 import LifestyleClient from "./lifestyle-client";
 
 export const dynamic = "force-dynamic";
@@ -85,6 +86,17 @@ export default async function LifestylePage() {
     orderBy: { date: "asc" },
   });
 
+  // #283: 오늘 (KST 자정 ~ 다음날 자정) 음식 로그 — kcal 편집/삭제용.
+  // 사전 리뷰 P1-2: 서버 로컬 TZ 대신 todayKST() 로 진짜 KST midnight instant 사용
+  // (recalculateCalorieBalance 의 KST-day 집계와 정합).
+  const todayKstStart = todayKST();
+  const tomorrowKstStart = new Date(todayKstStart.getTime() + 24 * 60 * 60 * 1000);
+  const todayFoodLogs = await prisma.foodLog.findMany({
+    where: { date: { gte: todayKstStart, lt: tomorrowKstStart } },
+    orderBy: { createdAt: "asc" },
+    select: { id: true, date: true, description: true, mealType: true, estimatedKcal: true },
+  });
+
   const sleepEntries = sleepRecords.map((r) => {
     const start = new Date(r.sleepStart);
     const end = new Date(r.sleepEnd);
@@ -110,6 +122,13 @@ export default async function LifestylePage() {
       month={now.getMonth() + 1}
       consistencyActiveDays={last28ActiveDates.size}
       sleepEntries={sleepEntries}
+      todayFoodLogs={todayFoodLogs.map((f) => ({
+        id: f.id,
+        description: f.description,
+        mealType: f.mealType,
+        estimatedKcal: f.estimatedKcal,
+        timeIso: f.date.toISOString(),
+      }))}
     />
   );
 }
