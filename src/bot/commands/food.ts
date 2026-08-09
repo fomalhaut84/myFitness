@@ -62,21 +62,21 @@ export function isFoodInput(text: string): boolean {
  * 사용자가 `아침 리포트 새로 생성해줘` 같은 입력을 하면 이전엔 `아침` 접두사만 보고 음식으로
  * 저장 → 매 backfill tick 마다 AI 가 "음식 아님" 응답 → 영영 permanent-fail (사용자 실측).
  *
- * 판정: 다음 신호가 하나라도 있으면 command-like.
- * - 한국어 명령/요청 어미 (~해줘, ~해봐, ~부탁, ~알려줘, ~보여줘 등)
- * - 물음/궁금증 어미 (~뭐야, ~어때, ~어떻게)
- * - 시스템 기능 키워드 (리포트, 보고서, 분석, 요약, 생성)
+ * 판정 (한국어 명령/요청 어미 매칭만 사용):
+ * - 요청 어미 (~해줘, ~해봐, ~해주세요, ~부탁, ~알려줘, ~보여줘, ~봐줘)
+ * - 물음 어미 (~뭐야, ~어때, ~어떻게, ~왜)
  *
- * 실제 음식 description 은 명사·수량 위주라 위 패턴에 걸릴 확률 낮음.
+ * Codex P2 (#289): 앞자리 keyword (만들/추천/보여/알려) 매칭은 명사 활용형 (만들어둔 샌드위치,
+ * 추천받은 도시락) 을 오탐하므로 제거. 어미 규칙만으로 실무 케이스 대부분 커버.
+ * 실제 음식 description 은 명사·수량 위주라 어미 패턴에 걸릴 확률 낮음.
  */
 export function isCommandLikeDescription(description: string): boolean {
   const trimmed = description.trim();
   if (trimmed.length === 0) return false;
-  // 어미 (문장 끝 근처, 문장부호 무시).
-  if (/(해줘|해봐|해달라|부탁|알려줘|보여줘|봐줘)[\s.!?~]*$/.test(trimmed)) return true;
+  // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
+  if (/(해줘|해봐|해달라|해주세요|부탁|알려줘|보여줘|봐줘)[\s.!?~]*$/.test(trimmed)) return true;
+  // 물음 어미.
   if (/(뭐야|어때|어떻게|왜)[\s.!?~]*$/.test(trimmed)) return true;
-  // 시스템 기능 키워드가 앞부분에 나오면 명령 문장 가능성 높음.
-  if (/^(리포트|보고서|분석|요약|생성|추천|알려|보여|만들)/.test(trimmed)) return true;
   return false;
 }
 
