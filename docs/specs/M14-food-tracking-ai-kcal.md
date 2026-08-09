@@ -149,13 +149,19 @@ Phase 1 후:
 
 ## 후속 (Phase 2 로 별도 이슈)
 
-1. **자주 먹는 음식 라이브러리** — 신규 로그 저장 전 최근 30일 유사 description 검색 (embedding or 문자열 유사도) → 있으면 그 kcal 재사용 (AI 호출 절감 + 일관성). MFP "밈 재작성" 페인 포인트 직접 해결.
-2. **P/C/F 매크로** — 기존 `m4-8-nutrition-analysis.md` 스펙 부활
-3. **외부 음식 DB** — 오픈식약처, 만개의 레시피 API 등
-4. **사진 입력** — Claude Vision 으로 사진 → 항목 추출 → kcal
-5. **재추정 backfill** — weather backfill 패턴 재활용, 옛 로그의 kcal null 대량 처리 스크립트
+1. **봇 정정 UX 모바일 개선** — 사용자 피드백 (2026-08-09): `/food_kcal <cuid> <kcal>` 형식이 모바일에서 cuid 타이핑 불편. 대안 (우선순위 순):
+   1. Telegram reply-to — 봇 kcal 응답 메시지에 사용자 reply → `/food_kcal 400` 만 (id 는 원본 메시지에서 추출)
+   2. Inline keyboard "수정" 버튼 → callback_query 로 처리 (id 는 `callback_data` 에 embed)
+   3. 최근 N 분 이내 마지막 log 를 default 로 (`/food_kcal 400` 만 입력)
+   4. 웹 UI 로만 편집 유도 (lifestyle 페이지 인라인 편집이 이미 있음, 봇 명령 제거 안내)
+2. **자주 먹는 음식 라이브러리** — 신규 로그 저장 전 최근 30일 유사 description 검색 (embedding or 문자열 유사도) → 있으면 그 kcal 재사용 (AI 호출 절감 + 일관성). MFP "밈 재작성" 페인 포인트 직접 해결.
+3. **P/C/F 매크로** — 기존 `m4-8-nutrition-analysis.md` 스펙 부활
+4. **외부 음식 DB** — 오픈식약처, 만개의 레시피 API 등
+5. **사진 입력** — Claude Vision 으로 사진 → 항목 추출 → kcal
+6. **재추정 backfill** — weather backfill 패턴 재활용, 옛 로그의 kcal null 대량 처리 스크립트
 
 ## 관련 메모리
 
+- `feedback_bot_mobile_ux` — 봇 명령에서 cuid 등 긴 식별자 입력 요구 금지
 - `feedback_release_via_pr` — 릴리즈는 dev→main PR + 사용자 머지
 - `feedback_review_policy` — 사전 pr-review-toolkit 1회 + Codex bot 만
