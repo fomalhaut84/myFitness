@@ -62,21 +62,28 @@ export function isFoodInput(text: string): boolean {
  * 사용자가 `아침 리포트 새로 생성해줘` 같은 입력을 하면 이전엔 `아침` 접두사만 보고 음식으로
  * 저장 → 매 backfill tick 마다 AI 가 "음식 아님" 응답 → 영영 permanent-fail (사용자 실측).
  *
- * 판정 (한국어 명령/요청 어미 매칭만 사용):
- * - 요청 어미 (~해줘, ~해봐, ~해주세요, ~부탁, ~알려줘, ~보여줘, ~봐줘)
- * - 물음 어미 (~뭐야, ~어때, ~어떻게, ~왜)
+ * 판정:
+ * - 문장 끝 `?` (음식 description 에 `?` 붙일 이유 없음)
+ * - 요청/명령 어미 문장 끝 (~해줘, ~해봐, ~해주세요, ~부탁, ~알려줘, ~보여줘, ~봐줘)
+ * - 물음 어미 문장 끝 (~뭐야, ~어때)
+ * - 질문 단어 whitespace/문두/문말 boundary (왜, 어떻게) — Codex P2 (#289): 종결형이 아니라
+ *   문장 중간에 오는 경우 (`리포트 왜 이상해?`) 도 캐치.
  *
- * Codex P2 (#289): 앞자리 keyword (만들/추천/보여/알려) 매칭은 명사 활용형 (만들어둔 샌드위치,
- * 추천받은 도시락) 을 오탐하므로 제거. 어미 규칙만으로 실무 케이스 대부분 커버.
+ * Codex P2 이전 지적: 앞자리 keyword (만들/추천/보여/알려) 매칭은 명사 활용형 오탐하므로 제거.
  * 실제 음식 description 은 명사·수량 위주라 어미 패턴에 걸릴 확률 낮음.
  */
 export function isCommandLikeDescription(description: string): boolean {
   const trimmed = description.trim();
   if (trimmed.length === 0) return false;
+  // 문장 끝 물음표 (음식 description 에 `?` 붙일 이유 없음).
+  if (/\?[\s.!~]*$/.test(trimmed)) return true;
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
   if (/(해줘|해봐|해달라|해주세요|부탁|알려줘|보여줘|봐줘)[\s.!?~]*$/.test(trimmed)) return true;
-  // 물음 어미.
-  if (/(뭐야|어때|어떻게|왜)[\s.!?~]*$/.test(trimmed)) return true;
+  // 물음 어미 (문장 종결형).
+  if (/(뭐야|어때)[\s.!?~]*$/.test(trimmed)) return true;
+  // 질문 단어가 문장 중간/끝에 whitespace boundary 로 나오면 문장 자체가 질문.
+  // "리포트 왜 이상해?", "김치찌개 어떻게 만들어" 등.
+  if (/(^|\s)(왜|어떻게)(\s|$)/.test(trimmed)) return true;
   return false;
 }
 
