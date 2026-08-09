@@ -56,19 +56,19 @@ export async function runFoodKcalBackfill(
   }> = [];
 
   if (limit !== undefined) {
-    const pool = await prisma.foodLog.findMany({
-      where: baseWhere,
-      orderBy: { createdAt: "desc" },
-      select: { id: true, description: true, mealType: true, date: true },
-      take: ROTATION_POOL_CAP,
-    });
-    // Fisher–Yates shuffle (in-place).
-    for (let i = pool.length - 1; i > 0; i--) {
-      const j = Math.floor(Math.random() * (i + 1));
-      const tmp = pool[i];
-      pool[i] = pool[j];
-      pool[j] = tmp;
-    }
+    // Codex P2 (#283 후속): Postgres 에서 전체 null pool 을 대상으로 random() sampling.
+    // 이전 orderBy createdAt desc + JS shuffle 은 newest ROTATION_POOL_CAP (500) 안에서만
+    // rotation → 그 window 밖 오래된 row 는 영영 미도달. random() 로 매 tick 전체 backlog 에서
+    // pool 을 뽑아 permanent-fail 이 어디에 있든 다른 row 가 순환 진입 가능.
+    const pool = await prisma.$queryRaw<
+      Array<{ id: string; description: string; mealType: string | null; date: Date }>
+    >`
+      SELECT id, description, "mealType", date
+      FROM "FoodLog"
+      WHERE "estimatedKcal" IS NULL AND "createdAt" < ${cutoff}
+      ORDER BY random()
+      LIMIT ${ROTATION_POOL_CAP}
+    `;
     rows.push(...pool.slice(0, limit));
   } else {
     // 전량 처리: cursor-based 페이지네이션 (id asc). 성공하면 결과셋에서 빠지지만 남은 row 는
