@@ -57,6 +57,29 @@ export function isFoodInput(text: string): boolean {
   return MEAL_PATTERNS.some((m) => m.pattern.test(text));
 }
 
+/**
+ * 식단 접두사 뒤 description 이 실제 음식이 아니라 봇 명령/요청 문장일 때 감지.
+ * 사용자가 `아침 리포트 새로 생성해줘` 같은 입력을 하면 이전엔 `아침` 접두사만 보고 음식으로
+ * 저장 → 매 backfill tick 마다 AI 가 "음식 아님" 응답 → 영영 permanent-fail (사용자 실측).
+ *
+ * 판정: 다음 신호가 하나라도 있으면 command-like.
+ * - 한국어 명령/요청 어미 (~해줘, ~해봐, ~부탁, ~알려줘, ~보여줘 등)
+ * - 물음/궁금증 어미 (~뭐야, ~어때, ~어떻게)
+ * - 시스템 기능 키워드 (리포트, 보고서, 분석, 요약, 생성)
+ *
+ * 실제 음식 description 은 명사·수량 위주라 위 패턴에 걸릴 확률 낮음.
+ */
+export function isCommandLikeDescription(description: string): boolean {
+  const trimmed = description.trim();
+  if (trimmed.length === 0) return false;
+  // 어미 (문장 끝 근처, 문장부호 무시).
+  if (/(해줘|해봐|해달라|부탁|알려줘|보여줘|봐줘)[\s.!?~]*$/.test(trimmed)) return true;
+  if (/(뭐야|어때|어떻게|왜)[\s.!?~]*$/.test(trimmed)) return true;
+  // 시스템 기능 키워드가 앞부분에 나오면 명령 문장 가능성 높음.
+  if (/^(리포트|보고서|분석|요약|생성|추천|알려|보여|만들)/.test(trimmed)) return true;
+  return false;
+}
+
 interface BotCtx {
   reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>;
   /** grammy Context — replyWithChatAction 은 optional (테스트 mock 편의). */
@@ -73,6 +96,17 @@ export async function handleFoodInput(
 
   if (!description) {
     await ctx.reply("먹은 것을 함께 입력해주세요.\n예: 점심 김치찌개 밥 계란후라이");
+    return;
+  }
+
+  // 명령/요청 문장이면 저장하지 않고 안내만. FoodLog 오염 (계속 backfill 재시도) 방지.
+  if (isCommandLikeDescription(description)) {
+    const mealLabel = MEAL_LABELS[mealType] ?? mealType;
+    await ctx.reply(
+      `"${mealLabel} ${description}" 이 식단이 맞나요?\n` +
+        `식단이면 음식 이름/양으로 다시 입력해주세요 (예: ${mealLabel} 김치찌개 밥 1공기).\n` +
+        `AI 질문·명령이면 접두사 없이 그대로 보내주세요.`,
+    );
     return;
   }
 
