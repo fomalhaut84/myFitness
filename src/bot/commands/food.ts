@@ -75,9 +75,10 @@ export function isFoodInput(text: string): boolean {
 export function isCommandLikeDescription(description: string): boolean {
   const trimmed = description.trim();
   if (trimmed.length === 0) return false;
-  // Codex P2 (#289): parseReportRequest 어휘와 정렬. `리포트/report` 단어가 있으면 사실상 리포트
-  // 관련 요청 (음식명 아님). 재생성/다시 만들자/create/generate/refresh imperative 도 커버.
-  if (/리포트|\breport\b/i.test(trimmed)) return true;
+  // Codex P2 (#289): parseReportRequest 어휘와 정렬. 다만 '리포트' 자체는 문장 끝에 홀로 있을
+  // 때만 (bare form). '리포트에서 추천한 샐러드' 같이 mid-sentence 는 실제 음식 description
+  // 이므로 통과시킴.
+  if (/(?:^|\s)(리포트|report)[\s.!?~]*$/i.test(trimmed)) return true;
   if (/(재생성|다시\s?만들[자아]|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
   // Codex P2 (#289): 명사형 요청 (문장 끝만). `추천받은/분석한/요약된` 같은 관형형 오탐 방지 위해 sentence-end anchor.
   if (/(추천|분석|요약|조언|평가)[\s.!?~]*$/.test(trimmed)) return true;
@@ -125,12 +126,15 @@ export async function handleFoodInput(
   // 명령/요청 문장이면 저장하지 않고 안내만. FoodLog 오염 (계속 backfill 재시도) 방지.
   // Codex P2 (#289): 자연어 fallback 은 detectReportRequest=false 라 접두사 제거만으론
   // 리포트 감지 안 됨. 리포트 감지를 켜는 `/ai <원문>` 을 안내.
+  // Codex P2 (#289): 사용자가 '조식/석식/중식/야식' 같은 alias 를 썼으면 parseReportRequest 가
+  // 인식 못 함 (아침/모닝, 저녁/이브닝 만). 정규화된 mealLabel 로 재구성해 안내.
   if (isCommandLikeDescription(description)) {
     const mealLabel = MEAL_LABELS[mealType] ?? mealType;
+    const normalized = `${mealLabel} ${description}`;
     await ctx.reply(
       `"${mealLabel} ${description}" 이 식단이 맞나요?\n` +
         `식단이면 음식 이름/양으로 다시 입력해주세요 (예: ${mealLabel} 김치찌개 밥 1공기).\n` +
-        `AI 질문·명령·리포트 요청이면 앞에 /ai 를 붙여 보내주세요: /ai ${text}`,
+        `AI 질문·명령·리포트 요청이면 앞에 /ai 를 붙여 보내주세요: /ai ${normalized}`,
     );
     return;
   }
