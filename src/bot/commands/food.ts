@@ -98,16 +98,27 @@ export function isCommandLikeDescription(description: string): boolean {
   // 배제 위해 exclusion char class 앞에 \s* 허용. '추천해 주신 샐러드', '만들어 주신 도시락' 등
   // 오탐 방지.
   // Codex P2 (#289): whitespace 를 사이에 둔 aux (예: '만들어 줘', '뽑아 줘') 도 imperative.
-  // root\s+[줘봐] alternative 를 별도로 두어 root alone 매칭이 배제된 케이스를 커버.
+  // - root\\s*[줘봐] : imperative with 줘/봐
+  // - root\\s*주세요 : polite imperative
+  // - 생성 root 는 특히 '생성해준' (descriptive) 오탐 방지 위해 별도 생성해\\s*(줘|봐|주세요) alt
+  //   유지 + bare '생성' 은 '생성해/된/됨/돼' 배제.
   const DESCRIPTIVE_TAIL = "[진지졌져짐준줬놓놨봤야서줘봐주]";
   const REPORT_IMPERATIVE = new RegExp(
     `(` +
-      `만들어(?!\\s*${DESCRIPTIVE_TAIL})|만들어\\s*줘(?![서])|만들어\\s*봐(?![서])|` +
-      `생성(?!\\s*[된됨돼되])|생성해\\s*줘(?![서])|생성해\\s*봐(?![서])|` +
-      `뽑아(?!\\s*${DESCRIPTIVE_TAIL})|뽑아\\s*줘(?![서])|뽑아\\s*봐(?![서])|` +
-      `추천해(?!\\s*${DESCRIPTIVE_TAIL})|추천해\\s*줘(?![서])|추천해\\s*봐(?![서])|` +
-      `알려(?!\\s*${DESCRIPTIVE_TAIL})|알려\\s*줘(?![서])|알려\\s*봐(?![서])|` +
-      `보여(?!\\s*${DESCRIPTIVE_TAIL})|보여\\s*줘(?![서])|보여\\s*봐(?![서])|` +
+      // 만들어
+      `만들어(?!\\s*${DESCRIPTIVE_TAIL})|만들어\\s*줘(?![서])|만들어\\s*봐(?![서])|만들어\\s*주세요|` +
+      // 생성 (bare noun request 만; 생성해/된 등은 아래 alternatives 로 분리)
+      `생성(?!\\s*(?:해|[된됨돼되]))|` +
+      `생성해(?!\\s*${DESCRIPTIVE_TAIL})|생성해\\s*줘(?![서])|생성해\\s*봐(?![서])|생성해\\s*주세요|` +
+      // 뽑아
+      `뽑아(?!\\s*${DESCRIPTIVE_TAIL})|뽑아\\s*줘(?![서])|뽑아\\s*봐(?![서])|뽑아\\s*주세요|` +
+      // 추천해
+      `추천해(?!\\s*${DESCRIPTIVE_TAIL})|추천해\\s*줘(?![서])|추천해\\s*봐(?![서])|추천해\\s*주세요|` +
+      // 알려
+      `알려(?!\\s*${DESCRIPTIVE_TAIL})|알려\\s*줘(?![서])|알려\\s*봐(?![서])|알려\\s*주세요|` +
+      // 보여
+      `보여(?!\\s*${DESCRIPTIVE_TAIL})|보여\\s*줘(?![서])|보여\\s*봐(?![서])|보여\\s*주세요|` +
+      // 봐 bare
       `(?<![가-힣])봐(?!\\s*[준줬져진짐서주라라도])` +
       `)`,
   );
