@@ -2,6 +2,7 @@ import prisma from "../prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateKcalFromText, type KcalEstimate } from "@/lib/nutrition/estimate-kcal";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
  * recalculateCalorieBalance 를 소규모 재시도. 최종 실패면 stale-recalc 큐에 date 를 기록해
@@ -267,7 +268,8 @@ export async function handleFoodInput(
   //    cron 이 이어받음 (kcal 이 성공 저장된 경우 backfill 은 이 row 를 다시 안 뽑기 때문).
   await recalcWithRetry(now, 1);
 
-  // 5) 사용자 응답.
+  // 5) 사용자 응답. #292 (M14 Phase 2 #1): inline keyboard [수정][삭제] 로 모바일 UX 개선.
+  //    기존 /food_kcal <id> <kcal> 명령은 backward-compat 로 유지 (하단 handleFoodKcalCommand).
   const label = MEAL_LABELS[mealType];
   const lines = [`✅ ${label} 기록 완료`, `📝 ${description}`];
   if (estimate) {
@@ -275,12 +277,12 @@ export async function handleFoodInput(
       `📊 약 ${estimate.kcal.toLocaleString("ko-KR")} kcal (신뢰도 ${CONFIDENCE_LABEL[estimate.confidence]})`,
     );
     if (estimate.notes) lines.push(`ℹ️ ${estimate.notes}`);
-    lines.push(`정정: /food_kcal ${log.id} <kcal>`);
   } else {
-    lines.push("⚠️ kcal 자동 추정 실패");
-    lines.push(`수동 입력: /food_kcal ${log.id} <kcal>`);
+    lines.push("⚠️ kcal 자동 추정 실패 — [수정] 버튼으로 직접 입력하세요");
   }
-  await ctx.reply(lines.join("\n"));
+  await ctx.reply(lines.join("\n"), {
+    reply_markup: buildFoodInlineKeyboard(log.id),
+  });
 }
 
 /**
