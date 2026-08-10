@@ -54,8 +54,11 @@ export function registerFoodEditCallback(bot: Bot): void {
           err instanceof Prisma.PrismaClientKnownRequestError &&
           err.code === "P2025"
         ) {
-          await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
-          // 원본 메시지 keyboard 만 제거 (텍스트는 두어 사용자가 어떤 로그였는지 인지).
+          try {
+            await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
+          } catch {
+            // ignore
+          }
           try {
             await ctx.editMessageReplyMarkup({ reply_markup: undefined });
           } catch {
@@ -64,11 +67,34 @@ export function registerFoodEditCallback(bot: Bot): void {
           return;
         }
         console.error("[food-edit] delete 실패:", err);
-        await ctx.answerCallbackQuery({ text: "삭제 중 오류가 발생했습니다." });
+        try {
+          await ctx.answerCallbackQuery({ text: "삭제 중 오류가 발생했습니다." });
+        } catch {
+          // ignore
+        }
         return;
       }
 
-      // 재계산 (실패 시 stale queue 로 위임).
+      // Codex P2 (#293): delete 성공 즉시 사용자 피드백 (callback ACK + keyboard 제거 + 안내
+      // 메시지). recalc 는 이후 별도 try 로 처리 — 실패해도 UI 는 이미 반영됨. 각 API 호출은
+      // 독립 try/catch 로 감싸 하나 실패해도 나머지 진행.
+      try {
+        await ctx.answerCallbackQuery({ text: "삭제되었습니다." });
+      } catch {
+        // ignore (Telegram callback timeout 등)
+      }
+      try {
+        await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+      } catch {
+        // ignore
+      }
+      try {
+        await ctx.reply("🗑️ 위 기록이 삭제되었습니다.");
+      } catch {
+        // ignore
+      }
+
+      // 재계산 (실패 시 stale queue 로 위임). UI 응답 이후에 실행 — 지연 있어도 사용자 방해 X.
       try {
         await recalculateCalorieBalance(deletedDate, undefined, prisma);
       } catch (recalcErr) {
@@ -81,20 +107,6 @@ export function registerFoodEditCallback(bot: Bot): void {
         } catch {
           // ignore
         }
-      }
-
-      await ctx.answerCallbackQuery({ text: "삭제되었습니다." });
-      // 원본 메시지: keyboard 제거 + 삭제됨 표시. editMessageText 는 원문을 잃으므로
-      // reply_markup 만 지우고 별도 안내 메시지 발송 (context 유지).
-      try {
-        await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-      } catch {
-        // ignore
-      }
-      try {
-        await ctx.reply("🗑️ 위 기록이 삭제되었습니다.");
-      } catch {
-        // ignore
       }
       return;
     }
