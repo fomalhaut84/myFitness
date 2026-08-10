@@ -81,7 +81,8 @@ export function isCommandLikeDescription(description: string): boolean {
   if (/(?:^|\s)(리포트|report)[\s.!?~]*$/i.test(trimmed)) return true;
   // Codex P2 (#289): 다시 만들[자아] 뒤에 인용/관형 접미사 (고/는/서/던) 오면 descriptive 형태.
   // '다시 만들자고 한 샌드위치' 등 오탐 방지.
-  if (/(재생성(?![된됨돼])|다시\s?만들[자아](?![고는서던])|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
+  // Codex P2 (#289): 재생성 뒤 attributive 한/했/할 도 배제. '재생성한 식단' 등 descriptive.
+  if (/(재생성(?![된됨돼한했할])|다시\s?만들[자아](?![고는서던])|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
   // Codex P2 (#289): 리포트/report/보고서 + imperative verb 조합은 어미 뒤에 추가 문장이
   // 붙어도 (예: '리포트 생성해줘 자세하게', '리포트 뽑아줘 내일 운동도 포함해서') 명령으로
   // 취급. 두 조건 동시 만족 요구로 '리포트에서 추천한 샐러드' 등 pure description 은 통과.
@@ -97,29 +98,21 @@ export function isCommandLikeDescription(description: string): boolean {
   // Codex P2 (#289): descriptive/attributive 뒤에 whitespace + 주(honorific 주신/주시/주세) 도
   // 배제 위해 exclusion char class 앞에 \s* 허용. '추천해 주신 샐러드', '만들어 주신 도시락' 등
   // 오탐 방지.
-  // Codex P2 (#289): whitespace 를 사이에 둔 aux (예: '만들어 줘', '뽑아 줘') 도 imperative.
-  // - root\\s*[줘봐] : imperative with 줘/봐
-  // - root\\s*주세요 : polite imperative
-  // - 생성 root 는 특히 '생성해준' (descriptive) 오탐 방지 위해 별도 생성해\\s*(줘|봐|주세요) alt
-  //   유지 + bare '생성' 은 '생성해/된/됨/돼' 배제.
-  const DESCRIPTIVE_TAIL = "[진지졌져짐준줬놓놨봤야서줘봐주]";
+  // Codex P2 (#289 후속): bare root alternatives 는 serial verb (만들어 먹은, 만들어 놓은),
+  // attributive (알려준, 보여진) 등 descriptive 형태 오탐 위험 큼. 실제 사용자는 imperative
+  // 를 대부분 aux (줘/봐/주세요) 와 함께 쓰므로 bare root 제거하고 aux 를 요구.
+  // 유지: 생성 (noun request), 생성해/만들어 등에 (\\s*줘|봐|주세요) explicit aux 조합.
   const REPORT_IMPERATIVE = new RegExp(
     `(` +
-      // 만들어
-      `만들어(?!\\s*${DESCRIPTIVE_TAIL})|만들어\\s*줘(?![서])|만들어\\s*봐(?![서])|만들어\\s*주세요|` +
-      // 생성 (bare noun request 만; 생성해/된 등은 아래 alternatives 로 분리)
-      `생성(?!\\s*(?:해|[된됨돼되]))|` +
-      `생성해(?!\\s*${DESCRIPTIVE_TAIL})|생성해\\s*줘(?![서])|생성해\\s*봐(?![서])|생성해\\s*주세요|` +
-      // 뽑아
-      `뽑아(?!\\s*${DESCRIPTIVE_TAIL})|뽑아\\s*줘(?![서])|뽑아\\s*봐(?![서])|뽑아\\s*주세요|` +
-      // 추천해
-      `추천해(?!\\s*${DESCRIPTIVE_TAIL})|추천해\\s*줘(?![서])|추천해\\s*봐(?![서])|추천해\\s*주세요|` +
-      // 알려
-      `알려(?!\\s*${DESCRIPTIVE_TAIL})|알려\\s*줘(?![서])|알려\\s*봐(?![서])|알려\\s*주세요|` +
-      // 보여
-      `보여(?!\\s*${DESCRIPTIVE_TAIL})|보여\\s*줘(?![서])|보여\\s*봐(?![서])|보여\\s*주세요|` +
-      // 봐 bare
-      `(?<![가-힣])봐(?!\\s*[준줬져진짐서주라라도])` +
+      // 생성 (noun 형태 명령 — '리포트 생성'). '생성해/된/됨/한/했' 배제 + 재생성 substring 배제.
+      `(?<!재)생성(?!\\s*(?:해|[된됨돼되한했할]))|` +
+      // 각 root + explicit aux (줘/봐/주세요). aux 필수라 serial/attributive 오탐 없음.
+      `만들어\\s*줘(?![서])|만들어\\s*봐(?![서])|만들어\\s*주세요|` +
+      `생성해\\s*줘(?![서])|생성해\\s*봐(?![서])|생성해\\s*주세요|` +
+      `뽑아\\s*줘(?![서])|뽑아\\s*봐(?![서])|뽑아\\s*주세요|` +
+      `추천해\\s*줘(?![서])|추천해\\s*봐(?![서])|추천해\\s*주세요|` +
+      `알려\\s*줘(?![서])|알려\\s*봐(?![서])|알려\\s*주세요|` +
+      `보여\\s*줘(?![서])|보여\\s*봐(?![서])|보여\\s*주세요` +
       `)`,
   );
   if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
