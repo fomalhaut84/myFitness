@@ -83,10 +83,11 @@ export function isCommandLikeDescription(description: string): boolean {
   // Codex P2 (#289): 리포트/report/보고서 + imperative verb 조합은 어미 뒤에 추가 문장이
   // 붙어도 (예: '리포트 생성해줘 자세하게', '리포트 뽑아줘 내일 운동도 포함해서') 명령으로
   // 취급. 두 조건 동시 만족 요구로 '리포트에서 추천한 샐러드' 등 pure description 은 통과.
-  if (
-    /(리포트|\breport\b|보고서)/i.test(trimmed) &&
-    /(해줘|해봐|해요|해주세요|만들어|생성|뽑아|추천해)/.test(trimmed)
-  ) {
+  // Codex P2 (#289 후속): parseReportRequest 처럼 descriptive 접미사 (진/준/된/돼 등 피동·관형
+  // ·수여 형태) 를 negative lookahead 로 배제. '리포트에서 추천해준 샐러드', '리포트에서 생성된
+  // 식단대로 먹음' 등 실제 음식 description 통과.
+  const REPORT_IMPERATIVE = /(해줘|해봐|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야])|생성(?![된됨돼되])|뽑아(?![진지졌져준줬놓놨봤야])|추천해(?![준줬져진짐]))/;
+  if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
     return true;
   }
   // Codex P2 (#289): 명사형 요청 (문장 끝만). `추천받은/분석한/요약된` 같은 관형형 오탐 방지 위해 sentence-end anchor.
