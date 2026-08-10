@@ -8,7 +8,7 @@ import prisma from "../prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
-import { markPendingEdit } from "./food-edit-state";
+import { deletePendingEdit, markPendingEdit, peekPendingEdit } from "./food-edit-state";
 
 export const CALLBACK_PREFIX = "food";
 
@@ -124,8 +124,11 @@ export function registerFoodEditCallback(bot: Bot): void {
     const sent = await ctx.reply(prompt, {
       reply_markup: { force_reply: true, input_field_placeholder: "예: 650" },
     });
-    // sent.message_id 를 key 로 pending state 저장.
-    markPendingEdit(sent.message_id, logId);
+    // (chatId, sent.message_id) 를 key 로 pending state 저장. Codex P1 (#293): multi-chat 방어.
+    const chatId = ctx.chat?.id;
+    if (typeof chatId === "number") {
+      markPendingEdit(chatId, sent.message_id, logId);
+    }
   });
 }
 
@@ -133,21 +136,25 @@ export function registerFoodEditCallback(bot: Bot): void {
  * 사용자가 편집 프롬프트에 답장했을 때 처리. bot/index.ts message:text 핸들러에서
  * reply_to_message 있으면 우선 호출.
  * 반환값: true 면 이 텍스트를 처리 완료 (다음 handler 로 넘기지 않음), false 면 pending 아님.
+ *
+ * Codex P2 (#293): peek → validate → 성공 시에만 delete. 검증 실패 (오타 등) 로 entry 삭제 안 함
+ * → 사용자가 재답장 가능. 만료 tombstone 은 delete 처리 (재시도 무의미).
  */
-export async function handleFoodEditReply(
-  ctx: {
-    reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>;
-    message?: {
-      text?: string;
-      reply_to_message?: { message_id?: number };
-    };
-  },
-  consumePendingEditFn: (id: number) => { logId: string | null; expired: boolean },
-): Promise<boolean> {
+export async function handleFoodEditReply(ctx: {
+  chat?: { id?: number };
+  reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>;
+  message?: {
+    text?: string;
+    reply_to_message?: { message_id?: number };
+  };
+}): Promise<boolean> {
+  const chatId = ctx.chat?.id;
   const replyToId = ctx.message?.reply_to_message?.message_id;
-  if (typeof replyToId !== "number") return false;
-  const { logId, expired } = consumePendingEditFn(replyToId);
+  if (typeof chatId !== "number" || typeof replyToId !== "number") return false;
+  const { logId, expired } = peekPendingEdit(chatId, replyToId);
   if (expired) {
+    // 만료 안내 후 tombstone 제거 (재답장 무의미).
+    deletePendingEdit(chatId, replyToId);
     await ctx.reply(
       "요청이 만료되었습니다 (5분 초과). 활동 상세에서 다시 편집해주세요.",
     );
@@ -157,6 +164,7 @@ export async function handleFoodEditReply(
 
   const raw = (ctx.message?.text ?? "").trim();
   if (!/^\d+$/.test(raw)) {
+    // 검증 실패 — entry 유지, 사용자 재답장 가능.
     await ctx.reply("0~10000 사이 정수만 입력해주세요. 예: 650");
     return true;
   }
@@ -185,6 +193,8 @@ export async function handleFoodEditReply(
         // ignore
       }
     }
+    // 성공 → entry 소비.
+    deletePendingEdit(chatId, replyToId);
     await ctx.reply(
       `✏️ "${updated.description}" → ${kcal.toLocaleString("ko-KR")} kcal 로 수정됨`,
     );
@@ -193,11 +203,14 @@ export async function handleFoodEditReply(
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2025"
     ) {
+      // 로그 자체가 삭제 — entry 도 무효, 삭제.
+      deletePendingEdit(chatId, replyToId);
       await ctx.reply("이미 삭제된 로그입니다.");
       return true;
     }
     console.error("[food-edit] update 실패:", err);
     await ctx.reply("kcal 수정 중 오류가 발생했습니다.");
+    // update 실패 — entry 유지, 재답장 가능.
   }
   return true;
 }

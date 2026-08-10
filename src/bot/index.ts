@@ -14,7 +14,7 @@ import {
   registerFoodEditCallback,
   handleFoodEditReply,
 } from "./commands/food-edit-callback";
-import { consumePendingEdit, isPendingEdit } from "./commands/food-edit-state";
+import { isPendingEdit } from "./commands/food-edit-state";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
@@ -61,9 +61,14 @@ export function getBot(): Bot {
     const text = ctx.message.text.trim();
 
     // #292: 편집 프롬프트에 대한 reply 우선 처리 (kcal 숫자 답장).
+    const chatId = ctx.chat?.id;
     const replyToId = ctx.message.reply_to_message?.message_id;
-    if (typeof replyToId === "number" && isPendingEdit(replyToId)) {
-      const handled = await handleFoodEditReply(ctx, consumePendingEdit);
+    if (
+      typeof chatId === "number" &&
+      typeof replyToId === "number" &&
+      isPendingEdit(chatId, replyToId)
+    ) {
+      const handled = await handleFoodEditReply(ctx);
       if (handled) return;
     }
 
