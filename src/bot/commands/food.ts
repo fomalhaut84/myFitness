@@ -123,12 +123,14 @@ export async function handleFoodInput(
   }
 
   // 명령/요청 문장이면 저장하지 않고 안내만. FoodLog 오염 (계속 backfill 재시도) 방지.
+  // Codex P2 (#289): 자연어 fallback 은 detectReportRequest=false 라 접두사 제거만으론
+  // 리포트 감지 안 됨. 리포트 감지를 켜는 `/ai <원문>` 을 안내.
   if (isCommandLikeDescription(description)) {
     const mealLabel = MEAL_LABELS[mealType] ?? mealType;
     await ctx.reply(
       `"${mealLabel} ${description}" 이 식단이 맞나요?\n` +
         `식단이면 음식 이름/양으로 다시 입력해주세요 (예: ${mealLabel} 김치찌개 밥 1공기).\n` +
-        `AI 질문·명령이면 접두사 없이 그대로 보내주세요.`,
+        `AI 질문·명령·리포트 요청이면 앞에 /ai 를 붙여 보내주세요: /ai ${text}`,
     );
     return;
   }
