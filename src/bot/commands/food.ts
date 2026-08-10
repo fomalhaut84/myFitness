@@ -79,6 +79,8 @@ export function isCommandLikeDescription(description: string): boolean {
   // 관련 요청 (음식명 아님). 재생성/다시 만들자/create/generate/refresh imperative 도 커버.
   if (/리포트|\breport\b/i.test(trimmed)) return true;
   if (/(재생성|다시\s?만들[자아]|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
+  // Codex P2 (#289): 명사형 요청 (문장 끝만). `추천받은/분석한/요약된` 같은 관형형 오탐 방지 위해 sentence-end anchor.
+  if (/(추천|분석|요약|조언|평가)[\s.!?~]*$/.test(trimmed)) return true;
   // 문장 끝 물음표 (음식 description 에 `?` 붙일 이유 없음).
   if (/\?[\s.!~]*$/.test(trimmed)) return true;
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
