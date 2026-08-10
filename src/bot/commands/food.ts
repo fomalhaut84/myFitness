@@ -92,7 +92,9 @@ export function isCommandLikeDescription(description: string): boolean {
   // 서 가 오면 causal 접속 형태 (음식 description 안에서 흔함).
   // Codex P2 후속 (#289): 추천해줘서 처럼 root(추천해) 만 매칭해도 뒷 chain (줘서) 이 causal 인
   // 경우가 있음. root 뒤에 [줘봐] 오면 root alone 매칭 배제 + 별도 root+[줘봐](?![서]) 매칭.
-  const REPORT_IMPERATIVE = /(해줘(?![서])|해봐(?![서])|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서])|알려(?![준줬져진짐서줘봐])|알려줘(?![서])|알려봐(?![서])|보여(?![준줬져진짐서줘봐])|보여줘(?![서])|보여봐(?![서])|(?<![가-힣])봐(?![준줬져진짐서주라라도]))/;
+  // Codex P2 (#289 후속): bare 해요/해주세요 는 declarative ('식사해요') 오탐 유발.
+  // 명시적 verb root+aux 형태만 유지: X해줘, X해봐 (X = 생성/만들어/뽑아/추천/알려/보여).
+  const REPORT_IMPERATIVE = /(만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서])|알려(?![준줬져진짐서줘봐])|알려줘(?![서])|알려봐(?![서])|보여(?![준줬져진짐서줘봐])|보여줘(?![서])|보여봐(?![서])|(?<![가-힣])봐(?![준줬져진짐서주라라도]))/;
   if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
     return true;
   }
@@ -148,13 +150,19 @@ export async function handleFoodInput(
   // 리포트 감지 안 됨. 리포트 감지를 켜는 `/ai <원문>` 을 안내.
   // Codex P2 (#289): 사용자가 '조식/석식/중식/야식' 같은 alias 를 썼으면 parseReportRequest 가
   // 인식 못 함 (아침/모닝, 저녁/이브닝 만). 정규화된 mealLabel 로 재구성해 안내.
+  // Codex P2 (#289): 매우 긴 입력 (수천자) 은 응답이 Telegram 4096자 제한 초과. description 을
+  // preview 로 짧게 자르고, /ai retry 는 원문 다시 보내라 안내 (retry hint 미포함).
   if (isCommandLikeDescription(description)) {
     const mealLabel = MEAL_LABELS[mealType] ?? mealType;
-    const normalized = `${mealLabel} ${description}`;
+    const PREVIEW_MAX = 120;
+    const preview =
+      description.length > PREVIEW_MAX
+        ? description.slice(0, PREVIEW_MAX) + "…"
+        : description;
     await ctx.reply(
-      `"${mealLabel} ${description}" 이 식단이 맞나요?\n` +
+      `"${mealLabel} ${preview}" 이 식단이 맞나요?\n` +
         `식단이면 음식 이름/양으로 다시 입력해주세요 (예: ${mealLabel} 김치찌개 밥 1공기).\n` +
-        `AI 질문·명령·리포트 요청이면 앞에 /ai 를 붙여 보내주세요: /ai ${normalized}`,
+        `AI 질문·명령·리포트 요청이면 원문 앞에 /ai 를 붙여 다시 보내주세요.`,
     );
     return;
   }
