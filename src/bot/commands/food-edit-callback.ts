@@ -175,14 +175,25 @@ export async function handleFoodEditReply(ctx: {
   if (!logId) return false;
 
   const raw = (ctx.message?.text ?? "").trim();
+  // Codex P2 (#293): 검증 실패 시 새 force_reply 프롬프트 발송 + 원 entry 이전 후 신규 등록.
+  // Telegram force_reply 는 one-shot 이라 사용자 다음 답장은 reply_to 없음 → routing 실패.
+  // 새 프롬프트로 next reply 를 pending 에 다시 연결.
+  const reissueForRetry = async (message: string): Promise<void> => {
+    const sent = (await ctx.reply(message, {
+      reply_markup: { force_reply: true, input_field_placeholder: "예: 650" },
+    })) as { message_id?: number };
+    deletePendingEdit(chatId, replyToId);
+    if (typeof sent?.message_id === "number") {
+      markPendingEdit(chatId, sent.message_id, logId);
+    }
+  };
   if (!/^\d+$/.test(raw)) {
-    // 검증 실패 — entry 유지, 사용자 재답장 가능.
-    await ctx.reply("0~10000 사이 정수만 입력해주세요. 예: 650");
+    await reissueForRetry("0~10000 사이 정수만 입력해주세요. 예: 650");
     return true;
   }
   const kcal = parseInt(raw, 10);
   if (!Number.isFinite(kcal) || kcal < 0 || kcal > 10000) {
-    await ctx.reply("kcal 은 0~10000 범위 정수여야 합니다.");
+    await reissueForRetry("kcal 은 0~10000 범위 정수여야 합니다.");
     return true;
   }
 
