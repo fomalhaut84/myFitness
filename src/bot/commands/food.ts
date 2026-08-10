@@ -78,14 +78,14 @@ export function isCommandLikeDescription(description: string): boolean {
   // 문장 끝 물음표 (음식 description 에 `?` 붙일 이유 없음).
   if (/\?[\s.!~]*$/.test(trimmed)) return true;
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
-  // Codex P2 (#289): 공손 종결 `-줘요` (해줘요, 알려줘요, 보여줘요, 봐줘요, 부탁드려요) 도 인식.
-  if (
-    /(해줘|해봐|해달라|해주세요|부탁(드립?니다|드려요)?|알려줘|보여줘|봐줘)(요)?[\s.!?~]*$/.test(
-      trimmed,
-    )
-  ) {
-    return true;
-  }
+  // Codex P2 (#289): 공손 종결 `-줘요` + bare imperative (`~해`, `~만들어`) + whitespace 허용 (`해 줘`).
+  //  - root: 해/만들어/알려/보여/봐/추천해
+  //  - optional aux (\s?[줘봐] | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
+  //  - optional politeness marker (요)
+  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해)(\s?[줘봐]|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
+  if (CMD_ENDING.test(trimmed)) return true;
+  // 부탁 계열 (bare + 공손).
+  if (/부탁(드립?니다|드려요|해요?)?[\s.!?~]*$/.test(trimmed)) return true;
   // 물음 어미 (문장 종결형).
   if (/(뭐야|어때)[\s.!?~]*$/.test(trimmed)) return true;
   // 질문 단어가 문장 중간/끝에 whitespace boundary 로 나오면 문장 자체가 질문.
