@@ -80,6 +80,15 @@ export function isCommandLikeDescription(description: string): boolean {
   // 이므로 통과시킴.
   if (/(?:^|\s)(리포트|report)[\s.!?~]*$/i.test(trimmed)) return true;
   if (/(재생성|다시\s?만들[자아]|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
+  // Codex P2 (#289): 리포트/report/보고서 + imperative verb 조합은 어미 뒤에 추가 문장이
+  // 붙어도 (예: '리포트 생성해줘 자세하게', '리포트 뽑아줘 내일 운동도 포함해서') 명령으로
+  // 취급. 두 조건 동시 만족 요구로 '리포트에서 추천한 샐러드' 등 pure description 은 통과.
+  if (
+    /(리포트|\breport\b|보고서)/i.test(trimmed) &&
+    /(해줘|해봐|해요|해주세요|만들어|생성|뽑아|추천해)/.test(trimmed)
+  ) {
+    return true;
+  }
   // Codex P2 (#289): 명사형 요청 (문장 끝만). `추천받은/분석한/요약된` 같은 관형형 오탐 방지 위해 sentence-end anchor.
   if (/(추천|분석|요약|조언|평가)[\s.!?~]*$/.test(trimmed)) return true;
   // 문장 끝 물음표 (음식 description 에 `?` 붙일 이유 없음).
