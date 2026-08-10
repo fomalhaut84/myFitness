@@ -10,6 +10,11 @@ import { registerSyncCommand } from "./commands/sync";
 import { registerReportCommand } from "./commands/report";
 import { registerAiCommands, handleAiQuestion } from "./commands/ai";
 import { isFoodInput, handleFoodInput, handleFoodKcalCommand } from "./commands/food";
+import {
+  registerFoodEditCallback,
+  handleFoodEditReply,
+} from "./commands/food-edit-callback";
+import { isPendingEdit } from "./commands/food-edit-state";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
@@ -48,12 +53,26 @@ export function getBot(): Bot {
 
   // M13 Phase 2 (#249): auto-adjust inline keyboard callback (Accept/Reject/Snooze).
   registerAutoAdjustCallback(bot);
+  // #292 (M14 Phase 2 #1): food kcal 인라인 편집 callback (수정/삭제).
+  registerFoodEditCallback(bot);
 
   // 자연어 fallback
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
 
-    // #283: /food_kcal <id> <kcal> — 이전 로그 kcal 정정.
+    // #292: 편집 프롬프트에 대한 reply 우선 처리 (kcal 숫자 답장).
+    const chatId = ctx.chat?.id;
+    const replyToId = ctx.message.reply_to_message?.message_id;
+    if (
+      typeof chatId === "number" &&
+      typeof replyToId === "number" &&
+      isPendingEdit(chatId, replyToId)
+    ) {
+      const handled = await handleFoodEditReply(ctx);
+      if (handled) return;
+    }
+
+    // #283: /food_kcal <id> <kcal> — 이전 로그 kcal 정정 (backward-compat).
     if (/^\/food_kcal(?:@\S+)?\b/.test(text)) {
       await handleFoodKcalCommand(ctx, text);
       return;
