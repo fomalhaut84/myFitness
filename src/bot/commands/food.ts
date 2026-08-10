@@ -86,7 +86,11 @@ export function isCommandLikeDescription(description: string): boolean {
   // Codex P2 (#289 후속): parseReportRequest 처럼 descriptive 접미사 (진/준/된/돼 등 피동·관형
   // ·수여 형태) 를 negative lookahead 로 배제. '리포트에서 추천해준 샐러드', '리포트에서 생성된
   // 식단대로 먹음' 등 실제 음식 description 통과.
-  const REPORT_IMPERATIVE = /(해줘|해봐|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야])|생성(?![된됨돼되])|뽑아(?![진지졌져준줬놓놨봤야])|추천해(?![준줬져진짐]))/;
+  // Codex P2 (#289): causal -서 (해줘서, 만들어서, 뽑아서, 추천해서) 배제. 각 imperative 뒤에
+  // 서 가 오면 causal 접속 형태 (음식 description 안에서 흔함).
+  // Codex P2 후속 (#289): 추천해줘서 처럼 root(추천해) 만 매칭해도 뒷 chain (줘서) 이 causal 인
+  // 경우가 있음. root 뒤에 [줘봐] 오면 root alone 매칭 배제 + 별도 root+[줘봐](?![서]) 매칭.
+  const REPORT_IMPERATIVE = /(해줘(?![서])|해봐(?![서])|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서]))/;
   if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
     return true;
   }
@@ -97,9 +101,10 @@ export function isCommandLikeDescription(description: string): boolean {
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
   // Codex P2 (#289): 공손 종결 `-줘요` + bare imperative (`~해`, `~만들어`) + whitespace 허용 (`해 줘`).
   //  - root: 해/만들어/알려/보여/봐/추천해/뽑아 (뽑아 = 리포트 뽑아줘 등 report imperative)
-  //  - optional aux (\s?[줘봐] | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
+  //  - optional aux (\s?[줘봐] | \s?줄래 | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
   //  - optional politeness marker (요)
-  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해|뽑아)(\s?[줘봐]|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
+  // Codex P2 (#289 후속): 줄래/줄래요 (~해줄래, ~알려줄래) 도 요청 어미.
+  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해|뽑아)(\s?[줘봐]|\s?줄래|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
   if (CMD_ENDING.test(trimmed)) return true;
   // 부탁 계열 (bare + 공손).
   if (/부탁(드립?니다|드려요|해요?)?[\s.!?~]*$/.test(trimmed)) return true;
