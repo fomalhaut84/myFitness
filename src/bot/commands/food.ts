@@ -75,6 +75,10 @@ export function isFoodInput(text: string): boolean {
 export function isCommandLikeDescription(description: string): boolean {
   const trimmed = description.trim();
   if (trimmed.length === 0) return false;
+  // Codex P2 (#289): parseReportRequest 어휘와 정렬. `리포트/report` 단어가 있으면 사실상 리포트
+  // 관련 요청 (음식명 아님). 재생성/다시 만들자/create/generate/refresh imperative 도 커버.
+  if (/리포트|\breport\b/i.test(trimmed)) return true;
+  if (/(재생성|다시\s?만들[자아]|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
   // 문장 끝 물음표 (음식 description 에 `?` 붙일 이유 없음).
   if (/\?[\s.!~]*$/.test(trimmed)) return true;
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
