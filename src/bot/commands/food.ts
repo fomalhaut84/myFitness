@@ -94,7 +94,21 @@ export function isCommandLikeDescription(description: string): boolean {
   // 경우가 있음. root 뒤에 [줘봐] 오면 root alone 매칭 배제 + 별도 root+[줘봐](?![서]) 매칭.
   // Codex P2 (#289 후속): bare 해요/해주세요 는 declarative ('식사해요') 오탐 유발.
   // 명시적 verb root+aux 형태만 유지: X해줘, X해봐 (X = 생성/만들어/뽑아/추천/알려/보여).
-  const REPORT_IMPERATIVE = /(만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서])|알려(?![준줬져진짐서줘봐])|알려줘(?![서])|알려봐(?![서])|보여(?![준줬져진짐서줘봐])|보여줘(?![서])|보여봐(?![서])|(?<![가-힣])봐(?![준줬져진짐서주라라도]))/;
+  // Codex P2 (#289): descriptive/attributive 뒤에 whitespace + 주(honorific 주신/주시/주세) 도
+  // 배제 위해 exclusion char class 앞에 \s* 허용. '추천해 주신 샐러드', '만들어 주신 도시락' 등
+  // 오탐 방지.
+  const DESCRIPTIVE_TAIL = "[진지졌져짐준줬놓놨봤야서줘봐주]";
+  const REPORT_IMPERATIVE = new RegExp(
+    `(` +
+      `만들어(?!\\s*${DESCRIPTIVE_TAIL})|만들어줘(?![서])|만들어봐(?![서])|` +
+      `생성(?!\\s*[된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|` +
+      `뽑아(?!\\s*${DESCRIPTIVE_TAIL})|뽑아줘(?![서])|뽑아봐(?![서])|` +
+      `추천해(?!\\s*${DESCRIPTIVE_TAIL})|추천해줘(?![서])|추천해봐(?![서])|` +
+      `알려(?!\\s*${DESCRIPTIVE_TAIL})|알려줘(?![서])|알려봐(?![서])|` +
+      `보여(?!\\s*${DESCRIPTIVE_TAIL})|보여줘(?![서])|보여봐(?![서])|` +
+      `(?<![가-힣])봐(?!\\s*[준줬져진짐서주라라도])` +
+      `)`,
+  );
   if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
     return true;
   }
@@ -151,7 +165,9 @@ export async function handleFoodInput(
   // Codex P2 (#289): 사용자가 '조식/석식/중식/야식' 같은 alias 를 썼으면 parseReportRequest 가
   // 인식 못 함 (아침/모닝, 저녁/이브닝 만). 정규화된 mealLabel 로 재구성해 안내.
   // Codex P2 (#289): 매우 긴 입력 (수천자) 은 응답이 Telegram 4096자 제한 초과. description 을
-  // preview 로 짧게 자르고, /ai retry 는 원문 다시 보내라 안내 (retry hint 미포함).
+  // preview 로 짧게 자르고, /ai retry hint 도 정규화된 mealLabel + preview 로 짧게 유지.
+  // Codex P2 (#289): 조식/석식 등 alias 는 parseReportRequest 가 인식 못함 → mealLabel (아침/저녁)
+  // 로 정규화한 retry 를 안내해야 사용자가 그대로 복붙 시 정상 동작.
   if (isCommandLikeDescription(description)) {
     const mealLabel = MEAL_LABELS[mealType] ?? mealType;
     const PREVIEW_MAX = 120;
@@ -162,7 +178,8 @@ export async function handleFoodInput(
     await ctx.reply(
       `"${mealLabel} ${preview}" 이 식단이 맞나요?\n` +
         `식단이면 음식 이름/양으로 다시 입력해주세요 (예: ${mealLabel} 김치찌개 밥 1공기).\n` +
-        `AI 질문·명령·리포트 요청이면 원문 앞에 /ai 를 붙여 다시 보내주세요.`,
+        `AI 질문·명령·리포트 요청이면 아래처럼 /ai 로 다시 보내주세요:\n` +
+        `/ai ${mealLabel} ${preview}`,
     );
     return;
   }
