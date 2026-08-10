@@ -102,10 +102,19 @@ export function isCommandLikeDescription(description: string): boolean {
   // attributive (알려준, 보여진) 등 descriptive 형태 오탐 위험 큼. 실제 사용자는 imperative
   // 를 대부분 aux (줘/봐/주세요) 와 함께 쓰므로 bare root 제거하고 aux 를 요구.
   // 유지: 생성 (noun request), 생성해/만들어 등에 (\\s*줘|봐|주세요) explicit aux 조합.
+  // Codex P2 (#290): 이전에 bare root alt 를 전부 제거했지만 '리포트 만들어', '리포트 생성해'
+  // 같은 bare imperative 는 실제 사용자 패턴. 문장 끝 anchor (?=[\\s.!?~]*$) 로 다시 도입.
+  // sentence-end 조건이라 serial verb ('만들어 먹은 샌드위치') 나 attributive ('만들어진 도시락')
+  // 는 자동 배제 됨 (next char 이 Korean 이면 lookahead fail).
   const REPORT_IMPERATIVE = new RegExp(
     `(` +
       // 생성 (noun 형태 명령 — '리포트 생성'). '생성해/된/됨/한/했' 배제 + 재생성 substring 배제.
       `(?<!재)생성(?!\\s*(?:해|[된됨돼되한했할]))|` +
+      // Bare imperative at sentence end (문장부호까지만 허용).
+      `만들어(?=[\\s.!?~]*$)|` +
+      `생성해(?=[\\s.!?~]*$)|` +
+      `뽑아(?=[\\s.!?~]*$)|` +
+      `추천해(?=[\\s.!?~]*$)|` +
       // 각 root + explicit aux (줘/봐/주세요). aux 필수라 serial/attributive 오탐 없음.
       `만들어\\s*줘(?![서])|만들어\\s*봐(?![서])|만들어\\s*주세요|` +
       `생성해\\s*줘(?![서])|생성해\\s*봐(?![서])|생성해\\s*주세요|` +
