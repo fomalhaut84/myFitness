@@ -79,13 +79,16 @@ export function isCommandLikeDescription(description: string): boolean {
   if (/\?[\s.!~]*$/.test(trimmed)) return true;
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
   // Codex P2 (#289): 공손 종결 `-줘요` + bare imperative (`~해`, `~만들어`) + whitespace 허용 (`해 줘`).
-  //  - root: 해/만들어/알려/보여/봐/추천해
+  //  - root: 해/만들어/알려/보여/봐/추천해/뽑아 (뽑아 = 리포트 뽑아줘 등 report imperative)
   //  - optional aux (\s?[줘봐] | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
   //  - optional politeness marker (요)
-  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해)(\s?[줘봐]|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
+  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해|뽑아)(\s?[줘봐]|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
   if (CMD_ENDING.test(trimmed)) return true;
   // 부탁 계열 (bare + 공손).
   if (/부탁(드립?니다|드려요|해요?)?[\s.!?~]*$/.test(trimmed)) return true;
+  // Codex P2 (#289): 질문/제안 어미 `-까(요)` (뭐 먹을까, 갈까요, 어떡할까) — 문장 끝 형태만.
+  // 음식명에 `까` 로 끝나는 사례 드물어 오탐 위험 낮음.
+  if (/까(요)?[\s.!?~]*$/.test(trimmed)) return true;
   // 물음 어미 (문장 종결형).
   if (/(뭐야|어때)[\s.!?~]*$/.test(trimmed)) return true;
   // 질문 단어가 문장 중간/끝에 whitespace boundary 로 나오면 문장 자체가 질문.
