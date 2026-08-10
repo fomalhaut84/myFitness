@@ -79,7 +79,9 @@ export function isCommandLikeDescription(description: string): boolean {
   // 때만 (bare form). '리포트에서 추천한 샐러드' 같이 mid-sentence 는 실제 음식 description
   // 이므로 통과시킴.
   if (/(?:^|\s)(리포트|report)[\s.!?~]*$/i.test(trimmed)) return true;
-  if (/(재생성|다시\s?만들[자아]|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
+  // Codex P2 (#289): 다시 만들[자아] 뒤에 인용/관형 접미사 (고/는/서/던) 오면 descriptive 형태.
+  // '다시 만들자고 한 샌드위치' 등 오탐 방지.
+  if (/(재생성(?![된됨돼])|다시\s?만들[자아](?![고는서던])|\bcreate\b|\bgenerate\b|\brefresh\b)/i.test(trimmed)) return true;
   // Codex P2 (#289): 리포트/report/보고서 + imperative verb 조합은 어미 뒤에 추가 문장이
   // 붙어도 (예: '리포트 생성해줘 자세하게', '리포트 뽑아줘 내일 운동도 포함해서') 명령으로
   // 취급. 두 조건 동시 만족 요구로 '리포트에서 추천한 샐러드' 등 pure description 은 통과.
@@ -90,7 +92,7 @@ export function isCommandLikeDescription(description: string): boolean {
   // 서 가 오면 causal 접속 형태 (음식 description 안에서 흔함).
   // Codex P2 후속 (#289): 추천해줘서 처럼 root(추천해) 만 매칭해도 뒷 chain (줘서) 이 causal 인
   // 경우가 있음. root 뒤에 [줘봐] 오면 root alone 매칭 배제 + 별도 root+[줘봐](?![서]) 매칭.
-  const REPORT_IMPERATIVE = /(해줘(?![서])|해봐(?![서])|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서]))/;
+  const REPORT_IMPERATIVE = /(해줘(?![서])|해봐(?![서])|해요|해주세요|만들어(?![진지졌져짐준줬놓놨봤야서줘봐])|만들어줘(?![서])|만들어봐(?![서])|생성(?![된됨돼되])|생성해줘(?![서])|생성해봐(?![서])|뽑아(?![진지졌져준줬놓놨봤야서줘봐])|뽑아줘(?![서])|뽑아봐(?![서])|추천해(?![준줬져진짐서줘봐])|추천해줘(?![서])|추천해봐(?![서])|알려(?![준줬져진짐서줘봐])|알려줘(?![서])|알려봐(?![서])|보여(?![준줬져진짐서줘봐])|보여줘(?![서])|보여봐(?![서])|(?<![가-힣])봐(?![준줬져진짐서주라라도]))/;
   if (/(리포트|\breport\b|보고서)/i.test(trimmed) && REPORT_IMPERATIVE.test(trimmed)) {
     return true;
   }
@@ -101,10 +103,13 @@ export function isCommandLikeDescription(description: string): boolean {
   // 요청/명령 어미 (문장 끝 근처, 문장부호 무시).
   // Codex P2 (#289): 공손 종결 `-줘요` + bare imperative (`~해`, `~만들어`) + whitespace 허용 (`해 줘`).
   //  - root: 해/만들어/알려/보여/봐/추천해/뽑아 (뽑아 = 리포트 뽑아줘 등 report imperative)
-  //  - optional aux (\s?[줘봐] | \s?줄래 | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
+  //  - required aux (\s?[줘봐] | \s?줄래 | \s?주세요 | \s?드리세요 | \s?드립?니다 | \s?드려요)
   //  - optional politeness marker (요)
   // Codex P2 (#289 후속): 줄래/줄래요 (~해줄래, ~알려줄래) 도 요청 어미.
-  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해|뽑아)(\s?[줘봐]|\s?줄래|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)?(요)?[\s.!?~]*$/;
+  // Codex P2 (#289 후속): aux 필수 로 변경. bare '~해요' / '~만들어요' 는 declarative ('식사해요',
+  //   '만들어요=만들고 있어요') 로도 흔해 오탐. bare imperative 는 REPORT_IMPERATIVE + 리포트 kw
+  //   조합 or 부탁 등 다른 규칙이 담당.
+  const CMD_ENDING = /(해|만들어|알려|보여|봐|추천해|뽑아)(\s?[줘봐]|\s?줄래|\s?주세요|\s?드리세요|\s?드립?니다|\s?드려요)(요)?[\s.!?~]*$/;
   if (CMD_ENDING.test(trimmed)) return true;
   // 부탁 계열 (bare + 공손).
   if (/부탁(드립?니다|드려요|해요?)?[\s.!?~]*$/.test(trimmed)) return true;
