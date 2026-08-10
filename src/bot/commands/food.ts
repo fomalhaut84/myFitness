@@ -145,9 +145,11 @@ export function isCommandLikeDescription(description: string): boolean {
   // Codex P2 (#289): 질문/제안 어미 `-까(요)` (뭐 먹을까, 갈까요, 어떡할까) — 문장 끝 형태만.
   // 음식명에 `까` 로 끝나는 사례 드물어 오탐 위험 낮음.
   if (/까(요)?[\s.!?~]*$/.test(trimmed)) return true;
-  // Codex P2 (#289): polite 문말 질문 어미 (나요/인가요/가요).
+  // Codex P2 (#289): polite 문말 질문 어미 (나요/인가요).
   //  - '식단 괜찮나요', '칼로리 얼마인가요', '몇 kcal 인가요'
-  if (/(나요|인가요|가요)[\s.!?~]*$/.test(trimmed)) return true;
+  //  - Codex P2 후속: bare '가요' 는 subject particle 가 + 존댓말 요 (예: '두 개가요') 오탐
+  //    유발하므로 배제. '건가요' 형태는 usage 드물어 별도 커버 안 함.
+  if (/(나요|인가요)[\s.!?~]*$/.test(trimmed)) return true;
   // 물음 어미 (문장 종결형).
   if (/(뭐야|어때)[\s.!?~]*$/.test(trimmed)) return true;
   // 질문 단어가 문장 중간/끝에 whitespace boundary 로 나오면 문장 자체가 질문.
