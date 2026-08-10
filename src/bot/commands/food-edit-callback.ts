@@ -113,12 +113,35 @@ export function registerFoodEditCallback(bot: Bot): void {
 
     // action === "edit"
     // 로그 존재 확인 (이미 삭제된 상태에서 편집 시도 방지).
-    const existing = await prisma.foodLog.findUnique({
-      where: { id: logId },
-      select: { description: true, mealType: true, estimatedKcal: true },
-    });
+    // Codex P2 (#293): findUnique 가 transient DB 실패 시 사용자에게 안내 없이 spinner 지속 →
+    // try/catch 로 답장 후 종료.
+    let existing: {
+      description: string;
+      mealType: string | null;
+      estimatedKcal: number | null;
+    } | null;
+    try {
+      existing = await prisma.foodLog.findUnique({
+        where: { id: logId },
+        select: { description: true, mealType: true, estimatedKcal: true },
+      });
+    } catch (err) {
+      console.error("[food-edit] edit lookup 실패:", err);
+      try {
+        await ctx.answerCallbackQuery({
+          text: "로그 조회 중 오류가 발생했습니다. 잠시 후 다시 시도해주세요.",
+        });
+      } catch {
+        // ignore
+      }
+      return;
+    }
     if (!existing) {
-      await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
+      try {
+        await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
+      } catch {
+        // ignore
+      }
       try {
         await ctx.editMessageReplyMarkup({ reply_markup: undefined });
       } catch {
@@ -127,7 +150,11 @@ export function registerFoodEditCallback(bot: Bot): void {
       return;
     }
 
-    await ctx.answerCallbackQuery();
+    try {
+      await ctx.answerCallbackQuery();
+    } catch {
+      // ignore
+    }
     // force_reply 로 프롬프트 발송. 답장 메시지의 reply_to_message.message_id 로 pending 조회.
     const currentKcal = existing.estimatedKcal;
     const prompt =
