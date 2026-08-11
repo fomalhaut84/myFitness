@@ -64,7 +64,9 @@ function isQuantityToken(token: string): boolean {
 export function normalizeDescription(description: string): string {
   const stripped = description
     .toLowerCase()
-    .replace(/[,·!?;:\-]/g, " ")
+    // Codex P2 (#297): 괄호/브래킷/슬래시 등 구조적 구두점도 공백으로 → `닭가슴살(100g)`
+    // vs `닭가슴살 100g` 매칭. `~`,`/`,`|`,`&`,`+` 등 흔한 항목 구분자도 포함.
+    .replace(/[,·!?;:\-()\[\]{}<>/\\|&+~"'`]/g, " ")
     .replace(/\.(?!\d)/g, " ")
     .replace(/\s+/g, " ")
     // Codex P2 (#296): '한 공기' → '한공기', '1 공기' → '1공기' 결합해 quantity token 으로 인식.
