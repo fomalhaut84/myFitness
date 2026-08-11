@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
+import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -75,9 +76,24 @@ export async function POST(request: Request) {
       }
     }
 
-    // #283 (M14 Phase 1): Claude AI 로 kcal 추정. 실패 시 null (로그는 저장, 사용자가 나중에 수정 가능).
-    const estimate = await estimateKcalFromText({ description, mealType });
-    const estimatedKcal = estimate?.kcal ?? null;
+    // #295 (M14 Phase 2 #2): repeat lookup 우선 — 최근 30일 동일 description 매치면 AI 스킵.
+    // Codex P2 (#296): 웹 POST 도 봇/backfill 과 동일하게 재사용 라이브러리 활용.
+    let estimatedKcal: number | null = null;
+    try {
+      // Codex P2 (#296): backdated 로그 대비 foodDate 기준 창.
+      const hit = await findRecentSameDescription(description, mealType, foodDate);
+      if (hit) estimatedKcal = hit.kcal;
+    } catch (lookupErr) {
+      console.warn(
+        "[api/food POST] repeat lookup 실패, AI 폴백:",
+        lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
+      );
+    }
+    if (estimatedKcal === null) {
+      // #283 (M14 Phase 1): Claude AI 로 kcal 추정. 실패 시 null (로그는 저장, 사용자가 나중에 수정 가능).
+      const estimate = await estimateKcalFromText({ description, mealType });
+      estimatedKcal = estimate?.kcal ?? null;
+    }
 
     // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.
     // 직렬화 충돌(P2034) 시 자동 재시도로 동시 요청 안전 보장.

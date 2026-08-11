@@ -172,7 +172,7 @@ Recalculate 가 transient 실패한 date 를 보존해 cron 이 이어받게 하
    2. Inline keyboard "수정" 버튼 → callback_query 로 처리 (id 는 `callback_data` 에 embed)
    3. 최근 N 분 이내 마지막 log 를 default 로 (`/food_kcal 400` 만 입력)
    4. 웹 UI 로만 편집 유도 (lifestyle 페이지 인라인 편집이 이미 있음, 봇 명령 제거 안내)
-2. **자주 먹는 음식 라이브러리** — 신규 로그 저장 전 최근 30일 유사 description 검색 (embedding or 문자열 유사도) → 있으면 그 kcal 재사용 (AI 호출 절감 + 일관성). MFP "밈 재작성" 페인 포인트 직접 해결.
+2. ~~**자주 먹는 음식 라이브러리**~~ ✅ #295 완료 (PR #296, 2026-08-11) — 최근 30일 pool 을 in-memory 정규화 (phrase 분할 + qty-그룹 sort + modifier 결합 보존) 로 매칭. 봇/웹 POST/backfill 모두 target 시각 기준 preceding 창.
 3. **P/C/F 매크로** — 기존 `m4-8-nutrition-analysis.md` 스펙 부활
 4. **외부 음식 DB** — 오픈식약처, 만개의 레시피 API 등
 5. **사진 입력** — Claude Vision 으로 사진 → 항목 추출 → kcal
