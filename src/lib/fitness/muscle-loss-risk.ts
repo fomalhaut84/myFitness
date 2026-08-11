@@ -10,7 +10,11 @@
 export interface MuscleLossInput {
   /** 최근 7일 avg kcal/day (out - in). 양수면 결손. */
   weeklyCalorieDeficit: number;
-  /** 최근 7일 avg 단백질 g/kg 체중. null 이면 스코어 판정 불가 → medium 이상으로 보수적. */
+  /**
+   * 최근 7일 avg 단백질 g/kg 체중. null 이면 데이터 부족을 reasons 에만 표시하고
+   * 스코어에는 반영하지 않는다 (false-positive 회피). caller 가 daysWithProteinData 를
+   * 함께 참조해 신뢰도 판단.
+   */
   avgProteinPerKg: number | null;
   /** 최근 7일 고강도 (Z4+) 총 분. */
   weeklyHighIntensityMin: number;

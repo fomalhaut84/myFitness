@@ -145,7 +145,7 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
       </div>
       <div className="mt-4 pt-3 border-t border-border/60 text-[11px] font-[family-name:var(--font-geist-mono)] text-dim flex items-center gap-3">
         <span>1g P/C = 4 kcal · 1g F = 9 kcal</span>
-        <span className="ml-auto">{bodyWeightKg ? `체중 ${bodyWeightKg} kg` : "체중 미측정"}</span>
+        <span className="ml-auto">{bodyWeightKg ? `체중 ${fmt1(bodyWeightKg)} kg` : "체중 미측정"}</span>
       </div>
     </div>
   );
