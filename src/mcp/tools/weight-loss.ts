@@ -1,4 +1,6 @@
 import prisma from "../prisma";
+import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
+import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -146,9 +148,34 @@ export async function getWeightLossStatus() {
       ? Number(((Math.abs(avgDailyBalance) * 7) / 7700).toFixed(2))
       : 0;
 
+  // #299 (M14 Phase 2 #3): 매크로 요약 + 근손실 위험 평가.
+  const macros7d = await aggregateRecentMacros(now, 7);
+  const macroAvg = averageMacros(macros7d);
+  const proteinPerKg =
+    macroAvg.avgProteinG !== null && latestWeight
+      ? Math.round((macroAvg.avgProteinG / latestWeight) * 10) / 10
+      : null;
+  const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
+  const muscleLoss = assessMuscleLossRisk({
+    weeklyCalorieDeficit: avgDailyBalance !== null ? -avgDailyBalance : 0,
+    avgProteinPerKg: proteinPerKg,
+    weeklyHighIntensityMin: highIntensityMinutes,
+    proteinTargetPerKg: proteinTarget,
+  });
+  // 근손실 verdict 를 warnings 에 반영 (기존 ad-hoc 체크와 별도 · 러너 특화 지표).
+  if (muscleLoss.risk === "high") {
+    warnings.push(
+      `근손실 위험 HIGH (${muscleLoss.reasons.join(" / ")}) → ${muscleLoss.recommendations.join(" / ")}`,
+    );
+  } else if (muscleLoss.risk === "medium") {
+    warnings.push(
+      `근손실 위험 MEDIUM (${muscleLoss.reasons.join(" / ")})`,
+    );
+  }
+
   const response = {
     _context:
-      "최근 7일 체중/칼로리/운동 통합 요약. 경고(warnings)가 있으면 리포트에 반드시 반영하세요.",
+      "최근 7일 체중/칼로리/운동/매크로 통합 요약. 경고(warnings)가 있으면 리포트에 반드시 반영하세요.",
     period: "최근 7일",
     calorieSummary: {
       avgDailyBalance,
@@ -191,6 +218,29 @@ export async function getWeightLossStatus() {
         routeTag: a.routeTag,
       })),
     },
+    // #299: 매크로 시계열 + 러너 근손실 위험 verdict.
+    macroSummary: {
+      avgDaily: {
+        kcal: macroAvg.avgKcal,
+        proteinG: macroAvg.avgProteinG,
+        proteinPerKg,
+        proteinTargetPerKg: proteinTarget,
+        carbsG: macroAvg.avgCarbsG,
+        fatG: macroAvg.avgFatG,
+      },
+      daysWithProteinData: macroAvg.daysWithProtein,
+      totalDays: macroAvg.totalDays,
+      daily: macros7d.map((d) => ({
+        date: d.date,
+        kcal: d.kcal,
+        proteinG: d.proteinG,
+        carbsG: d.carbsG,
+        fatG: d.fatG,
+        itemCount: d.itemCount,
+        missingCount: d.missingCount,
+      })),
+    },
+    muscleLossRisk: muscleLoss,
     warnings,
     riskLevel:
       warnings.length >= 2
