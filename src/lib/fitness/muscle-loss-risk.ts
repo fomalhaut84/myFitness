@@ -57,9 +57,13 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
     if (deficit > DEFICIT_THRESHOLD) {
       score++;
       reasons.push(`일평균 결손 ${deficit} kcal (> ${DEFICIT_THRESHOLD})`);
-      recommendations.push(
-        `결손을 ${Math.max(300, Math.round(deficit * 0.6))} kcal 이내로 완화`,
+      // Codex P2 (PR #300 6회차): 큰 결손에 0.6 곱만 하면 여전히 threshold 초과 값을 권장하는
+      // 모순 (예: 1000 kcal → 600 kcal). 권장은 항상 DEFICIT_THRESHOLD 이하 · 최소 300 kcal.
+      const suggested = Math.min(
+        DEFICIT_THRESHOLD,
+        Math.max(300, Math.round(deficit * 0.6)),
       );
+      recommendations.push(`결손을 ${suggested} kcal 이내로 완화`);
     }
   }
 

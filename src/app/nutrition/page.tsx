@@ -3,7 +3,7 @@
 
 import prisma from "@/lib/prisma";
 import { todayKSTString } from "@/lib/garmin/utils";
-import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
+import { aggregateRecentMacros, averageMacros, averageCompleteMacros } from "@/lib/nutrition/daily-macros";
 import { MAX_NUTRITION_ATTEMPTS } from "@/lib/nutrition/backfill";
 import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
@@ -21,6 +21,8 @@ const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // Codex P2 (PR #300): daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → risk assessor 에
 // null 로 전달. weight-loss MCP tool 과 동일 정책.
 const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
+// Codex P2 (PR #300 6회차): 결손 데이터도 동일 gate. 1-2일치로 7일 평균을 대체 못 함.
+const MIN_DEFICIT_DAYS_FOR_ASSESSMENT = 4;
 
 function kstDayRange(): { start: Date; end: Date } {
   const ymd = todayKSTString();
@@ -82,13 +84,16 @@ export default async function NutritionPage() {
 
   // muscle-loss input
   // Codex P2 (PR #300): 결손 유효 표본 없으면 null (0 취급 금지 — "안전" 오인 방지).
+  // Codex P2 (PR #300 6회차): 커버리지 gate — 1~2일치로 7일 평균 대체 금지.
   const validBalances = latestBalances.filter(
     (b): b is { calorieBalance: number } => b.calorieBalance !== null,
   );
-  const avgDailyBalance =
+  const avgDailyBalanceRaw =
     validBalances.length > 0
       ? validBalances.reduce((s, b) => s + b.calorieBalance, 0) / validBalances.length
       : null;
+  const avgDailyBalance =
+    validBalances.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT ? avgDailyBalanceRaw : null;
   const proteinPerKgRaw =
     macroAvg.avgProteinG !== null && bodyWeightKg
       ? macroAvg.avgProteinG / bodyWeightKg
@@ -131,10 +136,15 @@ export default async function NutritionPage() {
         { proteinG: 0, carbsG: 0, fatG: 0 },
       );
 
+  // Codex P2 (PR #300 6회차): 도넛/밸런스 UI 는 하루의 P/C/F 조합 비율이 의미 있는 지표.
+  // 세 필드 독립 평균 (averageMacros) 을 합치면 실존하지 않는 day 를 만들 수 있음
+  // (예: P avg 는 1일치, C avg 는 다른 1일치, F avg 는 세 번째 날). completeMacroAvg 는
+  // 세 값 전부 non-null 인 일자만으로 평균 → 물리적으로 성립하는 하루 조합만 노출.
+  const completeAvg = averageCompleteMacros(macros7d);
   const weeklyMacros = {
-    proteinG: macroAvg.avgProteinG,
-    carbsG: macroAvg.avgCarbsG,
-    fatG: macroAvg.avgFatG,
+    proteinG: completeAvg.avgProteinG,
+    carbsG: completeAvg.avgCarbsG,
+    fatG: completeAvg.avgFatG,
   };
 
   const trendPoints = macros7d.map((d) => ({ date: d.date, proteinG: d.proteinG }));

@@ -8,6 +8,7 @@ import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -174,16 +175,30 @@ export async function runFoodKcalBackfill(
           mealType: r.mealType ?? undefined,
         });
         if (!est) {
-          // kcal 조차 없으면 실패, 있으면 이후 update 시도 (부분 성공).
           if (kcal === null) {
             result.failed++;
             continue;
           }
         } else {
-          if (kcal === null) kcal = est.kcal;
-          if (proteinG === null) proteinG = est.proteinG;
-          if (carbsG === null) carbsG = est.carbsG;
-          if (fatG === null) fatG = est.fatG;
+          // Codex P1 (PR #300 6회차): 기존 kcal 이 있는 row (legacy or user-corrected) 를
+          // 재추정할 때 est.kcal 이 기존 kcal 과 다를 수 있음. 기존 kcal 은 그대로 유지하고
+          // est 의 P/C/F 는 est.kcal 기준이라 그대로 쓰면 mismatch. 기존 kcal 에 맞춰 스케일.
+          if (kcal === null) {
+            kcal = est.kcal;
+            if (proteinG === null) proteinG = est.proteinG;
+            if (carbsG === null) carbsG = est.carbsG;
+            if (fatG === null) fatG = est.fatG;
+          } else {
+            // kcal 은 기존값 유지. est.macros 를 retained kcal 로 스케일.
+            const scaled = scaleMacrosForNewKcal(kcal, est.kcal, {
+              proteinG: est.proteinG,
+              carbsG: est.carbsG,
+              fatG: est.fatG,
+            });
+            if (proteinG === null) proteinG = scaled.proteinG;
+            if (carbsG === null) carbsG = scaled.carbsG;
+            if (fatG === null) fatG = scaled.fatG;
+          }
         }
       }
       if (kcal === null) {

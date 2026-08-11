@@ -138,6 +138,17 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 1 },
   },
+  {
+    // Codex P2 (PR #300 6회차): 큰 결손 권장은 반드시 threshold(500) 이하로 캡.
+    label: "큰 결손(1000 kcal) 권장이 500 이하로 캡",
+    input: {
+      weeklyCalorieDeficit: 1000,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 10,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1 },
+  },
 ];
 
 let allPass = true;

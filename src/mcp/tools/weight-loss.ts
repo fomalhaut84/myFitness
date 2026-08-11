@@ -6,6 +6,8 @@ import { parseZoneDistribution } from "@/lib/fitness/intensity";
 // Codex P2 (PR #300): protein g/kg 을 risk assessor 로 넘길 최소 데이터 커버리지.
 // daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → 대신 null (데이터 부족) 로 전달.
 const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
+// Codex P2 (PR #300 6회차): 결손 데이터도 동일 gate.
+const MIN_DEFICIT_DAYS_FOR_ASSESSMENT = 4;
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -175,7 +177,11 @@ export async function getWeightLossStatus() {
     macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
   // Codex P2 (PR #300): 결손 데이터 자체가 없으면 null 로 전달 (0 취급 금지).
-  const deficitInput = avgDailyBalance !== null ? -avgDailyBalance : null;
+  // Codex P2 (PR #300 6회차): 커버리지 gate — 표본 얇으면 null (risk 오판 방지).
+  const deficitInput =
+    avgDailyBalance !== null && withBalance.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT
+      ? -avgDailyBalance
+      : null;
   const muscleLoss = assessMuscleLossRisk({
     weeklyCalorieDeficit: deficitInput,
     avgProteinPerKg: proteinPerKg,

@@ -120,6 +120,48 @@ export interface MacroAverage {
   totalDays: number;
 }
 
+/**
+ * Codex P2 (PR #300 6회차): 도넛/매크로 밸런스 UI 는 하루의 총 P/C/F 조합에서 비율을 뽑는
+ * 지표라, 각 필드가 서로 다른 표본 집합의 평균이면 물리적으로 성립 안 함 (예: 어느 하루도
+ * P/C/F 세 값이 모두 non-null 이 아닌데 세 평균을 합쳐 total kcal 을 표시하는 회귀).
+ * 세 필드 전부 non-null 인 "완전 매크로 일자" 만으로 평균 계산.
+ */
+export interface CompleteMacroAverage {
+  avgKcal: number | null;
+  avgProteinG: number | null;
+  avgCarbsG: number | null;
+  avgFatG: number | null;
+  daysComplete: number;
+  totalDays: number;
+}
+
+export function averageCompleteMacros(days: DailyMacros[]): CompleteMacroAverage {
+  const complete = days.filter(
+    (d) => d.proteinG !== null && d.carbsG !== null && d.fatG !== null && d.kcal !== null,
+  );
+  if (complete.length === 0) {
+    return {
+      avgKcal: null,
+      avgProteinG: null,
+      avgCarbsG: null,
+      avgFatG: null,
+      daysComplete: 0,
+      totalDays: days.length,
+    };
+  }
+  const round1 = (v: number): number => Math.round(v * 10) / 10;
+  const sum = (pick: (d: DailyMacros) => number): number =>
+    complete.reduce((s, d) => s + pick(d), 0);
+  return {
+    avgKcal: Math.round(sum((d) => d.kcal as number) / complete.length),
+    avgProteinG: round1(sum((d) => d.proteinG as number) / complete.length),
+    avgCarbsG: round1(sum((d) => d.carbsG as number) / complete.length),
+    avgFatG: round1(sum((d) => d.fatG as number) / complete.length),
+    daysComplete: complete.length,
+    totalDays: days.length,
+  };
+}
+
 export function averageMacros(days: DailyMacros[]): MacroAverage {
   const valid = <T>(pick: (d: DailyMacros) => T | null): { sum: number; count: number } => {
     let sum = 0, count = 0;
