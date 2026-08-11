@@ -1,0 +1,128 @@
+"use client";
+
+// #299: 오늘 식단 리스트. FoodLog 카드 · P/C/F g 병기 · 부분 미측정 뱃지.
+
+export interface NutritionFoodItem {
+  id: string;
+  timeIso: string;
+  mealType: string | null;
+  description: string;
+  kcal: number | null;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+}
+
+interface Props {
+  items: NutritionFoodItem[];
+}
+
+const P_COLOR = "#22c55e";
+const C_COLOR = "#38bdf8";
+const F_COLOR = "#fbbf24";
+
+const MEAL_LABEL: Record<string, string> = {
+  breakfast: "아침",
+  lunch: "점심",
+  dinner: "저녁",
+  snack: "간식",
+};
+
+const fmtKcal = (n: number | null): string => n == null ? "—" : `${Math.round(n)}`;
+const fmtG = (n: number | null): string => n == null ? "—" : `${Math.round(n)}g`;
+
+function formatTime(iso: string): string {
+  const d = new Date(iso);
+  return d.toLocaleTimeString("ko-KR", {
+    timeZone: "Asia/Seoul",
+    hour: "2-digit",
+    minute: "2-digit",
+    hour12: false,
+  });
+}
+
+function FoodCard({ item }: { item: NutritionFoodItem }) {
+  const missing =
+    item.kcal == null ||
+    item.proteinG == null ||
+    item.carbsG == null ||
+    item.fatG == null;
+  return (
+    <div
+      className={`px-4 py-3 flex flex-col gap-1.5 ${
+        missing
+          ? "bg-[repeating-linear-gradient(45deg,transparent_0,transparent_8px,rgba(220,38,38,.04)_8px,rgba(220,38,38,.04)_9px)]"
+          : ""
+      }`}
+    >
+      <div className="flex items-baseline justify-between gap-3">
+        <div className="flex items-baseline gap-2">
+          <span className="text-[10px] font-[family-name:var(--font-geist-mono)] tracking-widest uppercase text-dim">
+            {item.mealType ? MEAL_LABEL[item.mealType] ?? item.mealType : ""}
+          </span>
+          <span className="text-[10px] font-[family-name:var(--font-geist-mono)] text-dim">{formatTime(item.timeIso)}</span>
+          {missing && (
+            <span className="text-[9px] font-[family-name:var(--font-geist-mono)] uppercase tracking-wider px-1.5 py-[1px] rounded"
+              style={{ color: "#fcd34d", border: "1px solid rgba(245,158,11,.35)" }}>
+              부분 미측정
+            </span>
+          )}
+        </div>
+        <div className="text-[14px] font-[family-name:var(--font-geist-mono)] tabular-nums text-bright">
+          {fmtKcal(item.kcal)}<span className="text-[11px] ml-1 text-dim">kcal</span>
+        </div>
+      </div>
+      <div className="text-[14px] leading-snug text-bright">{item.description}</div>
+      <div className="grid grid-cols-3 gap-2 mt-1">
+        {[
+          { l: "P", v: item.proteinG, clr: P_COLOR },
+          { l: "C", v: item.carbsG,   clr: C_COLOR },
+          { l: "F", v: item.fatG,     clr: F_COLOR },
+        ].map((m, i) => (
+          <div key={i} className="flex items-baseline gap-1.5 text-[11px] font-[family-name:var(--font-geist-mono)]">
+            <span className="w-1.5 h-1.5 rounded-sm" style={{ background: m.clr }}></span>
+            <span className="text-dim">{m.l}</span>
+            <span className="tabular-nums text-muted">{fmtG(m.v)}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export default function NutritionFoodList({ items }: Props) {
+  const missingCount = items.filter((i) =>
+    i.kcal == null || i.proteinG == null || i.carbsG == null || i.fatG == null,
+  ).length;
+  const measuredKcal = items.filter((i) => i.kcal != null).reduce((s, i) => s + (i.kcal ?? 0), 0);
+
+  return (
+    <div className="bg-card border border-border rounded-xl overflow-hidden">
+      <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
+        <div>
+          <div className="text-[10px] tracking-[0.22em] uppercase text-dim font-[family-name:var(--font-geist-mono)]">Today</div>
+          <h2 className="text-[17px] font-semibold mt-0.5">오늘 식단 · {items.length}건</h2>
+        </div>
+        <div className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim">
+          {missingCount > 0 && <span className="mr-2" style={{ color: "#fcd34d" }}>미측정 {missingCount}</span>}
+          <span>{measuredKcal.toLocaleString("ko")} kcal</span>
+        </div>
+      </div>
+      {items.length === 0 ? (
+        <div className="text-[13px] text-dim text-center py-6">오늘 기록된 식단이 없습니다.</div>
+      ) : (
+        <div>
+          {items.map((i, idx) => (
+            <div key={i.id} style={{ borderTop: idx === 0 ? "none" : "1px solid var(--border)" }}>
+              <FoodCard item={i} />
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="px-4 py-3 border-t border-border/60 text-[11px] font-[family-name:var(--font-geist-mono)] text-dim flex items-center gap-3">
+        <span>봇 · 웹 어느 쪽으로 입력해도 자동 추정</span>
+        <a className="ml-auto text-sub hover:text-bright" href="/lifestyle">/lifestyle 보기 →</a>
+      </div>
+    </div>
+  );
+}
