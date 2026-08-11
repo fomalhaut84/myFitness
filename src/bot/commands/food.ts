@@ -2,6 +2,7 @@ import prisma from "../prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateKcalFromText, type KcalEstimate } from "@/lib/nutrition/estimate-kcal";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
@@ -213,35 +214,50 @@ export async function handleFoodInput(
     select: { id: true },
   });
 
-  // 사전 리뷰 P1-3: AI 호출 (~수초~15초) 중 사용자에게 "typing" 인디케이터 노출.
-  // 실패해도 흐름 방해 안 됨.
+  // 2a) #295 (M14 Phase 2 #2): 최근 30일 내 같은 description 로그가 있으면 그 kcal 재사용.
+  //     AI 호출 스킵 → 즉시 응답, 일관성 유지 (MFP '밈 재작성' pain 해결).
+  //     lookup 자체가 조회만이라 typing 인디케이터 없이 빠르게 완료.
+  let repeatHit: Awaited<ReturnType<typeof findRecentSameDescription>> = null;
   try {
-    await ctx.replyWithChatAction?.("typing");
-  } catch {
-    // ignore
-  }
-
-  // 2) AI 로 kcal 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
-  //    실패해도 log 저장은 이미 성공.
-  let estimate: KcalEstimate | null = null;
-  try {
-    estimate = await estimateKcalFromText({ description, mealType });
+    // Codex P2 (#296): 로그 date (now) 기준 preceding 창 사용.
+    repeatHit = await findRecentSameDescription(description, mealType, now);
   } catch (err) {
     console.warn(
-      "[bot/food] kcal 추정 예외 (log 저장은 완료):",
+      "[bot/food] repeat lookup 실패, AI 추정으로 폴백:",
       err instanceof Error ? err.message : String(err),
     );
   }
 
-  // 3) 추정 성공 시 조건부 update + 칼로리 밸런스 재계산.
-  //    Codex P2: update 가 transient 실패하면 estimate 를 null 로 되돌려 사용자 응답이 "실패"
-  //    경로 로 가게. 그렇지 않으면 bot 이 "kcal 기록됨" 이라고 알리는데 DB 는 null → 누락.
-  //    Codex P2 (race): AI 호출 중 (~15s) 사용자가 웹에서 이 row 의 kcal 을 수동 정정할 수 있음.
-  //    조건부 updateMany 로 estimatedKcal 이 여전히 null 일 때만 갱신 → 수동 정정 보존.
-  if (estimate) {
+  // 사전 리뷰 P1-3: AI 호출 (~수초~15초) 중 사용자에게 "typing" 인디케이터 노출.
+  // repeat hit 이면 AI 호출 스킵이라 필요 없지만 lookup 결과 확정 후에 판단.
+  if (!repeatHit) {
     try {
-      // Codex P2 (description race): AI 호출 중 사용자가 description 을 PATCH 로 바꿨으면
-      // 우리가 estimate 한 값은 old-desc 기준이라 stale. description/mealType 스냅샷 조건 추가.
+      await ctx.replyWithChatAction?.("typing");
+    } catch {
+      // ignore
+    }
+  }
+
+  // 2b) AI 로 kcal 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
+  //     실패해도 log 저장은 이미 성공. repeat hit 있으면 스킵.
+  let estimate: KcalEstimate | null = null;
+  if (!repeatHit) {
+    try {
+      estimate = await estimateKcalFromText({ description, mealType });
+    } catch (err) {
+      console.warn(
+        "[bot/food] kcal 추정 예외 (log 저장은 완료):",
+        err instanceof Error ? err.message : String(err),
+      );
+    }
+  }
+
+  // 3) 결정된 kcal (repeatHit 우선, 없으면 AI estimate) 을 조건부 update.
+  //    Codex P2: update 가 transient 실패하면 결과를 null 로 되돌려 사용자 응답이 "실패" 경로로
+  //    감. race 조건 (사용자 웹 정정 / description PATCH) 대응 위해 스냅샷 필드 매칭.
+  const decidedKcal = repeatHit?.kcal ?? estimate?.kcal ?? null;
+  if (decidedKcal !== null) {
+    try {
       const updated = await prisma.foodLog.updateMany({
         where: {
           id: log.id,
@@ -249,10 +265,11 @@ export async function handleFoodInput(
           description,
           mealType,
         },
-        data: { estimatedKcal: estimate.kcal },
+        data: { estimatedKcal: decidedKcal },
       });
       if (updated.count === 0) {
-        // 사용자가 그 사이 수동 정정 or description 변경 → AI 결과 반영 안 함. "실패" 경로.
+        // 사용자가 그 사이 수동 정정 or description 변경 → 반영 안 함. "실패" 경로.
+        repeatHit = null;
         estimate = null;
       }
     } catch (err) {
@@ -260,6 +277,7 @@ export async function handleFoodInput(
         "[bot/food] estimatedKcal update 실패:",
         err instanceof Error ? err.message : String(err),
       );
+      repeatHit = null;
       estimate = null;
     }
   }
@@ -269,10 +287,20 @@ export async function handleFoodInput(
   await recalcWithRetry(now, 1);
 
   // 5) 사용자 응답. #292 (M14 Phase 2 #1): inline keyboard [수정][삭제] 로 모바일 UX 개선.
-  //    기존 /food_kcal <id> <kcal> 명령은 backward-compat 로 유지 (하단 handleFoodKcalCommand).
+  //    #295 (M14 Phase 2 #2): repeat hit 은 재사용 사실 명시로 투명성 확보 (실제 양이 다르면
+  //    사용자가 [수정] 로 바로 정정 가능).
   const label = MEAL_LABELS[mealType];
   const lines = [`✅ ${label} 기록 완료`, `📝 ${description}`];
-  if (estimate) {
+  if (repeatHit) {
+    const dateLabel = repeatHit.date.toLocaleDateString("ko-KR", {
+      timeZone: "Asia/Seoul",
+      month: "2-digit",
+      day: "2-digit",
+    });
+    lines.push(
+      `📊 약 ${repeatHit.kcal.toLocaleString("ko-KR")} kcal (${dateLabel} 기록 재사용)`,
+    );
+  } else if (estimate) {
     lines.push(
       `📊 약 ${estimate.kcal.toLocaleString("ko-KR")} kcal (신뢰도 ${CONFIDENCE_LABEL[estimate.confidence]})`,
     );

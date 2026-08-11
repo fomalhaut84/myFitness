@@ -7,6 +7,7 @@ import prisma from "@/lib/prisma";
 import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -102,19 +103,40 @@ export async function runFoodKcalBackfill(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     try {
-      const est = await estimateKcalFromText({
-        description: r.description,
-        mealType: r.mealType ?? undefined,
-      });
-      if (!est) {
-        result.failed++;
-        continue;
+      // #295 (M14 Phase 2 #2): AI 호출 전 repeat lookup — 최근 30일 내 동일 description 로그가
+      // 있으면 그 kcal 재사용. AI 호출/rate limit 회피 + 일관성.
+      let kcal: number | null = null;
+      try {
+        // Codex P2 (#296): 오래된 row backfill 시 target r.date 기준 preceding 창.
+        const hit = await findRecentSameDescription(
+          r.description,
+          r.mealType ?? undefined,
+          r.date,
+        );
+        if (hit) kcal = hit.kcal;
+      } catch (lookupErr) {
+        if (verbose) {
+          console.warn(
+            `  [food-kcal] repeat lookup 실패 (log ${r.id}), AI fallback: ${lookupErr instanceof Error ? lookupErr.message : String(lookupErr)}`,
+          );
+        }
+      }
+      if (kcal === null) {
+        const est = await estimateKcalFromText({
+          description: r.description,
+          mealType: r.mealType ?? undefined,
+        });
+        if (!est) {
+          result.failed++;
+          continue;
+        }
+        kcal = est.kcal;
       }
       // Codex P2 (race): findMany 이후 사용자가 웹에서 PATCH 로 수동 kcal 설정한 경우
-      // 그 값을 stale AI 결과로 덮지 않도록 조건부 update. estimatedKcal 이 여전히 null 인 row 만 갱신.
+      // 그 값을 stale 결과로 덮지 않도록 조건부 update. estimatedKcal 이 여전히 null 인 row 만 갱신.
       // Codex P2 (description race): PATCH 로 description 이 바뀌면서 kcal 도 null 로 리셋된 케이스
       // → estimatedKcal 조건만으로는 통과. description/mealType 스냅샷도 검사해 old-desc 기반
-      // AI 결과를 new-desc 로 덮지 않도록 방어.
+      // 결과를 new-desc 로 덮지 않도록 방어.
       const updated = await prisma.foodLog.updateMany({
         where: {
           id: r.id,
@@ -122,7 +144,7 @@ export async function runFoodKcalBackfill(
           description: r.description,
           mealType: r.mealType,
         },
-        data: { estimatedKcal: est.kcal },
+        data: { estimatedKcal: kcal },
       });
       if (updated.count === 0) {
         // 사용자가 그 사이 수동 정정 → skip. 실패 카운트 아님.
