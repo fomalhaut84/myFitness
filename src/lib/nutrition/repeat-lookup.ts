@@ -12,15 +12,27 @@ const LOOKUP_WINDOW_DAYS = 30;
 const POOL_CAP = 500;
 
 /**
- * quantity token 판정: 숫자로 시작 (300g, 1공기, 1.5인분) 또는 순수 한글 수량 단위.
- * Codex P2 (#296): food 와 quantity 를 pair 로 묶어야 '밥 1공기 김치 2인분' 과
- * '밥 2인분 김치 1공기' 를 구분 (sort 만 하면 같은 key 로 잘못 매치).
+ * quantity token 판정: 숫자로 시작 (300g, 1공기, 1.5인분), 순수 한글 수량 단위, 또는
+ * 한글 수사 + 단위 결합 (한공기/두접시). Codex P2 (#296).
  */
-const QUANTITY_UNITS = /^(?:공기|인분|개|조각|컵|장|봉|스푼|팩|숟가락|접시|잔|모금|알|판)$/;
+const QUANTITY_UNITS_LIST = "공기|인분|개|조각|컵|장|봉|스푼|팩|숟가락|접시|잔|모금|알|판";
+const KOREAN_NUMS_LIST = "한|두|세|네|다섯|여섯|일곱|여덟|아홉|열|스무|서른|마흔";
+const QUANTITY_UNITS = new RegExp(`^(?:${QUANTITY_UNITS_LIST})$`);
+const KOREAN_NUM_PREFIXED = new RegExp(
+  `^(?:${KOREAN_NUMS_LIST})(?:${QUANTITY_UNITS_LIST})$`,
+);
+// 원본 문자열에서 '한 공기' 등 space-separated form 을 concatenated 로 변환해 이후 pair 로직에
+// 인식되게 함. (예: '밥 한 공기' → '밥 한공기').
+const SPACED_KOR_QTY = new RegExp(
+  `(?<![가-힣])(${KOREAN_NUMS_LIST})\\s+(${QUANTITY_UNITS_LIST})(?![가-힣])`,
+  "g",
+);
+
 function isQuantityToken(token: string): boolean {
   if (!token) return false;
   if (/^[\d.]/.test(token)) return true;
   if (QUANTITY_UNITS.test(token)) return true;
+  if (KOREAN_NUM_PREFIXED.test(token)) return true;
   return false;
 }
 
@@ -37,6 +49,8 @@ export function normalizeDescription(description: string): string {
     .replace(/[,·!?;:\-]/g, " ")
     .replace(/\.(?!\d)/g, " ")
     .replace(/\s+/g, " ")
+    // Codex P2 (#296): '한 공기' → '한공기' 결합해 quantity token 으로 인식.
+    .replace(SPACED_KOR_QTY, "$1$2")
     .trim();
   if (!stripped) return "";
   const tokens = stripped.split(" ").filter((t) => t.length > 0);
