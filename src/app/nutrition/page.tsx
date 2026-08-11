@@ -106,6 +106,7 @@ export default async function NutritionPage() {
     avgProteinPerKg: proteinPerKg,
     weeklyHighIntensityMin: highIntensityMinutes,
     proteinTargetPerKg: targetPerKg,
+    bodyWeightKg,
   });
 
   // 오늘 매크로 (도넛 today view 용).

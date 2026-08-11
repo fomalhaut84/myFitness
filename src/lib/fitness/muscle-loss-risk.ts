@@ -24,6 +24,11 @@ export interface MuscleLossInput {
   weeklyHighIntensityMin: number;
   /** UserProfile.proteinTargetPerKg (기본 1.6). */
   proteinTargetPerKg: number;
+  /**
+   * Codex P2 (PR #300): 최근 체중 kg. 단백질 권장을 g 절대값으로 환산해 실행 가능하게.
+   * 없으면 g/kg gap 만 표시 (계란/닭가슴살 환산 스킵).
+   */
+  bodyWeightKg?: number | null;
 }
 
 export interface MuscleLossVerdict {
@@ -69,12 +74,19 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
     reasons.push(
       `단백질 ${fmt1(input.avgProteinPerKg)} g/kg (< ${fmt1(proteinFloor)} 권장 최소치, 목표 ${fmt1(target)})`,
     );
-    // 부족량 g → 대략 계란 개수 환산 (계란 1개 ≈ 6g 단백질).
-    // g/kg 이니 정확 g 은 caller 가 계산. 안내는 상대 표현.
-    const gap = fmt1(target - input.avgProteinPerKg);
-    recommendations.push(
-      `단백질 하루 ${gap} g/kg 추가 (~계란 3개 또는 닭가슴살 100g 상당)`,
-    );
+    // Codex P2 (PR #300 3회차): 체중을 알면 g 절대값으로 환산 (계란 1개 ≈ 6g P, 닭가슴살 100g ≈ 30g P).
+    // 이전엔 고정 문구 (~계란 3개) 라 100kg 사용자의 큰 gap 을 심각하게 과소평가.
+    const gapPerKg = target - input.avgProteinPerKg;
+    if (input.bodyWeightKg && input.bodyWeightKg > 0) {
+      const gapG = Math.round(gapPerKg * input.bodyWeightKg);
+      const eggs = Math.max(1, Math.round(gapG / 6));
+      const chickenG = Math.max(10, Math.round(gapG / 0.3 / 10) * 10); // 10g 단위 반올림
+      recommendations.push(
+        `단백질 하루 +${gapG}g 추가 (~계란 ${eggs}개 or 닭가슴살 ${chickenG}g 상당)`,
+      );
+    } else {
+      recommendations.push(`단백질 하루 +${fmt1(gapPerKg)} g/kg 추가`);
+    }
   }
 
   // 고강도 조건

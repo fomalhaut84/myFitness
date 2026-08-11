@@ -52,15 +52,41 @@ export async function PATCH(request: Request, ctx: Params) {
     // "kcal 만 채우고 macro 는 보존" 로직으로 mismatched 데이터 확정. macro 도 함께 리셋 +
     // nutritionAttempts 도 0 으로 (새 desc 는 fresh 재시도 대상).
     const updateData: Record<string, unknown> = { ...data };
-    if (
+    const descOrMealChangedWithoutKcal =
       (data.description !== undefined || data.mealType !== undefined) &&
-      data.estimatedKcal === undefined
-    ) {
+      data.estimatedKcal === undefined;
+    if (descOrMealChangedWithoutKcal) {
       updateData.estimatedKcal = null;
       updateData.proteinG = null;
       updateData.carbsG = null;
       updateData.fatG = null;
       updateData.nutritionAttempts = null;
+    } else if (data.estimatedKcal !== undefined) {
+      // Codex P2 (PR #300 3회차): 사용자가 kcal 을 수동 정정하면 기존 AI-generated macro 는
+      // 이전 kcal 에 맞춰져 있어 mismatch. 같은 P:C:F 비율을 유지하되 새 kcal 에 맞춰 스케일링
+      // (AI 가 재추정할 때까지 부정확한 macro 노출 방지). 새 kcal 이 null 이면 macros 도 null.
+      const existing = await prisma.foodLog.findUnique({
+        where: { id },
+        select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+      });
+      if (data.estimatedKcal === null) {
+        updateData.proteinG = null;
+        updateData.carbsG = null;
+        updateData.fatG = null;
+        updateData.nutritionAttempts = null;
+      } else if (
+        existing &&
+        existing.estimatedKcal !== null &&
+        existing.estimatedKcal > 0 &&
+        data.estimatedKcal !== existing.estimatedKcal
+      ) {
+        const ratio = data.estimatedKcal / existing.estimatedKcal;
+        const scale1 = (v: number | null): number | null =>
+          v === null ? null : Math.round(v * ratio * 10) / 10;
+        updateData.proteinG = scale1(existing.proteinG);
+        updateData.carbsG = scale1(existing.carbsG);
+        updateData.fatG = scale1(existing.fatG);
+      }
     }
 
     const updated = await prisma.foodLog.update({

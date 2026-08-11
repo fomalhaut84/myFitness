@@ -115,6 +115,29 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 1 },
   },
+  {
+    // Codex P2 (PR #300 3회차): 체중별 protein g 환산
+    label: "체중 100kg + gap 0.8 g/kg → g 환산 = 80g 추가 권장",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 0.8,
+      weeklyHighIntensityMin: 10,
+      proteinTargetPerKg: 1.6,
+      bodyWeightKg: 100,
+    },
+    expect: { risk: "low", score: 1 },
+  },
+  {
+    label: "체중 미지정 → g/kg 문구만",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 1.0,
+      weeklyHighIntensityMin: 10,
+      proteinTargetPerKg: 1.6,
+      // bodyWeightKg omitted
+    },
+    expect: { risk: "low", score: 1 },
+  },
 ];
 
 let allPass = true;

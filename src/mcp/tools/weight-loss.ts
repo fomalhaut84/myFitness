@@ -160,7 +160,11 @@ export async function getWeightLossStatus() {
       : 0;
 
   // #299 (M14 Phase 2 #3): 매크로 요약 + 근손실 위험 평가.
-  const macros7d = await aggregateRecentMacros(now, 7);
+  // Codex P2 (PR #300 3회차): 위에서 now.setHours(0,0,0,0) 로 UTC midnight 리셋된 후라
+  // 00:00~09:00 KST 사이에는 ymdKST(now) 가 어제 날짜로 계산됨. 실시간 timestamp 를 다시 뽑아
+  // aggregateRecentMacros 에 전달.
+  const kstNow = new Date();
+  const macros7d = await aggregateRecentMacros(kstNow, 7);
   const macroAvg = averageMacros(macros7d);
   // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 얇은 표본으로 오해 유도.
   const proteinPerKgRaw =
@@ -177,6 +181,7 @@ export async function getWeightLossStatus() {
     avgProteinPerKg: proteinPerKg,
     weeklyHighIntensityMin: highIntensityMinutes,
     proteinTargetPerKg: proteinTarget,
+    bodyWeightKg: latestWeight,
   });
   // 근손실 verdict 를 warnings 에 반영 (기존 ad-hoc 체크와 별도 · 러너 특화 지표).
   if (muscleLoss.risk === "high") {
