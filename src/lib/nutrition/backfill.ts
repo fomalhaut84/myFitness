@@ -144,10 +144,13 @@ export async function runFoodKcalBackfill(
       let carbsG = r.carbsG;
       let fatG = r.fatG;
       try {
+        // Codex P2 (PR #300 5회차): excludeLogId 로 자기 자신 매치 방지 (macro-partial row 자기
+        // 스스로가 최상위로 잡혀 null 이 null 을 채우는 무의미 경로 회피).
         const hit = await findRecentSameDescription(
           r.description,
           r.mealType ?? undefined,
           r.date,
+          r.id,
         );
         if (hit) {
           if (kcal === null) kcal = hit.kcal;
@@ -219,18 +222,23 @@ export async function runFoodKcalBackfill(
         }
       }
       // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts atomic 증가.
-      // 필드 write 실패 여부 무관 (다른 run 이 채운 경우도 이번 호출 비용은 발생) → 무한 재시도 방지.
+      // Codex P2 (PR #300 5회차): Prisma `{ increment: 1 }` 은 nullable 컬럼이 null 이면 SQL 상
+      // `NULL + 1 = NULL` 로 null 유지 → attempts 가 영영 증가 안 함 → 재시도 상한 무효화.
+      // COALESCE 로 null→0 후 증가하는 raw SQL 사용.
       if (stillMissing) {
-        await prisma.foodLog.update({
-          where: { id: r.id },
-          data: { nutritionAttempts: { increment: 1 } },
-        }).catch((err) => {
+        try {
+          await prisma.$executeRaw`
+            UPDATE "FoodLog"
+            SET "nutritionAttempts" = COALESCE("nutritionAttempts", 0) + 1
+            WHERE id = ${r.id}
+          `;
+        } catch (err) {
           if (verbose) {
             console.warn(
               `  [nutrition] attempts increment 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
             );
           }
-        });
+        }
       }
       if (!anyWritten) continue;
       if (kcalWritten) {

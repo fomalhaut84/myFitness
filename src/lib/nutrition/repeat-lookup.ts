@@ -127,11 +127,14 @@ export interface RepeatLookupHit {
  *   - Codex P2 (#296): 미래 날짜 로그 배제 위해 date lte(now) 상한 추가.
  *   - Codex P2 (#296): referenceDate 인자로 target 시각 기준 창을 사용 — backdated 로그나
  *     backfill 이 옛 row 처리 시 그 시점 기준 preceding history 만 매치.
+ *   - Codex P2 (PR #300 5회차): excludeLogId — 자기 자신 매치 방지 (backfill 이 macro-partial
+ *     row 를 처리할 때 자기 row 가 최상위로 뽑혀 macro null 이 null 을 채우려는 무의미 경로).
  */
 export async function findRecentSameDescription(
   description: string,
   mealType?: string | null,
   referenceDate?: Date,
+  excludeLogId?: string,
 ): Promise<RepeatLookupHit | null> {
   const targetKey = normalizeDescription(description);
   if (!targetKey) return null;
@@ -144,6 +147,7 @@ export async function findRecentSameDescription(
     where: {
       date: { gte: since, lte: ref },
       estimatedKcal: { not: null },
+      ...(excludeLogId ? { id: { not: excludeLogId } } : {}),
     },
     orderBy: { date: "desc" },
     select: {
