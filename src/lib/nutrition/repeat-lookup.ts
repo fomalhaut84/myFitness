@@ -54,10 +54,12 @@ function isQuantityToken(token: string): boolean {
  *  - 구두점 → 공백 (마침표는 숫자 사이만 유지 예: 1.5)
  *  - qty 토큰을 경계로 phrase 분할 — qty 직전까지 누적된 non-qty 토큰들 (modifier + food)
  *    을 함께 phrase 로 묶어, `큰 사과 1개` 같은 modifier 를 food 에서 분리하지 않음.
- *    Codex P2 (#296): 이전엔 두-토큰 pair 로 sort 하다 modifier 가 detach 되어
- *    `큰 사과 1개 작은 바나나 2개` == `큰 바나나 2개 작은 사과 1개` 로 오매칭.
- *  - qty 없는 trailing 토큰들은 개별 phrase 로 sort tolerance 확보 (예: `밥 김치` == `김치 밥`).
- *  - phrase 그룹 단위로만 sort → qty 그룹 순서는 무관, phrase 내부 순서는 보존.
+ *  - qty 없는 trailing 토큰 run 도 단일 phrase 로 유지 → `큰 사과 작은 바나나` 의 modifier
+ *    가 food 에서 detach 되지 않음. Codex P2 (#296): 이전엔 개별 sort 로 `큰 사과 작은 바나나`
+ *    == `큰 바나나 작은 사과` 오매칭.
+ *  - phrase 그룹 단위로만 sort → qty 그룹 순서는 무관, phrase 내부 순서·modifier 결합 보존.
+ *  - 트레이드오프: `밥 김치` vs `김치 밥` 같이 modifier 없는 순수 food-only reorder 는 더
+ *    이상 매칭되지 않음. 오매칭 (다른 kcal 재사용) 을 방지하기 위한 defensive 선택.
  */
 export function normalizeDescription(description: string): string {
   const stripped = description
@@ -97,7 +99,8 @@ export function normalizeDescription(description: string): string {
       modifiers.push(t);
     }
   }
-  for (const m of modifiers) phrases.push(m);
+  // trailing modifier run — 단일 phrase 로 유지 (개별 push 시 modifier 가 detach 됨).
+  if (modifiers.length > 0) phrases.push(modifiers.join(" "));
   if (leadingQty !== null) phrases.push(leadingQty);
   phrases.sort();
   return phrases.join(" ");
