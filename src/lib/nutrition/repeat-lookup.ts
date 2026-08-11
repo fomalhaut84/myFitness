@@ -52,8 +52,12 @@ function isQuantityToken(token: string): boolean {
  * description 정규화 규칙:
  *  - 앞뒤 trim / 소문자 (영어만 영향, 한글 무관)
  *  - 구두점 → 공백 (마침표는 숫자 사이만 유지 예: 1.5)
- *  - (food, quantity?) pair 로 묶어 정렬 → 순서 무관 매칭 + 양-food 연관 보존
- *  - 정량 표기 (300g, 1인분) 는 pair 로 유지되어 다른 양은 다른 key
+ *  - qty 토큰을 경계로 phrase 분할 — qty 직전까지 누적된 non-qty 토큰들 (modifier + food)
+ *    을 함께 phrase 로 묶어, `큰 사과 1개` 같은 modifier 를 food 에서 분리하지 않음.
+ *    Codex P2 (#296): 이전엔 두-토큰 pair 로 sort 하다 modifier 가 detach 되어
+ *    `큰 사과 1개 작은 바나나 2개` == `큰 바나나 2개 작은 사과 1개` 로 오매칭.
+ *  - qty 없는 trailing 토큰들은 개별 phrase 로 sort tolerance 확보 (예: `밥 김치` == `김치 밥`).
+ *  - phrase 그룹 단위로만 sort → qty 그룹 순서는 무관, phrase 내부 순서는 보존.
  */
 export function normalizeDescription(description: string): string {
   const stripped = description
@@ -67,31 +71,36 @@ export function normalizeDescription(description: string): string {
     .trim();
   if (!stripped) return "";
   const tokens = stripped.split(" ").filter((t) => t.length > 0);
-  const pairs: string[] = [];
-  for (let i = 0; i < tokens.length; i++) {
-    const cur = tokens[i];
-    const next = tokens[i + 1];
-    // quantity 가 앞에 오는 경우 (예: '1.5인분 파스타') 도 뒤 food 와 pair — food 를 first
-    // 로 정규화해 순서 무관 매칭.
-    if (isQuantityToken(cur) && next && !isQuantityToken(next)) {
-      pairs.push(`${next} ${cur}`);
-      i++;
-      continue;
-    }
-    if (isQuantityToken(cur)) {
-      // 예외 (연속 quantity 등) — 그대로.
-      pairs.push(cur);
-      continue;
-    }
-    if (next && isQuantityToken(next)) {
-      pairs.push(`${cur} ${next}`);
-      i++;
+  const phrases: string[] = [];
+  // qty 를 만날 때까지 누적된 non-qty 토큰 (modifier + food). qty 만나면 phrase 로 flush.
+  let modifiers: string[] = [];
+  // 앞선 unclaimed qty (예: `1개 사과`) — 다음 첫 non-qty 토큰과만 pair 해 `사과 1개` 로.
+  let leadingQty: string | null = null;
+  for (const t of tokens) {
+    if (isQuantityToken(t)) {
+      if (modifiers.length > 0) {
+        phrases.push(`${modifiers.join(" ")} ${t}`);
+        modifiers = [];
+      } else if (leadingQty !== null) {
+        // 연속 qty — 앞선 leadingQty 홀로 push, 이 qty 가 새 leadingQty.
+        phrases.push(leadingQty);
+        leadingQty = t;
+      } else {
+        leadingQty = t;
+      }
+    } else if (leadingQty !== null) {
+      // leadingQty 는 첫 non-qty 토큰과만 pair. 그 뒤 토큰은 새 modifier run.
+      // (`한컵 우유 3알 달걀` → `우유 한컵` + `달걀 3알`)
+      phrases.push(`${t} ${leadingQty}`);
+      leadingQty = null;
     } else {
-      pairs.push(cur);
+      modifiers.push(t);
     }
   }
-  pairs.sort();
-  return pairs.join(" ");
+  for (const m of modifiers) phrases.push(m);
+  if (leadingQty !== null) phrases.push(leadingQty);
+  phrases.sort();
+  return phrases.join(" ");
 }
 
 export interface RepeatLookupHit {
