@@ -20,8 +20,13 @@ export interface MuscleLossInput {
    * 함께 참조해 신뢰도 판단.
    */
   avgProteinPerKg: number | null;
-  /** 최근 7일 고강도 (Z4+Z5) 총 분. */
-  weeklyHighIntensityMin: number;
+  /**
+   * 최근 7일 고강도 (Z4+Z5) 총 분.
+   * Codex P2 (PR #300 11회차): null 이면 zone 데이터 부족으로 불확실. 스코어에 반영 안 하고
+   * reasons 에만 표시. Garmin fetcher 가 zone extraction 실패 시 null 저장하는 활동이 있을 때
+   * caller 가 판정.
+   */
+  weeklyHighIntensityMin: number | null;
   /** UserProfile.proteinTargetPerKg (기본 1.6). */
   proteinTargetPerKg: number;
   /**
@@ -94,11 +99,15 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
   }
 
   // 고강도 조건
-  const zMin = Math.round(input.weeklyHighIntensityMin);
-  if (zMin > HIGH_INTENSITY_THRESHOLD_MIN) {
-    score++;
-    reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HIGH_INTENSITY_THRESHOLD_MIN})`);
-    recommendations.push("다음 7일 중 1~2회는 easy·회복 러닝으로 대체");
+  if (input.weeklyHighIntensityMin === null) {
+    reasons.push("고강도(Z4+) 데이터 부족 (활동에 zoneDistribution 누락)");
+  } else {
+    const zMin = Math.round(input.weeklyHighIntensityMin);
+    if (zMin > HIGH_INTENSITY_THRESHOLD_MIN) {
+      score++;
+      reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HIGH_INTENSITY_THRESHOLD_MIN})`);
+      recommendations.push("다음 7일 중 1~2회는 easy·회복 러닝으로 대체");
+    }
   }
 
   const risk: MuscleLossVerdict["risk"] = score >= 3 ? "high" : score >= 2 ? "medium" : "low";

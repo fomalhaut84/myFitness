@@ -149,6 +149,17 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 1 },
   },
+  {
+    // Codex P2 (PR #300 11회차): zone 데이터 부족 (null) → 스코어 반영 X · reasons 만.
+    label: "고강도 데이터 부족 (null) → 스코어 반영 안 함",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: null,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 0 },
+  },
 ];
 
 let allPass = true;

@@ -102,12 +102,19 @@ export default async function NutritionPage() {
   const proteinPerKg =
     macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
   // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해 분으로. intensityLabel-based full duration 은 과대 산정.
+  // Codex P2 (PR #300 11회차): zone 데이터가 하나라도 누락된 활동이 있으면 카운트가 과소 산정
+  // 될 수 있음 → risk assessor 에는 null 전달 (활동이 아예 없으면 진짜 0 이니 별개 처리).
+  let missingZone = 0;
   const highIntensitySeconds = activities7d.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);
-    if (!dist) return s;
+    if (!dist) {
+      missingZone++;
+      return s;
+    }
     return s + dist.z4 + dist.z5;
   }, 0);
-  const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
+  const highIntensityMinutes =
+    missingZone > 0 ? null : Math.round(highIntensitySeconds / 60);
 
   const verdict = assessMuscleLossRisk({
     weeklyCalorieDeficit: avgDailyBalance !== null ? -avgDailyBalance : null,

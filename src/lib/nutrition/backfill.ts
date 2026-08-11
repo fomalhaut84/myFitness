@@ -139,15 +139,38 @@ export async function runFoodKcalBackfill(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     try {
-      // #295 (M14 Phase 2 #2): repeat lookup — 최근 30일 내 동일 description 로그가
-      // 있으면 그 kcal + P/C/F 재사용. AI 호출/rate limit 회피 + 일관성.
+      // Codex P1 (PR #300 11회차): kcal 결정과 매크로 tuple 결정을 완전히 분리.
+      // - kcal 은 null 이면 hit 또는 est 로부터 취득 가능.
+      // - 매크로는 반드시 단일 source (hit 만 or est 만) 에서 완전 tuple (P/C/F 셋 다) 로만 채택.
+      //   여러 source 를 병합하면 combined tuple 이 retained kcal 과 non-coherent.
       let kcal = r.estimatedKcal;
-      let proteinG = r.proteinG;
-      let carbsG = r.carbsG;
-      let fatG = r.fatG;
+      let macroTuple: { proteinG: number; carbsG: number; fatG: number } | null = null;
+
+      // Helper: source (hit 또는 est) 의 macros 를 target kcal 로 스케일해 완전 tuple 반환.
+      const tupleFromSource = (
+        srcKcal: number,
+        srcP: number | null,
+        srcC: number | null,
+        srcF: number | null,
+        targetKcal: number,
+      ): { proteinG: number; carbsG: number; fatG: number } | null => {
+        if (srcP === null || srcC === null || srcF === null) return null;
+        if (targetKcal === srcKcal) return { proteinG: srcP, carbsG: srcC, fatG: srcF };
+        const scaled = scaleMacrosForNewKcal(targetKcal, srcKcal, {
+          proteinG: srcP,
+          carbsG: srcC,
+          fatG: srcF,
+        });
+        if (scaled.proteinG === null || scaled.carbsG === null || scaled.fatG === null) return null;
+        return {
+          proteinG: scaled.proteinG,
+          carbsG: scaled.carbsG,
+          fatG: scaled.fatG,
+        };
+      };
+
+      // 1) Repeat lookup
       try {
-        // Codex P2 (PR #300 5회차): excludeLogId 로 자기 자신 매치 방지 (macro-partial row 자기
-        // 스스로가 최상위로 잡혀 null 이 null 을 채우는 무의미 경로 회피).
         const hit = await findRecentSameDescription(
           r.description,
           r.mealType ?? undefined,
@@ -155,23 +178,10 @@ export async function runFoodKcalBackfill(
           r.id,
         );
         if (hit) {
-          // Codex P1 (PR #300 8회차): retained kcal (row 에 이미 kcal 있음) 인 경우 hit.kcal 이
-          // 다르면 hit.macros 는 hit.kcal 기준이라 그대로 옮기면 mismatch. AI 브랜치와 동일
-          // scaling 정책 적용 (kcal null 이면 hit 통째로, 있으면 macros 를 retained 로 스케일).
-          if (kcal === null) {
-            kcal = hit.kcal;
-            if (proteinG === null) proteinG = hit.proteinG;
-            if (carbsG === null) carbsG = hit.carbsG;
-            if (fatG === null) fatG = hit.fatG;
-          } else {
-            const scaled = scaleMacrosForNewKcal(kcal, hit.kcal, {
-              proteinG: hit.proteinG,
-              carbsG: hit.carbsG,
-              fatG: hit.fatG,
-            });
-            if (proteinG === null) proteinG = scaled.proteinG;
-            if (carbsG === null) carbsG = scaled.carbsG;
-            if (fatG === null) fatG = scaled.fatG;
+          if (kcal === null) kcal = hit.kcal;
+          // hit 이 완전 macros 이면 이번 write 후보. 부분이면 스킵 (다른 source 시도).
+          if (kcal !== null) {
+            macroTuple = tupleFromSource(hit.kcal, hit.proteinG, hit.carbsG, hit.fatG, kcal);
           }
         }
       } catch (lookupErr) {
@@ -181,54 +191,41 @@ export async function runFoodKcalBackfill(
           );
         }
       }
-      // 여전히 null 필드가 남아 있으면 AI 로 채우기.
-      const stillMissing =
-        kcal === null || proteinG === null || carbsG === null || fatG === null;
-      // Codex P2 (PR #300 9회차): AI 실패는 attempts 소비 (무한 실패 재호출 방지),
-      // AI 성공했으나 race 로 write 진 loser 는 소비 안 함 (실제 write 성공 시에만 소비).
+
+      const needsSomeMacro =
+        r.proteinG === null || r.carbsG === null || r.fatG === null;
+      // Codex P2 (PR #300 9회차): AI 실패는 attempts 소비, race loser 는 소비 안 함.
+      // Codex P2 (PR #300 11회차): AI 가 valid 하지만 partial 매크로 반환 → 원자 write 불가 →
+      // 무한 재호출 방지 위해 소비. macros-only bucket 에 한함.
       let aiFailureConsumesAttempt = false;
-      if (stillMissing) {
+      let aiPartialConsumesAttempt = false;
+      const stillNeedsAI = kcal === null || (needsSomeMacro && macroTuple === null);
+      if (stillNeedsAI) {
         const est = await estimateNutritionFromText({
           description: r.description,
           mealType: r.mealType ?? undefined,
         });
         if (!est) {
-          // AI 실패 — attempts 소비 (kcal-gated 아닌 macros-only bucket 에 한해).
           if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;
           if (kcal === null) {
             result.failed++;
             continue;
           }
         } else {
-          // Codex P1 (PR #300 6회차): 기존 kcal 이 있는 row (legacy or user-corrected) 를
-          // 재추정할 때 est.kcal 이 기존 kcal 과 다를 수 있음. 기존 kcal 은 그대로 유지하고
-          // est 의 P/C/F 는 est.kcal 기준이라 그대로 쓰면 mismatch. 기존 kcal 에 맞춰 스케일.
-          if (kcal === null) {
-            kcal = est.kcal;
-            if (proteinG === null) proteinG = est.proteinG;
-            if (carbsG === null) carbsG = est.carbsG;
-            if (fatG === null) fatG = est.fatG;
-          } else {
-            // kcal 은 기존값 유지. est.macros 를 retained kcal 로 스케일.
-            const scaled = scaleMacrosForNewKcal(kcal, est.kcal, {
-              proteinG: est.proteinG,
-              carbsG: est.carbsG,
-              fatG: est.fatG,
-            });
-            if (proteinG === null) proteinG = scaled.proteinG;
-            if (carbsG === null) carbsG = scaled.carbsG;
-            if (fatG === null) fatG = scaled.fatG;
+          if (kcal === null) kcal = est.kcal;
+          if (needsSomeMacro && macroTuple === null && kcal !== null) {
+            macroTuple = tupleFromSource(est.kcal, est.proteinG, est.carbsG, est.fatG, kcal);
+            if (macroTuple === null && r.estimatedKcal !== null) {
+              // AI valid but partial → macros-only bucket 에서 무한 재호출 방지.
+              aiPartialConsumesAttempt = true;
+            }
           }
         }
       }
-      if (kcal === null) {
-        // AI 도 kcal 못 채웠으면 스킵 (이미 위에서 failed 증가).
-        continue;
-      }
-      // Codex P2 (race, PR #300 7회차): 원자 tuple write 로 필드 인터리브 방지.
-      // Codex P2 (PR #300 8회차): snapshotWhere 를 write 대상 뿐 아니라 fetch 한 모든 nutrition
-      // 필드로 확대. retained kcal 이 PATCH 로 바뀌면 우리 macros 는 old kcal 기준이라 mismatch.
-      // 어떤 필드든 fetch 값과 달라졌으면 전체 abort → 다음 tick fresh snapshot 으로 재시도.
+      if (kcal === null) continue;
+
+      // Codex P2 (race, PR #300 7회차): 원자 tuple write. snapshotWhere 는 모든 nutrition 필드
+      // 포함 → 어떤 필드든 fetch 값과 다르면 abort, 다음 tick fresh snapshot 재시도.
       const writeData: {
         estimatedKcal?: number;
         proteinG?: number | null;
@@ -241,20 +238,13 @@ export async function runFoodKcalBackfill(
         carbsG: r.carbsG,
         fatG: r.fatG,
       };
-      if (r.estimatedKcal === null && kcal !== null) writeData.estimatedKcal = kcal;
-      // Codex P1 (PR #300 10회차): 매크로는 원자 tuple 로만 write. 부분 write 를 허용하면
-      // 서로 다른 estimate 가 P/C/F 를 나눠 채워 combined tuple 이 retained kcal 과 non-coherent
-      // 인 상태로 row 가 backfill pool 을 벗어남 (모든 필드 non-null → 재선택 안 됨).
-      // → 우리 estimate 가 P/C/F 세 값 모두 non-null (retained kcal 로 이미 스케일 완료) 일
-      // 때만 macros 전체 덮어쓰기. 기존 non-null 은 다른 estimate 파편 가능성이 있어 신뢰 X.
-      const needsSomeMacro =
-        r.proteinG === null || r.carbsG === null || r.fatG === null;
-      const estGivesCompleteMacros =
-        proteinG !== null && carbsG !== null && fatG !== null;
-      if (needsSomeMacro && estGivesCompleteMacros) {
-        writeData.proteinG = proteinG;
-        writeData.carbsG = carbsG;
-        writeData.fatG = fatG;
+      if (r.estimatedKcal === null) writeData.estimatedKcal = kcal;
+      // Codex P1 (PR #300 11회차): macroTuple 은 이미 단일 source 에서 완전 tuple + retained kcal
+      // 로 스케일 완료. 부분 파편 병합 위험 없음. 기존 non-null macro 도 함께 덮어써 파편 정리.
+      if (needsSomeMacro && macroTuple !== null) {
+        writeData.proteinG = macroTuple.proteinG;
+        writeData.carbsG = macroTuple.carbsG;
+        writeData.fatG = macroTuple.fatG;
       }
 
       let anyWritten = false;
@@ -279,10 +269,12 @@ export async function runFoodKcalBackfill(
       // COALESCE 로 null→0 후 증가하는 raw SQL 사용.
       // Codex P2 (PR #300 7회차): description/mealType 스냅샷 조건 추가 — PATCH 로 description
       // 이 바뀌면서 attempts 를 리셋한 새 row 의 재시도 예산을 stale worker 가 소진하는 것 방지.
-      // Codex P2 (PR #300 9회차): concurrent worker 여럿이 같은 snapshot 을 fetch 해도 실제
-      // tuple write 는 하나만 성공. loser 는 attempt 소비하면 안 됨 (아무 기여 없이 예산 잠식).
-      // → write 실제 성공 (anyWritten) 또는 AI 실패 (aiFailureConsumesAttempt) 시에만 increment.
-      const shouldConsumeAttempt = anyWritten || aiFailureConsumesAttempt;
+      // Codex P2 (PR #300 9회차/11회차): race loser 는 소비 X. 소비 조건:
+      //  - anyWritten: 실제 write 성공
+      //  - aiFailureConsumesAttempt: AI 자체 실패 (null)
+      //  - aiPartialConsumesAttempt: AI 는 성공했으나 partial 매크로만 반환 → 원자 write 불가
+      const shouldConsumeAttempt =
+        anyWritten || aiFailureConsumesAttempt || aiPartialConsumesAttempt;
       if (shouldConsumeAttempt) {
         try {
           const mealCond =

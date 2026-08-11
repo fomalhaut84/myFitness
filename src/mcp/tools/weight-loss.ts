@@ -144,12 +144,19 @@ export async function getWeightLossStatus() {
       a.intensityLabel === "interval" ||
       a.intensityLabel === "max"
   );
+  // Codex P2 (PR #300 11회차): zone 누락 활동이 하나라도 있으면 카운트 과소 산정 위험.
+  // 위험 판정용 입력에는 null (unknown) 로 전달. 응답 필드는 그대로 최선 추정치 노출.
+  let missingZoneCount = 0;
   const highIntensitySeconds = activities.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);
-    if (!dist) return s;
+    if (!dist) {
+      missingZoneCount++;
+      return s;
+    }
     return s + dist.z4 + dist.z5;
   }, 0);
   const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
+  const highIntensityMinutesForRisk = missingZoneCount > 0 ? null : highIntensityMinutes;
 
   // 경고 판정
   const warnings: string[] = [];
@@ -196,7 +203,7 @@ export async function getWeightLossStatus() {
   const muscleLoss = assessMuscleLossRisk({
     weeklyCalorieDeficit: deficitInput,
     avgProteinPerKg: proteinPerKg,
-    weeklyHighIntensityMin: highIntensityMinutes,
+    weeklyHighIntensityMin: highIntensityMinutesForRisk,
     proteinTargetPerKg: proteinTarget,
     bodyWeightKg: latestWeight,
   });
