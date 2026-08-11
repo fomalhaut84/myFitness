@@ -31,13 +31,26 @@ function kstDayRange(referenceDate: Date): { start: Date; end: Date; ymd: string
   };
 }
 
-/** 특정 일자 (KST) 의 매크로 합계. null 필드는 propagate. */
+/** 특정 일자 (KST) 의 매크로 합계. null 필드는 propagate.
+ *  Codex P1 (#300): 로그가 없는 날은 "0 섭취" 가 아니라 "데이터 없음" 이므로 모두 null.
+ *  그렇지 않으면 averageMacros 가 빈 날을 유효 표본에 포함시켜 평균을 희석함. */
 export async function aggregateDailyMacros(referenceDate: Date): Promise<DailyMacros> {
   const { start, end, ymd } = kstDayRange(referenceDate);
   const rows = await prisma.foodLog.findMany({
     where: { date: { gte: start, lt: end } },
     select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
   });
+  if (rows.length === 0) {
+    return {
+      date: ymd,
+      kcal: null,
+      proteinG: null,
+      carbsG: null,
+      fatG: null,
+      itemCount: 0,
+      missingCount: 0,
+    };
+  }
   let kcal: number | null = 0;
   let p: number | null = 0;
   let c: number | null = 0;

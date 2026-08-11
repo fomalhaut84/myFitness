@@ -47,17 +47,25 @@ export async function PATCH(request: Request, ctx: Params) {
 
     // Codex P2 (#283): description/mealType 변경만 있고 새 kcal 미제공이면 기존 kcal 은 이전
     // 컨텍스트 기준이라 stale. null 로 리셋 → cron/backfill 이 새 값으로 재추정.
-    // mealType 도 estimateKcalFromText 프롬프트 입력이므로 동일 처리.
+    // mealType 도 프롬프트 입력이므로 동일 처리.
+    // Codex P1 (PR #300, #299): kcal 만 리셋하면 macro (P/C/F) 는 이전 desc 값이 남아 backfill 이
+    // "kcal 만 채우고 macro 는 보존" 로직으로 mismatched 데이터 확정. macro 도 함께 리셋 +
+    // nutritionAttempts 도 0 으로 (새 desc 는 fresh 재시도 대상).
+    const updateData: Record<string, unknown> = { ...data };
     if (
       (data.description !== undefined || data.mealType !== undefined) &&
       data.estimatedKcal === undefined
     ) {
-      data.estimatedKcal = null;
+      updateData.estimatedKcal = null;
+      updateData.proteinG = null;
+      updateData.carbsG = null;
+      updateData.fatG = null;
+      updateData.nutritionAttempts = null;
     }
 
     const updated = await prisma.foodLog.update({
       where: { id },
-      data,
+      data: updateData,
       select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
     });
 

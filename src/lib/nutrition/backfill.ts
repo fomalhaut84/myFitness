@@ -30,6 +30,10 @@ export interface RunFoodBackfillResult {
 
 // Codex P2 (rotation): 매 실행 전체 후보 pool 을 이 상한까지 가져와 셔플. limit 이 하위집합.
 const ROTATION_POOL_CAP = 500;
+// Codex P2 (PR #300): macro AI 추정이 partial null 로 반복되면 매 tick 재호출 낭비.
+// 이 횟수 초과 시 kcal 이 채워진 macro-null row 는 permanent 로 스킵.
+// weatherAttempts (#269) 패턴 재사용.
+const MAX_NUTRITION_ATTEMPTS = 3;
 
 export async function runFoodKcalBackfill(
   opts: RunFoodBackfillOptions = {},
@@ -42,14 +46,26 @@ export async function runFoodKcalBackfill(
   // Codex P2:
   //  - limit 지정 (cron/스크립트 배치): pool cap 까지 fetch → in-memory shuffle → limit 하위집합.
   //  - limit 미지정 (전량 backfill): cursor-based 페이지네이션.
-  // #299 (M14 Phase 2 #3): 조건이 kcal null OR macro null 로 확장 — 매크로 도입 이전의 kcal-only
-  // row 도 재추정 대상. 이미 채워진 필드는 update 조건절로 보존.
+  // #299: 조건이 kcal null OR macro null 로 확장.
+  // Codex P2 (PR #300): macro-null 은 nutritionAttempts < MAX 인 row 만 (permanent-partial 회피).
+  //   kcal null 은 attempts 무관 재시도 (kcal 은 필수).
   const baseWhere = {
     OR: [
       { estimatedKcal: null },
-      { proteinG: null },
-      { carbsG: null },
-      { fatG: null },
+      {
+        AND: [
+          { estimatedKcal: { not: null } },
+          {
+            OR: [{ proteinG: null }, { carbsG: null }, { fatG: null }],
+          },
+          {
+            OR: [
+              { nutritionAttempts: null },
+              { nutritionAttempts: { lt: MAX_NUTRITION_ATTEMPTS } },
+            ],
+          },
+        ],
+      },
     ],
     createdAt: { lt: cutoff },
   };
@@ -63,16 +79,25 @@ export async function runFoodKcalBackfill(
     proteinG: number | null;
     carbsG: number | null;
     fatG: number | null;
+    nutritionAttempts: number | null;
   }
   const rows: Row[] = [];
 
   if (limit !== undefined) {
+    // Codex P2 (PR #300): SQL 도 attempts 상한 반영.
     const pool = await prisma.$queryRaw<Row[]>`
       SELECT id, description, "mealType", date,
-             "estimatedKcal", "proteinG", "carbsG", "fatG"
+             "estimatedKcal", "proteinG", "carbsG", "fatG", "nutritionAttempts"
       FROM "FoodLog"
-      WHERE ("estimatedKcal" IS NULL OR "proteinG" IS NULL OR "carbsG" IS NULL OR "fatG" IS NULL)
-        AND "createdAt" < ${cutoff}
+      WHERE "createdAt" < ${cutoff}
+        AND (
+          "estimatedKcal" IS NULL
+          OR (
+            "estimatedKcal" IS NOT NULL
+            AND ("proteinG" IS NULL OR "carbsG" IS NULL OR "fatG" IS NULL)
+            AND ("nutritionAttempts" IS NULL OR "nutritionAttempts" < ${MAX_NUTRITION_ATTEMPTS})
+          )
+        )
       ORDER BY random()
       LIMIT ${ROTATION_POOL_CAP}
     `;
@@ -93,6 +118,7 @@ export async function runFoodKcalBackfill(
           proteinG: true,
           carbsG: true,
           fatG: true,
+          nutritionAttempts: true,
         },
         take: PAGE,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
@@ -168,19 +194,23 @@ export async function runFoodKcalBackfill(
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
+        nutritionAttempts?: number;
       } = {};
       if (r.estimatedKcal === null && kcal !== null) data.estimatedKcal = kcal;
       if (r.proteinG === null) data.proteinG = proteinG;
       if (r.carbsG === null) data.carbsG = carbsG;
       if (r.fatG === null) data.fatG = fatG;
+      // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts 증가.
+      // 매크로가 여전히 null 인 채로 update 되면 다음 tick 도 대상. 카운터가 상한 도달 시 스킵.
+      if (stillMissing) {
+        data.nutritionAttempts = (r.nutritionAttempts ?? 0) + 1;
+      }
       if (Object.keys(data).length === 0) continue;
       const updated = await prisma.foodLog.updateMany({
         where: {
           id: r.id,
           description: r.description,
           mealType: r.mealType,
-          // race: kcal 이 null 이었던 row 만 kcal update (다른 필드 update 는 필드별 조건은 아니지만
-          // description/mealType 매칭으로 대체 방어).
           ...(data.estimatedKcal !== undefined ? { estimatedKcal: null } : {}),
         },
         data,

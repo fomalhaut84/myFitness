@@ -40,13 +40,30 @@ export default function MuscleLossBanner({ verdict }: Props) {
   const palette = PALETTE[verdict.risk];
   const [open, setOpen] = useState(verdict.risk !== "low");
 
+  // Codex P2 (#300): score 1 이나 데이터 부족도 verdict.risk === "low" 로 판정됨.
+  // reasons 가 하나라도 있으면 "모두 안전" 문구는 잘못된 안내 → 대신 사유를 노출.
   if (verdict.risk === "low") {
+    const hasSignal = verdict.reasons.length > 0;
     return (
-      <div className="px-4 py-3 rounded-xl flex items-center gap-3 bg-card" style={{ border: `1px solid ${palette.borderClr}` }}>
-        <span className="w-1.5 h-1.5 rounded-full" style={{ background: palette.dot }}></span>
+      <div className="px-4 py-3 rounded-xl flex items-start gap-3 bg-card" style={{ border: `1px solid ${palette.borderClr}` }}>
+        <span className="w-1.5 h-1.5 rounded-full mt-2 shrink-0" style={{ background: palette.dot }}></span>
         <div className="flex-1 text-[13px]">
           <span className="font-medium" style={{ color: palette.labelClr }}>근손실 위험 LOW</span>
-          <span className="text-dim ml-2">단백질·결손·고강도 지표 모두 안전 범위</span>
+          {hasSignal ? (
+            <>
+              <span className="text-dim ml-2 font-[family-name:var(--font-geist-mono)] text-[11px]">score {verdict.score}/3</span>
+              <ul className="mt-1.5 space-y-0.5">
+                {verdict.reasons.map((r, i) => (
+                  <li key={i} className="text-muted text-[12px] flex items-start gap-2">
+                    <span className="text-[10px] font-[family-name:var(--font-geist-mono)] text-dim mt-0.5">0{i+1}</span>
+                    <span>{r}</span>
+                  </li>
+                ))}
+              </ul>
+            </>
+          ) : (
+            <span className="text-dim ml-2">단백질·결손·고강도 지표 모두 안전 범위</span>
+          )}
         </div>
       </div>
     );

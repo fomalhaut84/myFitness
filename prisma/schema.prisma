@@ -262,6 +262,10 @@ model FoodLog {
   proteinG      Float?
   carbsG        Float?
   fatG          Float?
+  // Codex P2 (PR #300): AI 재추정 시도 카운터. MAX 초과 시 macro null 인 채로 permanent
+  // (매 tick 무한 재호출 방지). weatherAttempts 패턴 (#269) 재사용. PATCH 로 description
+  // 바뀌면 리셋해 새 컨텍스트로 재추정.
+  nutritionAttempts Int?
   mealType      String?
   createdAt     DateTime @default(now())
 
