@@ -5,7 +5,7 @@ import prisma from "@/lib/prisma";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { aggregateRecentMacros, averageMacros, averageCompleteMacros } from "@/lib/nutrition/daily-macros";
 import { MAX_NUTRITION_ATTEMPTS } from "@/lib/nutrition/backfill";
-import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
+import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import MacroDonut from "@/components/nutrition/MacroDonut";
 import ProteinTrend from "@/components/nutrition/ProteinTrend";
@@ -66,7 +66,8 @@ export default async function NutritionPage() {
       }),
       prisma.dailySummary.findMany({
         where: { date: { gte: sevenDaysAgo } },
-        select: { calorieBalance: true },
+        // Codex P2 (PR #300 13회차): 오늘 부분값 제외 위해 date 필요.
+        select: { date: true, calorieBalance: true },
       }),
       prisma.activity.findMany({
         where: { startTime: { gte: sevenDaysAgo } },
@@ -83,27 +84,38 @@ export default async function NutritionPage() {
   const targetPerKg = profile?.proteinTargetPerKg ?? 1.6;
 
   // muscle-loss input
-  // Codex P2 (PR #300): 결손 유효 표본 없으면 null (0 취급 금지 — "안전" 오인 방지).
-  // Codex P2 (PR #300 6회차): 커버리지 gate — 1~2일치로 7일 평균 대체 금지.
-  const validBalances = latestBalances.filter(
-    (b): b is { calorieBalance: number } => b.calorieBalance !== null,
-  );
+  // Codex P2 (PR #300 13회차): 오늘의 부분값 (아침만 기록됐다든지) 이 risk 평가로 들어가면
+  // 저녁 로그 전까지 임시 warning 발생. 완료된 KST 일자만 사용. UI 차트/식단 리스트에는 오늘
+  // 포함 유지.
+  const todayYmd = todayKSTString();
+  const macros7dCompleted = macros7d.filter((d) => d.date < todayYmd);
+  const macroAvgCompleted = averageMacros(macros7dCompleted);
+  const validBalancesCompleted = latestBalances
+    .filter((b) => b.date.getTime() < todayStart.getTime())
+    .filter((b): b is { date: Date; calorieBalance: number } => b.calorieBalance !== null);
   const avgDailyBalanceRaw =
-    validBalances.length > 0
-      ? validBalances.reduce((s, b) => s + b.calorieBalance, 0) / validBalances.length
+    validBalancesCompleted.length > 0
+      ? validBalancesCompleted.reduce((s, b) => s + b.calorieBalance, 0) /
+        validBalancesCompleted.length
       : null;
   const avgDailyBalance =
-    validBalances.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT ? avgDailyBalanceRaw : null;
+    validBalancesCompleted.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT
+      ? avgDailyBalanceRaw
+      : null;
   const proteinPerKgRaw =
-    macroAvg.avgProteinG !== null && bodyWeightKg
-      ? macroAvg.avgProteinG / bodyWeightKg
+    macroAvgCompleted.avgProteinG !== null && bodyWeightKg
+      ? macroAvgCompleted.avgProteinG / bodyWeightKg
       : null;
   // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 risk assessor 에 null 전달.
   const proteinPerKg =
-    macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
+    macroAvgCompleted.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT
+      ? proteinPerKgRaw
+      : null;
+  void macroAvg;  // UI 노출용 (전체 7일 평균) 은 다른 계산 (completeAvg) 이 사용.
   // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해 분으로. intensityLabel-based full duration 은 과대 산정.
-  // Codex P2 (PR #300 11회차): zone 데이터가 하나라도 누락된 활동이 있으면 카운트가 과소 산정
-  // 될 수 있음 → risk assessor 에는 null 전달 (활동이 아예 없으면 진짜 0 이니 별개 처리).
+  // Codex P2 (PR #300 11회차): zone 데이터 누락 활동 있으면 risk 에 null 전달.
+  // Codex P2 (PR #300 13회차): measured lower bound 가 이미 threshold 초과면 known — missing
+  // 이 얼마든 결론 바뀌지 않으므로 그 값 그대로 사용 (blanket null 로 HIGH downgrade 방지).
   let missingZone = 0;
   const highIntensitySeconds = activities7d.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);
@@ -113,8 +125,13 @@ export default async function NutritionPage() {
     }
     return s + dist.z4 + dist.z5;
   }, 0);
+  const measuredMinutes = Math.round(highIntensitySeconds / 60);
   const highIntensityMinutes =
-    missingZone > 0 ? null : Math.round(highIntensitySeconds / 60);
+    measuredMinutes > HIGH_INTENSITY_THRESHOLD_MIN
+      ? measuredMinutes
+      : missingZone > 0
+        ? null
+        : measuredMinutes;
 
   const verdict = assessMuscleLossRisk({
     weeklyCalorieDeficit: avgDailyBalance !== null ? -avgDailyBalance : null,

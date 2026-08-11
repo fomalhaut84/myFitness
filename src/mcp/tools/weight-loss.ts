@@ -1,6 +1,6 @@
 import prisma from "../prisma";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
-import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
+import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import { ymdKST } from "@/lib/garmin/utils";
 
@@ -156,7 +156,13 @@ export async function getWeightLossStatus() {
     return s + dist.z4 + dist.z5;
   }, 0);
   const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
-  const highIntensityMinutesForRisk = missingZoneCount > 0 ? null : highIntensityMinutes;
+  // Codex P2 (PR #300 13회차): measured lower bound 가 이미 threshold 초과면 known.
+  const highIntensityMinutesForRisk =
+    highIntensityMinutes > HIGH_INTENSITY_THRESHOLD_MIN
+      ? highIntensityMinutes
+      : missingZoneCount > 0
+        ? null
+        : highIntensityMinutes;
 
   // 경고 판정
   const warnings: string[] = [];
@@ -186,19 +192,42 @@ export async function getWeightLossStatus() {
   // nowReal (파일 상단에서 획득한 실시간 timestamp) 을 사용해 KST 계산 안정.
   const macros7d = await aggregateRecentMacros(nowReal, 7);
   const macroAvg = averageMacros(macros7d);
-  // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 얇은 표본으로 오해 유도.
+  // Codex P2 (PR #300 13회차): risk 평가는 완료된 KST 일자만. 오늘 부분값 (아침만 기록 등) 이
+  // 7일 평균을 흔들어 임시 warning 발생하는 것 방지. UI 노출 macroSummary 는 전체 (오늘 포함) 유지.
+  const todayKstYmd = macros7d.length > 0 ? macros7d[macros7d.length - 1].date : "";
+  const macros7dCompleted = macros7d.filter((d) => d.date < todayKstYmd);
+  const macroAvgCompleted = averageMacros(macros7dCompleted);
+  // 응답에 노출하는 avg (사용자/AI 가 daysWithProtein 로 신뢰도 판단) 은 오늘 포함 raw 유지.
   const proteinPerKgRaw =
     macroAvg.avgProteinG !== null && latestWeight
       ? Math.round((macroAvg.avgProteinG / latestWeight) * 10) / 10
       : null;
+  // Codex P2 (PR #300 13회차): risk assessor 는 완료된 KST 일자 기준.
+  const proteinPerKgCompleted =
+    macroAvgCompleted.avgProteinG !== null && latestWeight
+      ? Math.round((macroAvgCompleted.avgProteinG / latestWeight) * 10) / 10
+      : null;
   const proteinPerKg =
-    macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
+    macroAvgCompleted.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT
+      ? proteinPerKgCompleted
+      : null;
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
-  // Codex P2 (PR #300): 결손 데이터 자체가 없으면 null 로 전달 (0 취급 금지).
-  // Codex P2 (PR #300 6회차): 커버리지 gate — 표본 얇으면 null (risk 오판 방지).
+  // Codex P2 (PR #300 13회차): 결손 평균도 완료된 KST 일자만. 오늘 부분값 (진행 중 kcal deficit) 이
+  // 7일 평균을 오르내리게 해 임시 warning 발생하는 것 방지.
+  const withBalanceCompleted = withBalance.filter(
+    (b) => b.date.getTime() < kstTodayMidnight.getTime(),
+  );
+  const avgDailyBalanceCompleted =
+    withBalanceCompleted.length > 0
+      ? Math.round(
+          withBalanceCompleted.reduce((s, b) => s + b.calorieBalance, 0) /
+            withBalanceCompleted.length,
+        )
+      : null;
   const deficitInput =
-    avgDailyBalance !== null && withBalance.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT
-      ? -avgDailyBalance
+    avgDailyBalanceCompleted !== null &&
+    withBalanceCompleted.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT
+      ? -avgDailyBalanceCompleted
       : null;
   const muscleLoss = assessMuscleLossRisk({
     weeklyCalorieDeficit: deficitInput,

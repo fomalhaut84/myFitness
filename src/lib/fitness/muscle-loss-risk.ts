@@ -45,7 +45,9 @@ export interface MuscleLossVerdict {
 
 const DEFICIT_THRESHOLD = 500;
 const PROTEIN_MARGIN = 0.9; // target × 0.9 = 보수적 임계.
-const HIGH_INTENSITY_THRESHOLD_MIN = 30;
+// Codex P2 (PR #300): caller 가 zone 데이터 부족 시 "이미 threshold 초과인 lower bound 보존"
+// 판정에 참조 (unknown 으로 판정 downgrade 방지).
+export const HIGH_INTENSITY_THRESHOLD_MIN = 30;
 
 const fmt1 = (n: number): string => (Math.round(n * 10) / 10).toFixed(1);
 
@@ -99,13 +101,14 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
   }
 
   // 고강도 조건
+  const HI_T = HIGH_INTENSITY_THRESHOLD_MIN;
   if (input.weeklyHighIntensityMin === null) {
     reasons.push("고강도(Z4+) 데이터 부족 (활동에 zoneDistribution 누락)");
   } else {
     const zMin = Math.round(input.weeklyHighIntensityMin);
-    if (zMin > HIGH_INTENSITY_THRESHOLD_MIN) {
+    if (zMin > HI_T) {
       score++;
-      reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HIGH_INTENSITY_THRESHOLD_MIN})`);
+      reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HI_T})`);
       recommendations.push("다음 7일 중 1~2회는 easy·회복 러닝으로 대체");
     }
   }
