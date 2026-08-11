@@ -111,6 +111,10 @@ export function normalizeDescription(description: string): string {
 export interface RepeatLookupHit {
   logId: string;
   kcal: number;
+  // #299 (M14 Phase 2 #3): P/C/F 매크로 재사용. null 은 원본 로그가 매크로 미측정.
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
   date: Date;
   mealType: string | null;
   description: string;
@@ -147,6 +151,9 @@ export async function findRecentSameDescription(
       description: true,
       mealType: true,
       estimatedKcal: true,
+      proteinG: true,
+      carbsG: true,
+      fatG: true,
       date: true,
     },
     take: POOL_CAP,
@@ -164,6 +171,9 @@ export async function findRecentSameDescription(
   return {
     logId: chosen.id,
     kcal: chosen.estimatedKcal,
+    proteinG: chosen.proteinG,
+    carbsG: chosen.carbsG,
+    fatG: chosen.fatG,
     date: chosen.date,
     mealType: chosen.mealType,
     description: chosen.description,
