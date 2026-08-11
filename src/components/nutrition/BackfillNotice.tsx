@@ -23,10 +23,12 @@ export default function BackfillNotice({ pendingCount, terminalCount = 0 }: Prop
         </div>
       )}
       {terminalCount > 0 && (
+        // Codex P2 (PR #300 10회차): 실제 가능한 action 안내. description 편집이 macros +
+        // nutritionAttempts 를 리셋해 backfill 재추정 유도 (PATCH /api/food/[id] 로직 참조).
         <div className="flex items-center gap-3">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500"></span>
           <div className="text-[12px] text-sub flex-1">
-            <span className="text-bright font-medium">{terminalCount}개 항목</span> 매크로 확정 실패 · 수동 편집 필요
+            <span className="text-bright font-medium">{terminalCount}개 항목</span> 매크로 확정 실패 · description 재편집 시 재추정
           </div>
           <span className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim uppercase tracking-wider">final</span>
         </div>

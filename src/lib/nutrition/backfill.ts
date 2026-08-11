@@ -242,9 +242,20 @@ export async function runFoodKcalBackfill(
         fatG: r.fatG,
       };
       if (r.estimatedKcal === null && kcal !== null) writeData.estimatedKcal = kcal;
-      if (r.proteinG === null && proteinG !== null) writeData.proteinG = proteinG;
-      if (r.carbsG === null && carbsG !== null) writeData.carbsG = carbsG;
-      if (r.fatG === null && fatG !== null) writeData.fatG = fatG;
+      // Codex P1 (PR #300 10회차): 매크로는 원자 tuple 로만 write. 부분 write 를 허용하면
+      // 서로 다른 estimate 가 P/C/F 를 나눠 채워 combined tuple 이 retained kcal 과 non-coherent
+      // 인 상태로 row 가 backfill pool 을 벗어남 (모든 필드 non-null → 재선택 안 됨).
+      // → 우리 estimate 가 P/C/F 세 값 모두 non-null (retained kcal 로 이미 스케일 완료) 일
+      // 때만 macros 전체 덮어쓰기. 기존 non-null 은 다른 estimate 파편 가능성이 있어 신뢰 X.
+      const needsSomeMacro =
+        r.proteinG === null || r.carbsG === null || r.fatG === null;
+      const estGivesCompleteMacros =
+        proteinG !== null && carbsG !== null && fatG !== null;
+      if (needsSomeMacro && estGivesCompleteMacros) {
+        writeData.proteinG = proteinG;
+        writeData.carbsG = carbsG;
+        writeData.fatG = fatG;
+      }
 
       let anyWritten = false;
       let kcalWritten = false;

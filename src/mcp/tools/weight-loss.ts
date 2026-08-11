@@ -2,6 +2,18 @@ import prisma from "../prisma";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
 import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { ymdKST } from "@/lib/garmin/utils";
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+// Codex P2 (PR #300 10회차): balances/activities/macros 를 동일 KST 창으로 정렬.
+// 이전 daysAgo(6) 은 UTC midnight 기준이라 서버 UTC 에서 00:00~09:00 KST 사이엔 KST 첫 9시간 +
+// DailySummary 첫 KST row 를 놓치고, 그 외 시간대엔 이전 KST 하루가 창에 포함됨.
+function kstMidnightUTC(referenceDate: Date): Date {
+  const [y, m, d] = ymdKST(referenceDate).split("-").map(Number);
+  return new Date(Date.UTC(y, m - 1, d) - KST_OFFSET_MS);
+}
 
 // Codex P2 (PR #300): protein g/kg 을 risk assessor 로 넘길 최소 데이터 커버리지.
 // daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → 대신 null (데이터 부족) 로 전달.
@@ -21,14 +33,17 @@ function daysAgo(n: number): Date {
  * 감량 진행도 평가, 근손실 위험 판단, 리포트 작성에 사용.
  */
 export async function getWeightLossStatus() {
-  // 7일 = 오늘 포함 6일 전부터 (inclusive bounds → daysAgo(6)~today = 7일)
-  const sevenDaysAgo = daysAgo(6);
+  // Codex P2 (PR #300 10회차): balances/activities 는 KST 창으로 정렬 (macros 와 동일).
+  // weights (이동평균) 는 기존 daysAgo 유지 — 서로 다른 시맨틱, 이번 스코프 외.
+  const nowReal = new Date();
+  const kstTodayMidnight = kstMidnightUTC(nowReal);
+  const kstSevenDaysAgo = new Date(kstTodayMidnight.getTime() - 6 * DAY_MS);
   const fourteenDaysAgo = daysAgo(13);
 
   const [balances, weights, activities, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
-        where: { date: { gte: sevenDaysAgo } },
+        where: { date: { gte: kstSevenDaysAgo } },
         select: {
           date: true,
           calorieBalance: true,
@@ -44,7 +59,7 @@ export async function getWeightLossStatus() {
         orderBy: { date: "asc" },
       }),
       prisma.activity.findMany({
-        where: { startTime: { gte: sevenDaysAgo } },
+        where: { startTime: { gte: kstSevenDaysAgo } },
         select: {
           name: true,
           activityType: true,
@@ -94,7 +109,6 @@ export async function getWeightLossStatus() {
 
   // 체중 변화: 7일 이동평균 기반 (endpoint 노이즈 방지).
   // 14일 데이터에서 7일 이동평균 계산 → 7일 전 평균과 최신 평균 비교.
-  const DAY_MS = 24 * 60 * 60 * 1000;
   function movingAvgAt(targetDate: Date, windowDays: number): number | null {
     const startMs = targetDate.getTime() - (windowDays - 1) * DAY_MS;
     const inWindow = weights.filter(
@@ -162,11 +176,8 @@ export async function getWeightLossStatus() {
       : 0;
 
   // #299 (M14 Phase 2 #3): 매크로 요약 + 근손실 위험 평가.
-  // Codex P2 (PR #300 3회차): 위에서 now.setHours(0,0,0,0) 로 UTC midnight 리셋된 후라
-  // 00:00~09:00 KST 사이에는 ymdKST(now) 가 어제 날짜로 계산됨. 실시간 timestamp 를 다시 뽑아
-  // aggregateRecentMacros 에 전달.
-  const kstNow = new Date();
-  const macros7d = await aggregateRecentMacros(kstNow, 7);
+  // nowReal (파일 상단에서 획득한 실시간 timestamp) 을 사용해 KST 계산 안정.
+  const macros7d = await aggregateRecentMacros(nowReal, 7);
   const macroAvg = averageMacros(macros7d);
   // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 얇은 표본으로 오해 유도.
   const proteinPerKgRaw =
