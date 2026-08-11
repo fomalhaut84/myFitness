@@ -4,7 +4,7 @@
 // - 각 log 마다 AI 호출 (max 15s). 실패 시 계속 null → 다음 tick 재시도.
 
 import prisma from "@/lib/prisma";
-import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
+import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
@@ -41,51 +41,59 @@ export async function runFoodKcalBackfill(
 
   // Codex P2:
   //  - limit 지정 (cron/스크립트 배치): pool cap 까지 fetch → in-memory shuffle → limit 하위집합.
-  //    permanent-fail row 가 slot 점유하는 문제를 로테이션으로 해소.
-  //  - limit 미지정 (전량 backfill): shuffle + cap 이면 500 밖 row 는 영영 미도달. 커서 페이지네이션
-  //    으로 모든 row 를 asc 순회.
+  //  - limit 미지정 (전량 backfill): cursor-based 페이지네이션.
+  // #299 (M14 Phase 2 #3): 조건이 kcal null OR macro null 로 확장 — 매크로 도입 이전의 kcal-only
+  // row 도 재추정 대상. 이미 채워진 필드는 update 조건절로 보존.
   const baseWhere = {
-    estimatedKcal: null,
+    OR: [
+      { estimatedKcal: null },
+      { proteinG: null },
+      { carbsG: null },
+      { fatG: null },
+    ],
     createdAt: { lt: cutoff },
-  } as const;
+  };
 
-  const rows: Array<{
+  interface Row {
     id: string;
     description: string;
     mealType: string | null;
     date: Date;
-  }> = [];
+    estimatedKcal: number | null;
+    proteinG: number | null;
+    carbsG: number | null;
+    fatG: number | null;
+  }
+  const rows: Row[] = [];
 
   if (limit !== undefined) {
-    // Codex P2 (#283 후속): Postgres 에서 전체 null pool 을 대상으로 random() sampling.
-    // 이전 orderBy createdAt desc + JS shuffle 은 newest ROTATION_POOL_CAP (500) 안에서만
-    // rotation → 그 window 밖 오래된 row 는 영영 미도달. random() 로 매 tick 전체 backlog 에서
-    // pool 을 뽑아 permanent-fail 이 어디에 있든 다른 row 가 순환 진입 가능.
-    const pool = await prisma.$queryRaw<
-      Array<{ id: string; description: string; mealType: string | null; date: Date }>
-    >`
-      SELECT id, description, "mealType", date
+    const pool = await prisma.$queryRaw<Row[]>`
+      SELECT id, description, "mealType", date,
+             "estimatedKcal", "proteinG", "carbsG", "fatG"
       FROM "FoodLog"
-      WHERE "estimatedKcal" IS NULL AND "createdAt" < ${cutoff}
+      WHERE ("estimatedKcal" IS NULL OR "proteinG" IS NULL OR "carbsG" IS NULL OR "fatG" IS NULL)
+        AND "createdAt" < ${cutoff}
       ORDER BY random()
       LIMIT ${ROTATION_POOL_CAP}
     `;
     rows.push(...pool.slice(0, limit));
   } else {
-    // 전량 처리: cursor-based 페이지네이션 (id asc). 성공하면 결과셋에서 빠지지만 남은 row 는
-    // cursor 이후로 계속 진행되므로 이번 실행 안에서 놓치지 않음.
     const PAGE = 100;
     let cursorId: string | undefined = undefined;
     for (;;) {
-      const page: Array<{
-        id: string;
-        description: string;
-        mealType: string | null;
-        date: Date;
-      }> = await prisma.foodLog.findMany({
+      const page: Row[] = await prisma.foodLog.findMany({
         where: baseWhere,
         orderBy: { id: "asc" },
-        select: { id: true, description: true, mealType: true, date: true },
+        select: {
+          id: true,
+          description: true,
+          mealType: true,
+          date: true,
+          estimatedKcal: true,
+          proteinG: true,
+          carbsG: true,
+          fatG: true,
+        },
         take: PAGE,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
       });
@@ -103,64 +111,93 @@ export async function runFoodKcalBackfill(
   for (let i = 0; i < rows.length; i++) {
     const r = rows[i];
     try {
-      // #295 (M14 Phase 2 #2): AI 호출 전 repeat lookup — 최근 30일 내 동일 description 로그가
-      // 있으면 그 kcal 재사용. AI 호출/rate limit 회피 + 일관성.
-      let kcal: number | null = null;
+      // #295 (M14 Phase 2 #2): repeat lookup — 최근 30일 내 동일 description 로그가
+      // 있으면 그 kcal + P/C/F 재사용. AI 호출/rate limit 회피 + 일관성.
+      let kcal = r.estimatedKcal;
+      let proteinG = r.proteinG;
+      let carbsG = r.carbsG;
+      let fatG = r.fatG;
       try {
-        // Codex P2 (#296): 오래된 row backfill 시 target r.date 기준 preceding 창.
         const hit = await findRecentSameDescription(
           r.description,
           r.mealType ?? undefined,
           r.date,
         );
-        if (hit) kcal = hit.kcal;
+        if (hit) {
+          if (kcal === null) kcal = hit.kcal;
+          if (proteinG === null) proteinG = hit.proteinG;
+          if (carbsG === null) carbsG = hit.carbsG;
+          if (fatG === null) fatG = hit.fatG;
+        }
       } catch (lookupErr) {
         if (verbose) {
           console.warn(
-            `  [food-kcal] repeat lookup 실패 (log ${r.id}), AI fallback: ${lookupErr instanceof Error ? lookupErr.message : String(lookupErr)}`,
+            `  [nutrition] repeat lookup 실패 (log ${r.id}), AI fallback: ${lookupErr instanceof Error ? lookupErr.message : String(lookupErr)}`,
           );
         }
       }
-      if (kcal === null) {
-        const est = await estimateKcalFromText({
+      // 여전히 null 필드가 남아 있으면 AI 로 채우기.
+      const stillMissing =
+        kcal === null || proteinG === null || carbsG === null || fatG === null;
+      if (stillMissing) {
+        const est = await estimateNutritionFromText({
           description: r.description,
           mealType: r.mealType ?? undefined,
         });
         if (!est) {
-          result.failed++;
-          continue;
+          // kcal 조차 없으면 실패, 있으면 이후 update 시도 (부분 성공).
+          if (kcal === null) {
+            result.failed++;
+            continue;
+          }
+        } else {
+          if (kcal === null) kcal = est.kcal;
+          if (proteinG === null) proteinG = est.proteinG;
+          if (carbsG === null) carbsG = est.carbsG;
+          if (fatG === null) fatG = est.fatG;
         }
-        kcal = est.kcal;
       }
-      // Codex P2 (race): findMany 이후 사용자가 웹에서 PATCH 로 수동 kcal 설정한 경우
-      // 그 값을 stale 결과로 덮지 않도록 조건부 update. estimatedKcal 이 여전히 null 인 row 만 갱신.
-      // Codex P2 (description race): PATCH 로 description 이 바뀌면서 kcal 도 null 로 리셋된 케이스
-      // → estimatedKcal 조건만으로는 통과. description/mealType 스냅샷도 검사해 old-desc 기반
-      // 결과를 new-desc 로 덮지 않도록 방어.
+      if (kcal === null) {
+        // AI 도 kcal 못 채웠으면 스킵 (이미 위에서 failed 증가).
+        continue;
+      }
+      // Codex P2 (race): 이미 채워진 필드는 조건부로 보호. null 인 필드만 update, 기존 non-null
+      // 은 그대로. description/mealType 스냅샷 매칭으로 stale 값 방지.
+      const data: {
+        estimatedKcal?: number;
+        proteinG?: number | null;
+        carbsG?: number | null;
+        fatG?: number | null;
+      } = {};
+      if (r.estimatedKcal === null && kcal !== null) data.estimatedKcal = kcal;
+      if (r.proteinG === null) data.proteinG = proteinG;
+      if (r.carbsG === null) data.carbsG = carbsG;
+      if (r.fatG === null) data.fatG = fatG;
+      if (Object.keys(data).length === 0) continue;
       const updated = await prisma.foodLog.updateMany({
         where: {
           id: r.id,
-          estimatedKcal: null,
           description: r.description,
           mealType: r.mealType,
+          // race: kcal 이 null 이었던 row 만 kcal update (다른 필드 update 는 필드별 조건은 아니지만
+          // description/mealType 매칭으로 대체 방어).
+          ...(data.estimatedKcal !== undefined ? { estimatedKcal: null } : {}),
         },
-        data: { estimatedKcal: kcal },
+        data,
       });
       if (updated.count === 0) {
-        // 사용자가 그 사이 수동 정정 → skip. 실패 카운트 아님.
         continue;
       }
-      try {
-        await recalculateCalorieBalance(r.date, undefined, prisma);
-      } catch (err) {
-        // Codex P2: 재계산 실패해도 kcal update 는 완료된 상태 → 다음 backfill 이 이 row 를 다시
-        // 선택하지 않음 → DailySummary 가 stale 로 남을 수 있음. date 를 수집해 loop 끝에 한 번
-        // 더 시도. 최종 실패면 result.recalcFailedDates 에 반환하고 error 로그.
-        recalcFailedDates.add(r.date.toISOString());
-        if (verbose) {
-          console.warn(
-            `  [food-kcal] recalculate 1차 실패 (log ${r.id}, retry 예정): ${err instanceof Error ? err.message : String(err)}`,
-          );
+      if (data.estimatedKcal !== undefined) {
+        try {
+          await recalculateCalorieBalance(r.date, undefined, prisma);
+        } catch (err) {
+          recalcFailedDates.add(r.date.toISOString());
+          if (verbose) {
+            console.warn(
+              `  [nutrition] recalculate 1차 실패 (log ${r.id}, retry 예정): ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
         }
       }
       result.ok++;
@@ -168,7 +205,7 @@ export async function runFoodKcalBackfill(
       result.failed++;
       if (verbose) {
         console.warn(
-          `  [food-kcal] estimate 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
+          `  [nutrition] estimate 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
         );
       }
     }
