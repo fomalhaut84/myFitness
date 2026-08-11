@@ -6,7 +6,7 @@ import {
 } from "@/lib/nutrition/estimate-nutrition";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
-import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
@@ -355,28 +355,25 @@ export async function handleFoodKcalCommand(
     return;
   }
   try {
-    // Codex P2 (PR #300 4회차): kcal 만 정정하면 이전 macros 는 old kcal 에 매핑되어 mismatch.
-    // 비율 스케일 (or 스케일 불가면 null 리셋 → backfill 재추정).
-    const existing = await prisma.foodLog.findUnique({
+    // Codex P2 (PR #300 4회차/8회차): kcal 정정 concurrency-safe (fetch → scale → snapshot
+    // matched update, 최대 3회 재시도). backfill 이 사이에 macros 를 채운 경우 stomp 방지.
+    const correction = await applyKcalCorrection(prisma, id, kcal);
+    if (!correction.ok) {
+      if (correction.reason === "not-found") {
+        await ctx.reply(`해당 id 를 찾을 수 없습니다: ${id}`);
+      } else {
+        await ctx.reply("동시 수정 감지, 잠시 후 다시 시도해주세요.");
+      }
+      return;
+    }
+    const updated = await prisma.foodLog.findUnique({
       where: { id },
-      select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+      select: { date: true, description: true, mealType: true },
     });
-    if (!existing) {
+    if (!updated) {
       await ctx.reply(`해당 id 를 찾을 수 없습니다: ${id}`);
       return;
     }
-    const scaled = scaleMacrosForNewKcal(kcal, existing.estimatedKcal, existing);
-    const updated = await prisma.foodLog.update({
-      where: { id },
-      data: {
-        estimatedKcal: kcal,
-        proteinG: scaled.proteinG,
-        carbsG: scaled.carbsG,
-        fatG: scaled.fatG,
-        ...(scaled.resetAttempts ? { nutritionAttempts: null } : {}),
-      },
-      select: { date: true, description: true, mealType: true },
-    });
     // Codex P2: 재계산 실패해도 kcal 은 이미 저장됨 → 백필이 이 row 를 다시 안 뽑음 →
     // DailySummary 가 stale 로 남을 수 있음 (특히 historical 로그, cron 2일 창 밖).
     // 즉시 1회 재시도. 그래도 실패면 사용자에게 명시 경고.

@@ -155,10 +155,24 @@ export async function runFoodKcalBackfill(
           r.id,
         );
         if (hit) {
-          if (kcal === null) kcal = hit.kcal;
-          if (proteinG === null) proteinG = hit.proteinG;
-          if (carbsG === null) carbsG = hit.carbsG;
-          if (fatG === null) fatG = hit.fatG;
+          // Codex P1 (PR #300 8회차): retained kcal (row 에 이미 kcal 있음) 인 경우 hit.kcal 이
+          // 다르면 hit.macros 는 hit.kcal 기준이라 그대로 옮기면 mismatch. AI 브랜치와 동일
+          // scaling 정책 적용 (kcal null 이면 hit 통째로, 있으면 macros 를 retained 로 스케일).
+          if (kcal === null) {
+            kcal = hit.kcal;
+            if (proteinG === null) proteinG = hit.proteinG;
+            if (carbsG === null) carbsG = hit.carbsG;
+            if (fatG === null) fatG = hit.fatG;
+          } else {
+            const scaled = scaleMacrosForNewKcal(kcal, hit.kcal, {
+              proteinG: hit.proteinG,
+              carbsG: hit.carbsG,
+              fatG: hit.fatG,
+            });
+            if (proteinG === null) proteinG = scaled.proteinG;
+            if (carbsG === null) carbsG = scaled.carbsG;
+            if (fatG === null) fatG = scaled.fatG;
+          }
         }
       } catch (lookupErr) {
         if (verbose) {
@@ -207,38 +221,25 @@ export async function runFoodKcalBackfill(
         continue;
       }
       // Codex P2 (race, PR #300 7회차): 원자 tuple write 로 필드 인터리브 방지.
-      // 이전 필드별 개별 updateMany 는 Worker A 가 kcal 을 채우는 동시에 Worker B 가 macros
-      // 를 채워, kcal(A) + macros(B, A와 다른 kcal 기준) mismatched 데이터 발생 가능.
-      // 지금은 write 대상 필드 전부에 null snapshot 요구 → 하나라도 race 되면 전체 abort,
-      // 다음 tick 이 fresh snapshot 으로 재시도. 한 worker 의 완전한 estimate 만 승리.
+      // Codex P2 (PR #300 8회차): snapshotWhere 를 write 대상 뿐 아니라 fetch 한 모든 nutrition
+      // 필드로 확대. retained kcal 이 PATCH 로 바뀌면 우리 macros 는 old kcal 기준이라 mismatch.
+      // 어떤 필드든 fetch 값과 달라졌으면 전체 abort → 다음 tick fresh snapshot 으로 재시도.
       const writeData: {
         estimatedKcal?: number;
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
       } = {};
-      const snapshotWhere: {
-        estimatedKcal?: null;
-        proteinG?: null;
-        carbsG?: null;
-        fatG?: null;
-      } = {};
-      if (r.estimatedKcal === null && kcal !== null) {
-        writeData.estimatedKcal = kcal;
-        snapshotWhere.estimatedKcal = null;
-      }
-      if (r.proteinG === null && proteinG !== null) {
-        writeData.proteinG = proteinG;
-        snapshotWhere.proteinG = null;
-      }
-      if (r.carbsG === null && carbsG !== null) {
-        writeData.carbsG = carbsG;
-        snapshotWhere.carbsG = null;
-      }
-      if (r.fatG === null && fatG !== null) {
-        writeData.fatG = fatG;
-        snapshotWhere.fatG = null;
-      }
+      const snapshotWhere = {
+        estimatedKcal: r.estimatedKcal,
+        proteinG: r.proteinG,
+        carbsG: r.carbsG,
+        fatG: r.fatG,
+      };
+      if (r.estimatedKcal === null && kcal !== null) writeData.estimatedKcal = kcal;
+      if (r.proteinG === null && proteinG !== null) writeData.proteinG = proteinG;
+      if (r.carbsG === null && carbsG !== null) writeData.carbsG = carbsG;
+      if (r.fatG === null && fatG !== null) writeData.fatG = fatG;
 
       let anyWritten = false;
       let kcalWritten = false;

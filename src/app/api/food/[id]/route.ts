@@ -9,7 +9,7 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
-import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
 
 const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
@@ -71,62 +71,38 @@ export async function PATCH(request: Request, ctx: Params) {
         select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
       });
     } else if (data.estimatedKcal !== undefined) {
-      // Codex P2 (PR #300 7회차): fetch → scale → write 사이 backfill 이 macros 를 채운 경우
-      // stale null 로 stomp 방지. 스냅샷 predicate + 재시도 (최대 3회) 로 lost-update 회피.
-      const MAX_ATTEMPT = 3;
-      let attempt = 0;
-      let done: typeof updated | null = null;
-      let notFound = false;
-      while (attempt < MAX_ATTEMPT && !done) {
-        attempt++;
-        const existing = await prisma.foodLog.findUnique({
+      // Codex P2 (PR #300 7회차/8회차): kcal 만 정정 concurrency-safe helper 사용.
+      // 새 kcal 이 null 이면 macros/attempts 모두 null 리셋.
+      if (data.estimatedKcal === null) {
+        updateData.proteinG = null;
+        updateData.carbsG = null;
+        updateData.fatG = null;
+        updateData.nutritionAttempts = null;
+        updated = await prisma.foodLog.update({
           where: { id },
-          select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+          data: updateData,
+          select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
         });
-        if (!existing) {
-          notFound = true;
-          break;
+      } else {
+        const correction = await applyKcalCorrection(prisma, id, data.estimatedKcal);
+        if (!correction.ok) {
+          if (correction.reason === "not-found") {
+            return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+          }
+          return NextResponse.json(
+            { error: "동시 수정 감지, 다시 시도해주세요" },
+            { status: 409 },
+          );
         }
-        const scaled = scaleMacrosForNewKcal(
-          data.estimatedKcal,
-          existing.estimatedKcal,
-          existing,
-        );
-        const attemptData = {
-          ...updateData,
-          proteinG: scaled.proteinG,
-          carbsG: scaled.carbsG,
-          fatG: scaled.fatG,
-          ...(scaled.resetAttempts ? { nutritionAttempts: null } : {}),
-        };
-        const res = await prisma.foodLog.updateMany({
-          where: {
-            id,
-            estimatedKcal: existing.estimatedKcal,
-            proteinG: existing.proteinG,
-            carbsG: existing.carbsG,
-            fatG: existing.fatG,
-          },
-          data: attemptData,
+        const fetched = await prisma.foodLog.findUnique({
+          where: { id },
+          select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
         });
-        if (res.count > 0) {
-          const fetched = await prisma.foodLog.findUnique({
-            where: { id },
-            select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
-          });
-          if (fetched) done = fetched;
-        }
-      }
-      if (notFound || !done) {
-        if (notFound) {
+        if (!fetched) {
           return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
         }
-        return NextResponse.json(
-          { error: "동시 수정 감지, 다시 시도해주세요" },
-          { status: 409 },
-        );
+        updated = fetched;
       }
-      updated = done;
     } else {
       updated = await prisma.foodLog.update({
         where: { id },

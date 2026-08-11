@@ -136,18 +136,23 @@ function toItem(raw: unknown): NutritionItem | null {
 }
 
 function macrosConsistentWithKcal(it: NutritionItem): boolean {
-  if (
-    it.kcal === null ||
-    it.proteinG === null ||
-    it.carbsG === null ||
-    it.fatG === null
-  ) {
-    // 하나라도 null 이면 consistency 확인 대상 아님 (skip, treat as ok).
-    return true;
-  }
-  const computed = it.proteinG * 4 + it.carbsG * 4 + it.fatG * 9;
+  if (it.kcal === null) return true;
+  const allNull =
+    it.proteinG === null && it.carbsG === null && it.fatG === null;
+  if (allNull) return true;
   const tol = Math.max(30, it.kcal * MACRO_KCAL_TOLERANCE);
-  return Math.abs(computed - it.kcal) <= tol;
+  const allNonNull =
+    it.proteinG !== null && it.carbsG !== null && it.fatG !== null;
+  if (allNonNull && it.proteinG !== null && it.carbsG !== null && it.fatG !== null) {
+    // 완전 매크로 — 정확 ±tol 매칭. TS 좁히기 위해 재검사.
+    const computed = it.proteinG * 4 + it.carbsG * 4 + it.fatG * 9;
+    return Math.abs(computed - it.kcal) <= tol;
+  }
+  // Codex P2 (PR #300 8회차): 부분 매크로 — 알려진 macros 만으로도 이미 item kcal + tol 을
+  // 초과하면 명백히 오답 (예: 100 kcal + P=100g + C=100g + F=null → 이미 800 kcal 확정).
+  const knownLowerBound =
+    (it.proteinG ?? 0) * 4 + (it.carbsG ?? 0) * 4 + (it.fatG ?? 0) * 9;
+  return knownLowerBound <= it.kcal + tol;
 }
 
 export function parseNutritionResponse(rawText: string): NutritionEstimate | null {
