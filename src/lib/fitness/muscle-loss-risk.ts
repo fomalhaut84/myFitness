@@ -8,15 +8,19 @@
 // 목적: AI 리포트 프롬프트에 주입해 러너에게 실행 가능한 경고/권장을 제공.
 
 export interface MuscleLossInput {
-  /** 최근 7일 avg kcal/day (out - in). 양수면 결손. */
-  weeklyCalorieDeficit: number;
+  /**
+   * 최근 7일 avg kcal/day (out - in). 양수면 결손.
+   * Codex P2 (PR #300): null 이면 결손 데이터 자체가 없다는 뜻. 스코어에는 반영 안 하고
+   * reasons 에만 표시. 이 필드가 0 이었으면 "안전" 으로 오인될 수 있어 명시적 unknown 필요.
+   */
+  weeklyCalorieDeficit: number | null;
   /**
    * 최근 7일 avg 단백질 g/kg 체중. null 이면 데이터 부족을 reasons 에만 표시하고
    * 스코어에는 반영하지 않는다 (false-positive 회피). caller 가 daysWithProteinData 를
    * 함께 참조해 신뢰도 판단.
    */
   avgProteinPerKg: number | null;
-  /** 최근 7일 고강도 (Z4+) 총 분. */
+  /** 최근 7일 고강도 (Z4+Z5) 총 분. */
   weeklyHighIntensityMin: number;
   /** UserProfile.proteinTargetPerKg (기본 1.6). */
   proteinTargetPerKg: number;
@@ -41,13 +45,17 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
   let score = 0;
 
   // 결손 조건
-  const deficit = Math.round(input.weeklyCalorieDeficit);
-  if (deficit > DEFICIT_THRESHOLD) {
-    score++;
-    reasons.push(`일평균 결손 ${deficit} kcal (> ${DEFICIT_THRESHOLD})`);
-    recommendations.push(
-      `결손을 ${Math.max(300, Math.round(deficit * 0.6))} kcal 이내로 완화`,
-    );
+  if (input.weeklyCalorieDeficit === null) {
+    reasons.push("칼로리 밸런스 데이터 부족 (최근 7일 기록 미완)");
+  } else {
+    const deficit = Math.round(input.weeklyCalorieDeficit);
+    if (deficit > DEFICIT_THRESHOLD) {
+      score++;
+      reasons.push(`일평균 결손 ${deficit} kcal (> ${DEFICIT_THRESHOLD})`);
+      recommendations.push(
+        `결손을 ${Math.max(300, Math.round(deficit * 0.6))} kcal 이내로 완화`,
+      );
+    }
   }
 
   // 단백질 조건

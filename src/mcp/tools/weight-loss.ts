@@ -1,6 +1,11 @@
 import prisma from "../prisma";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
 import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
+import { parseZoneDistribution } from "@/lib/fitness/intensity";
+
+// Codex P2 (PR #300): protein g/kg 을 risk assessor 로 넘길 최소 데이터 커버리지.
+// daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → 대신 null (데이터 부족) 로 전달.
+const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -47,6 +52,8 @@ export async function getWeightLossStatus() {
           calories: true,
           intensityLabel: true,
           estimatedZone: true,
+          // Codex P2 (PR #300): 실제 Z4/Z5 초를 합해야 함 (activity duration 전체를 세면 과대 산정).
+          zoneDistribution: true,
           // #267: 코스 태그도 노출 (AI 가 코스별 반복 러닝 인식)
           routeTag: true,
         },
@@ -112,17 +119,21 @@ export async function getWeightLossStatus() {
 
   const latestWeight = weights.length > 0 ? weights[weights.length - 1].weight : null;
 
-  // 고강도 운동 (Z4+) 이번 주 시간
+  // 고강도 운동 (Z4+) 이번 주 시간.
+  // Codex P2 (PR #300): 실제 Z4+Z5 시간만 카운트. intensityLabel 은 zoneDistribution 비율
+  // 임계 넘으면 부여되는 라벨이라, 전체 duration 을 세면 Z1~Z3 회복 구간도 포함되어 과대 산정.
   const highIntensityActivities = activities.filter(
     (a) =>
       a.intensityLabel === "threshold" ||
       a.intensityLabel === "interval" ||
       a.intensityLabel === "max"
   );
-  const highIntensityMinutes = highIntensityActivities.reduce(
-    (s, a) => s + Math.round(a.duration / 60),
-    0
-  );
+  const highIntensitySeconds = activities.reduce((s, a) => {
+    const dist = parseZoneDistribution(a.zoneDistribution);
+    if (!dist) return s;
+    return s + dist.z4 + dist.z5;
+  }, 0);
+  const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
 
   // 경고 판정
   const warnings: string[] = [];
@@ -151,13 +162,18 @@ export async function getWeightLossStatus() {
   // #299 (M14 Phase 2 #3): 매크로 요약 + 근손실 위험 평가.
   const macros7d = await aggregateRecentMacros(now, 7);
   const macroAvg = averageMacros(macros7d);
-  const proteinPerKg =
+  // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 얇은 표본으로 오해 유도.
+  const proteinPerKgRaw =
     macroAvg.avgProteinG !== null && latestWeight
       ? Math.round((macroAvg.avgProteinG / latestWeight) * 10) / 10
       : null;
+  const proteinPerKg =
+    macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
+  // Codex P2 (PR #300): 결손 데이터 자체가 없으면 null 로 전달 (0 취급 금지).
+  const deficitInput = avgDailyBalance !== null ? -avgDailyBalance : null;
   const muscleLoss = assessMuscleLossRisk({
-    weeklyCalorieDeficit: avgDailyBalance !== null ? -avgDailyBalance : 0,
+    weeklyCalorieDeficit: deficitInput,
     avgProteinPerKg: proteinPerKg,
     weeklyHighIntensityMin: highIntensityMinutes,
     proteinTargetPerKg: proteinTarget,
@@ -223,7 +239,9 @@ export async function getWeightLossStatus() {
       avgDaily: {
         kcal: macroAvg.avgKcal,
         proteinG: macroAvg.avgProteinG,
-        proteinPerKg,
+        // raw 값 노출 (AI 가 daysWithProteinData 로 신뢰도 판단). muscleLossRisk 입력에는
+        // MIN_PROTEIN_DAYS_FOR_ASSESSMENT 미만이면 null 로 gated 되어 들어감.
+        proteinPerKg: proteinPerKgRaw,
         proteinTargetPerKg: proteinTarget,
         carbsG: macroAvg.avgCarbsG,
         fatG: macroAvg.avgFatG,

@@ -5,6 +5,7 @@ import prisma from "@/lib/prisma";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
 import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
+import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import MacroDonut from "@/components/nutrition/MacroDonut";
 import ProteinTrend from "@/components/nutrition/ProteinTrend";
 import MuscleLossBanner from "@/components/nutrition/MuscleLossBanner";
@@ -16,6 +17,9 @@ import NutritionFoodList, {
 export const dynamic = "force-dynamic";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
+// Codex P2 (PR #300): daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → risk assessor 에
+// null 로 전달. weight-loss MCP tool 과 동일 정책.
+const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
 
 function kstDayRange(): { start: Date; end: Date } {
   const ymd = todayKSTString();
@@ -61,7 +65,8 @@ export default async function NutritionPage() {
       }),
       prisma.activity.findMany({
         where: { startTime: { gte: sevenDaysAgo } },
-        select: { duration: true, intensityLabel: true },
+        // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해야 함.
+        select: { zoneDistribution: true },
       }),
       prisma.userProfile.findFirst({
         select: { proteinTargetPerKg: true },
@@ -73,47 +78,54 @@ export default async function NutritionPage() {
   const targetPerKg = profile?.proteinTargetPerKg ?? 1.6;
 
   // muscle-loss input
+  // Codex P2 (PR #300): 결손 유효 표본 없으면 null (0 취급 금지 — "안전" 오인 방지).
   const validBalances = latestBalances.filter(
     (b): b is { calorieBalance: number } => b.calorieBalance !== null,
   );
   const avgDailyBalance =
     validBalances.length > 0
       ? validBalances.reduce((s, b) => s + b.calorieBalance, 0) / validBalances.length
-      : 0;
-  const proteinPerKg =
+      : null;
+  const proteinPerKgRaw =
     macroAvg.avgProteinG !== null && bodyWeightKg
       ? macroAvg.avgProteinG / bodyWeightKg
       : null;
-  const highIntensityMinutes = activities7d
-    .filter((a) =>
-      a.intensityLabel === "threshold" ||
-      a.intensityLabel === "interval" ||
-      a.intensityLabel === "max",
-    )
-    .reduce((s, a) => s + Math.round(a.duration / 60), 0);
+  // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 risk assessor 에 null 전달.
+  const proteinPerKg =
+    macroAvg.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT ? proteinPerKgRaw : null;
+  // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해 분으로. intensityLabel-based full duration 은 과대 산정.
+  const highIntensitySeconds = activities7d.reduce((s, a) => {
+    const dist = parseZoneDistribution(a.zoneDistribution);
+    if (!dist) return s;
+    return s + dist.z4 + dist.z5;
+  }, 0);
+  const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
 
   const verdict = assessMuscleLossRisk({
-    weeklyCalorieDeficit: -avgDailyBalance,
+    weeklyCalorieDeficit: avgDailyBalance !== null ? -avgDailyBalance : null,
     avgProteinPerKg: proteinPerKg,
     weeklyHighIntensityMin: highIntensityMinutes,
     proteinTargetPerKg: targetPerKg,
   });
 
-  // 오늘 매크로 (도넛 today view 용)
-  const todayMacros = todayLogs.reduce<{
-    proteinG: number | null;
-    carbsG: number | null;
-    fatG: number | null;
-  }>(
-    (acc, r) => ({
-      proteinG:
-        acc.proteinG === null ? null : r.proteinG === null ? null : acc.proteinG + r.proteinG,
-      carbsG:
-        acc.carbsG === null ? null : r.carbsG === null ? null : acc.carbsG + r.carbsG,
-      fatG: acc.fatG === null ? null : r.fatG === null ? null : acc.fatG + r.fatG,
-    }),
-    { proteinG: 0, carbsG: 0, fatG: 0 },
-  );
+  // 오늘 매크로 (도넛 today view 용).
+  // Codex P2 (PR #300): 오늘 로그가 없으면 "측정 0" 이 아니라 "데이터 없음" 이므로 모두 null.
+  const todayMacros = todayLogs.length === 0
+    ? { proteinG: null as number | null, carbsG: null as number | null, fatG: null as number | null }
+    : todayLogs.reduce<{
+        proteinG: number | null;
+        carbsG: number | null;
+        fatG: number | null;
+      }>(
+        (acc, r) => ({
+          proteinG:
+            acc.proteinG === null ? null : r.proteinG === null ? null : acc.proteinG + r.proteinG,
+          carbsG:
+            acc.carbsG === null ? null : r.carbsG === null ? null : acc.carbsG + r.carbsG,
+          fatG: acc.fatG === null ? null : r.fatG === null ? null : acc.fatG + r.fatG,
+        }),
+        { proteinG: 0, carbsG: 0, fatG: 0 },
+      );
 
   const weeklyMacros = {
     proteinG: macroAvg.avgProteinG,

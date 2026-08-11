@@ -93,6 +93,28 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 0 },
   },
+  {
+    // Codex P2 (PR #300)
+    label: "결손 데이터 없음 (null) — 스코어 증가 안 함 · reasons 만 표시",
+    input: {
+      weeklyCalorieDeficit: null,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 20,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 0 },
+  },
+  {
+    // Codex P2 (PR #300)
+    label: "결손·단백질 둘 다 데이터 없음 + 고강도만 초과",
+    input: {
+      weeklyCalorieDeficit: null,
+      avgProteinPerKg: null,
+      weeklyHighIntensityMin: 45,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1 },
+  },
 ];
 
 let allPass = true;
