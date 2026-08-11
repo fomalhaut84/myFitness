@@ -4,6 +4,7 @@
 // - 각 log 마다 AI 호출 (max 15s). 실패 시 계속 null → 다음 tick 재시도.
 
 import prisma from "@/lib/prisma";
+import { Prisma } from "@/generated/prisma/client";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -205,47 +206,76 @@ export async function runFoodKcalBackfill(
         // AI 도 kcal 못 채웠으면 스킵 (이미 위에서 failed 증가).
         continue;
       }
-      // Codex P2 (race, PR #300 4회차): 필드별 null snapshot 매칭으로 concurrent run 방어.
-      // 다른 backfill 이 중간에 이 필드를 채웠으면 스킵 (내 estimate 로 덮지 않음).
-      // Prisma updateMany 는 한 번에 다중 필드 write 하되 where 에 각 필드의 null 조건 포함.
-      // 여러 필드 중 하나만 race 되어도 전체 update 스킵되므로, 필드별 개별 updateMany 로 분리.
-      interface FieldWrite {
-        field: "estimatedKcal" | "proteinG" | "carbsG" | "fatG";
-        value: number;
+      // Codex P2 (race, PR #300 7회차): 원자 tuple write 로 필드 인터리브 방지.
+      // 이전 필드별 개별 updateMany 는 Worker A 가 kcal 을 채우는 동시에 Worker B 가 macros
+      // 를 채워, kcal(A) + macros(B, A와 다른 kcal 기준) mismatched 데이터 발생 가능.
+      // 지금은 write 대상 필드 전부에 null snapshot 요구 → 하나라도 race 되면 전체 abort,
+      // 다음 tick 이 fresh snapshot 으로 재시도. 한 worker 의 완전한 estimate 만 승리.
+      const writeData: {
+        estimatedKcal?: number;
+        proteinG?: number | null;
+        carbsG?: number | null;
+        fatG?: number | null;
+      } = {};
+      const snapshotWhere: {
+        estimatedKcal?: null;
+        proteinG?: null;
+        carbsG?: null;
+        fatG?: null;
+      } = {};
+      if (r.estimatedKcal === null && kcal !== null) {
+        writeData.estimatedKcal = kcal;
+        snapshotWhere.estimatedKcal = null;
       }
-      const writes: FieldWrite[] = [];
-      if (r.estimatedKcal === null && kcal !== null) writes.push({ field: "estimatedKcal", value: kcal });
-      if (r.proteinG === null && proteinG !== null) writes.push({ field: "proteinG", value: proteinG });
-      if (r.carbsG === null && carbsG !== null) writes.push({ field: "carbsG", value: carbsG });
-      if (r.fatG === null && fatG !== null) writes.push({ field: "fatG", value: fatG });
+      if (r.proteinG === null && proteinG !== null) {
+        writeData.proteinG = proteinG;
+        snapshotWhere.proteinG = null;
+      }
+      if (r.carbsG === null && carbsG !== null) {
+        writeData.carbsG = carbsG;
+        snapshotWhere.carbsG = null;
+      }
+      if (r.fatG === null && fatG !== null) {
+        writeData.fatG = fatG;
+        snapshotWhere.fatG = null;
+      }
 
       let anyWritten = false;
       let kcalWritten = false;
-      for (const w of writes) {
+      if (Object.keys(writeData).length > 0) {
         const updated = await prisma.foodLog.updateMany({
           where: {
             id: r.id,
             description: r.description,
             mealType: r.mealType,
-            [w.field]: null,
+            ...snapshotWhere,
           },
-          data: { [w.field]: w.value },
+          data: writeData,
         });
         if (updated.count > 0) {
           anyWritten = true;
-          if (w.field === "estimatedKcal") kcalWritten = true;
+          kcalWritten = writeData.estimatedKcal !== undefined;
         }
       }
       // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts atomic 증가.
       // Codex P2 (PR #300 5회차): Prisma `{ increment: 1 }` 은 nullable 컬럼이 null 이면 SQL 상
       // `NULL + 1 = NULL` 로 null 유지 → attempts 가 영영 증가 안 함 → 재시도 상한 무효화.
       // COALESCE 로 null→0 후 증가하는 raw SQL 사용.
+      // Codex P2 (PR #300 7회차): description/mealType 스냅샷 조건 추가 — 사용자가 PATCH 로
+      // description 을 바꿔서 attempts 를 리셋했는데 stale worker 가 새 row 의 fresh 재시도
+      // 예산을 소진하는 것 방지. IS NOT DISTINCT FROM 으로 null-safe 비교.
       if (stillMissing) {
         try {
+          const mealCond =
+            r.mealType === null
+              ? Prisma.sql`"mealType" IS NULL`
+              : Prisma.sql`"mealType" = ${r.mealType}`;
           await prisma.$executeRaw`
             UPDATE "FoodLog"
             SET "nutritionAttempts" = COALESCE("nutritionAttempts", 0) + 1
             WHERE id = ${r.id}
+              AND "description" = ${r.description}
+              AND ${mealCond}
           `;
         } catch (err) {
           if (verbose) {
