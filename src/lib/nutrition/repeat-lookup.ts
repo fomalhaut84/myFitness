@@ -31,6 +31,11 @@ const SPACED_KOR_QTY = new RegExp(
   `(?<![가-힣])(${KOREAN_NUMS_LIST})\\s+(${QUANTITY_UNITS_LIST})(?![가-힣])`,
   "g",
 );
+// Codex P2 (#296): '1 공기', '1.5 인분' 같은 아라비아 숫자 + 공백 + 단위 도 concatenate.
+const SPACED_NUM_QTY = new RegExp(
+  `(?<!\\S)(\\d+(?:\\.\\d+)?)\\s+(${QUANTITY_UNITS_LIST})(?![가-힣])`,
+  "g",
+);
 
 function isQuantityToken(token: string): boolean {
   if (!token) return false;
@@ -53,8 +58,9 @@ export function normalizeDescription(description: string): string {
     .replace(/[,·!?;:\-]/g, " ")
     .replace(/\.(?!\d)/g, " ")
     .replace(/\s+/g, " ")
-    // Codex P2 (#296): '한 공기' → '한공기' 결합해 quantity token 으로 인식.
+    // Codex P2 (#296): '한 공기' → '한공기', '1 공기' → '1공기' 결합해 quantity token 으로 인식.
     .replace(SPACED_KOR_QTY, "$1$2")
+    .replace(SPACED_NUM_QTY, "$1$2")
     .trim();
   if (!stripped) return "";
   const tokens = stripped.split(" ").filter((t) => t.length > 0);
@@ -98,21 +104,24 @@ export interface RepeatLookupHit {
  *   - 같은 mealType 있으면 그 중 최신, 없으면 다른 mealType 도 fallback
  *   - 매치 없으면 null
  *   - Codex P2 (#296): 미래 날짜 로그 배제 위해 date lte(now) 상한 추가.
+ *   - Codex P2 (#296): referenceDate 인자로 target 시각 기준 창을 사용 — backdated 로그나
+ *     backfill 이 옛 row 처리 시 그 시점 기준 preceding history 만 매치.
  */
 export async function findRecentSameDescription(
   description: string,
   mealType?: string | null,
+  referenceDate?: Date,
 ): Promise<RepeatLookupHit | null> {
   const targetKey = normalizeDescription(description);
   if (!targetKey) return null;
 
-  const now = new Date();
-  const since = new Date();
+  const ref = referenceDate ?? new Date();
+  const since = new Date(ref);
   since.setDate(since.getDate() - LOOKUP_WINDOW_DAYS);
 
   const pool = await prisma.foodLog.findMany({
     where: {
-      date: { gte: since, lte: now },
+      date: { gte: since, lte: ref },
       estimatedKcal: { not: null },
     },
     orderBy: { date: "desc" },

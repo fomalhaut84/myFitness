@@ -107,9 +107,11 @@ export async function runFoodKcalBackfill(
       // 있으면 그 kcal 재사용. AI 호출/rate limit 회피 + 일관성.
       let kcal: number | null = null;
       try {
+        // Codex P2 (#296): 오래된 row backfill 시 target r.date 기준 preceding 창.
         const hit = await findRecentSameDescription(
           r.description,
           r.mealType ?? undefined,
+          r.date,
         );
         if (hit) kcal = hit.kcal;
       } catch (lookupErr) {

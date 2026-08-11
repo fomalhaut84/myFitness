@@ -80,7 +80,8 @@ export async function POST(request: Request) {
     // Codex P2 (#296): 웹 POST 도 봇/backfill 과 동일하게 재사용 라이브러리 활용.
     let estimatedKcal: number | null = null;
     try {
-      const hit = await findRecentSameDescription(description, mealType);
+      // Codex P2 (#296): backdated 로그 대비 foodDate 기준 창.
+      const hit = await findRecentSameDescription(description, mealType, foodDate);
       if (hit) estimatedKcal = hit.kcal;
     } catch (lookupErr) {
       console.warn(

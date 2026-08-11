@@ -219,7 +219,8 @@ export async function handleFoodInput(
   //     lookup 자체가 조회만이라 typing 인디케이터 없이 빠르게 완료.
   let repeatHit: Awaited<ReturnType<typeof findRecentSameDescription>> = null;
   try {
-    repeatHit = await findRecentSameDescription(description, mealType);
+    // Codex P2 (#296): 로그 date (now) 기준 preceding 창 사용.
+    repeatHit = await findRecentSameDescription(description, mealType, now);
   } catch (err) {
     console.warn(
       "[bot/food] repeat lookup 실패, AI 추정으로 폴백:",
