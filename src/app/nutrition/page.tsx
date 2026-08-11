@@ -4,6 +4,7 @@
 import prisma from "@/lib/prisma";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
+import { MAX_NUTRITION_ATTEMPTS } from "@/lib/nutrition/backfill";
 import { assessMuscleLossRisk } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import MacroDonut from "@/components/nutrition/MacroDonut";
@@ -52,6 +53,8 @@ export default async function NutritionPage() {
           proteinG: true,
           carbsG: true,
           fatG: true,
+          // Codex P2 (PR #300 4회차): terminal vs pending 구분에 필요.
+          nutritionAttempts: true,
         },
       }),
       aggregateRecentMacros(now, 7),
@@ -147,9 +150,26 @@ export default async function NutritionPage() {
     fatG: l.fatG,
   }));
 
-  const missingToday = foodItems.filter(
-    (i) => i.kcal == null || i.proteinG == null || i.carbsG == null || i.fatG == null,
-  ).length;
+  // Codex P2 (PR #300 4회차): pending (backfill 재시도 대상) 과 terminal (attempts 상한
+  // 도달로 영구 미측정) 분리. terminal 은 "backfill 대기" 라 표현하면 오해.
+  let pendingToday = 0;
+  let terminalToday = 0;
+  for (const l of todayLogs) {
+    const anyNull =
+      l.estimatedKcal == null ||
+      l.proteinG == null ||
+      l.carbsG == null ||
+      l.fatG == null;
+    if (!anyNull) continue;
+    const kcalMissing = l.estimatedKcal == null;
+    const attemptsExhausted = (l.nutritionAttempts ?? 0) >= MAX_NUTRITION_ATTEMPTS;
+    // kcal null 은 무제한 재시도, macro-only + attempts 상한 도달만 terminal.
+    if (!kcalMissing && attemptsExhausted) {
+      terminalToday++;
+    } else {
+      pendingToday++;
+    }
+  }
 
   const periodLabel = `${macros7d[0]?.date.slice(5)} → ${macros7d[macros7d.length - 1]?.date.slice(5)}`;
 
@@ -168,9 +188,9 @@ export default async function NutritionPage() {
           </div>
         </div>
         {/* Warning + Banner */}
-        {missingToday > 0 && (
+        {(pendingToday > 0 || terminalToday > 0) && (
           <div className="mb-3">
-            <BackfillNotice pendingCount={missingToday} />
+            <BackfillNotice pendingCount={pendingToday} terminalCount={terminalToday} />
           </div>
         )}
         <div className="mb-5">

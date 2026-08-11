@@ -6,6 +6,7 @@ import {
 } from "@/lib/nutrition/estimate-nutrition";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
@@ -354,9 +355,26 @@ export async function handleFoodKcalCommand(
     return;
   }
   try {
+    // Codex P2 (PR #300 4회차): kcal 만 정정하면 이전 macros 는 old kcal 에 매핑되어 mismatch.
+    // 비율 스케일 (or 스케일 불가면 null 리셋 → backfill 재추정).
+    const existing = await prisma.foodLog.findUnique({
+      where: { id },
+      select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+    });
+    if (!existing) {
+      await ctx.reply(`해당 id 를 찾을 수 없습니다: ${id}`);
+      return;
+    }
+    const scaled = scaleMacrosForNewKcal(kcal, existing.estimatedKcal, existing);
     const updated = await prisma.foodLog.update({
       where: { id },
-      data: { estimatedKcal: kcal },
+      data: {
+        estimatedKcal: kcal,
+        proteinG: scaled.proteinG,
+        carbsG: scaled.carbsG,
+        fatG: scaled.fatG,
+        ...(scaled.resetAttempts ? { nutritionAttempts: null } : {}),
+      },
       select: { date: true, description: true, mealType: true },
     });
     // Codex P2: 재계산 실패해도 kcal 은 이미 저장됨 → 백필이 이 row 를 다시 안 뽑음 →

@@ -32,8 +32,8 @@ export interface RunFoodBackfillResult {
 const ROTATION_POOL_CAP = 500;
 // Codex P2 (PR #300): macro AI 추정이 partial null 로 반복되면 매 tick 재호출 낭비.
 // 이 횟수 초과 시 kcal 이 채워진 macro-null row 는 permanent 로 스킵.
-// weatherAttempts (#269) 패턴 재사용.
-const MAX_NUTRITION_ATTEMPTS = 3;
+// weatherAttempts (#269) 패턴 재사용. UI (BackfillNotice terminal vs pending 판정) 도 이 상수 참조.
+export const MAX_NUTRITION_ATTEMPTS = 3;
 
 export async function runFoodKcalBackfill(
   opts: RunFoodBackfillOptions = {},
@@ -187,38 +187,53 @@ export async function runFoodKcalBackfill(
         // AI 도 kcal 못 채웠으면 스킵 (이미 위에서 failed 증가).
         continue;
       }
-      // Codex P2 (race): 이미 채워진 필드는 조건부로 보호. null 인 필드만 update, 기존 non-null
-      // 은 그대로. description/mealType 스냅샷 매칭으로 stale 값 방지.
-      const data: {
-        estimatedKcal?: number;
-        proteinG?: number | null;
-        carbsG?: number | null;
-        fatG?: number | null;
-        nutritionAttempts?: number;
-      } = {};
-      if (r.estimatedKcal === null && kcal !== null) data.estimatedKcal = kcal;
-      if (r.proteinG === null) data.proteinG = proteinG;
-      if (r.carbsG === null) data.carbsG = carbsG;
-      if (r.fatG === null) data.fatG = fatG;
-      // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts 증가.
-      // 매크로가 여전히 null 인 채로 update 되면 다음 tick 도 대상. 카운터가 상한 도달 시 스킵.
+      // Codex P2 (race, PR #300 4회차): 필드별 null snapshot 매칭으로 concurrent run 방어.
+      // 다른 backfill 이 중간에 이 필드를 채웠으면 스킵 (내 estimate 로 덮지 않음).
+      // Prisma updateMany 는 한 번에 다중 필드 write 하되 where 에 각 필드의 null 조건 포함.
+      // 여러 필드 중 하나만 race 되어도 전체 update 스킵되므로, 필드별 개별 updateMany 로 분리.
+      interface FieldWrite {
+        field: "estimatedKcal" | "proteinG" | "carbsG" | "fatG";
+        value: number;
+      }
+      const writes: FieldWrite[] = [];
+      if (r.estimatedKcal === null && kcal !== null) writes.push({ field: "estimatedKcal", value: kcal });
+      if (r.proteinG === null && proteinG !== null) writes.push({ field: "proteinG", value: proteinG });
+      if (r.carbsG === null && carbsG !== null) writes.push({ field: "carbsG", value: carbsG });
+      if (r.fatG === null && fatG !== null) writes.push({ field: "fatG", value: fatG });
+
+      let anyWritten = false;
+      let kcalWritten = false;
+      for (const w of writes) {
+        const updated = await prisma.foodLog.updateMany({
+          where: {
+            id: r.id,
+            description: r.description,
+            mealType: r.mealType,
+            [w.field]: null,
+          },
+          data: { [w.field]: w.value },
+        });
+        if (updated.count > 0) {
+          anyWritten = true;
+          if (w.field === "estimatedKcal") kcalWritten = true;
+        }
+      }
+      // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts atomic 증가.
+      // 필드 write 실패 여부 무관 (다른 run 이 채운 경우도 이번 호출 비용은 발생) → 무한 재시도 방지.
       if (stillMissing) {
-        data.nutritionAttempts = (r.nutritionAttempts ?? 0) + 1;
+        await prisma.foodLog.update({
+          where: { id: r.id },
+          data: { nutritionAttempts: { increment: 1 } },
+        }).catch((err) => {
+          if (verbose) {
+            console.warn(
+              `  [nutrition] attempts increment 실패 (log ${r.id}): ${err instanceof Error ? err.message : String(err)}`,
+            );
+          }
+        });
       }
-      if (Object.keys(data).length === 0) continue;
-      const updated = await prisma.foodLog.updateMany({
-        where: {
-          id: r.id,
-          description: r.description,
-          mealType: r.mealType,
-          ...(data.estimatedKcal !== undefined ? { estimatedKcal: null } : {}),
-        },
-        data,
-      });
-      if (updated.count === 0) {
-        continue;
-      }
-      if (data.estimatedKcal !== undefined) {
+      if (!anyWritten) continue;
+      if (kcalWritten) {
         try {
           await recalculateCalorieBalance(r.date, undefined, prisma);
         } catch (err) {

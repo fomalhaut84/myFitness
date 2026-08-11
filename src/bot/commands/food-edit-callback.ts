@@ -9,6 +9,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { deletePendingEdit, markPendingEdit, peekPendingEdit } from "./food-edit-state";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 export const CALLBACK_PREFIX = "food";
 
@@ -225,9 +226,26 @@ export async function handleFoodEditReply(ctx: {
   }
 
   try {
+    // Codex P2 (PR #300 4회차): 봇 [수정] 답장 kcal 정정도 macros 를 새 kcal 비율로 스케일.
+    const existingRow = await prisma.foodLog.findUnique({
+      where: { id: logId },
+      select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+    });
+    if (!existingRow) {
+      deletePendingEdit(chatId, replyToId);
+      await ctx.reply("이미 삭제된 로그입니다.");
+      return true;
+    }
+    const scaled = scaleMacrosForNewKcal(kcal, existingRow.estimatedKcal, existingRow);
     const updated = await prisma.foodLog.update({
       where: { id: logId },
-      data: { estimatedKcal: kcal },
+      data: {
+        estimatedKcal: kcal,
+        proteinG: scaled.proteinG,
+        carbsG: scaled.carbsG,
+        fatG: scaled.fatG,
+        ...(scaled.resetAttempts ? { nutritionAttempts: null } : {}),
+      },
       select: { date: true, description: true },
     });
     try {

@@ -9,6 +9,7 @@ import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
@@ -45,47 +46,34 @@ export async function PATCH(request: Request, ctx: Params) {
       );
     }
 
-    // Codex P2 (#283): description/mealType 변경만 있고 새 kcal 미제공이면 기존 kcal 은 이전
-    // 컨텍스트 기준이라 stale. null 로 리셋 → cron/backfill 이 새 값으로 재추정.
-    // mealType 도 프롬프트 입력이므로 동일 처리.
-    // Codex P1 (PR #300, #299): kcal 만 리셋하면 macro (P/C/F) 는 이전 desc 값이 남아 backfill 이
-    // "kcal 만 채우고 macro 는 보존" 로직으로 mismatched 데이터 확정. macro 도 함께 리셋 +
-    // nutritionAttempts 도 0 으로 (새 desc 는 fresh 재시도 대상).
+    // Codex P2 (PR #300 4회차): 우선순위 정리.
+    // 1) description/mealType 변경이 포함되면 항상 macros 를 클리어 (kcal 유무 무관).
+    //    이전 로직은 kcal 도 같이 오면 elseif 로 넘어가 old-desc 기반 scaling → mismatched.
+    // 2) 그 외에 kcal 만 정정 → macros 를 새 kcal 비율로 스케일.
     const updateData: Record<string, unknown> = { ...data };
-    const descOrMealChangedWithoutKcal =
-      (data.description !== undefined || data.mealType !== undefined) &&
-      data.estimatedKcal === undefined;
-    if (descOrMealChangedWithoutKcal) {
-      updateData.estimatedKcal = null;
+    const descOrMealChanged =
+      data.description !== undefined || data.mealType !== undefined;
+    if (descOrMealChanged) {
+      if (data.estimatedKcal === undefined) updateData.estimatedKcal = null;
       updateData.proteinG = null;
       updateData.carbsG = null;
       updateData.fatG = null;
       updateData.nutritionAttempts = null;
     } else if (data.estimatedKcal !== undefined) {
-      // Codex P2 (PR #300 3회차): 사용자가 kcal 을 수동 정정하면 기존 AI-generated macro 는
-      // 이전 kcal 에 맞춰져 있어 mismatch. 같은 P:C:F 비율을 유지하되 새 kcal 에 맞춰 스케일링
-      // (AI 가 재추정할 때까지 부정확한 macro 노출 방지). 새 kcal 이 null 이면 macros 도 null.
       const existing = await prisma.foodLog.findUnique({
         where: { id },
         select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
       });
-      if (data.estimatedKcal === null) {
-        updateData.proteinG = null;
-        updateData.carbsG = null;
-        updateData.fatG = null;
-        updateData.nutritionAttempts = null;
-      } else if (
-        existing &&
-        existing.estimatedKcal !== null &&
-        existing.estimatedKcal > 0 &&
-        data.estimatedKcal !== existing.estimatedKcal
-      ) {
-        const ratio = data.estimatedKcal / existing.estimatedKcal;
-        const scale1 = (v: number | null): number | null =>
-          v === null ? null : Math.round(v * ratio * 10) / 10;
-        updateData.proteinG = scale1(existing.proteinG);
-        updateData.carbsG = scale1(existing.carbsG);
-        updateData.fatG = scale1(existing.fatG);
+      if (existing) {
+        const scaled = scaleMacrosForNewKcal(
+          data.estimatedKcal,
+          existing.estimatedKcal,
+          existing,
+        );
+        updateData.proteinG = scaled.proteinG;
+        updateData.carbsG = scaled.carbsG;
+        updateData.fatG = scaled.fatG;
+        if (scaled.resetAttempts) updateData.nutritionAttempts = null;
       }
     }
 
