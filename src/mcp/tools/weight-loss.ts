@@ -289,12 +289,17 @@ export async function getWeightLossStatus() {
     },
     muscleLossRisk: muscleLoss,
     warnings,
-    riskLevel:
-      warnings.length >= 2
-        ? "high"
-        : warnings.length === 1
-          ? "moderate"
-          : "low",
+    // Codex P2 (PR #300 12회차): muscleLoss.risk 를 riskLevel 에 직접 반영.
+    // 이전엔 warning 1건 = moderate 였는데 muscleLoss=high 도 warning 1건으로 카운트되어
+    // moderate 로 downgrade → verdict 모순. muscleLoss 가 high 면 최소 high, medium 이면
+    // 최소 moderate 로 승격.
+    riskLevel: (() => {
+      const legacyLevel =
+        warnings.length >= 2 ? "high" : warnings.length === 1 ? "moderate" : "low";
+      if (muscleLoss.risk === "high" || legacyLevel === "high") return "high";
+      if (muscleLoss.risk === "medium" || legacyLevel === "moderate") return "moderate";
+      return "low";
+    })(),
   };
 
   return {

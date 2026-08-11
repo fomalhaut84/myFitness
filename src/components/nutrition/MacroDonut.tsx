@@ -9,6 +9,10 @@ interface MacroValues {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  // Codex P2 (PR #300 12회차): 저장된 kcal (estimator ±25% divergence 감안, macro-derived 로만
+  // 계산하면 valid 2000 kcal 이 ~1500 으로 표시될 수 있음). 센터 표시에 사용, slice 비율은
+  // macro-derived kcal 유지.
+  kcal: number | null;
 }
 
 interface MacroDonutProps {
@@ -21,9 +25,9 @@ const P_COLOR = "#22c55e";
 const C_COLOR = "#38bdf8";
 const F_COLOR = "#fbbf24";
 
-// Codex P2 (PR #300 4회차): 하나라도 null 이면 total 계산 불가 (?? 0 은 unknown 을 0 으로
-// 취급해 다른 슬라이스가 100% 로 보임). null 하나라도 있으면 total null → UI 는 부분 미측정 표시.
-function kcalOf(m: MacroValues): number | null {
+// Codex P2 (PR #300 4회차): 하나라도 null 이면 슬라이스 비율 계산 불가 (?? 0 은 unknown 을 0 으로
+// 취급해 다른 슬라이스가 100% 로 보임). slice 비율 산출용.
+function macroDerivedKcal(m: MacroValues): number | null {
   if (m.proteinG === null || m.carbsG === null || m.fatG === null) return null;
   return m.proteinG * 4 + m.carbsG * 4 + m.fatG * 9;
 }
@@ -89,9 +93,12 @@ const fmtG = (n: number | null): string => n == null ? "—" : `${Math.round(n)}
 export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutProps) {
   const [view, setView] = useState<"7d" | "today">("7d");
   const active = view === "7d" ? weekly : today;
-  const totalKcal = kcalOf(active);
-  const isPartial = totalKcal === null && hasAnyMacro(active);
-  const isEmpty = !hasAnyMacro(active);
+  // Codex P2 (PR #300 12회차): 센터 라벨은 저장 kcal 우선 (macro-derived 는 ±25% 오차 가능).
+  // slice 비율만 macro-derived 로 계산 — 시각적 비율 정확성 유지.
+  const derivedKcal = macroDerivedKcal(active);
+  const displayKcal = active.kcal ?? derivedKcal;
+  const isPartial = derivedKcal === null && hasAnyMacro(active);
+  const isEmpty = !hasAnyMacro(active) && active.kcal === null;
   // Codex P2 (PR #300 4회차): null 인 macro 는 세그먼트에 표시 안 함 (0 취급 X).
   const segments: DonutSeg[] = [
     ...(active.proteinG !== null ? [{ value: active.proteinG * 4, color: P_COLOR }] : []),
@@ -101,9 +108,9 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
   const pKg = active.proteinG !== null && bodyWeightKg
     ? active.proteinG / bodyWeightKg
     : null;
-  // 부분 미측정이면 %는 total 없어 계산 불가 → '—' 표시.
+  // pct 는 macro-derived total 기반 (slice 비율 정확).
   const pct = (kc: number): string =>
-    totalKcal !== null && totalKcal > 0 ? ((kc / totalKcal) * 100).toFixed(0) : "—";
+    derivedKcal !== null && derivedKcal > 0 ? ((kc / derivedKcal) * 100).toFixed(0) : "—";
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
@@ -126,7 +133,7 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
           <Donut segments={segments} size={180} thickness={22}>
             <div className="text-[10px] tracking-[0.22em] uppercase text-dim font-[family-name:var(--font-geist-mono)]">Intake</div>
             <div className="text-[26px] font-semibold font-[family-name:var(--font-geist-mono)] tracking-tight text-bright">
-              {totalKcal !== null && totalKcal > 0 ? Math.round(totalKcal).toLocaleString("ko") : "—"}
+              {displayKcal !== null && displayKcal > 0 ? Math.round(displayKcal).toLocaleString("ko") : "—"}
             </div>
             <div className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim">
               {isPartial ? "부분 미측정" : isEmpty ? `${view === "7d" ? "7일" : "오늘"} 기록 없음` : `kcal · ${view === "7d" ? "avg/day" : "today"}`}

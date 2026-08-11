@@ -126,12 +126,19 @@ export default async function NutritionPage() {
 
   // 오늘 매크로 (도넛 today view 용).
   // Codex P2 (PR #300): 오늘 로그가 없으면 "측정 0" 이 아니라 "데이터 없음" 이므로 모두 null.
+  // Codex P2 (PR #300 12회차): kcal 도 별도 aggregate → 도넛 센터 표시 (macro-derived 는 ±25% 오차).
   const todayMacros = todayLogs.length === 0
-    ? { proteinG: null as number | null, carbsG: null as number | null, fatG: null as number | null }
+    ? {
+        proteinG: null as number | null,
+        carbsG: null as number | null,
+        fatG: null as number | null,
+        kcal: null as number | null,
+      }
     : todayLogs.reduce<{
         proteinG: number | null;
         carbsG: number | null;
         fatG: number | null;
+        kcal: number | null;
       }>(
         (acc, r) => ({
           proteinG:
@@ -139,8 +146,10 @@ export default async function NutritionPage() {
           carbsG:
             acc.carbsG === null ? null : r.carbsG === null ? null : acc.carbsG + r.carbsG,
           fatG: acc.fatG === null ? null : r.fatG === null ? null : acc.fatG + r.fatG,
+          kcal:
+            acc.kcal === null ? null : r.estimatedKcal === null ? null : acc.kcal + r.estimatedKcal,
         }),
-        { proteinG: 0, carbsG: 0, fatG: 0 },
+        { proteinG: 0, carbsG: 0, fatG: 0, kcal: 0 },
       );
 
   // Codex P2 (PR #300 6회차): 도넛/밸런스 UI 는 하루의 P/C/F 조합 비율이 의미 있는 지표.
@@ -152,6 +161,8 @@ export default async function NutritionPage() {
     proteinG: completeAvg.avgProteinG,
     carbsG: completeAvg.avgCarbsG,
     fatG: completeAvg.avgFatG,
+    // Codex P2 (PR #300 12회차): 도넛 센터용 저장 kcal 평균 (macro-derived 대신).
+    kcal: completeAvg.avgKcal,
   };
 
   const trendPoints = macros7d.map((d) => ({ date: d.date, proteinG: d.proteinG }));
