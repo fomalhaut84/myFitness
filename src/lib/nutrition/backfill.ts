@@ -184,12 +184,17 @@ export async function runFoodKcalBackfill(
       // 여전히 null 필드가 남아 있으면 AI 로 채우기.
       const stillMissing =
         kcal === null || proteinG === null || carbsG === null || fatG === null;
+      // Codex P2 (PR #300 9회차): AI 실패는 attempts 소비 (무한 실패 재호출 방지),
+      // AI 성공했으나 race 로 write 진 loser 는 소비 안 함 (실제 write 성공 시에만 소비).
+      let aiFailureConsumesAttempt = false;
       if (stillMissing) {
         const est = await estimateNutritionFromText({
           description: r.description,
           mealType: r.mealType ?? undefined,
         });
         if (!est) {
+          // AI 실패 — attempts 소비 (kcal-gated 아닌 macros-only bucket 에 한해).
+          if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;
           if (kcal === null) {
             result.failed++;
             continue;
@@ -258,14 +263,16 @@ export async function runFoodKcalBackfill(
           kcalWritten = writeData.estimatedKcal !== undefined;
         }
       }
-      // Codex P2 (PR #300): AI 를 실제로 호출한 케이스 (stillMissing=true) 는 attempts atomic 증가.
-      // Codex P2 (PR #300 5회차): Prisma `{ increment: 1 }` 은 nullable 컬럼이 null 이면 SQL 상
+      // Codex P2 (PR #300 5회차): Prisma `{ increment: 1 }` 은 nullable 컬럼 null 값에서 SQL 상
       // `NULL + 1 = NULL` 로 null 유지 → attempts 가 영영 증가 안 함 → 재시도 상한 무효화.
       // COALESCE 로 null→0 후 증가하는 raw SQL 사용.
-      // Codex P2 (PR #300 7회차): description/mealType 스냅샷 조건 추가 — 사용자가 PATCH 로
-      // description 을 바꿔서 attempts 를 리셋했는데 stale worker 가 새 row 의 fresh 재시도
-      // 예산을 소진하는 것 방지. IS NOT DISTINCT FROM 으로 null-safe 비교.
-      if (stillMissing) {
+      // Codex P2 (PR #300 7회차): description/mealType 스냅샷 조건 추가 — PATCH 로 description
+      // 이 바뀌면서 attempts 를 리셋한 새 row 의 재시도 예산을 stale worker 가 소진하는 것 방지.
+      // Codex P2 (PR #300 9회차): concurrent worker 여럿이 같은 snapshot 을 fetch 해도 실제
+      // tuple write 는 하나만 성공. loser 는 attempt 소비하면 안 됨 (아무 기여 없이 예산 잠식).
+      // → write 실제 성공 (anyWritten) 또는 AI 실패 (aiFailureConsumesAttempt) 시에만 increment.
+      const shouldConsumeAttempt = anyWritten || aiFailureConsumesAttempt;
+      if (shouldConsumeAttempt) {
         try {
           const mealCond =
             r.mealType === null
