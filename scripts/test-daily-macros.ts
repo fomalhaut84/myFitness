@@ -26,6 +26,9 @@ interface Case {
     avgProteinG: number | null;
     daysWithProtein: number;
     totalDays: number;
+    // Codex P2 (PR #303 18회차): 필요 시만 검사 (기존 케이스는 생략).
+    avgProteinGRaw?: number | null;
+    avgProteinGRawApprox?: { value: number; epsilon: number };
   };
 }
 
@@ -67,16 +70,47 @@ const cases: Case[] = [
       totalDays: 3,
     },
   },
+  {
+    // Codex P2 (PR #303 18회차): daily 총량 반올림 (round1) 이 상류에서 손실되는 precision 을
+    // proteinGRaw 로 보존. 예: 100.9×6 + 101.2×1, 실제 100.942857... — round1 은 100.9 로 축소.
+    // 70.09kg 사용자 · target 1.6 · floor 1.44 기준: unrounded 1.44019 (safe), rounded 1.43958
+    // (false positive) 인 경계.
+    label: "unrounded proteinGRaw 로 정밀 avg 유지 (100.9×6 + 101.2×1)",
+    input: [
+      day("d1", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d2", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d3", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d4", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d5", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d6", { proteinG: 100.9, proteinGRaw: 100.9, kcal: 2000, itemCount: 3 }),
+      day("d7", { proteinG: 101.2, proteinGRaw: 101.2, kcal: 2000, itemCount: 3 }),
+    ],
+    expect: {
+      avgKcal: 2000,
+      avgProteinG: Math.round(((100.9 * 6 + 101.2) / 7) * 10) / 10, // 100.9
+      avgProteinGRawApprox: { value: (100.9 * 6 + 101.2) / 7, epsilon: 1e-9 }, // ≈ 100.942857
+      daysWithProtein: 7,
+      totalDays: 7,
+    },
+  },
 ];
 
 let allPass = true;
 for (const c of cases) {
   const avg = averageMacros(c.input);
-  const ok =
+  let ok =
     avg.avgKcal === c.expect.avgKcal &&
     avg.avgProteinG === c.expect.avgProteinG &&
     avg.daysWithProtein === c.expect.daysWithProtein &&
     avg.totalDays === c.expect.totalDays;
+  if (c.expect.avgProteinGRaw !== undefined) {
+    ok = ok && avg.avgProteinGRaw === c.expect.avgProteinGRaw;
+  }
+  if (c.expect.avgProteinGRawApprox !== undefined) {
+    const target = c.expect.avgProteinGRawApprox.value;
+    const eps = c.expect.avgProteinGRawApprox.epsilon;
+    ok = ok && avg.avgProteinGRaw !== null && Math.abs(avg.avgProteinGRaw - target) < eps;
+  }
   allPass = allPass && ok;
   console.log(`${ok ? "✓" : "✗"} ${c.label}`);
   if (!ok) {
@@ -84,6 +118,7 @@ for (const c of cases) {
     console.log(`  got:      ${JSON.stringify({
       avgKcal: avg.avgKcal,
       avgProteinG: avg.avgProteinG,
+      avgProteinGRaw: avg.avgProteinGRaw,
       daysWithProtein: avg.daysWithProtein,
       totalDays: avg.totalDays,
     })}`);
