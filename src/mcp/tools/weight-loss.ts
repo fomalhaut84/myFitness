@@ -232,13 +232,15 @@ export async function getWeightLossStatus() {
       : null;
   // Codex P2 (PR #300 13회차): risk assessor 는 완료된 KST 일자 기준.
   // Codex P2 (PR #301 17회차): 반올림 (Math.round(x*10)/10) 을 판정 전에 하면 threshold 근처
-  // (예: 1.441 → 1.4) 에서 오답 (< 1.44 로 오탐되어 low-protein 점수 +1). full precision 을
-  // risk assessor 에 전달. 표시용 반올림은 assessor 내부에서 이미 fmt1 로 처리.
+  // (예: 1.441 → 1.4) 에서 오답 (< 1.44 로 오탐되어 low-protein 점수 +1).
+  // Codex P2 (PR #303 18회차): daily 총량 자체도 round1 로 손실 → aggregation 상류 (DailyMacros
+  // proteinGRaw + MacroAverage avgProteinGRaw) 에서 unrounded 유지. 예: 100.9×6 + 101.2×1
+  // 실제 100.942857 vs 반올림 100.9. 70.09kg 에서 1.44019 (safe) vs 1.43958 (false positive).
   const proteinPerKg =
-    macroAvgCompleted.avgProteinG !== null &&
+    macroAvgCompleted.avgProteinGRaw !== null &&
     latestWeight &&
     macroAvgCompleted.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT
-      ? macroAvgCompleted.avgProteinG / latestWeight
+      ? macroAvgCompleted.avgProteinGRaw / latestWeight
       : null;
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
   // Codex P2 (PR #300 13회차): 결손 평균도 완료된 KST 일자만. 오늘 부분값 (진행 중 kcal deficit) 이

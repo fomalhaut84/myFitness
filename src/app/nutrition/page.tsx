@@ -114,9 +114,11 @@ export default async function NutritionPage() {
     validBalancesCompleted.length >= MIN_DEFICIT_DAYS_FOR_ASSESSMENT
       ? avgDailyBalanceRaw
       : null;
+  // Codex P2 (PR #303 18회차): daily 총량 rounded → aggregation 상류에서 손실. avgProteinGRaw
+  // (unrounded) 로 판정해 target × 0.9 근처 false positive 방지.
   const proteinPerKgRaw =
-    macroAvgCompleted.avgProteinG !== null && bodyWeightKg
-      ? macroAvgCompleted.avgProteinG / bodyWeightKg
+    macroAvgCompleted.avgProteinGRaw !== null && bodyWeightKg
+      ? macroAvgCompleted.avgProteinGRaw / bodyWeightKg
       : null;
   // Codex P2 (PR #300): daysWithProtein 이 표본 미만이면 risk assessor 에 null 전달.
   const proteinPerKg =

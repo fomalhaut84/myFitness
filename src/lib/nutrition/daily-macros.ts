@@ -16,6 +16,13 @@ export interface DailyMacros {
   proteinG: number | null;
   carbsG: number | null;
   fatG: number | null;
+  /**
+   * Codex P2 (PR #303 18회차): 반올림 없는 원본 protein 합계 (g).
+   * proteinG 는 표시용 (round1), proteinGRaw 는 risk 판정용 (target×0.9 threshold 근처
+   * false positive 방지). aggregateDailyMacros 가 항상 채우지만, 옛 test 픽스처 호환성을
+   * 위해 optional. 없으면 averageMacros 가 proteinG 로 fallback.
+   */
+  proteinGRaw?: number | null;
   itemCount: number;         // 이 날 저장된 FoodLog row 개수.
   missingCount: number;      // 매크로 · kcal 중 하나라도 null 인 row 개수.
 }
@@ -45,6 +52,7 @@ export async function aggregateDailyMacros(referenceDate: Date): Promise<DailyMa
       date: ymd,
       kcal: null,
       proteinG: null,
+      proteinGRaw: null,
       carbsG: null,
       fatG: null,
       itemCount: 0,
@@ -86,6 +94,9 @@ export async function aggregateDailyMacros(referenceDate: Date): Promise<DailyMa
     date: ymd,
     kcal: kcal === null ? null : Math.round(kcal),
     proteinG: round1(p),
+    // Codex P2 (PR #303 18회차): unrounded 원본 (risk 판정용). round1 이 손실한 precision 을
+    // averageMacros 가 avg 낼 때 활용해 target × 0.9 근처 false positive 방지.
+    proteinGRaw: p,
     carbsG: round1(c),
     fatG: round1(f),
     itemCount: rows.length,
@@ -114,6 +125,12 @@ export async function aggregateRecentMacros(
 export interface MacroAverage {
   avgKcal: number | null;
   avgProteinG: number | null;
+  /**
+   * Codex P2 (PR #303 18회차): 원본 (unrounded) protein avg. risk 판정 (assessMuscleLossRisk)
+   * 에 이 값을 넘겨 target × 0.9 threshold 근처 false positive 방지. 표시는 avgProteinG.
+   * DailyMacros.proteinGRaw 가 없는 옛 픽스처는 avgProteinG (rounded) 을 fallback 으로 사용.
+   */
+  avgProteinGRaw: number | null;
   avgCarbsG: number | null;
   avgFatG: number | null;
   daysWithProtein: number;
@@ -173,12 +190,16 @@ export function averageMacros(days: DailyMacros[]): MacroAverage {
   };
   const k = valid((d) => d.kcal);
   const p = valid((d) => d.proteinG);
+  // Codex P2 (PR #303 18회차): unrounded 원본에서 avg 를 뽑아 threshold 경계 오답 방지.
+  // proteinGRaw 가 없는 옛 픽스처 (test 등) 는 proteinG 로 fallback.
+  const pRaw = valid((d) => d.proteinGRaw ?? d.proteinG);
   const c = valid((d) => d.carbsG);
   const f = valid((d) => d.fatG);
   const round1 = (v: number): number => Math.round(v * 10) / 10;
   return {
     avgKcal: k.count > 0 ? Math.round(k.sum / k.count) : null,
     avgProteinG: p.count > 0 ? round1(p.sum / p.count) : null,
+    avgProteinGRaw: pRaw.count > 0 ? pRaw.sum / pRaw.count : null,
     avgCarbsG: c.count > 0 ? round1(c.sum / c.count) : null,
     avgFatG: f.count > 0 ? round1(f.sum / f.count) : null,
     daysWithProtein: p.count,
