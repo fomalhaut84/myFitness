@@ -37,11 +37,13 @@ function kstDayRange(): { start: Date; end: Date } {
 export default async function NutritionPage() {
   const now = new Date();
   const { start: todayStart, end: todayEnd } = kstDayRange();
-  const sevenDaysAgo = new Date(todayStart);
-  sevenDaysAgo.setDate(sevenDaysAgo.getDate() - 6);
+  // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 필요 → 8일치 fetch.
+  // trend/donut UI 는 today 포함 7일 (today-6..today) 유지 — 마지막 7일 slice 로 노출.
+  const eightDaysAgo = new Date(todayStart);
+  eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
 
   // 병렬 fetch
-  const [todayLogs, macros7d, latestWeight, latestBalances, activities7d, profile] =
+  const [todayLogs, macros8d, latestWeight, latestBalances, activities7d, profile] =
     await Promise.all([
       prisma.foodLog.findMany({
         where: { date: { gte: todayStart, lt: todayEnd } },
@@ -59,18 +61,18 @@ export default async function NutritionPage() {
           nutritionAttempts: true,
         },
       }),
-      aggregateRecentMacros(now, 7),
+      aggregateRecentMacros(now, 8),
       prisma.bodyComposition.findFirst({
         orderBy: { date: "desc" },
         select: { weight: true },
       }),
       prisma.dailySummary.findMany({
-        where: { date: { gte: sevenDaysAgo } },
+        where: { date: { gte: eightDaysAgo } },
         // Codex P2 (PR #300 13회차): 오늘 부분값 제외 위해 date 필요.
         select: { date: true, calorieBalance: true },
       }),
       prisma.activity.findMany({
-        where: { startTime: { gte: sevenDaysAgo } },
+        where: { startTime: { gte: eightDaysAgo } },
         // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해야 함.
         select: { zoneDistribution: true },
       }),
@@ -78,6 +80,9 @@ export default async function NutritionPage() {
         select: { proteinTargetPerKg: true },
       }),
     ]);
+
+  // Codex P2 (PR #300 14회차): UI 표시용은 today 포함 7일 유지 (마지막 7개).
+  const macros7d = macros8d.slice(-7);
 
   const macroAvg = averageMacros(macros7d);
   const bodyWeightKg = latestWeight?.weight ?? null;
@@ -87,8 +92,10 @@ export default async function NutritionPage() {
   // Codex P2 (PR #300 13회차): 오늘의 부분값 (아침만 기록됐다든지) 이 risk 평가로 들어가면
   // 저녁 로그 전까지 임시 warning 발생. 완료된 KST 일자만 사용. UI 차트/식단 리스트에는 오늘
   // 포함 유지.
+  // Codex P2 (PR #300 14회차): 8-day fetch 로부터 오늘 필터 → 정확히 7 완료된 KST 일.
+  // macros7d.filter (7일 today 포함) 은 filter <today 후 6일밖에 안 남는 off-by-one.
   const todayYmd = todayKSTString();
-  const macros7dCompleted = macros7d.filter((d) => d.date < todayYmd);
+  const macros7dCompleted = macros8d.filter((d) => d.date < todayYmd);
   const macroAvgCompleted = averageMacros(macros7dCompleted);
   const validBalancesCompleted = latestBalances
     .filter((b) => b.date.getTime() < todayStart.getTime())

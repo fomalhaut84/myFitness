@@ -37,13 +37,17 @@ export async function getWeightLossStatus() {
   // weights (이동평균) 는 기존 daysAgo 유지 — 서로 다른 시맨틱, 이번 스코프 외.
   const nowReal = new Date();
   const kstTodayMidnight = kstMidnightUTC(nowReal);
-  const kstSevenDaysAgo = new Date(kstTodayMidnight.getTime() - 6 * DAY_MS);
+  // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 이 필요 → today-7
+  // 부터 fetch. raw summaries (dailyBalances, avgDailyBalance, 연속 결손) 는 기존 7일 today
+  // 포함 창 (today-6..today) 유지 — Codex 지시대로 "retain 7-day today-inclusive data".
+  const kstRiskWindowStart = new Date(kstTodayMidnight.getTime() - 7 * DAY_MS);
+  const kstRawWindowStart = new Date(kstTodayMidnight.getTime() - 6 * DAY_MS);
   const fourteenDaysAgo = daysAgo(13);
 
   const [balances, weights, activities, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
-        where: { date: { gte: kstSevenDaysAgo } },
+        where: { date: { gte: kstRiskWindowStart } },
         select: {
           date: true,
           calorieBalance: true,
@@ -59,7 +63,7 @@ export async function getWeightLossStatus() {
         orderBy: { date: "asc" },
       }),
       prisma.activity.findMany({
-        where: { startTime: { gte: kstSevenDaysAgo } },
+        where: { startTime: { gte: kstRiskWindowStart } },
         select: {
           name: true,
           activityType: true,
@@ -79,8 +83,14 @@ export async function getWeightLossStatus() {
       prisma.userProfile.findFirst(),
     ]);
 
+  // Codex P2 (PR #300 14회차): raw 요약은 today 포함 7일 (today-6..today) 만 사용.
+  // 위 fetch 는 risk 를 위해 8일 (today-7..today) 을 가져오지만, 사용자에게 보여주는 요약은
+  // 기존 정책 (7일 today-inclusive) 유지.
+  const balancesRaw = balances.filter(
+    (b) => b.date.getTime() >= kstRawWindowStart.getTime(),
+  );
   // 칼로리 밸런스 요약 (balances는 orderBy date asc로 조회됨 → 시간순 보장)
-  const withBalance = balances.filter(
+  const withBalance = balancesRaw.filter(
     (b): b is typeof b & { calorieBalance: number } =>
       b.calorieBalance !== null
   );
@@ -96,13 +106,13 @@ export async function getWeightLossStatus() {
   // null(데이터 없는 날)은 연속 끊김으로 처리 — 건너뛰지 않음.
   let consecutiveDeficitDays = 0;
   let consecutiveOver750 = 0;
-  for (let i = balances.length - 1; i >= 0; i--) {
-    const bal = balances[i].calorieBalance;
+  for (let i = balancesRaw.length - 1; i >= 0; i--) {
+    const bal = balancesRaw[i].calorieBalance;
     if (bal === null || bal >= 0) break;
     consecutiveDeficitDays++;
   }
-  for (let i = balances.length - 1; i >= 0; i--) {
-    const bal = balances[i].calorieBalance;
+  for (let i = balancesRaw.length - 1; i >= 0; i--) {
+    const bal = balancesRaw[i].calorieBalance;
     if (bal === null || bal >= -750) break;
     consecutiveOver750++;
   }
@@ -135,10 +145,17 @@ export async function getWeightLossStatus() {
 
   const latestWeight = weights.length > 0 ? weights[weights.length - 1].weight : null;
 
+  // Codex P2 (PR #300 14회차): raw 요약 활동도 today 포함 7일 유지. 8-day fetch 는 risk 계산 용.
+  const activitiesRaw = activities.filter(
+    (a) => a.startTime.getTime() >= kstRawWindowStart.getTime(),
+  );
+  const activitiesCompleted = activities.filter(
+    (a) => a.startTime.getTime() < kstTodayMidnight.getTime(),
+  );
   // 고강도 운동 (Z4+) 이번 주 시간.
   // Codex P2 (PR #300): 실제 Z4+Z5 시간만 카운트. intensityLabel 은 zoneDistribution 비율
   // 임계 넘으면 부여되는 라벨이라, 전체 duration 을 세면 Z1~Z3 회복 구간도 포함되어 과대 산정.
-  const highIntensityActivities = activities.filter(
+  const highIntensityActivities = activitiesRaw.filter(
     (a) =>
       a.intensityLabel === "threshold" ||
       a.intensityLabel === "interval" ||
@@ -146,23 +163,31 @@ export async function getWeightLossStatus() {
   );
   // Codex P2 (PR #300 11회차): zone 누락 활동이 하나라도 있으면 카운트 과소 산정 위험.
   // 위험 판정용 입력에는 null (unknown) 로 전달. 응답 필드는 그대로 최선 추정치 노출.
-  let missingZoneCount = 0;
-  const highIntensitySeconds = activities.reduce((s, a) => {
+  // Codex P2 (PR #300 14회차): risk 계산은 완료 7일 (activitiesCompleted) 기준. 표시 필드는
+  // 여전히 today 포함 7일 (activitiesRaw) 기준 — 사용자 표시 정책 유지.
+  let missingZoneCountRisk = 0;
+  const highIntensitySecondsRisk = activitiesCompleted.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);
     if (!dist) {
-      missingZoneCount++;
+      missingZoneCountRisk++;
       return s;
     }
     return s + dist.z4 + dist.z5;
   }, 0);
-  const highIntensityMinutes = Math.round(highIntensitySeconds / 60);
+  const highIntensityMinutesRisk = Math.round(highIntensitySecondsRisk / 60);
+  const highIntensitySecondsDisplay = activitiesRaw.reduce((s, a) => {
+    const dist = parseZoneDistribution(a.zoneDistribution);
+    if (!dist) return s;
+    return s + dist.z4 + dist.z5;
+  }, 0);
+  const highIntensityMinutes = Math.round(highIntensitySecondsDisplay / 60);
   // Codex P2 (PR #300 13회차): measured lower bound 가 이미 threshold 초과면 known.
   const highIntensityMinutesForRisk =
-    highIntensityMinutes > HIGH_INTENSITY_THRESHOLD_MIN
-      ? highIntensityMinutes
-      : missingZoneCount > 0
+    highIntensityMinutesRisk > HIGH_INTENSITY_THRESHOLD_MIN
+      ? highIntensityMinutesRisk
+      : missingZoneCountRisk > 0
         ? null
-        : highIntensityMinutes;
+        : highIntensityMinutesRisk;
 
   // 경고 판정
   const warnings: string[] = [];
@@ -190,12 +215,15 @@ export async function getWeightLossStatus() {
 
   // #299 (M14 Phase 2 #3): 매크로 요약 + 근손실 위험 평가.
   // nowReal (파일 상단에서 획득한 실시간 timestamp) 을 사용해 KST 계산 안정.
-  const macros7d = await aggregateRecentMacros(nowReal, 7);
+  // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 필요 → 8일 fetch 후 오늘 필터.
+  // raw macroSummary 는 today 포함 7일 (기존 표시 정책 유지) → 마지막 7일 slice.
+  const macros8d = await aggregateRecentMacros(nowReal, 8);
+  const macros7d = macros8d.slice(-7);
   const macroAvg = averageMacros(macros7d);
   // Codex P2 (PR #300 13회차): risk 평가는 완료된 KST 일자만. 오늘 부분값 (아침만 기록 등) 이
   // 7일 평균을 흔들어 임시 warning 발생하는 것 방지. UI 노출 macroSummary 는 전체 (오늘 포함) 유지.
-  const todayKstYmd = macros7d.length > 0 ? macros7d[macros7d.length - 1].date : "";
-  const macros7dCompleted = macros7d.filter((d) => d.date < todayKstYmd);
+  const todayKstYmd = macros8d.length > 0 ? macros8d[macros8d.length - 1].date : "";
+  const macros7dCompleted = macros8d.filter((d) => d.date < todayKstYmd);
   const macroAvgCompleted = averageMacros(macros7dCompleted);
   // 응답에 노출하는 avg (사용자/AI 가 daysWithProtein 로 신뢰도 판단) 은 오늘 포함 raw 유지.
   const proteinPerKgRaw =
@@ -214,8 +242,11 @@ export async function getWeightLossStatus() {
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
   // Codex P2 (PR #300 13회차): 결손 평균도 완료된 KST 일자만. 오늘 부분값 (진행 중 kcal deficit) 이
   // 7일 평균을 오르내리게 해 임시 warning 발생하는 것 방지.
-  const withBalanceCompleted = withBalance.filter(
-    (b) => b.date.getTime() < kstTodayMidnight.getTime(),
+  // Codex P2 (PR #300 14회차): 8-day fetch 전체 (balances) 에서 오늘 필터 → 7 완료된 KST 일.
+  // withBalance (balancesRaw 기반, today 포함 7일) 를 다시 필터하면 6일만 남는 off-by-one 버그.
+  const withBalanceCompleted = balances.filter(
+    (b): b is typeof b & { calorieBalance: number } =>
+      b.date.getTime() < kstTodayMidnight.getTime() && b.calorieBalance !== null,
   );
   const avgDailyBalanceCompleted =
     withBalanceCompleted.length > 0
@@ -256,7 +287,7 @@ export async function getWeightLossStatus() {
       daysWithData: withBalance.length,
       consecutiveDeficitDays,
       consecutiveOver750Days: consecutiveOver750,
-      dailyBalances: balances.map((b) => ({
+      dailyBalances: balancesRaw.map((b) => ({
         date: b.date.toISOString().slice(0, 10),
         intake: b.estimatedIntakeCalories,
         available: b.availableCalories,
@@ -272,18 +303,18 @@ export async function getWeightLossStatus() {
       projectedWeeklyLossKg,
     },
     activitySummary: {
-      totalActivities: activities.length,
-      runCount: activities.filter((a) =>
+      totalActivities: activitiesRaw.length,
+      runCount: activitiesRaw.filter((a) =>
         a.activityType.includes("running")
       ).length,
       totalDistanceKm: Number(
         (
-          activities.reduce((s, a) => s + (a.distance ?? 0), 0) / 1000
+          activitiesRaw.reduce((s, a) => s + (a.distance ?? 0), 0) / 1000
         ).toFixed(1)
       ),
       highIntensityCount: highIntensityActivities.length,
       highIntensityMinutes,
-      byIntensity: activities.map((a) => ({
+      byIntensity: activitiesRaw.map((a) => ({
         name: a.name,
         type: a.activityType,
         date: a.startTime.toISOString().slice(0, 10),

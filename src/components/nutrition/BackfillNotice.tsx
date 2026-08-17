@@ -23,12 +23,14 @@ export default function BackfillNotice({ pendingCount, terminalCount = 0 }: Prop
         </div>
       )}
       {terminalCount > 0 && (
-        // Codex P2 (PR #300 10회차): 실제 가능한 action 안내. description 편집이 macros +
-        // nutritionAttempts 를 리셋해 backfill 재추정 유도 (PATCH /api/food/[id] 로직 참조).
+        // Codex P2 (PR #300 14회차): 실제 UI 에서 가능한 action 만 안내. description PATCH 경로가
+        // 있긴 하지만 nutrition 페이지·lifestyle FoodRow·bot 편집 모두 kcal 만 수정 가능.
+        // 사용자가 실제로 트리거할 수 있는 방법은 라이프스타일 목록 (or bot [🗑️ 삭제]) 에서
+        // 로그를 삭제하고 다시 기록하는 것뿐 (재등록 시 fresh AI 추정 + attempts 초기화).
         <div className="flex items-center gap-3">
           <span className="inline-block w-1.5 h-1.5 rounded-full bg-red-500"></span>
           <div className="text-[12px] text-sub flex-1">
-            <span className="text-bright font-medium">{terminalCount}개 항목</span> 매크로 확정 실패 · description 재편집 시 재추정
+            <span className="text-bright font-medium">{terminalCount}개 항목</span> 매크로 확정 실패 · 라이프스타일에서 삭제 후 재등록으로 재추정
           </div>
           <span className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim uppercase tracking-wider">final</span>
         </div>

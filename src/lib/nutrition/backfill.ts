@@ -296,7 +296,14 @@ export async function runFoodKcalBackfill(
           }
         }
       }
-      if (!anyWritten) continue;
+      if (!anyWritten) {
+        // Codex P2 (PR #300 14회차): macro-only 후보에서 AI 가 실패/부분값만 반환하면 attempts
+        // 는 소비됐지만 write 는 없음 → 이전에는 continue 만 하고 ok/failed 둘 다 증가 안 해서
+        // 3회 실패 후 terminal 이 되어도 cron/스크립트가 "성공 0, 실패 0" 으로 표시.
+        // 소비된 시도는 실패 카운트로 반영해 재시도 상한 소진을 감지 가능하게.
+        if (shouldConsumeAttempt) result.failed++;
+        continue;
+      }
       if (kcalWritten) {
         try {
           await recalculateCalorieBalance(r.date, undefined, prisma);
