@@ -139,7 +139,10 @@ export default async function NutritionPage() {
     }
     return s + dist.z4 + dist.z5;
   }, 0);
-  const measuredMinutes = Math.round(highIntensitySeconds / 60);
+  // Codex P2 (PR #301 20회차): fractional minutes 로 assessor 에 전달 (반올림 없이).
+  // 30:20 초 = 30.33 분 → assessor 가 > 30 true. 이전 Math.round 는 30 으로 false negative,
+  // 결손·단백질 조건과 겹치면 HIGH → MEDIUM 강등.
+  const measuredMinutes = highIntensitySeconds / 60;
   const highIntensityMinutes =
     measuredMinutes > HIGH_INTENSITY_THRESHOLD_MIN
       ? measuredMinutes

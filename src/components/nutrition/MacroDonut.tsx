@@ -133,7 +133,8 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
           <Donut segments={segments} size={180} thickness={22}>
             <div className="text-[10px] tracking-[0.22em] uppercase text-dim font-[family-name:var(--font-geist-mono)]">Intake</div>
             <div className="text-[26px] font-semibold font-[family-name:var(--font-geist-mono)] tracking-tight text-bright">
-              {displayKcal !== null && displayKcal > 0 ? Math.round(displayKcal).toLocaleString("ko") : "—"}
+              {/* Codex P2 (PR #301 20회차): 0 kcal 은 유효한 값 (물·다이어트 콜라). null 만 em dash. */}
+              {displayKcal !== null ? Math.round(displayKcal).toLocaleString("ko") : "—"}
             </div>
             <div className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim">
               {isPartial ? "부분 미측정" : isEmpty ? `${view === "7d" ? "7일" : "오늘"} 기록 없음` : `kcal · ${view === "7d" ? "avg/day" : "today"}`}
