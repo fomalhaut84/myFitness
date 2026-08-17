@@ -173,6 +173,29 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 0 },
   },
+  {
+    // Codex P2 (PR #301 20회차): Z4+ 30:20 초 = 30.33 분. 이전 caller Math.round 는 30 → false
+    // negative. assessor 도 Math.round 후 판정 → 같은 문제. unrounded 로 판정, 표시만 반올림.
+    label: "고강도 fractional (30.33 분) — > 30 판정, score +1",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 30 + 20 / 60,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1 },
+  },
+  {
+    // Codex P2 (PR #301 20회차): deficit fractional (500.4) 도 이전 Math.round 는 500 → false.
+    label: "결손 fractional (500.4 kcal) — > 500 판정, score +1",
+    input: {
+      weeklyCalorieDeficit: 500.4,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 10,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1 },
+  },
 ];
 
 let allPass = true;

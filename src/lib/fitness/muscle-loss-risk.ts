@@ -57,21 +57,21 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
   let score = 0;
 
   // 결손 조건
+  // Codex P2 (PR #301 20회차): 반올림 (Math.round) 을 판정 전에 하면 threshold 근처
+  // (예: 500.4 kcal → 500) 에서 오답. unrounded 로 판정, 표시만 반올림.
   if (input.weeklyCalorieDeficit === null) {
     reasons.push("칼로리 밸런스 데이터 부족 (최근 7일 기록 미완)");
-  } else {
+  } else if (input.weeklyCalorieDeficit > DEFICIT_THRESHOLD) {
+    score++;
     const deficit = Math.round(input.weeklyCalorieDeficit);
-    if (deficit > DEFICIT_THRESHOLD) {
-      score++;
-      reasons.push(`일평균 결손 ${deficit} kcal (> ${DEFICIT_THRESHOLD})`);
-      // Codex P2 (PR #300 6회차): 큰 결손에 0.6 곱만 하면 여전히 threshold 초과 값을 권장하는
-      // 모순 (예: 1000 kcal → 600 kcal). 권장은 항상 DEFICIT_THRESHOLD 이하 · 최소 300 kcal.
-      const suggested = Math.min(
-        DEFICIT_THRESHOLD,
-        Math.max(300, Math.round(deficit * 0.6)),
-      );
-      recommendations.push(`결손을 ${suggested} kcal 이내로 완화`);
-    }
+    reasons.push(`일평균 결손 ${deficit} kcal (> ${DEFICIT_THRESHOLD})`);
+    // Codex P2 (PR #300 6회차): 큰 결손에 0.6 곱만 하면 여전히 threshold 초과 값을 권장하는
+    // 모순 (예: 1000 kcal → 600 kcal). 권장은 항상 DEFICIT_THRESHOLD 이하 · 최소 300 kcal.
+    const suggested = Math.min(
+      DEFICIT_THRESHOLD,
+      Math.max(300, Math.round(deficit * 0.6)),
+    );
+    recommendations.push(`결손을 ${suggested} kcal 이내로 완화`);
   }
 
   // 단백질 조건
@@ -101,16 +101,17 @@ export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict 
   }
 
   // 고강도 조건
+  // Codex P2 (PR #301 20회차): 반올림 (Math.round) 을 판정 전에 하면 threshold 근처
+  // (예: 30:20 = 30.33 분 → 30) 에서 오답 (> 30 false → 점수 누락, HIGH→MEDIUM 강등).
+  // unrounded 로 판정, 표시만 반올림.
   const HI_T = HIGH_INTENSITY_THRESHOLD_MIN;
   if (input.weeklyHighIntensityMin === null) {
     reasons.push("고강도(Z4+) 데이터 부족 (활동에 zoneDistribution 누락)");
-  } else {
+  } else if (input.weeklyHighIntensityMin > HI_T) {
+    score++;
     const zMin = Math.round(input.weeklyHighIntensityMin);
-    if (zMin > HI_T) {
-      score++;
-      reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HI_T})`);
-      recommendations.push("다음 7일 중 1~2회는 easy·회복 러닝으로 대체");
-    }
+    reasons.push(`고강도(Z4+) 주 ${zMin} 분 (> ${HI_T})`);
+    recommendations.push("다음 7일 중 1~2회는 easy·회복 러닝으로 대체");
   }
 
   const risk: MuscleLossVerdict["risk"] = score >= 3 ? "high" : score >= 2 ? "medium" : "low";

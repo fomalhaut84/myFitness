@@ -44,7 +44,7 @@ export async function getWeightLossStatus() {
   const kstRawWindowStart = new Date(kstTodayMidnight.getTime() - 6 * DAY_MS);
   const fourteenDaysAgo = daysAgo(13);
 
-  const [balances, weights, activities, profile] =
+  const [balances, weights, latestWeightRow, activities, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
         where: { date: { gte: kstRiskWindowStart } },
@@ -61,6 +61,13 @@ export async function getWeightLossStatus() {
         where: { date: { gte: fourteenDaysAgo } },
         select: { date: true, weight: true },
         orderBy: { date: "asc" },
+      }),
+      // Codex P2 (PR #301 20회차): risk assessor · currentWeight 는 14일 창 밖의 마지막 측정치라도
+      // 유효 (사용자가 14일 이상 체중 기록 안 하면 weights 가 비어 latestWeight null 로 protein/kg
+      // 판정 suppressed → HIGH/MEDIUM verdict downgrade). /nutrition 페이지와 동일하게 창 없이 최신.
+      prisma.bodyComposition.findFirst({
+        orderBy: { date: "desc" },
+        select: { weight: true },
       }),
       prisma.activity.findMany({
         where: { startTime: { gte: kstRiskWindowStart } },
@@ -143,7 +150,11 @@ export async function getWeightLossStatus() {
         }
       : null;
 
-  const latestWeight = weights.length > 0 ? weights[weights.length - 1].weight : null;
+  // Codex P2 (PR #301 20회차): 14일 창 밖의 last-known weight 도 허용 (risk 판정 · currentWeight
+  // response). 창 안이 있으면 그것이 최신이라 결과 동일.
+  const latestWeight =
+    latestWeightRow?.weight ??
+    (weights.length > 0 ? weights[weights.length - 1].weight : null);
 
   // Codex P2 (PR #300 14회차): raw 요약 활동도 today 포함 7일 유지. 8-day fetch 는 risk 계산 용.
   const activitiesRaw = activities.filter(
@@ -174,7 +185,9 @@ export async function getWeightLossStatus() {
     }
     return s + dist.z4 + dist.z5;
   }, 0);
-  const highIntensityMinutesRisk = Math.round(highIntensitySecondsRisk / 60);
+  // Codex P2 (PR #301 20회차): assessor 에 fractional minutes 전달 (반올림 없이). 30:20 초 →
+  // 30.33 분 → assessor 가 > 30 true → 점수 반영. 이전엔 Math.round 로 30 → false negative.
+  const highIntensityMinutesRiskExact = highIntensitySecondsRisk / 60;
   const highIntensitySecondsDisplay = activitiesRaw.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);
     if (!dist) return s;
@@ -183,11 +196,11 @@ export async function getWeightLossStatus() {
   const highIntensityMinutes = Math.round(highIntensitySecondsDisplay / 60);
   // Codex P2 (PR #300 13회차): measured lower bound 가 이미 threshold 초과면 known.
   const highIntensityMinutesForRisk =
-    highIntensityMinutesRisk > HIGH_INTENSITY_THRESHOLD_MIN
-      ? highIntensityMinutesRisk
+    highIntensityMinutesRiskExact > HIGH_INTENSITY_THRESHOLD_MIN
+      ? highIntensityMinutesRiskExact
       : missingZoneCountRisk > 0
         ? null
-        : highIntensityMinutesRisk;
+        : highIntensityMinutesRiskExact;
 
   // 경고 판정
   const warnings: string[] = [];
