@@ -197,11 +197,11 @@ export default async function NutritionPage() {
   // (예: P avg 는 1일치, C avg 는 다른 1일치, F avg 는 세 번째 날). completeMacroAvg 는
   // 세 값 전부 non-null 인 일자만으로 평균 → 물리적으로 성립하는 하루 조합만 노출.
   const completeAvg = averageCompleteMacros(macros7d);
-  // Codex P2 (PR #301 26회차): completeAvg 가 모두 null (7일 중 complete tuple 없음) 이지만
-  // partial 로그는 있는 경우 "기록 없음" 오해 방지. hasAnyData 로 partial 신호 전달.
-  const weeklyHasAnyData = macros7d.some(
-    (d) => d.kcal !== null || d.proteinG !== null || d.carbsG !== null || d.fatG !== null,
-  );
+  // Codex P2 (PR #301 26/27회차): completeAvg 가 모두 null (7일 중 complete tuple 없음) 이지만
+  // partial 로그는 있는 경우 "기록 없음" 오해 방지. itemCount > 0 = 로그 자체가 존재.
+  // 27회차: 필드값만 체크하면 estimation 전부 실패로 모든 nutrition 필드 null 인 날이 있어도
+  // "기록 없음" 처럼 보임 → itemCount 로 log-existence 판정.
+  const weeklyHasAnyData = macros7d.some((d) => d.itemCount > 0);
   const weeklyMacros = {
     proteinG: completeAvg.avgProteinG,
     carbsG: completeAvg.avgCarbsG,

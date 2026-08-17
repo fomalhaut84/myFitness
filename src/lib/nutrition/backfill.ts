@@ -171,9 +171,11 @@ export async function runFoodKcalBackfill(
 
       // 1) Repeat lookup
       try {
+        // Codex P2 (PR #301 27회차): r.mealType 이 null (null-meal 로그) 이면 그대로 null 전달.
+        // 이전엔 `?? undefined` 로 변환해 "no preference" 취급 → null-meal same-meal 우선순위 상실.
         const hit = await findRecentSameDescription(
           r.description,
-          r.mealType ?? undefined,
+          r.mealType,
           r.date,
           r.id,
         );
