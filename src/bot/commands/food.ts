@@ -6,7 +6,7 @@ import {
 } from "@/lib/nutrition/estimate-nutrition";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
-import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
+import { applyKcalCorrection, scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
@@ -232,9 +232,18 @@ export async function handleFoodInput(
     );
   }
 
+  // Codex P2 (PR #300 15회차): repeat hit 이 있어도 macros 가 partial 이면 AI 로 채워야 함.
+  // 이전엔 kcal 만 있으면 AI 스킵 → 새 로그가 partial 로 저장되고 backfill retry (max 3) 에 의존.
+  const repeatMacrosComplete =
+    repeatHit !== null &&
+    repeatHit.proteinG !== null &&
+    repeatHit.carbsG !== null &&
+    repeatHit.fatG !== null;
+  const needsAI = !repeatHit || !repeatMacrosComplete;
+
   // 사전 리뷰 P1-3: AI 호출 (~수초~15초) 중 사용자에게 "typing" 인디케이터 노출.
-  // repeat hit 이면 AI 호출 스킵이라 필요 없지만 lookup 결과 확정 후에 판단.
-  if (!repeatHit) {
+  // repeat hit 이 complete 이면 AI 호출 스킵이라 필요 없지만 lookup 결과 확정 후에 판단.
+  if (needsAI) {
     try {
       await ctx.replyWithChatAction?.("typing");
     } catch {
@@ -243,9 +252,9 @@ export async function handleFoodInput(
   }
 
   // 2b) AI 로 kcal + 매크로 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
-  //     실패해도 log 저장은 이미 성공. repeat hit 있으면 스킵.
+  //     실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
   let estimate: NutritionEstimate | null = null;
-  if (!repeatHit) {
+  if (needsAI) {
     try {
       estimate = await estimateNutritionFromText({ description, mealType });
     } catch (err) {
@@ -256,13 +265,34 @@ export async function handleFoodInput(
     }
   }
 
-  // 3) 결정된 kcal + 매크로 (repeatHit 우선, 없으면 AI estimate) 을 조건부 update.
-  //    Codex P2: update 가 transient 실패하면 결과를 null 로 되돌려 사용자 응답이 "실패" 경로로 감.
-  //    race 조건 (사용자 웹 정정 / description PATCH) 대응 위해 스냅샷 필드 매칭.
-  const decidedKcal = repeatHit?.kcal ?? estimate?.kcal ?? null;
-  const decidedProtein = repeatHit?.proteinG ?? estimate?.proteinG ?? null;
-  const decidedCarbs = repeatHit?.carbsG ?? estimate?.carbsG ?? null;
-  const decidedFat = repeatHit?.fatG ?? estimate?.fatG ?? null;
+  // 3) 결정된 kcal + 매크로.
+  //    - kcal: hit 우선 (consistency), 없으면 AI.
+  //    - macros: hit 이 complete 이면 hit, hit partial 이면 AI 로 채우되 hit.kcal 로 스케일.
+  //    - hit 없음: AI as-is.
+  let decidedKcal: number | null = repeatHit?.kcal ?? estimate?.kcal ?? null;
+  let decidedProtein: number | null;
+  let decidedCarbs: number | null;
+  let decidedFat: number | null;
+  if (repeatMacrosComplete && repeatHit) {
+    decidedProtein = repeatHit.proteinG;
+    decidedCarbs = repeatHit.carbsG;
+    decidedFat = repeatHit.fatG;
+  } else if (repeatHit && estimate) {
+    // hit.kcal 보존 + AI macros 를 hit.kcal 로 스케일.
+    decidedKcal = repeatHit.kcal;
+    const scaled = scaleMacrosForNewKcal(repeatHit.kcal, estimate.kcal, {
+      proteinG: estimate.proteinG,
+      carbsG: estimate.carbsG,
+      fatG: estimate.fatG,
+    });
+    decidedProtein = scaled.proteinG;
+    decidedCarbs = scaled.carbsG;
+    decidedFat = scaled.fatG;
+  } else {
+    decidedProtein = estimate?.proteinG ?? null;
+    decidedCarbs = estimate?.carbsG ?? null;
+    decidedFat = estimate?.fatG ?? null;
+  }
   if (decidedKcal !== null) {
     try {
       const updated = await prisma.foodLog.updateMany({
@@ -316,13 +346,15 @@ export async function handleFoodInput(
     lines.push(
       `📊 약 ${repeatHit.kcal.toLocaleString("ko-KR")} kcal (${dateLabel} 기록 재사용)`,
     );
-    const m = macroLine(repeatHit.proteinG, repeatHit.carbsG, repeatHit.fatG);
+    // Codex P2 (PR #300 15회차): 실제 저장된 macros 를 표시 (hit partial 이었으면 AI 스케일 값).
+    const m = macroLine(decidedProtein, decidedCarbs, decidedFat);
     if (m) lines.push(m);
   } else if (estimate) {
     lines.push(
       `📊 약 ${estimate.kcal.toLocaleString("ko-KR")} kcal (신뢰도 ${CONFIDENCE_LABEL[estimate.confidence]})`,
     );
-    const m = macroLine(estimate.proteinG, estimate.carbsG, estimate.fatG);
+    // no repeatHit → decided* === estimate.* (원본 값 그대로 노출).
+    const m = macroLine(decidedProtein, decidedCarbs, decidedFat);
     if (m) lines.push(m);
     if (estimate.notes) lines.push(`ℹ️ ${estimate.notes}`);
   } else {

@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -82,13 +83,20 @@ export async function POST(request: Request) {
     let proteinG: number | null = null;
     let carbsG: number | null = null;
     let fatG: number | null = null;
+    let hitKcal: number | null = null;
     try {
       const hit = await findRecentSameDescription(description, mealType, foodDate);
       if (hit) {
+        hitKcal = hit.kcal;
         estimatedKcal = hit.kcal;
-        proteinG = hit.proteinG;
-        carbsG = hit.carbsG;
-        fatG = hit.fatG;
+        // Codex P2 (PR #300 15회차): complete tuple 만 채택. lookup 이 complete 우선하지만
+        // window 내에 complete 매치가 없으면 partial 최신을 반환할 수 있음 → 부분값은 취하지 않고
+        // AI 로 채움 (아래).
+        if (hit.proteinG !== null && hit.carbsG !== null && hit.fatG !== null) {
+          proteinG = hit.proteinG;
+          carbsG = hit.carbsG;
+          fatG = hit.fatG;
+        }
       }
     } catch (lookupErr) {
       console.warn(
@@ -96,12 +104,30 @@ export async function POST(request: Request) {
         lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
       );
     }
-    if (estimatedKcal === null) {
+    // Codex P2 (PR #300 15회차): estimatedKcal null 이거나 macros 미완이면 AI 호출.
+    // hit.kcal 이 있는데 macros 만 부족한 경우: AI 로 macros 채우고 hit.kcal 에 맞춰 스케일
+    // (consistency 유지 · backfill retry 상한에 의존 안 함).
+    const macrosIncomplete = proteinG === null || carbsG === null || fatG === null;
+    if (estimatedKcal === null || macrosIncomplete) {
       const estimate = await estimateNutritionFromText({ description, mealType });
-      estimatedKcal = estimate?.kcal ?? null;
-      proteinG = estimate?.proteinG ?? null;
-      carbsG = estimate?.carbsG ?? null;
-      fatG = estimate?.fatG ?? null;
+      if (estimate) {
+        if (estimatedKcal === null) {
+          estimatedKcal = estimate.kcal;
+          proteinG = estimate.proteinG;
+          carbsG = estimate.carbsG;
+          fatG = estimate.fatG;
+        } else {
+          // hit.kcal 보존, AI macros 를 hit.kcal 로 스케일해 채움.
+          const scaled = scaleMacrosForNewKcal(hitKcal, estimate.kcal, {
+            proteinG: estimate.proteinG,
+            carbsG: estimate.carbsG,
+            fatG: estimate.fatG,
+          });
+          proteinG = scaled.proteinG;
+          carbsG = scaled.carbsG;
+          fatG = scaled.fatG;
+        }
+      }
     }
 
     // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.

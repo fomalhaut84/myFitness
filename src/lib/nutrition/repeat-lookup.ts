@@ -166,10 +166,20 @@ export async function findRecentSameDescription(
   const sameKey = pool.filter((r) => normalizeDescription(r.description) === targetKey);
   if (sameKey.length === 0) return null;
 
+  // Codex P2 (PR #300 15회차): 매크로 완전 tuple (P/C/F 셋 다 non-null) 을 partial 최신보다
+  // 우선. 이전엔 최신 partial 이 뽑혀 새 로그가 partial 로 저장되고 backfill 재시도 상한
+  // (MAX_NUTRITION_ATTEMPTS=3) 안에서만 채워지는 취약 경로에 의존. window 내에 이전 complete
+  // 로그가 있으면 그 값을 재사용해 즉시 complete tuple 확보.
+  const isComplete = (r: (typeof sameKey)[number]): boolean =>
+    r.proteinG !== null && r.carbsG !== null && r.fatG !== null;
+  const sameMealComplete = mealType
+    ? sameKey.find((r) => r.mealType === mealType && isComplete(r))
+    : undefined;
+  const anyComplete = sameKey.find(isComplete);
   const sameMeal = mealType
     ? sameKey.find((r) => r.mealType === mealType)
     : undefined;
-  const chosen = sameMeal ?? sameKey[0];
+  const chosen = sameMealComplete ?? anyComplete ?? sameMeal ?? sameKey[0];
 
   if (chosen.estimatedKcal === null) return null;
   return {

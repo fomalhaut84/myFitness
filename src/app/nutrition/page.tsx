@@ -72,7 +72,12 @@ export default async function NutritionPage() {
         select: { date: true, calorieBalance: true },
       }),
       prisma.activity.findMany({
-        where: { startTime: { gte: eightDaysAgo } },
+        // Codex P2 (PR #300 15회차): 활동도 risk 계산 전용 (page 는 활동 표시 없음) → 완료된
+        // KST 7일 (today-7 <= startTime < today) 로 제한. 이전엔 상한 없이 오늘 활동도 포함되어
+        // 오후 Z4/Z5 workout 이 score 를 30분 threshold 위로 밀어 verdict 순간 변동.
+        // 단백질 · 결손 입력은 이미 오늘 필터 (validBalancesCompleted / macros7dCompleted) 인데
+        // 활동만 8일/mixed window 라 판정이 일관되지 않았음.
+        where: { startTime: { gte: eightDaysAgo, lt: todayStart } },
         // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해야 함.
         select: { zoneDistribution: true },
       }),
