@@ -100,11 +100,18 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
   const isPartial = derivedKcal === null && hasAnyMacro(active);
   const isEmpty = !hasAnyMacro(active) && active.kcal === null;
   // Codex P2 (PR #300 4회차): null 인 macro 는 세그먼트에 표시 안 함 (0 취급 X).
-  const segments: DonutSeg[] = [
-    ...(active.proteinG !== null ? [{ value: active.proteinG * 4, color: P_COLOR }] : []),
-    ...(active.carbsG !== null ? [{ value: active.carbsG * 4, color: C_COLOR }] : []),
-    ...(active.fatG !== null ? [{ value: active.fatG * 9, color: F_COLOR }] : []),
-  ];
+  // Codex P2 (PR #301 23회차): partial (예: P 만 있고 C/F null) 이면 남은 슬라이스가 total 로
+  // 정규화되어 "100% 단백질" 원으로 오해. derivedKcal 이 null 이면 비율 자체가 무의미 →
+  // 세그먼트를 전혀 렌더링 안 함 (빈 링 + "부분 미측정" 센터 라벨). complete tuple 일 때만
+  // 실제 비율 표시.
+  const segments: DonutSeg[] =
+    derivedKcal !== null
+      ? [
+          { value: (active.proteinG as number) * 4, color: P_COLOR },
+          { value: (active.carbsG as number) * 4, color: C_COLOR },
+          { value: (active.fatG as number) * 9, color: F_COLOR },
+        ]
+      : [];
   const pKg = active.proteinG !== null && bodyWeightKg
     ? active.proteinG / bodyWeightKg
     : null;

@@ -166,25 +166,20 @@ export async function findRecentSameDescription(
   const sameKey = pool.filter((r) => normalizeDescription(r.description) === targetKey);
   if (sameKey.length === 0) return null;
 
-  // Codex P2 (PR #300 15회차): 매크로 완전 tuple (P/C/F 셋 다 non-null) 을 partial 최신보다
-  // 우선. 이전엔 최신 partial 이 뽑혀 새 로그가 partial 로 저장되고 backfill 재시도 상한
-  // (MAX_NUTRITION_ATTEMPTS=3) 안에서만 채워지는 취약 경로에 의존. window 내에 이전 complete
-  // 로그가 있으면 그 값을 재사용해 즉시 complete tuple 확보.
-  // Codex P2 (PR #301 16회차): 같은 mealType 을 cross-meal completeness 보다 앞에.
-  // 이전엔 anyComplete 가 sameMeal partial 을 이겨서 아침 로그가 같은 desc 의 저녁 항목
-  // kcal/macros 를 재사용하는 오답 발생 (mealType 이 다르면 양이 다를 가능성).
-  // 새 우선순위: sameMealComplete → sameMeal (partial 은 AI 가 macros 채움) →
-  // anyComplete (mealType 지정 없거나 매치 없을 때만) → sameKey[0] (그 외 최신).
+  // Codex P2 (PR #300 15회차): 매크로 완전 tuple 을 partial 최신보다 우선 (backfill retry 의존
+  // 회피). PR #301 16회차: 같은 mealType 을 cross-meal completeness 보다 앞에.
+  // Codex P2 (PR #301 23회차): 같은 mealType 안에서도 "newest same-meal" 이 "older complete
+  // same-meal" 을 이겨야 함. 사용자가 오늘 아침 700 kcal 로 정정 (macros 재추정 대기) 하면
+  // 다음 아침 로그가 어제 500 kcal complete 를 재사용해 정정값 소실. sameMeal (newest, complete
+  // 여부 무관) → anyComplete (cross-meal) → sameKey[0] (최종 fallback). partial 은 caller 가
+  // AI 로 macros 채움 (POST /api/food, bot/food).
   const isComplete = (r: (typeof sameKey)[number]): boolean =>
     r.proteinG !== null && r.carbsG !== null && r.fatG !== null;
-  const sameMealComplete = mealType
-    ? sameKey.find((r) => r.mealType === mealType && isComplete(r))
-    : undefined;
   const sameMeal = mealType
     ? sameKey.find((r) => r.mealType === mealType)
     : undefined;
   const anyComplete = sameKey.find(isComplete);
-  const chosen = sameMealComplete ?? sameMeal ?? anyComplete ?? sameKey[0];
+  const chosen = sameMeal ?? anyComplete ?? sameKey[0];
 
   if (chosen.estimatedKcal === null) return null;
   return {
