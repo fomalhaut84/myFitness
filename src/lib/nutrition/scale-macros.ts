@@ -102,18 +102,21 @@ export function scaleMacrosForNewKcal(
   if (newKcal === null) {
     return { proteinG: null, carbsG: null, fatG: null, resetAttempts: true };
   }
-  if (oldKcal === null || oldKcal <= 0) {
-    // 스케일 기준 없음 → macros null 로 리셋해 backfill 이 재추정.
-    return { proteinG: null, carbsG: null, fatG: null, resetAttempts: true };
-  }
+  // Codex P2 (PR #301 19회차): no-op 재제출 (newKcal === oldKcal) 을 oldKcal <= 0 체크 앞으로.
+  // 이전엔 zero-kcal 로그 (물·다이어트 콜라 등, macros 도 0) 을 [수정] → 0 그대로 재제출 시
+  // oldKcal <= 0 이 먼저 걸려 완전한 nutrition 데이터를 null 로 리셋 + attempts 초기화 → 재
+  // backfill 사이클 유발. 값 자체가 안 바뀌면 그대로 유지.
   if (newKcal === oldKcal) {
-    // 값이 그대로면 macros 도 그대로.
     return {
       proteinG: oldMacros.proteinG,
       carbsG: oldMacros.carbsG,
       fatG: oldMacros.fatG,
       resetAttempts: false,
     };
+  }
+  if (oldKcal === null || oldKcal <= 0) {
+    // 스케일 기준 없음 → macros null 로 리셋해 backfill 이 재추정.
+    return { proteinG: null, carbsG: null, fatG: null, resetAttempts: true };
   }
   const ratio = newKcal / oldKcal;
   const scale1 = (v: number | null): number | null =>
