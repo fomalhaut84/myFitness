@@ -49,9 +49,23 @@ export async function PATCH(request: Request, ctx: Params) {
     // Codex P2 (PR #300 4회차): 우선순위 정리.
     // 1) description/mealType 변경이 포함되면 항상 macros 를 클리어 (kcal 유무 무관).
     // 2) 그 외에 kcal 만 정정 → macros 를 새 kcal 비율로 스케일.
+    // Codex P2 (PR #301 24회차): field 존재만으로 changed 판정 시 client 가 full-form patch
+    // (description/mealType 원본값 포함, kcal 만 변경) 를 보낼 때 unchanged 값도 macros clear
+    // 를 유발 → row 가 backfill 큐로 재진입 → attempts 상한 초과 시 permanent 부분 미측정.
+    // stored row 와 실제 값 비교로 판단.
+    const existing = await prisma.foodLog.findUnique({
+      where: { id },
+      select: { description: true, mealType: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+    }
+    const descChanged =
+      data.description !== undefined && data.description !== existing.description;
+    const mealChanged =
+      data.mealType !== undefined && data.mealType !== existing.mealType;
+    const descOrMealChanged = descChanged || mealChanged;
     const updateData: Record<string, unknown> = { ...data };
-    const descOrMealChanged =
-      data.description !== undefined || data.mealType !== undefined;
     let updated: {
       id: string;
       date: Date;
