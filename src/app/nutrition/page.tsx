@@ -167,36 +167,48 @@ export default async function NutritionPage() {
         carbsG: null as number | null,
         fatG: null as number | null,
         kcal: null as number | null,
+        hasAnyData: false,
       }
-    : todayLogs.reduce<{
-        proteinG: number | null;
-        carbsG: number | null;
-        fatG: number | null;
-        kcal: number | null;
-      }>(
-        (acc, r) => ({
-          proteinG:
-            acc.proteinG === null ? null : r.proteinG === null ? null : acc.proteinG + r.proteinG,
-          carbsG:
-            acc.carbsG === null ? null : r.carbsG === null ? null : acc.carbsG + r.carbsG,
-          fatG: acc.fatG === null ? null : r.fatG === null ? null : acc.fatG + r.fatG,
-          kcal:
-            acc.kcal === null ? null : r.estimatedKcal === null ? null : acc.kcal + r.estimatedKcal,
-        }),
-        { proteinG: 0, carbsG: 0, fatG: 0, kcal: 0 },
-      );
+    : {
+        ...todayLogs.reduce<{
+          proteinG: number | null;
+          carbsG: number | null;
+          fatG: number | null;
+          kcal: number | null;
+        }>(
+          (acc, r) => ({
+            proteinG:
+              acc.proteinG === null ? null : r.proteinG === null ? null : acc.proteinG + r.proteinG,
+            carbsG:
+              acc.carbsG === null ? null : r.carbsG === null ? null : acc.carbsG + r.carbsG,
+            fatG: acc.fatG === null ? null : r.fatG === null ? null : acc.fatG + r.fatG,
+            kcal:
+              acc.kcal === null ? null : r.estimatedKcal === null ? null : acc.kcal + r.estimatedKcal,
+          }),
+          { proteinG: 0, carbsG: 0, fatG: 0, kcal: 0 },
+        ),
+        // Codex P2 (PR #301 26회차): 오늘 로그가 존재하면 hasAnyData true (모든 macro/kcal 이
+        // null 로 propagate 되어도 partial 로 표시).
+        hasAnyData: true,
+      };
 
   // Codex P2 (PR #300 6회차): 도넛/밸런스 UI 는 하루의 P/C/F 조합 비율이 의미 있는 지표.
   // 세 필드 독립 평균 (averageMacros) 을 합치면 실존하지 않는 day 를 만들 수 있음
   // (예: P avg 는 1일치, C avg 는 다른 1일치, F avg 는 세 번째 날). completeMacroAvg 는
   // 세 값 전부 non-null 인 일자만으로 평균 → 물리적으로 성립하는 하루 조합만 노출.
   const completeAvg = averageCompleteMacros(macros7d);
+  // Codex P2 (PR #301 26회차): completeAvg 가 모두 null (7일 중 complete tuple 없음) 이지만
+  // partial 로그는 있는 경우 "기록 없음" 오해 방지. hasAnyData 로 partial 신호 전달.
+  const weeklyHasAnyData = macros7d.some(
+    (d) => d.kcal !== null || d.proteinG !== null || d.carbsG !== null || d.fatG !== null,
+  );
   const weeklyMacros = {
     proteinG: completeAvg.avgProteinG,
     carbsG: completeAvg.avgCarbsG,
     fatG: completeAvg.avgFatG,
     // Codex P2 (PR #300 12회차): 도넛 센터용 저장 kcal 평균 (macro-derived 대신).
     kcal: completeAvg.avgKcal,
+    hasAnyData: weeklyHasAnyData,
   };
 
   const trendPoints = macros7d.map((d) => ({ date: d.date, proteinG: d.proteinG }));
