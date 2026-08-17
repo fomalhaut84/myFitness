@@ -65,7 +65,13 @@ export async function PATCH(request: Request, ctx: Params) {
     const mealChanged =
       data.mealType !== undefined && data.mealType !== existing.mealType;
     const descOrMealChanged = descChanged || mealChanged;
+    // Codex P2 (PR #301 25회차): stale-read race 방지 — classified as no-op 인 필드는
+    // 최종 write payload 에서 제거. 이전 approach 는 existing 을 읽고 판정한 뒤 여전히
+    // description/mealType 을 payload 에 포함시켜 update → 그 사이 다른 PATCH 가 description
+    // 을 Y 로 바꾸고 macros 도 populate 됐다면 A 의 stale X 로 덮어써서 macros mismatch 발생.
     const updateData: Record<string, unknown> = { ...data };
+    if (data.description !== undefined && !descChanged) delete updateData.description;
+    if (data.mealType !== undefined && !mealChanged) delete updateData.mealType;
     let updated: {
       id: string;
       date: Date;
@@ -73,6 +79,17 @@ export async function PATCH(request: Request, ctx: Params) {
       description: string;
       mealType: string | null;
     };
+    // 모든 필드가 no-op (오직 unchanged desc/mealType 만 submit) 이면 DB 건드리지 않고 기존 반환.
+    if (Object.keys(updateData).length === 0) {
+      const existingFull = await prisma.foodLog.findUnique({
+        where: { id },
+        select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+      });
+      if (!existingFull) {
+        return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+      }
+      return NextResponse.json({ data: existingFull });
+    }
     if (descOrMealChanged) {
       if (data.estimatedKcal === undefined) updateData.estimatedKcal = null;
       updateData.proteinG = null;
