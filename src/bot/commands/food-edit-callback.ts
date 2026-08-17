@@ -9,6 +9,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { deletePendingEdit, markPendingEdit, peekPendingEdit } from "./food-edit-state";
+import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
 
 export const CALLBACK_PREFIX = "food";
 
@@ -225,11 +226,26 @@ export async function handleFoodEditReply(ctx: {
   }
 
   try {
-    const updated = await prisma.foodLog.update({
+    // Codex P2 (PR #300 4회차/8회차): kcal 정정 concurrency-safe helper.
+    const correction = await applyKcalCorrection(prisma, logId, kcal);
+    if (!correction.ok) {
+      if (correction.reason === "not-found") {
+        deletePendingEdit(chatId, replyToId);
+        await ctx.reply("이미 삭제된 로그입니다.");
+      } else {
+        await ctx.reply("동시 수정 감지, 잠시 후 다시 시도해주세요.");
+      }
+      return true;
+    }
+    const updated = await prisma.foodLog.findUnique({
       where: { id: logId },
-      data: { estimatedKcal: kcal },
       select: { date: true, description: true },
     });
+    if (!updated) {
+      deletePendingEdit(chatId, replyToId);
+      await ctx.reply("이미 삭제된 로그입니다.");
+      return true;
+    }
     try {
       await recalculateCalorieBalance(updated.date, undefined, prisma);
     } catch (recalcErr) {

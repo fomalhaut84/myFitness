@@ -1,8 +1,12 @@
 import prisma from "../prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
-import { estimateKcalFromText, type KcalEstimate } from "@/lib/nutrition/estimate-kcal";
+import {
+  estimateNutritionFromText,
+  type NutritionEstimate,
+} from "@/lib/nutrition/estimate-nutrition";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
+import { applyKcalCorrection, scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 
 /**
@@ -49,7 +53,7 @@ const MEAL_LABELS: Record<string, string> = {
   snack: "간식",
 };
 
-const CONFIDENCE_LABEL: Record<KcalEstimate["confidence"], string> = {
+const CONFIDENCE_LABEL: Record<NutritionEstimate["confidence"], string> = {
   low: "낮음",
   med: "중간",
   high: "높음",
@@ -228,9 +232,18 @@ export async function handleFoodInput(
     );
   }
 
+  // Codex P2 (PR #300 15회차): repeat hit 이 있어도 macros 가 partial 이면 AI 로 채워야 함.
+  // 이전엔 kcal 만 있으면 AI 스킵 → 새 로그가 partial 로 저장되고 backfill retry (max 3) 에 의존.
+  const repeatMacrosComplete =
+    repeatHit !== null &&
+    repeatHit.proteinG !== null &&
+    repeatHit.carbsG !== null &&
+    repeatHit.fatG !== null;
+  const needsAI = !repeatHit || !repeatMacrosComplete;
+
   // 사전 리뷰 P1-3: AI 호출 (~수초~15초) 중 사용자에게 "typing" 인디케이터 노출.
-  // repeat hit 이면 AI 호출 스킵이라 필요 없지만 lookup 결과 확정 후에 판단.
-  if (!repeatHit) {
+  // repeat hit 이 complete 이면 AI 호출 스킵이라 필요 없지만 lookup 결과 확정 후에 판단.
+  if (needsAI) {
     try {
       await ctx.replyWithChatAction?.("typing");
     } catch {
@@ -238,24 +251,48 @@ export async function handleFoodInput(
     }
   }
 
-  // 2b) AI 로 kcal 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
-  //     실패해도 log 저장은 이미 성공. repeat hit 있으면 스킵.
-  let estimate: KcalEstimate | null = null;
-  if (!repeatHit) {
+  // 2b) AI 로 kcal + 매크로 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
+  //     실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
+  let estimate: NutritionEstimate | null = null;
+  if (needsAI) {
     try {
-      estimate = await estimateKcalFromText({ description, mealType });
+      estimate = await estimateNutritionFromText({ description, mealType });
     } catch (err) {
       console.warn(
-        "[bot/food] kcal 추정 예외 (log 저장은 완료):",
+        "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
         err instanceof Error ? err.message : String(err),
       );
     }
   }
 
-  // 3) 결정된 kcal (repeatHit 우선, 없으면 AI estimate) 을 조건부 update.
-  //    Codex P2: update 가 transient 실패하면 결과를 null 로 되돌려 사용자 응답이 "실패" 경로로
-  //    감. race 조건 (사용자 웹 정정 / description PATCH) 대응 위해 스냅샷 필드 매칭.
-  const decidedKcal = repeatHit?.kcal ?? estimate?.kcal ?? null;
+  // 3) 결정된 kcal + 매크로.
+  //    - kcal: hit 우선 (consistency), 없으면 AI.
+  //    - macros: hit 이 complete 이면 hit, hit partial 이면 AI 로 채우되 hit.kcal 로 스케일.
+  //    - hit 없음: AI as-is.
+  let decidedKcal: number | null = repeatHit?.kcal ?? estimate?.kcal ?? null;
+  let decidedProtein: number | null;
+  let decidedCarbs: number | null;
+  let decidedFat: number | null;
+  if (repeatMacrosComplete && repeatHit) {
+    decidedProtein = repeatHit.proteinG;
+    decidedCarbs = repeatHit.carbsG;
+    decidedFat = repeatHit.fatG;
+  } else if (repeatHit && estimate) {
+    // hit.kcal 보존 + AI macros 를 hit.kcal 로 스케일.
+    decidedKcal = repeatHit.kcal;
+    const scaled = scaleMacrosForNewKcal(repeatHit.kcal, estimate.kcal, {
+      proteinG: estimate.proteinG,
+      carbsG: estimate.carbsG,
+      fatG: estimate.fatG,
+    });
+    decidedProtein = scaled.proteinG;
+    decidedCarbs = scaled.carbsG;
+    decidedFat = scaled.fatG;
+  } else {
+    decidedProtein = estimate?.proteinG ?? null;
+    decidedCarbs = estimate?.carbsG ?? null;
+    decidedFat = estimate?.fatG ?? null;
+  }
   if (decidedKcal !== null) {
     try {
       const updated = await prisma.foodLog.updateMany({
@@ -265,16 +302,20 @@ export async function handleFoodInput(
           description,
           mealType,
         },
-        data: { estimatedKcal: decidedKcal },
+        data: {
+          estimatedKcal: decidedKcal,
+          proteinG: decidedProtein,
+          carbsG: decidedCarbs,
+          fatG: decidedFat,
+        },
       });
       if (updated.count === 0) {
-        // 사용자가 그 사이 수동 정정 or description 변경 → 반영 안 함. "실패" 경로.
         repeatHit = null;
         estimate = null;
       }
     } catch (err) {
       console.warn(
-        "[bot/food] estimatedKcal update 실패:",
+        "[bot/food] nutrition update 실패:",
         err instanceof Error ? err.message : String(err),
       );
       repeatHit = null;
@@ -291,6 +332,11 @@ export async function handleFoodInput(
   //    사용자가 [수정] 로 바로 정정 가능).
   const label = MEAL_LABELS[mealType];
   const lines = [`✅ ${label} 기록 완료`, `📝 ${description}`];
+  // #299: 매크로가 확정됐으면 kcal 옆에 P/C/F g 병기.
+  const macroLine = (p: number | null, c: number | null, f: number | null): string | null => {
+    if (p === null || c === null || f === null) return null;
+    return `🥩 P ${Math.round(p)}g · C ${Math.round(c)}g · F ${Math.round(f)}g`;
+  };
   if (repeatHit) {
     const dateLabel = repeatHit.date.toLocaleDateString("ko-KR", {
       timeZone: "Asia/Seoul",
@@ -300,10 +346,16 @@ export async function handleFoodInput(
     lines.push(
       `📊 약 ${repeatHit.kcal.toLocaleString("ko-KR")} kcal (${dateLabel} 기록 재사용)`,
     );
+    // Codex P2 (PR #300 15회차): 실제 저장된 macros 를 표시 (hit partial 이었으면 AI 스케일 값).
+    const m = macroLine(decidedProtein, decidedCarbs, decidedFat);
+    if (m) lines.push(m);
   } else if (estimate) {
     lines.push(
       `📊 약 ${estimate.kcal.toLocaleString("ko-KR")} kcal (신뢰도 ${CONFIDENCE_LABEL[estimate.confidence]})`,
     );
+    // no repeatHit → decided* === estimate.* (원본 값 그대로 노출).
+    const m = macroLine(decidedProtein, decidedCarbs, decidedFat);
+    if (m) lines.push(m);
     if (estimate.notes) lines.push(`ℹ️ ${estimate.notes}`);
   } else {
     lines.push("⚠️ kcal 자동 추정 실패 — [수정] 버튼으로 직접 입력하세요");
@@ -335,11 +387,25 @@ export async function handleFoodKcalCommand(
     return;
   }
   try {
-    const updated = await prisma.foodLog.update({
+    // Codex P2 (PR #300 4회차/8회차): kcal 정정 concurrency-safe (fetch → scale → snapshot
+    // matched update, 최대 3회 재시도). backfill 이 사이에 macros 를 채운 경우 stomp 방지.
+    const correction = await applyKcalCorrection(prisma, id, kcal);
+    if (!correction.ok) {
+      if (correction.reason === "not-found") {
+        await ctx.reply(`해당 id 를 찾을 수 없습니다: ${id}`);
+      } else {
+        await ctx.reply("동시 수정 감지, 잠시 후 다시 시도해주세요.");
+      }
+      return;
+    }
+    const updated = await prisma.foodLog.findUnique({
       where: { id },
-      data: { estimatedKcal: kcal },
       select: { date: true, description: true, mealType: true },
     });
+    if (!updated) {
+      await ctx.reply(`해당 id 를 찾을 수 없습니다: ${id}`);
+      return;
+    }
     // Codex P2: 재계산 실패해도 kcal 은 이미 저장됨 → 백필이 이 row 를 다시 안 뽑음 →
     // DailySummary 가 stale 로 남을 수 있음 (특히 historical 로그, cron 2일 창 밖).
     // 즉시 1회 재시도. 그래도 실패면 사용자에게 명시 경고.

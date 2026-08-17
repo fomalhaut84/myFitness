@@ -29,6 +29,8 @@ model UserProfile {
   personalGoalNote String?           // 커스텀 텍스트 목표 (자유 입력)
   // M13 Phase 1 (#243): auto-adjust 사전 알림 활성화 여부 (기본 활성).
   autoAdjustEnabled Boolean          @default(true)
+  // M14 Phase 2 #3 (#299): 단백질 목표 g/kg 체중. 러너 권장 1.6 기본.
+  proteinTargetPerKg Float?          @default(1.6)
   // Garmin 자동 싱크 (#85)
   vo2maxRunning        Float?    // Garmin VO2max
   maxHRSource          String?   // "manual" | "garmin"
@@ -256,6 +258,14 @@ model FoodLog {
   date          DateTime
   description   String
   estimatedKcal Int?
+  // M14 Phase 2 #3 (#299): 매크로 (g). 부분 미측정 허용 — 하나라도 null 이면 일별 total 도 null propagate.
+  proteinG      Float?
+  carbsG        Float?
+  fatG          Float?
+  // Codex P2 (PR #300): AI 재추정 시도 카운터. MAX 초과 시 macro null 인 채로 permanent
+  // (매 tick 무한 재호출 방지). weatherAttempts 패턴 (#269) 재사용. PATCH 로 description
+  // 바뀌면 리셋해 새 컨텍스트로 재추정.
+  nutritionAttempts Int?
   mealType      String?
   createdAt     DateTime @default(now())
 

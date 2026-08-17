@@ -111,6 +111,10 @@ export function normalizeDescription(description: string): string {
 export interface RepeatLookupHit {
   logId: string;
   kcal: number;
+  // #299 (M14 Phase 2 #3): P/C/F 매크로 재사용. null 은 원본 로그가 매크로 미측정.
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
   date: Date;
   mealType: string | null;
   description: string;
@@ -123,11 +127,14 @@ export interface RepeatLookupHit {
  *   - Codex P2 (#296): 미래 날짜 로그 배제 위해 date lte(now) 상한 추가.
  *   - Codex P2 (#296): referenceDate 인자로 target 시각 기준 창을 사용 — backdated 로그나
  *     backfill 이 옛 row 처리 시 그 시점 기준 preceding history 만 매치.
+ *   - Codex P2 (PR #300 5회차): excludeLogId — 자기 자신 매치 방지 (backfill 이 macro-partial
+ *     row 를 처리할 때 자기 row 가 최상위로 뽑혀 macro null 이 null 을 채우려는 무의미 경로).
  */
 export async function findRecentSameDescription(
   description: string,
   mealType?: string | null,
   referenceDate?: Date,
+  excludeLogId?: string,
 ): Promise<RepeatLookupHit | null> {
   const targetKey = normalizeDescription(description);
   if (!targetKey) return null;
@@ -140,6 +147,7 @@ export async function findRecentSameDescription(
     where: {
       date: { gte: since, lte: ref },
       estimatedKcal: { not: null },
+      ...(excludeLogId ? { id: { not: excludeLogId } } : {}),
     },
     orderBy: { date: "desc" },
     select: {
@@ -147,6 +155,9 @@ export async function findRecentSameDescription(
       description: true,
       mealType: true,
       estimatedKcal: true,
+      proteinG: true,
+      carbsG: true,
+      fatG: true,
       date: true,
     },
     take: POOL_CAP,
@@ -155,15 +166,28 @@ export async function findRecentSameDescription(
   const sameKey = pool.filter((r) => normalizeDescription(r.description) === targetKey);
   if (sameKey.length === 0) return null;
 
+  // Codex P2 (PR #300 15회차): 매크로 완전 tuple (P/C/F 셋 다 non-null) 을 partial 최신보다
+  // 우선. 이전엔 최신 partial 이 뽑혀 새 로그가 partial 로 저장되고 backfill 재시도 상한
+  // (MAX_NUTRITION_ATTEMPTS=3) 안에서만 채워지는 취약 경로에 의존. window 내에 이전 complete
+  // 로그가 있으면 그 값을 재사용해 즉시 complete tuple 확보.
+  const isComplete = (r: (typeof sameKey)[number]): boolean =>
+    r.proteinG !== null && r.carbsG !== null && r.fatG !== null;
+  const sameMealComplete = mealType
+    ? sameKey.find((r) => r.mealType === mealType && isComplete(r))
+    : undefined;
+  const anyComplete = sameKey.find(isComplete);
   const sameMeal = mealType
     ? sameKey.find((r) => r.mealType === mealType)
     : undefined;
-  const chosen = sameMeal ?? sameKey[0];
+  const chosen = sameMealComplete ?? anyComplete ?? sameMeal ?? sameKey[0];
 
   if (chosen.estimatedKcal === null) return null;
   return {
     logId: chosen.id,
     kcal: chosen.estimatedKcal,
+    proteinG: chosen.proteinG,
+    carbsG: chosen.carbsG,
+    fatG: chosen.fatG,
     date: chosen.date,
     mealType: chosen.mealType,
     description: chosen.description,
