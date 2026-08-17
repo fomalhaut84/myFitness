@@ -52,13 +52,20 @@ export const HIGH_INTENSITY_THRESHOLD_MIN = 30;
 const fmt1 = (n: number): string => (Math.round(n * 10) / 10).toFixed(1);
 
 /**
- * Codex P2 (PR #305 21회차): threshold 초과 값 표시. 반올림해 threshold 와 같아지면
- * (예: 500.4 → 500) `500 kcal (> 500)` 처럼 모순되는 reason 문자열 생성. 반올림이
- * threshold 를 넘지 못하면 1자리 소수로 표시해 정직하게 초과 사실 노출.
+ * Codex P2 (PR #305 21/22회차): threshold 초과 값 표시. 반올림해 threshold 와 같아지면
+ * (예: 500.4 → 500, 30.0167 → 30.0) `500 kcal (> 500)` 처럼 모순되는 reason 문자열 생성.
+ * adaptive precision — 정수 → 1자리 → 2자리 → … 순으로 반올림해 threshold 를 명확히 넘는
+ * 첫 표기를 선택 (sub-tenth crossing 도 정확히 노출). 극도로 근접하면 원본값 그대로.
  */
 function fmtAboveThreshold(v: number, threshold: number): string {
   const r = Math.round(v);
-  return r > threshold ? String(r) : (Math.round(v * 10) / 10).toFixed(1);
+  if (r > threshold) return String(r);
+  for (let dec = 1; dec <= 4; dec++) {
+    const factor = 10 ** dec;
+    const disp = Math.round(v * factor) / factor;
+    if (disp > threshold) return disp.toFixed(dec);
+  }
+  return v.toString();
 }
 
 export function assessMuscleLossRisk(input: MuscleLossInput): MuscleLossVerdict {

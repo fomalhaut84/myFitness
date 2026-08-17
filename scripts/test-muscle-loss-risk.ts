@@ -211,6 +211,29 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 1, reasonContains: "일평균 결손 550 kcal (> 500)" },
   },
+  {
+    // Codex P2 (PR #305 22회차): sub-tenth crossing (30:01 = 30.0167 분) 도 adaptive precision
+    // 으로 threshold 초과 명확히 표시. 1자리 반올림으로는 30.0 이라 여전히 모순.
+    label: "고강도 sub-tenth (30.0167 분 = 30:01 초) — 2자리로 30.02 표시",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 30 + 1 / 60,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1, reasonContains: "고강도(Z4+) 주 30.02 분 (> 30)" },
+  },
+  {
+    // Codex P2 (PR #305 22회차): 결손 sub-tenth (500.02) 도 동일.
+    label: "결손 sub-tenth (500.02 kcal) — 2자리로 500.02 표시",
+    input: {
+      weeklyCalorieDeficit: 500.02,
+      avgProteinPerKg: 1.8,
+      weeklyHighIntensityMin: 10,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 1, reasonContains: "일평균 결손 500.02 kcal (> 500)" },
+  },
 ];
 
 let allPass = true;
