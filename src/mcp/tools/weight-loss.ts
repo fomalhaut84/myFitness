@@ -264,12 +264,13 @@ export async function getWeightLossStatus() {
     (b): b is typeof b & { calorieBalance: number } =>
       b.date.getTime() < kstTodayMidnight.getTime() && b.calorieBalance !== null,
   );
+  // Codex P2 (PR #305 21회차): fractional balance 도 assessor 로 전달 (반올림 없이).
+  // -500.4 → 500.4 deficit → assessor 가 > 500 true. 이전 Math.round 는 500 → false negative.
+  // /nutrition 페이지와 판정 일관성 확보.
   const avgDailyBalanceCompleted =
     withBalanceCompleted.length > 0
-      ? Math.round(
-          withBalanceCompleted.reduce((s, b) => s + b.calorieBalance, 0) /
-            withBalanceCompleted.length,
-        )
+      ? withBalanceCompleted.reduce((s, b) => s + b.calorieBalance, 0) /
+        withBalanceCompleted.length
       : null;
   const deficitInput =
     avgDailyBalanceCompleted !== null &&
