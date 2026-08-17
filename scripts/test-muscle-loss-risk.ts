@@ -160,6 +160,19 @@ const cases: Case[] = [
     },
     expect: { risk: "low", score: 0 },
   },
+  {
+    // Codex P2 (PR #301 17회차): threshold 근처 unrounded 값이 반올림 없이 assessor 로.
+    // proteinFloor = 1.6 × 0.9 = 1.44. avgProteinPerKg = 1.441 (raw) → 반올림하면 1.4 로
+    // false positive. unrounded 로 판정 시 1.441 >= 1.44 → 점수 반영 안 됨.
+    label: "단백질 threshold 경계 (1.441 g/kg) — unrounded 로 판정, score 반영 안 함",
+    input: {
+      weeklyCalorieDeficit: 200,
+      avgProteinPerKg: 1.441,
+      weeklyHighIntensityMin: 20,
+      proteinTargetPerKg: 1.6,
+    },
+    expect: { risk: "low", score: 0 },
+  },
 ];
 
 let allPass = true;

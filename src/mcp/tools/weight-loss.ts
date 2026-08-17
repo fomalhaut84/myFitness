@@ -231,13 +231,14 @@ export async function getWeightLossStatus() {
       ? Math.round((macroAvg.avgProteinG / latestWeight) * 10) / 10
       : null;
   // Codex P2 (PR #300 13회차): risk assessor 는 완료된 KST 일자 기준.
-  const proteinPerKgCompleted =
-    macroAvgCompleted.avgProteinG !== null && latestWeight
-      ? Math.round((macroAvgCompleted.avgProteinG / latestWeight) * 10) / 10
-      : null;
+  // Codex P2 (PR #301 17회차): 반올림 (Math.round(x*10)/10) 을 판정 전에 하면 threshold 근처
+  // (예: 1.441 → 1.4) 에서 오답 (< 1.44 로 오탐되어 low-protein 점수 +1). full precision 을
+  // risk assessor 에 전달. 표시용 반올림은 assessor 내부에서 이미 fmt1 로 처리.
   const proteinPerKg =
+    macroAvgCompleted.avgProteinG !== null &&
+    latestWeight &&
     macroAvgCompleted.daysWithProtein >= MIN_PROTEIN_DAYS_FOR_ASSESSMENT
-      ? proteinPerKgCompleted
+      ? macroAvgCompleted.avgProteinG / latestWeight
       : null;
   const proteinTarget = profile?.proteinTargetPerKg ?? 1.6;
   // Codex P2 (PR #300 13회차): 결손 평균도 완료된 KST 일자만. 오늘 부분값 (진행 중 kcal deficit) 이
