@@ -49,9 +49,29 @@ export async function PATCH(request: Request, ctx: Params) {
     // Codex P2 (PR #300 4회차): 우선순위 정리.
     // 1) description/mealType 변경이 포함되면 항상 macros 를 클리어 (kcal 유무 무관).
     // 2) 그 외에 kcal 만 정정 → macros 를 새 kcal 비율로 스케일.
+    // Codex P2 (PR #301 24회차): field 존재만으로 changed 판정 시 client 가 full-form patch
+    // (description/mealType 원본값 포함, kcal 만 변경) 를 보낼 때 unchanged 값도 macros clear
+    // 를 유발 → row 가 backfill 큐로 재진입 → attempts 상한 초과 시 permanent 부분 미측정.
+    // stored row 와 실제 값 비교로 판단.
+    const existing = await prisma.foodLog.findUnique({
+      where: { id },
+      select: { description: true, mealType: true },
+    });
+    if (!existing) {
+      return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+    }
+    const descChanged =
+      data.description !== undefined && data.description !== existing.description;
+    const mealChanged =
+      data.mealType !== undefined && data.mealType !== existing.mealType;
+    const descOrMealChanged = descChanged || mealChanged;
+    // Codex P2 (PR #301 25회차): stale-read race 방지 — classified as no-op 인 필드는
+    // 최종 write payload 에서 제거. 이전 approach 는 existing 을 읽고 판정한 뒤 여전히
+    // description/mealType 을 payload 에 포함시켜 update → 그 사이 다른 PATCH 가 description
+    // 을 Y 로 바꾸고 macros 도 populate 됐다면 A 의 stale X 로 덮어써서 macros mismatch 발생.
     const updateData: Record<string, unknown> = { ...data };
-    const descOrMealChanged =
-      data.description !== undefined || data.mealType !== undefined;
+    if (data.description !== undefined && !descChanged) delete updateData.description;
+    if (data.mealType !== undefined && !mealChanged) delete updateData.mealType;
     let updated: {
       id: string;
       date: Date;
@@ -59,6 +79,17 @@ export async function PATCH(request: Request, ctx: Params) {
       description: string;
       mealType: string | null;
     };
+    // 모든 필드가 no-op (오직 unchanged desc/mealType 만 submit) 이면 DB 건드리지 않고 기존 반환.
+    if (Object.keys(updateData).length === 0) {
+      const existingFull = await prisma.foodLog.findUnique({
+        where: { id },
+        select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+      });
+      if (!existingFull) {
+        return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+      }
+      return NextResponse.json({ data: existingFull });
+    }
     if (descOrMealChanged) {
       if (data.estimatedKcal === undefined) updateData.estimatedKcal = null;
       updateData.proteinG = null;
