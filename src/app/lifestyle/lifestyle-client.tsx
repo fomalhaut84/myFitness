@@ -151,20 +151,25 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Codex P2 (릴리즈 PR #313 4/5/6회차): description save 성공 후 router.refresh() 가 SSR
+  // Codex P2 (릴리즈 PR #313 4/5/6/7회차): description save 성공 후 router.refresh() 가 SSR
   // 반영을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value →
   // stale 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
   //
   // 해결: expectedDescription 을 저장, log.description 이 그 값으로 갱신되면 (실제 SSR
   // 반영) 자동 해제. render-time derive 라 setState-in-effect 룰 무관.
   //
-  // fallback timer 는 제거 — RSC refresh 실패 / 30s 이상 pending 이면 timer 가 stale
-  // prop 을 editable 로 만들어 회귀 발생. refresh 가 실패하는 극단 케이스에선 pending 이
-  // 무한 남지만, kcal edit 을 잠근 채 사용자가 페이지 새로고침으로 회복하는 게 stale kcal
-  // 을 새 desc 에 잘못 적용하는 것보다 안전.
+  // 7회차: expectedDescription 을 refresh 관측 즉시 clear. 안 하면 나중에 bot 등 다른 경로로
+  // log.description 이 또 바뀔 때 comparison 이 다시 true 로 → kcal edit 무한 disable 회귀.
+  // React 는 render 중 conditional setState 를 허용 (같은 컴포넌트, guarded, 무한 loop 없음)
+  // — reference: https://react.dev/reference/react/useState#storing-information-from-previous-renders.
+  //
+  // fallback timer 는 제거 — RSC refresh 실패 / 오래 pending 이면 timer 가 stale prop 을
+  // editable 로 만들어 회귀. refresh 실패는 사용자가 페이지 새로고침으로 회복.
   const [expectedDescription, setExpectedDescription] = useState<string | null>(null);
-  const descPending =
-    expectedDescription !== null && log.description !== expectedDescription;
+  if (expectedDescription !== null && log.description === expectedDescription) {
+    setExpectedDescription(null);
+  }
+  const descPending = expectedDescription !== null;
 
 
   async function saveDesc() {
