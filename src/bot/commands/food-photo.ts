@@ -114,9 +114,12 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
   }
 
   // 캡션 파싱 → mealType + 잔여 description.
+  // Codex P2 (PR #310 5회차): 무캡션 mealType 추정도 photoTimestamp 기준. handler 진입 시점 (now)
+  // 을 쓰면 KST 식사 boundary (10:59 → 11:00 등) 근처 재처리 시 timestamp 와 mealType 불일치 →
+  // repeat-lookup / backfill mealType 매칭 어긋남.
   const rawCaption = message.caption?.trim();
   const parsed = extractMealFromCaption(rawCaption);
-  const mealType = parsed?.mealType ?? guessMealTypeByKstTime();
+  const mealType = parsed?.mealType ?? guessMealTypeByKstTime(photoTimestamp);
   const caption = (parsed?.residual ?? rawCaption)?.trim() || undefined;
 
   // 텔레그램 파일 다운로드 → temp.
