@@ -151,26 +151,12 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Codex P2 (릴리즈 PR #313 4/5/6/7/8회차): description save 성공 후 router.refresh() 가 SSR
-  // 반영을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value →
-  // stale 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
-  //
-  // 해결: pending 정보 (expected + wasBefore) 를 저장. 다음 중 하나로 clear:
-  //   (a) log.description === expected — 정확히 web 이 세팅한 값으로 반영
-  //   (b) log.description !== wasBefore — old value 에서 어떤 값으로든 바뀜 (bot 이 web
-  //       PATCH 이후 다른 값으로 override 한 경우도 fresh row 로 인정 · 무한 disable 회귀 방지)
-  // React 는 render 중 conditional setState 를 허용 (같은 컴포넌트, guarded, 무한 loop 없음).
-  const [descPendingGuard, setDescPendingGuard] = useState<
-    { expected: string; wasBefore: string } | null
-  >(null);
-  if (
-    descPendingGuard !== null &&
-    (log.description === descPendingGuard.expected ||
-      log.description !== descPendingGuard.wasBefore)
-  ) {
-    setDescPendingGuard(null);
-  }
-  const descPending = descPendingGuard !== null;
+  // Codex P2 (릴리즈 PR #313 4-9회차): stale draft 회귀는 client-side guard 로 완벽 판정이
+  // 어려움 (bot 이 desc 를 A→B→A 로 restore 등 값 비교만으론 fresh 여부 구분 불가).
+  // 최종 해결: server-side snapshot 매칭. client 는 kcal PATCH 시 draft 를 뽑은 시점의
+  // description (log.description) 을 expectedDescription 으로 함께 전송. server
+  // (applyKcalCorrection) 가 저장 직전 fetch 로 실제 description 과 비교, mismatch 이면 409
+  // (description-mismatch) 반환 → client 는 새로고침 안내. client-side guard 는 불필요.
 
 
   async function saveDesc() {
@@ -209,12 +195,8 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
       // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
       // Codex P2 (릴리즈 PR #313): kcal editor 가 열려있었다면 in-progress 값이 blank 로
       // silently discarded → 사용자 혼란. editor 자체를 닫아 상태 변경을 명시.
-      // Codex P2 (릴리즈 PR #313 4/5/8회차): pending guard 저장 → log.description 이 새 값
-      // (또는 다른 어떤 값) 으로 갱신될 때까지 descPending 유지 (fixed timer 대신 실제 SSR
-      // 반영 or 최소한 fresh row 감지). wasBefore 는 save 호출 시점의 log.description.
       setEditingKcal(false);
       setKcalInput("");
-      setDescPendingGuard({ expected: trimmed, wasBefore: log.description });
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -244,10 +226,14 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
     setSaving(true);
     setError(null);
     try {
+      // Codex P2 (릴리즈 PR #313 9회차): draft 를 뽑은 시점의 description 을 함께 전송 →
+      // server (applyKcalCorrection) 가 저장 직전 fetch 로 실제 description 과 비교, mismatch
+      // (예: web description PATCH 이후 refresh 반영 전에 사용자가 kcal editor 를 열어 old
+      // kcal 을 저장) → 409 로 stale-kcal-to-new-desc 회귀 차단.
       const res = await fetch(`/api/food/${log.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
-        body: JSON.stringify({ estimatedKcal: n }),
+        body: JSON.stringify({ estimatedKcal: n, expectedDescription: log.description }),
       });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -388,9 +374,8 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
                 setError(null);
                 setEditingKcal(true);
               }}
-              disabled={descPending}
-              className="text-[11px] text-dim hover:text-bright underline disabled:opacity-40 disabled:cursor-not-allowed"
-              title={descPending ? "설명 반영 중… 잠시 후 다시 시도" : "kcal 편집"}
+              className="text-[11px] text-dim hover:text-bright underline"
+              title="kcal 편집"
             >
               편집
             </button>

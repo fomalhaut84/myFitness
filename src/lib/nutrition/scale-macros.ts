@@ -25,12 +25,19 @@ interface KcalCorrectableClient {
   foodLog: {
     findUnique: (args: {
       where: { id: string };
-      select: { estimatedKcal: true; proteinG: true; carbsG: true; fatG: true };
+      select: {
+        estimatedKcal: true;
+        proteinG: true;
+        carbsG: true;
+        fatG: true;
+        description: true;
+      };
     }) => Promise<{
       estimatedKcal: number | null;
       proteinG: number | null;
       carbsG: number | null;
       fatG: number | null;
+      description: string;
     } | null>;
     updateMany: (args: {
       where: {
@@ -39,6 +46,7 @@ interface KcalCorrectableClient {
         proteinG: number | null;
         carbsG: number | null;
         fatG: number | null;
+        description?: string;
       };
       data: Record<string, unknown>;
     }) => Promise<{ count: number }>;
@@ -47,25 +55,43 @@ interface KcalCorrectableClient {
 
 export type ApplyKcalCorrectionResult =
   | { ok: true }
-  | { ok: false; reason: "not-found" | "conflict" };
+  | { ok: false; reason: "not-found" | "conflict" | "description-mismatch" };
 
 /**
  * Codex P2 (PR #300): 사용자 kcal 정정 (PATCH · 봇 /food_kcal · 봇 [수정] 답장) 을
  * concurrency-safe 하게 적용. fetch → scale → 스냅샷 매칭 update 를 최대 3회 재시도.
  * backfill 이 사이에 macros 를 채운 경우 stale null 로 stomp 하지 않음.
+ *
+ * Codex P2 (PR #313 9회차): expectedDescription 이 주어지면 fetch 시 실제 description 과
+ * 비교. mismatch 이면 `description-mismatch` 반환 — client 는 stale draft (예: web description
+ * PATCH 이후 refresh 반영 전에 사용자가 kcal editor 를 열어 old kcal 을 저장하려는 경우) 로
+ * 새 description 에 옛 kcal 을 잘못 적용하는 회귀 차단. 미지정 시 기존 동작 유지 (봇 등).
  */
 export async function applyKcalCorrection(
   client: KcalCorrectableClient,
   id: string,
   newKcal: number,
+  expectedDescription?: string,
 ): Promise<ApplyKcalCorrectionResult> {
   const MAX_ATTEMPT = 3;
   for (let i = 0; i < MAX_ATTEMPT; i++) {
     const existing = await client.foodLog.findUnique({
       where: { id },
-      select: { estimatedKcal: true, proteinG: true, carbsG: true, fatG: true },
+      select: {
+        estimatedKcal: true,
+        proteinG: true,
+        carbsG: true,
+        fatG: true,
+        description: true,
+      },
     });
     if (!existing) return { ok: false, reason: "not-found" };
+    if (
+      expectedDescription !== undefined &&
+      existing.description !== expectedDescription
+    ) {
+      return { ok: false, reason: "description-mismatch" };
+    }
     const scaled = scaleMacrosForNewKcal(newKcal, existing.estimatedKcal, existing);
     const res = await client.foodLog.updateMany({
       where: {
@@ -74,6 +100,7 @@ export async function applyKcalCorrection(
         proteinG: existing.proteinG,
         carbsG: existing.carbsG,
         fatG: existing.fatG,
+        ...(expectedDescription !== undefined ? { description: expectedDescription } : {}),
       },
       data: {
         estimatedKcal: newKcal,

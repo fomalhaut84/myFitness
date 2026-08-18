@@ -15,6 +15,9 @@ const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
   description: z.string().trim().min(1).max(500).optional(),
   mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).nullable().optional(),
+  // Codex P2 (PR #313 9회차): client 가 kcal 저장 시 draft 를 뽑은 시점의 description 을 함께
+  // 전송해 stale-vs-fresh 판정. server 는 저장 직전 fetch 한 description 과 비교, 다르면 409.
+  expectedDescription: z.string().max(500).optional(),
 });
 
 interface Params {
@@ -115,10 +118,24 @@ export async function PATCH(request: Request, ctx: Params) {
           select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
         });
       } else {
-        const correction = await applyKcalCorrection(prisma, id, data.estimatedKcal);
+        const correction = await applyKcalCorrection(
+          prisma,
+          id,
+          data.estimatedKcal,
+          data.expectedDescription,
+        );
         if (!correction.ok) {
           if (correction.reason === "not-found") {
             return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+          }
+          if (correction.reason === "description-mismatch") {
+            return NextResponse.json(
+              {
+                error:
+                  "설명이 다른 경로로 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+              },
+              { status: 409 },
+            );
           }
           return NextResponse.json(
             { error: "동시 수정 감지, 다시 시도해주세요" },
