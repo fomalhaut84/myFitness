@@ -160,18 +160,19 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
       lines.push("⚠️ Vision 분석 실패 — [🔢 kcal] 로 직접 입력하거나 [🗑️ 삭제] 후 다시 시도");
     }
 
-    // ack 메시지 지우고 최종 응답.
-    if (ackMsgId !== undefined) {
-      try {
-        await ctx.api.deleteMessage(ctx.chat!.id, ackMsgId);
-      } catch {
-        // ignore — 이미 삭제됐거나 권한 이슈
-      }
-    }
+    // 최종 응답 (ack 삭제는 아래 finally 에서 정리).
     await ctx.reply(lines.join("\n"), {
       reply_markup: buildFoodInlineKeyboard(log.id),
     });
   } finally {
+    // 사전 리뷰 P1 (feat/309-1): ack 삭제를 finally 로. 이전엔 성공 경로에서만 삭제 →
+    // getFile/download/Vision/DB 중 throw 시 "🖼️ 사진 분석 중…" 이 채팅에 영구히 남고
+    // 상위 catch 의 에러 답장과 중첩되어 상태 혼란. 실패 경로에서도 반드시 정리.
+    if (ackMsgId !== undefined && ctx.chat?.id !== undefined) {
+      await ctx.api.deleteMessage(ctx.chat.id, ackMsgId).catch(() => {
+        // ignore — 이미 삭제됐거나 권한 이슈
+      });
+    }
     await fs.unlink(tempPath).catch(() => {
       // ignore — temp 정리 실패는 치명적이지 않음
     });
