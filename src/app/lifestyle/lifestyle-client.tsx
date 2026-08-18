@@ -152,6 +152,7 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
+
   async function saveDesc() {
     if (saving) return;
     const trimmed = descInput.trim();
@@ -182,6 +183,11 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
         throw new Error(body?.error ?? `요청 실패 (${res.status})`);
       }
       setEditingDesc(false);
+      // Codex P2 (릴리즈 PR #311): description PATCH 는 서버에서 estimatedKcal 을 null 로
+      // 리셋 (backfill 재추정 대기). router.refresh() 후 log.estimatedKcal 이 null 이지만
+      // client component state 는 보존되어 kcalInput 이 이전 kcal 유지 → 이후 kcal 편집
+      // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
+      setKcalInput("");
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
