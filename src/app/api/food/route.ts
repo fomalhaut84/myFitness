@@ -12,6 +12,10 @@ import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 // #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+// Codex P2 (PR #310 8회차): multipart body 는 image + boundary + header overhead 포함해 이미지
+// 상한보다 항상 크다. Content-Length 상한을 image 상한 + 64KB 여유로 잡아 8MB 근접 이미지가
+// framing overhead 로 413 튕기지 않게. image.size 후속 체크는 MAX_PHOTO_BYTES 유지.
+const MAX_MULTIPART_BODY_BYTES = MAX_PHOTO_BYTES + 64 * 1024;
 // Codex P2 (PR #310 2회차): HEIC 는 Claude Vision 이 처리 못 함 → 무조건 실패. whitelist 에서
 // 제외해 명확한 4xx 반환. Client 도 HEIC 감지 시 사전 reject.
 const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
@@ -202,10 +206,10 @@ async function handlePhotoPost(request: Request) {
       { status: 400 },
     );
   }
-  if (contentLength > MAX_PHOTO_BYTES) {
+  if (contentLength > MAX_MULTIPART_BODY_BYTES) {
     return NextResponse.json(
       {
-        error: `이미지 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB)을 초과합니다`,
+        error: `업로드 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB · 이미지 기준)을 초과합니다`,
       },
       { status: 413 },
     );
