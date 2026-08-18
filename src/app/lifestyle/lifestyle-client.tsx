@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import WeeklyActivitySummary from "@/components/lifestyle/WeeklyActivitySummary";
 import MonthlyHeatmap from "@/components/lifestyle/MonthlyHeatmap";
@@ -151,6 +151,17 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // Codex P2 (릴리즈 PR #313 4회차): description save 성공 후 router.refresh() 가 SSR 반영을
+  // 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value → stale
+  // 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용. refresh 반영 window 동안 kcal
+  // edit 을 잠시 disable. 1.5s 는 실제 Next.js router.refresh() 완료 여유 (client 재조정
+  // 은 보통 100~300ms). backfill 이 새 kcal 을 채우는 것과 무관 (그건 이후 열 때 반영).
+  const [descPending, setDescPending] = useState(false);
+  useEffect(() => {
+    if (!descPending) return;
+    const t = setTimeout(() => setDescPending(false), 1500);
+    return () => clearTimeout(t);
+  }, [descPending]);
 
 
   async function saveDesc() {
@@ -189,8 +200,11 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
       // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
       // Codex P2 (릴리즈 PR #313): kcal editor 가 열려있었다면 in-progress 값이 blank 로
       // silently discarded → 사용자 혼란. editor 자체를 닫아 상태 변경을 명시.
+      // Codex P2 (릴리즈 PR #313 4회차): refresh 반영 window (1.5s) 동안 kcal edit disable
+      // (stale prop 로 열려 저장되면 old kcal 이 새 desc 에 적용되는 회귀).
       setEditingKcal(false);
       setKcalInput("");
+      setDescPending(true);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -364,8 +378,9 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
                 setError(null);
                 setEditingKcal(true);
               }}
-              className="text-[11px] text-dim hover:text-bright underline"
-              title="kcal 편집"
+              disabled={descPending}
+              className="text-[11px] text-dim hover:text-bright underline disabled:opacity-40 disabled:cursor-not-allowed"
+              title={descPending ? "설명 반영 중… 잠시 후 다시 시도" : "kcal 편집"}
             >
               편집
             </button>
