@@ -54,7 +54,9 @@ async function downloadTo(url: string, dest: string): Promise<void> {
           reject(new Error(`텔레그램 파일 다운로드 실패 (${res.statusCode ?? "?"})`));
           return;
         }
-        pipeline(res, createWriteStream(dest))
+        // Codex P2 (PR #310 7회차): 건강 데이터 프라이버시 — mode 0o600 + wx (exclusive) 로
+        // 다른 로컬 사용자 read 차단. 이름 충돌 시 EEXIST 로 실패 (random 접미사라 실질 X).
+        pipeline(res, createWriteStream(dest, { mode: 0o600, flags: "wx" }))
           .then(() => resolve())
           .catch(reject);
       },

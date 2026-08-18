@@ -243,11 +243,13 @@ async function handlePhotoPost(request: Request) {
     }
 
     // temp 파일 (프로젝트 tmpdir 사용 · random 접미사).
+    // Codex P2 (PR #310 7회차): umask 022 환경에서 default 는 0644 → 다른 로컬 사용자가 읽음.
+    // 건강 데이터 프라이버시 위해 mode 0o600 + wx (exclusive create, 이름 충돌 시 EEXIST).
     const ext = mimeToExt(mime) || path.extname(image.name || "") || ".jpg";
     const rand = Math.random().toString(36).slice(2, 10);
     tempPath = path.join(os.tmpdir(), `mfp-photo-${Date.now()}-${rand}${ext}`);
     const buf = Buffer.from(await image.arrayBuffer());
-    await fs.writeFile(tempPath, buf);
+    await fs.writeFile(tempPath, buf, { mode: 0o600, flag: "wx" });
 
     const estimate = await estimateNutritionFromPhoto({
       imagePath: tempPath,
