@@ -2,8 +2,9 @@ import { NextResponse } from "next/server";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
-import { estimateKcalFromText } from "@/lib/nutrition/estimate-kcal";
+import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
+import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -76,33 +77,72 @@ export async function POST(request: Request) {
       }
     }
 
-    // #295 (M14 Phase 2 #2): repeat lookup 우선 — 최근 30일 동일 description 매치면 AI 스킵.
-    // Codex P2 (#296): 웹 POST 도 봇/backfill 과 동일하게 재사용 라이브러리 활용.
+    // #295: repeat lookup 우선 — 최근 30일 동일 description 매치면 AI 스킵.
+    // #299 (M14 Phase 2 #3): P/C/F 도 함께 재사용.
     let estimatedKcal: number | null = null;
+    let proteinG: number | null = null;
+    let carbsG: number | null = null;
+    let fatG: number | null = null;
+    let hitKcal: number | null = null;
     try {
-      // Codex P2 (#296): backdated 로그 대비 foodDate 기준 창.
-      const hit = await findRecentSameDescription(description, mealType, foodDate);
-      if (hit) estimatedKcal = hit.kcal;
+      // Codex P2 (PR #301 27회차): client 가 mealType 없이 보내면 undefined → 저장 시
+      // `mealType ?? null` 로 null 저장. lookup 은 null-meal 클래스 매치되려면 null 로 전달해야
+      // 함 (undefined 는 "no preference" 로 취급되어 null-meal 을 우선순위에서 배제).
+      const hit = await findRecentSameDescription(description, mealType ?? null, foodDate);
+      if (hit) {
+        hitKcal = hit.kcal;
+        estimatedKcal = hit.kcal;
+        // Codex P2 (PR #300 15회차): complete tuple 만 채택. lookup 이 complete 우선하지만
+        // window 내에 complete 매치가 없으면 partial 최신을 반환할 수 있음 → 부분값은 취하지 않고
+        // AI 로 채움 (아래).
+        if (hit.proteinG !== null && hit.carbsG !== null && hit.fatG !== null) {
+          proteinG = hit.proteinG;
+          carbsG = hit.carbsG;
+          fatG = hit.fatG;
+        }
+      }
     } catch (lookupErr) {
       console.warn(
         "[api/food POST] repeat lookup 실패, AI 폴백:",
         lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
       );
     }
-    if (estimatedKcal === null) {
-      // #283 (M14 Phase 1): Claude AI 로 kcal 추정. 실패 시 null (로그는 저장, 사용자가 나중에 수정 가능).
-      const estimate = await estimateKcalFromText({ description, mealType });
-      estimatedKcal = estimate?.kcal ?? null;
+    // Codex P2 (PR #300 15회차): estimatedKcal null 이거나 macros 미완이면 AI 호출.
+    // hit.kcal 이 있는데 macros 만 부족한 경우: AI 로 macros 채우고 hit.kcal 에 맞춰 스케일
+    // (consistency 유지 · backfill retry 상한에 의존 안 함).
+    const macrosIncomplete = proteinG === null || carbsG === null || fatG === null;
+    if (estimatedKcal === null || macrosIncomplete) {
+      const estimate = await estimateNutritionFromText({ description, mealType });
+      if (estimate) {
+        if (estimatedKcal === null) {
+          estimatedKcal = estimate.kcal;
+          proteinG = estimate.proteinG;
+          carbsG = estimate.carbsG;
+          fatG = estimate.fatG;
+        } else {
+          // hit.kcal 보존, AI macros 를 hit.kcal 로 스케일해 채움.
+          const scaled = scaleMacrosForNewKcal(hitKcal, estimate.kcal, {
+            proteinG: estimate.proteinG,
+            carbsG: estimate.carbsG,
+            fatG: estimate.fatG,
+          });
+          proteinG = scaled.proteinG;
+          carbsG = scaled.carbsG;
+          fatG = scaled.fatG;
+        }
+      }
     }
 
     // M4-2: FoodLog 생성 + 칼로리 밸런스 재계산을 Serializable 트랜잭션에서 원자화.
-    // 직렬화 충돌(P2034) 시 자동 재시도로 동시 요청 안전 보장.
     const log = await withSerializableRetry(async (tx) => {
       const created = await tx.foodLog.create({
         data: {
           date: foodDate,
           description,
           estimatedKcal,
+          proteinG,
+          carbsG,
+          fatG,
           mealType: mealType ?? null,
         },
       });

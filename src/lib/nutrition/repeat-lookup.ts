@@ -111,6 +111,10 @@ export function normalizeDescription(description: string): string {
 export interface RepeatLookupHit {
   logId: string;
   kcal: number;
+  // #299 (M14 Phase 2 #3): P/C/F 매크로 재사용. null 은 원본 로그가 매크로 미측정.
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
   date: Date;
   mealType: string | null;
   description: string;
@@ -123,11 +127,14 @@ export interface RepeatLookupHit {
  *   - Codex P2 (#296): 미래 날짜 로그 배제 위해 date lte(now) 상한 추가.
  *   - Codex P2 (#296): referenceDate 인자로 target 시각 기준 창을 사용 — backdated 로그나
  *     backfill 이 옛 row 처리 시 그 시점 기준 preceding history 만 매치.
+ *   - Codex P2 (PR #300 5회차): excludeLogId — 자기 자신 매치 방지 (backfill 이 macro-partial
+ *     row 를 처리할 때 자기 row 가 최상위로 뽑혀 macro null 이 null 을 채우려는 무의미 경로).
  */
 export async function findRecentSameDescription(
   description: string,
   mealType?: string | null,
   referenceDate?: Date,
+  excludeLogId?: string,
 ): Promise<RepeatLookupHit | null> {
   const targetKey = normalizeDescription(description);
   if (!targetKey) return null;
@@ -140,6 +147,7 @@ export async function findRecentSameDescription(
     where: {
       date: { gte: since, lte: ref },
       estimatedKcal: { not: null },
+      ...(excludeLogId ? { id: { not: excludeLogId } } : {}),
     },
     orderBy: { date: "desc" },
     select: {
@@ -147,6 +155,9 @@ export async function findRecentSameDescription(
       description: true,
       mealType: true,
       estimatedKcal: true,
+      proteinG: true,
+      carbsG: true,
+      fatG: true,
       date: true,
     },
     take: POOL_CAP,
@@ -155,15 +166,32 @@ export async function findRecentSameDescription(
   const sameKey = pool.filter((r) => normalizeDescription(r.description) === targetKey);
   if (sameKey.length === 0) return null;
 
-  const sameMeal = mealType
-    ? sameKey.find((r) => r.mealType === mealType)
-    : undefined;
-  const chosen = sameMeal ?? sameKey[0];
+  // Codex P2 (PR #300 15회차): 매크로 완전 tuple 을 partial 최신보다 우선 (backfill retry 의존
+  // 회피). PR #301 16회차: 같은 mealType 을 cross-meal completeness 보다 앞에.
+  // Codex P2 (PR #301 23회차): 같은 mealType 안에서도 "newest same-meal" 이 "older complete
+  // same-meal" 을 이겨야 함. 사용자가 오늘 아침 700 kcal 로 정정 (macros 재추정 대기) 하면
+  // 다음 아침 로그가 어제 500 kcal complete 를 재사용해 정정값 소실. sameMeal (newest, complete
+  // 여부 무관) → anyComplete (cross-meal) → sameKey[0] (최종 fallback). partial 은 caller 가
+  // AI 로 macros 채움 (POST /api/food, bot/food).
+  const isComplete = (r: (typeof sameKey)[number]): boolean =>
+    r.proteinG !== null && r.carbsG !== null && r.fatG !== null;
+  // Codex P2 (PR #301 26회차): mealType 이 null 인 경우도 same-meal 후보 (null-meal 클래스).
+  // 이전 truthy 가드는 null 이면 sameMeal 을 undefined 로 취급 → null-meal 로그가 anyComplete
+  // 로 밀려 older complete 가 더 신선한 null-meal 정정값을 이김. undefined 만 skip, null 은 equality 매치.
+  const sameMeal =
+    mealType !== undefined
+      ? sameKey.find((r) => r.mealType === mealType)
+      : undefined;
+  const anyComplete = sameKey.find(isComplete);
+  const chosen = sameMeal ?? anyComplete ?? sameKey[0];
 
   if (chosen.estimatedKcal === null) return null;
   return {
     logId: chosen.id,
     kcal: chosen.estimatedKcal,
+    proteinG: chosen.proteinG,
+    carbsG: chosen.carbsG,
+    fatG: chosen.fatG,
     date: chosen.date,
     mealType: chosen.mealType,
     description: chosen.description,

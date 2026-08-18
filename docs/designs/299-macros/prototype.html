@@ -1,0 +1,491 @@
+<!doctype html>
+<html lang="ko">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>/nutrition — 매크로 추적 프로토타입</title>
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script crossorigin src="https://unpkg.com/react@18.3.1/umd/react.production.min.js"></script>
+  <script crossorigin src="https://unpkg.com/react-dom@18.3.1/umd/react-dom.production.min.js"></script>
+  <script src="https://unpkg.com/@babel/standalone@7.24.7/babel.min.js"></script>
+  <style>
+    :root {
+      --bg: #0a0a0a;
+      --bg-raised: #111111;
+      --card: #161616;
+      --card-hover: #1c1c1c;
+      --surface: #1e1e1e;
+      --surface-hover: #262626;
+      --border: #262626;
+      --border-hover: #333333;
+      --dim: #525252;
+      --sub: #737373;
+      --text: #a3a3a3;
+      --bright: #ededed;
+      --accent: #22c55e;
+      --accent-hover: #16a34a;
+      --amber: #f59e0b;
+      --red: #dc2626;
+      --protein: #22c55e;
+      --carbs: #38bdf8;
+      --fat: #fbbf24;
+    }
+    html, body { background: var(--bg); color: var(--bright); }
+    body {
+      font-family: -apple-system, BlinkMacSystemFont, "SF Pro Text", "Helvetica Neue", sans-serif;
+      -webkit-font-smoothing: antialiased;
+    }
+    .font-mono { font-family: "SF Mono", "Menlo", "Consolas", monospace; font-feature-settings: "tnum" 1; }
+    .grid-lines {
+      background-image:
+        linear-gradient(rgba(255,255,255,0.02) 1px, transparent 1px),
+        linear-gradient(90deg, rgba(255,255,255,0.02) 1px, transparent 1px);
+      background-size: 24px 24px;
+    }
+    .ring-glow-green { box-shadow: 0 0 0 1px rgba(34,197,94,.12), 0 12px 40px -12px rgba(34,197,94,.18); }
+    .ring-glow-amber { box-shadow: 0 0 0 1px rgba(245,158,11,.16), 0 12px 40px -12px rgba(245,158,11,.22); }
+    .ring-glow-red   { box-shadow: 0 0 0 1px rgba(220,38,38,.18), 0 12px 40px -12px rgba(220,38,38,.28); }
+    .caret::before { content: "▸"; color: var(--dim); margin-right: 6px; }
+    .diag-bg { background: repeating-linear-gradient(45deg, transparent, transparent 8px, rgba(220,38,38,.04) 8px, rgba(220,38,38,.04) 9px); }
+    .pulse-dot { animation: pulse 2.2s ease-in-out infinite; }
+    @keyframes pulse { 0%,100%{opacity:.9} 50%{opacity:.35} }
+    .tabular-nums { font-variant-numeric: tabular-nums; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <div id="fallback" style="display:none; padding:24px; color:#f59e0b; font-family: monospace; font-size: 13px;">
+    ⚠ CDN 로드 실패. React 18 · @babel/standalone 필요. 네트워크/광고 차단 확인.
+  </div>
+  <script>
+    window.addEventListener("load", () => {
+      if (!window.React || !window.ReactDOM || !window.Babel) {
+        document.getElementById("fallback").style.display = "block";
+      }
+    });
+  </script>
+  <script type="text/babel" data-presets="env,react">
+    const { useState } = React;
+
+    // ---- Mock data ---------------------------------------------------------
+    const proteinTrend = [
+      { day: "월", value: 1.1 },
+      { day: "화", value: 1.4 },
+      { day: "수", value: 1.9 },
+      { day: "목", value: 1.2 },
+      { day: "금", value: 1.5 },
+      { day: "토", value: 1.7 },
+      { day: "일", value: 1.3 },
+    ];
+    const macros7d = { protein: 88, carbs: 210, fat: 62 };
+    const macrosToday = { protein: 71, carbs: 245, fat: 78 };
+    const bodyWeightKg = 68;
+    const proteinTargetPerKg = 1.6;
+
+    const foods = [
+      { id:"1", mealType:"breakfast", time:"07:12", desc:"오트밀 우유 바나나 1개", kcal:410, p:14, c:62, f:11 },
+      { id:"2", mealType:"lunch",     time:"12:35", desc:"김치찌개 밥 1공기 계란후라이 2개", kcal:820, p:34, c:98, f:28 },
+      { id:"3", mealType:"snack",     time:"15:40", desc:"프로틴바 아메리카노", kcal:230, p:20, c:22, f:8 },
+      { id:"4", mealType:"dinner",    time:"19:22", desc:"닭가슴살 샐러드 고구마 200g", kcal:null, p:null, c:null, f:null },
+      { id:"5", mealType:"snack",     time:"22:10", desc:"우유 한 컵", kcal:130, p:8, c:12, f:5 },
+    ];
+
+    // ---- Helpers -----------------------------------------------------------
+    const macroKcal = (m) => (m.protein ?? 0) * 4 + (m.carbs ?? 0) * 4 + (m.fat ?? 0) * 9;
+    const proteinPerKg = (g, kg) => g / kg;
+    const fmt1 = (n) => Number(n).toFixed(1);
+    const fmtG = (n) => n == null ? "—" : `${Math.round(n)}g`;
+    const fmtK = (n) => n == null ? "—" : `${Math.round(n)}`;
+    const mealLabel = (m) => ({ breakfast:"아침", lunch:"점심", dinner:"저녁", snack:"간식" }[m] || m);
+
+    const verdict = {
+      risk: "high", score: 3,
+      reasons: [
+        "일평균 결손 −525 kcal (> 500)",
+        `단백질 ${fmt1(proteinPerKg(macros7d.protein, bodyWeightKg))} g/kg (< 1.44 권장 최소치)`,
+        "고강도(Z4+) 주 42분 (> 30)"
+      ],
+      recommendations: [
+        "단백질 하루 +20g (~계란 3개 or 닭가슴살 100g)",
+        "일간 결손을 −300 ~ −400 kcal 로 완화",
+        "다음 3일 중 1일은 easy·회복 러닝으로 대체"
+      ],
+    };
+
+    // ---- SVG Donut (pure SVG, no Recharts) --------------------------------
+    function Donut({ segments, size = 180, thickness = 22, children }) {
+      // segments: [{ value, color }]. Uses stroke-dasharray on nested circles.
+      const total = segments.reduce((s, x) => s + x.value, 0) || 1;
+      const r = (size - thickness) / 2;
+      const cx = size / 2, cy = size / 2;
+      const circ = 2 * Math.PI * r;
+      let acc = 0;
+      const gap = 2; // px gap between arcs (visual)
+      return (
+        <div className="relative" style={{ width: size, height: size }}>
+          <svg width={size} height={size} viewBox={`0 0 ${size} ${size}`}>
+            {/* base ring */}
+            <circle cx={cx} cy={cy} r={r} fill="none" stroke="var(--border)" strokeWidth={thickness} opacity="0.4" />
+            {segments.map((seg, i) => {
+              const frac = seg.value / total;
+              const len = Math.max(0, frac * circ - gap);
+              const dashArray = `${len} ${circ - len}`;
+              const rotate = (acc / total) * 360 - 90;
+              acc += seg.value;
+              return (
+                <circle
+                  key={i}
+                  cx={cx} cy={cy} r={r}
+                  fill="none"
+                  stroke={seg.color}
+                  strokeWidth={thickness}
+                  strokeDasharray={dashArray}
+                  strokeLinecap="butt"
+                  transform={`rotate(${rotate} ${cx} ${cy})`}
+                />
+              );
+            })}
+          </svg>
+          <div className="absolute inset-0 flex flex-col items-center justify-center pointer-events-none">
+            {children}
+          </div>
+        </div>
+      );
+    }
+
+    // ---- SVG Line chart (pure SVG) ----------------------------------------
+    function ProteinLine({ data, targetPerKg, bodyKg }) {
+      const W = 320, H = 160, PAD_L = 30, PAD_R = 12, PAD_T = 12, PAD_B = 24;
+      const yMin = 0.5, yMax = 2.4;
+      const xStep = (W - PAD_L - PAD_R) / (data.length - 1);
+      const yScale = (v) => PAD_T + (yMax - v) / (yMax - yMin) * (H - PAD_T - PAD_B);
+      const xScale = (i) => PAD_L + i * xStep;
+      const points = data.map((d, i) => ({ x: xScale(i), y: yScale(d.value), ...d, miss: d.value < targetPerKg }));
+      const targetY = yScale(targetPerKg);
+      const linePath = "M " + points.map(p => `${p.x} ${p.y}`).join(" L ");
+      // gridlines every 0.5
+      const yTicks = [0.5, 1.0, 1.5, 2.0];
+      return (
+        <div className="w-full">
+          <svg viewBox={`0 0 ${W} ${H}`} className="w-full h-[180px]">
+            {/* grid */}
+            {yTicks.map((v, i) => (
+              <g key={i}>
+                <line x1={PAD_L} x2={W - PAD_R} y1={yScale(v)} y2={yScale(v)} stroke="var(--border)" strokeDasharray="2 4" />
+                <text x={PAD_L - 6} y={yScale(v) + 3} textAnchor="end" fontSize="10" fill="var(--dim)" fontFamily="'SF Mono', monospace">{v.toFixed(1)}</text>
+              </g>
+            ))}
+            {/* target line */}
+            <line x1={PAD_L} x2={W - PAD_R} y1={targetY} y2={targetY} stroke="var(--accent)" strokeWidth="1.4" strokeDasharray="4 3" opacity="0.7" />
+            <text x={W - PAD_R} y={targetY - 4} textAnchor="end" fontSize="9" fill="var(--accent)" fontFamily="'SF Mono', monospace" letterSpacing="1">TARGET 1.6</text>
+            {/* line */}
+            <path d={linePath} fill="none" stroke="var(--protein)" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round" />
+            {/* points */}
+            {points.map((p, i) => (
+              <g key={i}>
+                <circle cx={p.x} cy={p.y} r="4.5"
+                  fill={p.miss ? "var(--red)" : "var(--protein)"}
+                  stroke="var(--bg)" strokeWidth="2.5" />
+                <text x={p.x} y={H - 6} textAnchor="middle" fontSize="10" fill="var(--dim)" fontFamily="'SF Mono', monospace">{p.day}</text>
+                <text x={p.x} y={p.y - 10} textAnchor="middle" fontSize="9" fill={p.miss ? "var(--red)" : "var(--sub)"} fontFamily="'SF Mono', monospace">{fmt1(p.value)}</text>
+              </g>
+            ))}
+          </svg>
+        </div>
+      );
+    }
+
+    // ---- UI components ----------------------------------------------------
+    function AppHeader() {
+      return (
+        <div className="px-5 pt-6 pb-3">
+          <div className="flex items-center justify-between">
+            <div>
+              <div className="text-[11px] tracking-[0.18em] text-dim uppercase font-mono">M14 · 매크로</div>
+              <h1 className="text-[26px] font-semibold tracking-tight mt-0.5" style={{color:"var(--bright)"}}>Nutrition</h1>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] text-dim font-mono uppercase tracking-widest">최근 7일</div>
+              <div className="text-[13px] font-mono" style={{color:"var(--sub)"}}>08.05 → 08.11</div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    function PartialWarning({ pendingCount }) {
+      if (!pendingCount) return null;
+      return (
+        <div className="mx-5 mb-3 flex items-center gap-3 px-3 py-2 rounded-lg" style={{border:"1px solid var(--border)", background:"var(--card)"}}>
+          <span className="pulse-dot inline-block w-1.5 h-1.5 rounded-full" style={{background:"var(--amber)"}}></span>
+          <div className="text-[12px] flex-1" style={{color:"var(--sub)"}}>
+            <span className="font-medium" style={{color:"var(--bright)"}}>{pendingCount}개 항목</span> 매크로 미측정 · backfill 대기중
+          </div>
+          <button className="text-[11px] font-mono uppercase tracking-wider" style={{color:"var(--dim)"}}>재추정</button>
+        </div>
+      );
+    }
+
+    function RiskBanner({ v }) {
+      const palette = {
+        high:   { ring:"ring-glow-red",   dot:"var(--red)",   label:"HIGH",   clr:"#fca5a5",  diag:"diag-bg", border:"rgba(220,38,38,.28)" },
+        medium: { ring:"ring-glow-amber", dot:"var(--amber)", label:"MEDIUM", clr:"#fcd34d",  diag:"",        border:"rgba(245,158,11,.25)" },
+        low:    { ring:"",                dot:"#34d399",      label:"LOW",    clr:"#6ee7b7",  diag:"",        border:"rgba(52,211,153,.22)" },
+      }[v.risk];
+      const [open, setOpen] = useState(true);
+      if (v.risk === "low") {
+        return (
+          <div className="mx-5 mb-5 px-4 py-3 rounded-xl flex items-center gap-3" style={{border:`1px solid ${palette.border}`, background:"var(--card)"}}>
+            <span className="w-1.5 h-1.5 rounded-full" style={{background:palette.dot}}></span>
+            <div className="flex-1 text-[13px]">
+              <span className="font-medium" style={{color:palette.clr}}>근손실 위험 LOW</span>
+              <span className="ml-2" style={{color:"var(--dim)"}}>단백질·결손·고강도 지표 모두 안전 범위</span>
+            </div>
+          </div>
+        );
+      }
+      return (
+        <div className={`mx-5 mb-5 rounded-xl ${palette.diag} ${palette.ring} overflow-hidden`} style={{border:`1px solid ${palette.border}`, background:"var(--card)"}}>
+          <button onClick={() => setOpen(!open)} className="w-full flex items-center gap-3 px-4 py-3 text-left">
+            <span className="w-2 h-2 rounded-full pulse-dot" style={{background:palette.dot}}></span>
+            <div className="flex-1">
+              <div className="text-[11px] tracking-[0.22em] uppercase font-mono" style={{color:"var(--dim)"}}>근손실 위험</div>
+              <div className="text-[18px] font-semibold mt-0.5 tracking-tight" style={{color:palette.clr}}>
+                {palette.label}
+                <span className="font-mono text-[13px] ml-2 font-normal" style={{color:"var(--dim)"}}>score {v.score}/3</span>
+              </div>
+            </div>
+            <span className="text-xs font-mono" style={{color:"var(--dim)"}}>{open ? "접기" : "펼치기"}</span>
+          </button>
+          {open && (
+            <div className="px-4 pb-4">
+              <div className="grid grid-cols-1 gap-1.5 mb-4">
+                {v.reasons.map((r, i) => (
+                  <div key={i} className="text-[13px] flex items-start gap-2" style={{color:"var(--text)"}}>
+                    <span className="text-[11px] font-mono mt-0.5" style={{color:"var(--dim)"}}>0{i+1}</span>
+                    <span>{r}</span>
+                  </div>
+                ))}
+              </div>
+              <div className="pt-3" style={{borderTop:"1px solid var(--border)"}}>
+                <div className="text-[10px] tracking-[0.2em] uppercase font-mono mb-2" style={{color:"var(--dim)"}}>권장</div>
+                <ul className="space-y-1.5">
+                  {v.recommendations.map((r, i) => (
+                    <li key={i} className="text-[13px] caret" style={{color:"var(--bright)"}}>{r}</li>
+                  ))}
+                </ul>
+              </div>
+            </div>
+          )}
+        </div>
+      );
+    }
+
+    function MacroDonut({ m7, mToday, bodyKg }) {
+      const [view, setView] = useState("7d");
+      const active = view === "7d" ? m7 : mToday;
+      const totalKcal = macroKcal(active);
+      const segs = [
+        { name:"단백질", value:active.protein*4, color:"var(--protein)" },
+        { name:"탄수화물", value:active.carbs*4, color:"var(--carbs)" },
+        { name:"지방",   value:active.fat*9,   color:"var(--fat)" },
+      ];
+      const pct = (v) => ((v / totalKcal) * 100).toFixed(0);
+      const pKg = proteinPerKg(active.protein, bodyKg);
+      return (
+        <div className="mx-5 mb-5 rounded-xl p-5" style={{background:"var(--card)", border:"1px solid var(--border)"}}>
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <div className="text-[10px] tracking-[0.22em] uppercase font-mono" style={{color:"var(--dim)"}}>Macros</div>
+              <h2 className="text-[17px] font-semibold mt-0.5">P / C / F 밸런스</h2>
+            </div>
+            <div className="flex text-[11px] font-mono">
+              {["7d","today"].map((k) => (
+                <button key={k} onClick={()=>setView(k)}
+                  className="px-2.5 py-1 rounded-md tracking-wider"
+                  style={{
+                    background: view===k ? "var(--surface)" : "transparent",
+                    color: view===k ? "var(--bright)" : "var(--dim)",
+                  }}>
+                  {k === "7d" ? "7일 평균" : "오늘"}
+                </button>
+              ))}
+            </div>
+          </div>
+          <div className="grid gap-5 items-center" style={{gridTemplateColumns:"minmax(0,180px) 1fr"}}>
+            <div className="mx-auto">
+              <Donut segments={segs} size={180} thickness={22}>
+                <div className="text-[10px] tracking-[0.22em] uppercase font-mono" style={{color:"var(--dim)"}}>Intake</div>
+                <div className="text-[26px] font-semibold font-mono tracking-tight" style={{color:"var(--bright)"}}>
+                  {Math.round(totalKcal).toLocaleString("ko")}
+                </div>
+                <div className="text-[11px] font-mono" style={{color:"var(--dim)"}}>kcal · {view==="7d" ? "avg/day" : "today"}</div>
+              </Donut>
+            </div>
+            <ul className="space-y-3">
+              {[
+                { label:"단백질", val:active.protein, kc:active.protein*4, color:"var(--protein)", extra:`${fmt1(pKg)} g/kg` },
+                { label:"탄수화물", val:active.carbs, kc:active.carbs*4, color:"var(--carbs)", extra:"" },
+                { label:"지방",   val:active.fat,   kc:active.fat*9,   color:"var(--fat)",   extra:"" },
+              ].map((r, i) => (
+                <li key={i} className="grid items-baseline gap-3" style={{gridTemplateColumns:"10px 1fr auto"}}>
+                  <span className="w-[6px] h-[6px] rounded-sm translate-y-[3px]" style={{background:r.color}}></span>
+                  <div>
+                    <div className="text-[11px] tracking-wider uppercase" style={{color:"var(--dim)"}}>{r.label}</div>
+                    <div className="text-[15px] font-mono" style={{color:"var(--bright)"}}>
+                      {fmtG(r.val)}
+                      {r.extra && <span className="ml-2 text-[11px]" style={{color:"var(--dim)"}}>{r.extra}</span>}
+                    </div>
+                  </div>
+                  <div className="text-[12px] font-mono tabular-nums" style={{color:"var(--sub)"}}>{pct(r.kc)}%</div>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div className="mt-4 pt-3 text-[11px] font-mono flex items-center gap-3" style={{color:"var(--dim)", borderTop:"1px solid var(--border)"}}>
+            <span>1g P/C = 4 kcal · 1g F = 9 kcal</span>
+            <span className="ml-auto">체중 {bodyKg} kg</span>
+          </div>
+        </div>
+      );
+    }
+
+    function ProteinTrend({ data, targetPerKg, bodyKg }) {
+      const misses = data.filter(d => d.value < targetPerKg).length;
+      const avg = fmt1(data.reduce((s,d)=>s+d.value,0)/data.length);
+      const best = fmt1(Math.max(...data.map(d=>d.value)));
+      return (
+        <div className="mx-5 mb-5 rounded-xl p-5" style={{background:"var(--card)", border:"1px solid var(--border)"}}>
+          <div className="flex items-baseline justify-between mb-4">
+            <div>
+              <div className="text-[10px] tracking-[0.22em] uppercase font-mono" style={{color:"var(--dim)"}}>Protein</div>
+              <h2 className="text-[17px] font-semibold mt-0.5">단백질 트렌드 · 7일</h2>
+            </div>
+            <div className="text-right">
+              <div className="text-[10px] uppercase tracking-[0.2em] font-mono" style={{color:"var(--dim)"}}>Target</div>
+              <div className="text-[15px] font-mono" style={{color:"var(--bright)"}}>{fmt1(targetPerKg)} <span className="text-[11px]" style={{color:"var(--dim)"}}>g/kg</span></div>
+            </div>
+          </div>
+          <ProteinLine data={data} targetPerKg={targetPerKg} bodyKg={bodyKg} />
+          <div className="mt-3 pt-3 grid grid-cols-3 gap-3 text-center" style={{borderTop:"1px solid var(--border)"}}>
+            {[
+              { label:"목표 미달", value:`${misses}일`, clr: misses>=3 ? "#fca5a5" : "#fcd34d" },
+              { label:"평균", value:`${avg} g/kg`, clr:"var(--bright)" },
+              { label:"최고", value:`${best} g/kg`, clr:"#6ee7b7" },
+            ].map((s,i) => (
+              <div key={i}>
+                <div className="text-[10px] uppercase tracking-[0.18em] font-mono mb-0.5" style={{color:"var(--dim)"}}>{s.label}</div>
+                <div className="text-[15px] font-mono" style={{color:s.clr}}>{s.value}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+
+    function FoodItem({ item }) {
+      const missing = item.kcal == null || item.p == null || item.c == null || item.f == null;
+      return (
+        <li className={`px-4 py-3 flex flex-col gap-1.5 ${missing ? "diag-bg" : ""}`}>
+          <div className="flex items-baseline justify-between gap-3">
+            <div className="flex items-baseline gap-2">
+              <span className="text-[10px] font-mono tracking-widest uppercase" style={{color:"var(--dim)"}}>{mealLabel(item.mealType)}</span>
+              <span className="text-[10px] font-mono" style={{color:"var(--dim)"}}>{item.time}</span>
+              {missing && (
+                <span className="text-[9px] font-mono uppercase tracking-wider px-1.5 py-[1px] rounded"
+                  style={{color:"#fcd34d", border:"1px solid rgba(245,158,11,.35)"}}>
+                  부분 미측정
+                </span>
+              )}
+            </div>
+            <div className="text-[14px] font-mono tabular-nums" style={{color:"var(--bright)"}}>
+              {fmtK(item.kcal)}<span className="text-[11px] ml-1" style={{color:"var(--dim)"}}>kcal</span>
+            </div>
+          </div>
+          <div className="text-[14px] leading-snug" style={{color:"var(--bright)"}}>{item.desc}</div>
+          <div className="grid grid-cols-3 gap-2 mt-1">
+            {[
+              { l:"P", v:item.p, clr:"var(--protein)" },
+              { l:"C", v:item.c, clr:"var(--carbs)" },
+              { l:"F", v:item.f, clr:"var(--fat)" },
+            ].map((m,i)=>(
+              <div key={i} className="flex items-baseline gap-1.5 text-[11px] font-mono">
+                <span className="w-1.5 h-1.5 rounded-sm" style={{background:m.clr}}></span>
+                <span style={{color:"var(--dim)"}}>{m.l}</span>
+                <span className="tabular-nums" style={{color:"var(--text)"}}>{fmtG(m.v)}</span>
+              </div>
+            ))}
+          </div>
+        </li>
+      );
+    }
+
+    function FoodList({ items }) {
+      const missingCount = items.filter(i => i.kcal==null || i.p==null || i.c==null || i.f==null).length;
+      const measured = items.filter(i => i.kcal != null);
+      const kSum = measured.reduce((s,i)=>s+i.kcal,0);
+      return (
+        <div className="mx-5 mb-8 rounded-xl overflow-hidden" style={{background:"var(--card)", border:"1px solid var(--border)"}}>
+          <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
+            <div>
+              <div className="text-[10px] tracking-[0.22em] uppercase font-mono" style={{color:"var(--dim)"}}>Today</div>
+              <h2 className="text-[17px] font-semibold mt-0.5">오늘 식단 · {items.length}건</h2>
+            </div>
+            <div className="text-[11px] font-mono" style={{color:"var(--dim)"}}>
+              {missingCount > 0 && <span className="mr-2" style={{color:"#fcd34d"}}>미측정 {missingCount}</span>}
+              <span>{kSum.toLocaleString("ko")} kcal</span>
+            </div>
+          </div>
+          <ul>
+            {items.map((i, idx) => (
+              <div key={i.id} style={{borderTop: idx===0 ? "none" : "1px solid var(--border)"}}>
+                <FoodItem item={i} />
+              </div>
+            ))}
+          </ul>
+          <div className="px-4 py-3 text-[11px] font-mono flex items-center gap-3" style={{color:"var(--dim)", borderTop:"1px solid var(--border)"}}>
+            <span>봇 · 웹 어느 쪽으로 입력해도 자동 추정</span>
+            <a className="ml-auto hover:opacity-80" style={{color:"var(--sub)"}} href="#">/lifestyle 보기 →</a>
+          </div>
+        </div>
+      );
+    }
+
+    function App() {
+      const missingItems = foods.filter(i => i.kcal==null || i.p==null || i.c==null || i.f==null).length;
+      return (
+        <div className="min-h-screen grid-lines">
+          <div className="mx-auto max-w-md md:max-w-3xl lg:max-w-6xl">
+            <AppHeader />
+            <PartialWarning pendingCount={missingItems} />
+            <RiskBanner v={verdict} />
+            {/*
+              반응형 그리드:
+              - mobile: 단일 컬럼 stack (기본)
+              - md (768+): 도넛 + 트렌드 좌우 2컬럼
+              - lg (1024+): 좌측 (도넛 4 · 트렌드 8) + 우측 (오늘 식단) 12콜럼 그리드
+            */}
+            <div className="lg:grid lg:grid-cols-12 lg:gap-0">
+              <div className="lg:col-span-8">
+                <div className="md:grid md:grid-cols-12 md:gap-0">
+                  <div className="md:col-span-5 lg:col-span-6">
+                    <MacroDonut m7={macros7d} mToday={macrosToday} bodyKg={bodyWeightKg} />
+                  </div>
+                  <div className="md:col-span-7 lg:col-span-6">
+                    <ProteinTrend data={proteinTrend} targetPerKg={proteinTargetPerKg} bodyKg={bodyWeightKg} />
+                  </div>
+                </div>
+              </div>
+              <div className="lg:col-span-4">
+                <FoodList items={foods} />
+              </div>
+            </div>
+          </div>
+        </div>
+      );
+    }
+
+    ReactDOM.createRoot(document.getElementById("root")).render(<App />);
+  </script>
+</body>
+</html>
