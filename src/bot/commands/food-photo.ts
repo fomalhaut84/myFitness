@@ -91,6 +91,12 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
     return;
   }
 
+  // Codex P2 (PR #310 4회차): 자정 근처 사진이 download + Vision (최대 45s) 이 지나 다음날로
+  // 저장되는 것 방지. message.date (텔레그램 unix seconds) 를 사진 촬영·전송 시점으로 사용.
+  // fallback 은 handler 진입 시점 — Vision 대기 시간에 영향 안 받음.
+  const photoTimestamp =
+    typeof message.date === "number" ? new Date(message.date * 1000) : new Date();
+
   const largest = message.photo[message.photo.length - 1];
 
   // 즉시 사용자 피드백. Vision 이 30초 이상 걸릴 수 있어 무응답 방지.
@@ -147,10 +153,9 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
         ? estimate.items.map((i) => i.name).join(" · ")
         : "사진 (분석 실패)";
 
-    const now = new Date();
     const log = await prisma.foodLog.create({
       data: {
-        date: now,
+        date: photoTimestamp,
         description,
         mealType,
         estimatedKcal: estimate?.kcal ?? null,
@@ -163,13 +168,13 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
 
     // 칼로리 밸런스 재계산. 실패 시 stale queue mark (기존 food.ts recalcWithRetry 로직 축약).
     try {
-      await recalculateCalorieBalance(now, undefined, prisma);
+      await recalculateCalorieBalance(photoTimestamp, undefined, prisma);
     } catch (err) {
       console.warn(
         `[food-photo] recalc 실패, stale queue 등록: ${err instanceof Error ? err.message : String(err)}`,
       );
       try {
-        await markStaleRecalcDate(now);
+        await markStaleRecalcDate(photoTimestamp);
       } catch {
         // ignore
       }
