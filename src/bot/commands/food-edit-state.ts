@@ -20,8 +20,12 @@ const ACTIVE_TTL_MS = 5 * 60 * 1000;
 const GRACE_TTL_MS = 25 * 60 * 1000; // 만료 후 tombstone 유지 시간
 const HARD_TTL_MS = ACTIVE_TTL_MS + GRACE_TTL_MS;
 
+// #309: action 추가 — kcal (기본 · 숫자 답장) 또는 desc (텍스트 답장).
+export type PendingEditAction = "kcal" | "desc";
+
 interface PendingEdit {
   logId: string;
+  action: PendingEditAction;
   activeUntil: number; // 이 시각까지는 정상 반영. 초과 시 만료 tombstone.
 }
 
@@ -31,14 +35,16 @@ function key(chatId: number, promptMessageId: number): string {
   return `${chatId}:${promptMessageId}`;
 }
 
-/** 프롬프트 messageId(+chatId) 를 key 로 log id 를 저장. */
+/** 프롬프트 messageId(+chatId) 를 key 로 log id 를 저장. action 미지정 시 kcal (기존 호환). */
 export function markPendingEdit(
   chatId: number,
   promptMessageId: number,
   logId: string,
+  action: PendingEditAction = "kcal",
 ): void {
   pending.set(key(chatId, promptMessageId), {
     logId,
+    action,
     activeUntil: Date.now() + ACTIVE_TTL_MS,
   });
 }
@@ -52,20 +58,20 @@ export function isPendingEdit(
 }
 
 /**
- * peek — entry 정보 (logId + 만료 여부) 반환. **삭제하지 않음.**
+ * peek — entry 정보 (logId + action + 만료 여부) 반환. **삭제하지 않음.**
  * 사용자 답장이 malformed 여도 entry 유지되어 재시도 가능 (Codex P2).
  * 만료된 경우 logId=null + expired=true.
  */
 export function peekPendingEdit(
   chatId: number,
   promptMessageId: number,
-): { logId: string | null; expired: boolean } {
+): { logId: string | null; action: PendingEditAction | null; expired: boolean } {
   const entry = pending.get(key(chatId, promptMessageId));
-  if (!entry) return { logId: null, expired: false };
+  if (!entry) return { logId: null, action: null, expired: false };
   if (Date.now() > entry.activeUntil) {
-    return { logId: null, expired: true };
+    return { logId: null, action: null, expired: true };
   }
-  return { logId: entry.logId, expired: false };
+  return { logId: entry.logId, action: entry.action, expired: false };
 }
 
 /** 성공 처리 or 만료 안내 후 entry 명시 삭제. */

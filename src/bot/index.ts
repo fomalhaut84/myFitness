@@ -14,6 +14,7 @@ import {
   registerFoodEditCallback,
   handleFoodEditReply,
 } from "./commands/food-edit-callback";
+import { registerFoodPhotoHandler } from "./commands/food-photo";
 import { isPendingEdit } from "./commands/food-edit-state";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
@@ -55,6 +56,8 @@ export function getBot(): Bot {
   registerAutoAdjustCallback(bot);
   // #292 (M14 Phase 2 #1): food kcal 인라인 편집 callback (수정/삭제).
   registerFoodEditCallback(bot);
+  // #309 (M14 Phase 2 #5): 음식 사진 → Vision 자동 로그.
+  registerFoodPhotoHandler(bot);
 
   // 자연어 fallback
   bot.on("message:text", async (ctx) => {

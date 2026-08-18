@@ -1,10 +1,18 @@
 import { NextResponse } from "next/server";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+
+// #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/heic"]);
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -54,6 +62,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    return handlePhotoPost(request);
+  }
+  return handleJsonPost(request);
+}
+
+async function handleJsonPost(request: Request) {
   try {
     const body = await request.json();
     const { description, mealType, date } = body;
@@ -161,5 +177,122 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+// #309 (M14 Phase 2 #5): 사진 업로드 처리. Vision 응답 파싱 후 FoodLog 저장.
+// 이미지는 temp 파일로 저장 (Claude CLI @-reference 필요) → 처리 후 즉시 삭제 (spec: 저장 안 함).
+async function handlePhotoPost(request: Request) {
+  let tempPath: string | null = null;
+  try {
+    const form = await request.formData();
+    const image = form.get("image");
+    if (!(image instanceof File)) {
+      return NextResponse.json({ error: "image 필드가 필요합니다" }, { status: 400 });
+    }
+    const mime = (image.type || "").toLowerCase();
+    if (mime && !ALLOWED_PHOTO_MIME.has(mime)) {
+      return NextResponse.json(
+        { error: `지원되지 않는 이미지 형식: ${mime}` },
+        { status: 400 },
+      );
+    }
+    if (image.size > MAX_PHOTO_BYTES) {
+      return NextResponse.json(
+        { error: `이미지 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB)을 초과합니다` },
+        { status: 400 },
+      );
+    }
+    const caption = String(form.get("description") ?? "").trim() || undefined;
+    const mealTypeRaw = form.get("mealType");
+    const mealType = typeof mealTypeRaw === "string" && mealTypeRaw.trim() ? mealTypeRaw.trim() : undefined;
+    const dateRaw = form.get("date");
+    let foodDate = new Date();
+    if (typeof dateRaw === "string" && dateRaw) {
+      foodDate = new Date(dateRaw);
+      if (isNaN(foodDate.getTime())) {
+        return NextResponse.json({ error: `유효하지 않은 날짜: ${dateRaw}` }, { status: 400 });
+      }
+    }
+
+    // temp 파일 (프로젝트 tmpdir 사용 · random 접미사).
+    const ext = mimeToExt(mime) || path.extname(image.name || "") || ".jpg";
+    const rand = Math.random().toString(36).slice(2, 10);
+    tempPath = path.join(os.tmpdir(), `mfp-photo-${Date.now()}-${rand}${ext}`);
+    const buf = Buffer.from(await image.arrayBuffer());
+    await fs.writeFile(tempPath, buf);
+
+    const estimate = await estimateNutritionFromPhoto({
+      imagePath: tempPath,
+      caption,
+      mealType,
+    });
+
+    // description 결정: 사용자 caption 우선 → Vision items 요약 → fallback.
+    const description = pickDescriptionFromEstimate(caption, estimate);
+
+    const log = await withSerializableRetry(async (tx) => {
+      const created = await tx.foodLog.create({
+        data: {
+          date: foodDate,
+          description,
+          estimatedKcal: estimate?.kcal ?? null,
+          proteinG: estimate?.proteinG ?? null,
+          carbsG: estimate?.carbsG ?? null,
+          fatG: estimate?.fatG ?? null,
+          mealType: mealType ?? null,
+        },
+      });
+      await recalculateCalorieBalance(foodDate, tx);
+      return created;
+    });
+
+    return NextResponse.json({
+      data: {
+        ...log,
+        date: log.date.toISOString(),
+        createdAt: log.createdAt.toISOString(),
+      },
+      estimate: estimate
+        ? {
+            kcal: estimate.kcal,
+            proteinG: estimate.proteinG,
+            carbsG: estimate.carbsG,
+            fatG: estimate.fatG,
+            confidence: estimate.confidence,
+            items: estimate.items,
+            notes: estimate.notes,
+          }
+        : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[api/food POST multipart] 예외:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    if (tempPath) {
+      await fs.unlink(tempPath).catch(() => {
+        // ignore — temp 정리 실패는 치명적이지 않음.
+      });
+    }
+  }
+}
+
+function mimeToExt(mime: string): string | null {
+  if (mime === "image/jpeg") return ".jpg";
+  if (mime === "image/png") return ".png";
+  if (mime === "image/webp") return ".webp";
+  if (mime === "image/heic") return ".heic";
+  return null;
+}
+
+function pickDescriptionFromEstimate(
+  caption: string | undefined,
+  estimate: { items?: Array<{ name: string }> } | null,
+): string {
+  if (caption) return caption;
+  if (estimate?.items && estimate.items.length > 0) {
+    return estimate.items.map((i) => i.name).join(" · ");
+  }
+  return "사진 (분석 실패)";
 }
 

@@ -1,0 +1,179 @@
+// #309 (M14 Phase 2 #5): 텔레그램 음식 사진 handler.
+// 사진 메시지 수신 → 최대 사이즈 download → temp 저장 → Vision → FoodLog 생성 → 3-버튼 답장.
+// 이미지는 처리 후 즉시 삭제 (spec: 보관 안 함).
+
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
+import type { Bot, Context } from "grammy";
+import prisma from "../prisma";
+import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
+import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
+import { buildFoodInlineKeyboard } from "./food-edit-callback";
+import { MEAL_LABELS, MEAL_PATTERNS, CONFIDENCE_LABEL } from "./food";
+
+const TG_FILE_HOST = "https://api.telegram.org/file/bot";
+
+/** KST 시간대별 mealType 추정. 사용자가 캡션으로 명시하지 않은 경우 fallback. */
+function guessMealTypeByKstTime(now: Date = new Date()): string {
+  const kstHour = Number(
+    now.toLocaleString("en-US", { timeZone: "Asia/Seoul", hour: "2-digit", hour12: false }),
+  );
+  if (kstHour >= 5 && kstHour < 11) return "breakfast";
+  if (kstHour >= 11 && kstHour < 15) return "lunch";
+  if (kstHour >= 15 && kstHour < 18) return "snack";
+  if (kstHour >= 18 && kstHour < 22) return "dinner";
+  return "snack";
+}
+
+function extractMealFromCaption(caption?: string): { mealType: string; residual: string } | null {
+  if (!caption) return null;
+  const trimmed = caption.trim();
+  const meal = MEAL_PATTERNS.find((m) => m.pattern.test(trimmed));
+  if (!meal) return null;
+  const residual = trimmed.replace(meal.pattern, "").trim();
+  return { mealType: meal.type, residual };
+}
+
+async function downloadTo(url: string, dest: string): Promise<void> {
+  const res = await fetch(url);
+  if (!res.ok) throw new Error(`텔레그램 파일 다운로드 실패 (${res.status})`);
+  const buf = Buffer.from(await res.arrayBuffer());
+  await fs.writeFile(dest, buf);
+}
+
+export function registerFoodPhotoHandler(bot: Bot): void {
+  bot.on("message:photo", async (ctx) => {
+    try {
+      await handleFoodPhoto(ctx);
+    } catch (err) {
+      console.error("[food-photo] handler 예외:", err);
+      try {
+        await ctx.reply("사진 처리 중 오류가 발생했습니다. 다시 시도해주세요.");
+      } catch {
+        // ignore
+      }
+    }
+  });
+}
+
+async function handleFoodPhoto(ctx: Context): Promise<void> {
+  const message = ctx.message;
+  if (!message?.photo || message.photo.length === 0) return;
+
+  const token = process.env.TELEGRAM_BOT_TOKEN;
+  if (!token) {
+    await ctx.reply("서버 설정 오류 (bot token 없음). 관리자에게 문의해주세요.");
+    return;
+  }
+
+  const largest = message.photo[message.photo.length - 1];
+
+  // 즉시 사용자 피드백. Vision 이 30초 이상 걸릴 수 있어 무응답 방지.
+  try {
+    await ctx.replyWithChatAction?.("typing");
+  } catch {
+    // ignore
+  }
+  let ackMsgId: number | undefined;
+  try {
+    const ack = await ctx.reply("🖼️ 사진 분석 중… (약 20~40초 소요)");
+    ackMsgId = ack.message_id;
+  } catch {
+    // ignore
+  }
+
+  // 캡션 파싱 → mealType + 잔여 description.
+  const rawCaption = message.caption?.trim();
+  const parsed = extractMealFromCaption(rawCaption);
+  const mealType = parsed?.mealType ?? guessMealTypeByKstTime();
+  const caption = (parsed?.residual ?? rawCaption)?.trim() || undefined;
+
+  // 텔레그램 파일 다운로드 → temp.
+  const rand = Math.random().toString(36).slice(2, 10);
+  const tempPath = path.join(os.tmpdir(), `mfp-photo-${Date.now()}-${rand}.jpg`);
+  try {
+    const file = await ctx.api.getFile(largest.file_id);
+    if (!file.file_path) {
+      throw new Error("텔레그램 파일 경로 없음");
+    }
+    const url = `${TG_FILE_HOST}${token}/${file.file_path}`;
+    await downloadTo(url, tempPath);
+
+    const estimate = await estimateNutritionFromPhoto({
+      imagePath: tempPath,
+      caption,
+      mealType,
+    });
+
+    // description 결정: caption 우선 → Vision items 요약 → fallback.
+    const description = caption
+      ? caption
+      : estimate?.items && estimate.items.length > 0
+        ? estimate.items.map((i) => i.name).join(" · ")
+        : "사진 (분석 실패)";
+
+    const now = new Date();
+    const log = await prisma.foodLog.create({
+      data: {
+        date: now,
+        description,
+        mealType,
+        estimatedKcal: estimate?.kcal ?? null,
+        proteinG: estimate?.proteinG ?? null,
+        carbsG: estimate?.carbsG ?? null,
+        fatG: estimate?.fatG ?? null,
+      },
+      select: { id: true },
+    });
+
+    // 칼로리 밸런스 재계산. 실패 시 stale queue mark (기존 food.ts recalcWithRetry 로직 축약).
+    try {
+      await recalculateCalorieBalance(now, undefined, prisma);
+    } catch (err) {
+      console.warn(
+        `[food-photo] recalc 실패, stale queue 등록: ${err instanceof Error ? err.message : String(err)}`,
+      );
+      try {
+        await markStaleRecalcDate(now);
+      } catch {
+        // ignore
+      }
+    }
+
+    // 응답 조립.
+    const mealLabel = MEAL_LABELS[mealType] ?? mealType;
+    const lines: string[] = [`✅ ${mealLabel} 기록 완료`, `📝 ${description}`];
+    if (estimate) {
+      lines.push(
+        `📊 약 ${estimate.kcal.toLocaleString("ko-KR")} kcal (신뢰도 ${CONFIDENCE_LABEL[estimate.confidence]})`,
+      );
+      const p = estimate.proteinG;
+      const c = estimate.carbsG;
+      const f = estimate.fatG;
+      if (p !== null && c !== null && f !== null) {
+        lines.push(`🥩 P ${Math.round(p)}g · C ${Math.round(c)}g · F ${Math.round(f)}g`);
+      }
+      if (estimate.notes) lines.push(`ℹ️ ${estimate.notes}`);
+    } else {
+      lines.push("⚠️ Vision 분석 실패 — [🔢 kcal] 로 직접 입력하거나 [🗑️ 삭제] 후 다시 시도");
+    }
+
+    // ack 메시지 지우고 최종 응답.
+    if (ackMsgId !== undefined) {
+      try {
+        await ctx.api.deleteMessage(ctx.chat!.id, ackMsgId);
+      } catch {
+        // ignore — 이미 삭제됐거나 권한 이슈
+      }
+    }
+    await ctx.reply(lines.join("\n"), {
+      reply_markup: buildFoodInlineKeyboard(log.id),
+    });
+  } finally {
+    await fs.unlink(tempPath).catch(() => {
+      // ignore — temp 정리 실패는 치명적이지 않음
+    });
+  }
+}
