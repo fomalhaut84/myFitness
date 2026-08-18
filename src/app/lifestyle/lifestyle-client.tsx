@@ -151,25 +151,26 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Codex P2 (릴리즈 PR #313 4/5/6/7회차): description save 성공 후 router.refresh() 가 SSR
+  // Codex P2 (릴리즈 PR #313 4/5/6/7/8회차): description save 성공 후 router.refresh() 가 SSR
   // 반영을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value →
   // stale 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
   //
-  // 해결: expectedDescription 을 저장, log.description 이 그 값으로 갱신되면 (실제 SSR
-  // 반영) 자동 해제. render-time derive 라 setState-in-effect 룰 무관.
-  //
-  // 7회차: expectedDescription 을 refresh 관측 즉시 clear. 안 하면 나중에 bot 등 다른 경로로
-  // log.description 이 또 바뀔 때 comparison 이 다시 true 로 → kcal edit 무한 disable 회귀.
-  // React 는 render 중 conditional setState 를 허용 (같은 컴포넌트, guarded, 무한 loop 없음)
-  // — reference: https://react.dev/reference/react/useState#storing-information-from-previous-renders.
-  //
-  // fallback timer 는 제거 — RSC refresh 실패 / 오래 pending 이면 timer 가 stale prop 을
-  // editable 로 만들어 회귀. refresh 실패는 사용자가 페이지 새로고침으로 회복.
-  const [expectedDescription, setExpectedDescription] = useState<string | null>(null);
-  if (expectedDescription !== null && log.description === expectedDescription) {
-    setExpectedDescription(null);
+  // 해결: pending 정보 (expected + wasBefore) 를 저장. 다음 중 하나로 clear:
+  //   (a) log.description === expected — 정확히 web 이 세팅한 값으로 반영
+  //   (b) log.description !== wasBefore — old value 에서 어떤 값으로든 바뀜 (bot 이 web
+  //       PATCH 이후 다른 값으로 override 한 경우도 fresh row 로 인정 · 무한 disable 회귀 방지)
+  // React 는 render 중 conditional setState 를 허용 (같은 컴포넌트, guarded, 무한 loop 없음).
+  const [descPendingGuard, setDescPendingGuard] = useState<
+    { expected: string; wasBefore: string } | null
+  >(null);
+  if (
+    descPendingGuard !== null &&
+    (log.description === descPendingGuard.expected ||
+      log.description !== descPendingGuard.wasBefore)
+  ) {
+    setDescPendingGuard(null);
   }
-  const descPending = expectedDescription !== null;
+  const descPending = descPendingGuard !== null;
 
 
   async function saveDesc() {
@@ -208,11 +209,12 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
       // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
       // Codex P2 (릴리즈 PR #313): kcal editor 가 열려있었다면 in-progress 값이 blank 로
       // silently discarded → 사용자 혼란. editor 자체를 닫아 상태 변경을 명시.
-      // Codex P2 (릴리즈 PR #313 4/5회차): expected description 저장 → log.description 이
-      // 새 값으로 갱신될 때까지 descPending 유지 (fixed timer 대신 실제 SSR 반영 감지).
+      // Codex P2 (릴리즈 PR #313 4/5/8회차): pending guard 저장 → log.description 이 새 값
+      // (또는 다른 어떤 값) 으로 갱신될 때까지 descPending 유지 (fixed timer 대신 실제 SSR
+      // 반영 or 최소한 fresh row 감지). wasBefore 는 save 호출 시점의 log.description.
       setEditingKcal(false);
       setKcalInput("");
-      setExpectedDescription(trimmed);
+      setDescPendingGuard({ expected: trimmed, wasBefore: log.description });
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
