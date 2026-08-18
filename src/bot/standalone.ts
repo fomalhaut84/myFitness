@@ -8,6 +8,14 @@ import { sweepStalePhotoTempFiles } from "@/lib/nutrition/photo-temp-cleanup";
 async function main() {
   console.log("[bot] myFitness 텔레그램 봇 시작...");
 
+  // #309 (Codex P2 PR #312 2회차): photo temp sweep 은 로컬 fs 만 접근 — 네트워크 의존
+  // (bot.init / deleteWebhook) 이전에 실행해야 텔레그램 unavailable 시에도 정리 진행.
+  // 봇 프로세스만 재시작하는 경우 웹 프로세스 sweep 은 트리거 안 되므로 이 sweep 이
+  // 유일한 정리 시점.
+  await sweepStalePhotoTempFiles().catch((err) => {
+    console.error("[photo-cleanup] sweep failed:", err);
+  });
+
   const bot = getBot();
 
   // update handler 에러 격리 — handler 안 throw가 process 죽이지 않도록.
@@ -28,12 +36,6 @@ async function main() {
     console.error("[report-job] sweep failed:", err);
   });
   startOrphanSweeper();
-
-  // #309 (Codex P2 PR #311): 이전 프로세스 crash / kill / 배포 도중 종료로 남은 photo temp
-  // 파일 정리. "이미지 보관 안 함" 약속 유지. 실패해도 startup 지속.
-  await sweepStalePhotoTempFiles().catch((err) => {
-    console.error("[photo-cleanup] sweep failed:", err);
-  });
 
   // 알림 스케줄러 시작
   startBotScheduler(bot);
