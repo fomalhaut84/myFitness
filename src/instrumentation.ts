@@ -1,23 +1,13 @@
+// Next.js 15+ instrumentation hook — 서버 프로세스 시작 시 1회 실행.
+// #309 (Codex P2 PR #311): 이전 프로세스 crash / 배포 도중 종료로 남은 mfp-photo-* temp
+// 파일 정리. "이미지 보관 안 함" 약속 유지. Node.js runtime 에서만 실행 (Edge 는 fs 접근 X).
+
 export async function register() {
-  // 서버 사이드에서만 실행 (Edge runtime 제외)
-  if (process.env.NEXT_RUNTIME === "nodejs") {
-    // Garmin 싱크 시 다수의 병렬 HTTPS 요청이 동일 TLS 소켓에 error listener를
-    // 추가하면서 기본 한도 10을 넘어 MaxListenersExceededWarning 발생.
-    // 싱크 중 동시 요청 수 고려하여 여유 있게 상향.
-    const { EventEmitter } = await import("events");
-    EventEmitter.defaultMaxListeners = 30;
-
-    const { startCronJobs } = await import("@/lib/cron");
-    startCronJobs();
-
-    // M#191: pm2 restart 등으로 orphan 된 pending/running job 을 failed 로 마킹.
-    // 부팅 1회 + periodic (5분 주기) 병행. 봇 프로세스도 별도로 호출 (src/bot/standalone.ts).
-    const { sweepOrphanedJobs, startOrphanSweeper } = await import(
-      "@/lib/report-job"
-    );
-    sweepOrphanedJobs().catch((err) => {
-      console.error("[report-job] sweep failed:", err);
-    });
-    startOrphanSweeper();
-  }
+  if (process.env.NEXT_RUNTIME !== "nodejs") return;
+  const { sweepStalePhotoTempFiles } = await import(
+    "@/lib/nutrition/photo-temp-cleanup"
+  );
+  await sweepStalePhotoTempFiles().catch((err) => {
+    console.error("[photo-cleanup] startup sweep failed:", err);
+  });
 }

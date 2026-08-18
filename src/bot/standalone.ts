@@ -3,6 +3,7 @@ import { getBot } from "./index";
 import { startBotScheduler } from "./notifications/scheduler";
 import { sanitizeError } from "./utils/error";
 import { sweepOrphanedJobs, startOrphanSweeper } from "@/lib/report-job";
+import { sweepStalePhotoTempFiles } from "@/lib/nutrition/photo-temp-cleanup";
 
 async function main() {
   console.log("[bot] myFitness 텔레그램 봇 시작...");
@@ -27,6 +28,12 @@ async function main() {
     console.error("[report-job] sweep failed:", err);
   });
   startOrphanSweeper();
+
+  // #309 (Codex P2 PR #311): 이전 프로세스 crash / kill / 배포 도중 종료로 남은 photo temp
+  // 파일 정리. "이미지 보관 안 함" 약속 유지. 실패해도 startup 지속.
+  await sweepStalePhotoTempFiles().catch((err) => {
+    console.error("[photo-cleanup] sweep failed:", err);
+  });
 
   // 알림 스케줄러 시작
   startBotScheduler(bot);
