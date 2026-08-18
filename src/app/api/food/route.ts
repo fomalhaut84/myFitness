@@ -85,7 +85,10 @@ export async function POST(request: Request) {
     let fatG: number | null = null;
     let hitKcal: number | null = null;
     try {
-      const hit = await findRecentSameDescription(description, mealType, foodDate);
+      // Codex P2 (PR #301 27회차): client 가 mealType 없이 보내면 undefined → 저장 시
+      // `mealType ?? null` 로 null 저장. lookup 은 null-meal 클래스 매치되려면 null 로 전달해야
+      // 함 (undefined 는 "no preference" 로 취급되어 null-meal 을 우선순위에서 배제).
+      const hit = await findRecentSameDescription(description, mealType ?? null, foodDate);
       if (hit) {
         hitKcal = hit.kcal;
         estimatedKcal = hit.kcal;

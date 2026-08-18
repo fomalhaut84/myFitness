@@ -13,6 +13,12 @@ interface MacroValues {
   // 계산하면 valid 2000 kcal 이 ~1500 으로 표시될 수 있음). 센터 표시에 사용, slice 비율은
   // macro-derived kcal 유지.
   kcal: number | null;
+  /**
+   * Codex P2 (PR #301 26회차): 데이터 존재 신호. weekly 뷰에서 completeAvg 가 모두 null 이지만
+   * partial 로그가 있는 경우 (예: kcal 만 있고 macros null 인 7일) "기록 없음" 으로 오해되지
+   * 않게 partial 로 분류. 미지정 시 필드값만으로 판단.
+   */
+  hasAnyData?: boolean;
 }
 
 interface MacroDonutProps {
@@ -97,8 +103,13 @@ export default function MacroDonut({ weekly, today, bodyWeightKg }: MacroDonutPr
   // slice 비율만 macro-derived 로 계산 — 시각적 비율 정확성 유지.
   const derivedKcal = macroDerivedKcal(active);
   const displayKcal = active.kcal ?? derivedKcal;
-  const isPartial = derivedKcal === null && hasAnyMacro(active);
-  const isEmpty = !hasAnyMacro(active) && active.kcal === null;
+  // Codex P2 (PR #301 26회차): partial 은 (a) hasAnyMacro 이지만 complete 아님, 또는
+  // (b) hasAnyData 신호가 명시적 partial (예: weekly 에 kcal 만 있는 로그들). empty 는
+  // 그 두 조건 모두 false 일 때.
+  const partialByFields = derivedKcal === null && hasAnyMacro(active);
+  const partialBySignal = derivedKcal === null && active.hasAnyData === true;
+  const isPartial = partialByFields || partialBySignal;
+  const isEmpty = !isPartial && !hasAnyMacro(active) && active.kcal === null && !active.hasAnyData;
   // Codex P2 (PR #300 4회차): null 인 macro 는 세그먼트에 표시 안 함 (0 취급 X).
   // Codex P2 (PR #301 23회차): partial (예: P 만 있고 C/F null) 이면 남은 슬라이스가 total 로
   // 정규화되어 "100% 단백질" 원으로 오해. derivedKcal 이 null 이면 비율 자체가 무의미 →

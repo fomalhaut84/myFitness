@@ -175,9 +175,13 @@ export async function findRecentSameDescription(
   // AI 로 macros 채움 (POST /api/food, bot/food).
   const isComplete = (r: (typeof sameKey)[number]): boolean =>
     r.proteinG !== null && r.carbsG !== null && r.fatG !== null;
-  const sameMeal = mealType
-    ? sameKey.find((r) => r.mealType === mealType)
-    : undefined;
+  // Codex P2 (PR #301 26회차): mealType 이 null 인 경우도 same-meal 후보 (null-meal 클래스).
+  // 이전 truthy 가드는 null 이면 sameMeal 을 undefined 로 취급 → null-meal 로그가 anyComplete
+  // 로 밀려 older complete 가 더 신선한 null-meal 정정값을 이김. undefined 만 skip, null 은 equality 매치.
+  const sameMeal =
+    mealType !== undefined
+      ? sameKey.find((r) => r.mealType === mealType)
+      : undefined;
   const anyComplete = sameKey.find(isComplete);
   const chosen = sameMeal ?? anyComplete ?? sameKey[0];
 
