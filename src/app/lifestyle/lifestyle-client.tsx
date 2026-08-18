@@ -151,17 +151,20 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Codex P2 (릴리즈 PR #313 4회차): description save 성공 후 router.refresh() 가 SSR 반영을
-  // 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value → stale
-  // 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용. refresh 반영 window 동안 kcal
-  // edit 을 잠시 disable. 1.5s 는 실제 Next.js router.refresh() 완료 여유 (client 재조정
-  // 은 보통 100~300ms). backfill 이 새 kcal 을 채우는 것과 무관 (그건 이후 열 때 반영).
-  const [descPending, setDescPending] = useState(false);
+  // Codex P2 (릴리즈 PR #313 4/5회차): description save 성공 후 router.refresh() 가 SSR 반영
+  // 을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value → stale
+  // 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
+  // fixed timer (1.5s) 는 network/server load 시 refresh 지연이면 stale window 발생 → 대신
+  // "expected description" 을 저장, log.description 이 그 값과 같아지면 (SSR 실제 반영) 자동
+  // 해제. 무한 pending 방지 fallback timer 30s (극단 케이스 · 사용자 UX 보호).
+  const [expectedDescription, setExpectedDescription] = useState<string | null>(null);
+  const descPending =
+    expectedDescription !== null && log.description !== expectedDescription;
   useEffect(() => {
-    if (!descPending) return;
-    const t = setTimeout(() => setDescPending(false), 1500);
+    if (expectedDescription === null) return;
+    const t = setTimeout(() => setExpectedDescription(null), 30_000);
     return () => clearTimeout(t);
-  }, [descPending]);
+  }, [expectedDescription]);
 
 
   async function saveDesc() {
@@ -200,11 +203,11 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
       // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
       // Codex P2 (릴리즈 PR #313): kcal editor 가 열려있었다면 in-progress 값이 blank 로
       // silently discarded → 사용자 혼란. editor 자체를 닫아 상태 변경을 명시.
-      // Codex P2 (릴리즈 PR #313 4회차): refresh 반영 window (1.5s) 동안 kcal edit disable
-      // (stale prop 로 열려 저장되면 old kcal 이 새 desc 에 적용되는 회귀).
+      // Codex P2 (릴리즈 PR #313 4/5회차): expected description 저장 → log.description 이
+      // 새 값으로 갱신될 때까지 descPending 유지 (fixed timer 대신 실제 SSR 반영 감지).
       setEditingKcal(false);
       setKcalInput("");
-      setDescPending(true);
+      setExpectedDescription(trimmed);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
