@@ -224,8 +224,12 @@ export async function handleFoodEditReply(ctx: {
   const raw = (ctx.message?.text ?? "").trim();
 
   // #309: 설명 정정 분기.
+  // Codex P1 (PR #310 2회차): ctx.reply 를 unbound method 로 넘기면 grammy Context.reply 가
+  // this.api / this.chatId 접근 시 undefined → throw. bound closure 로 전달.
   if (action === "desc") {
-    return handleDescReply(chatId, replyToId, logId, raw, ctx.reply);
+    const boundReply = (text: string, options?: Record<string, unknown>) =>
+      ctx.reply(text, options);
+    return handleDescReply(chatId, replyToId, logId, raw, boundReply);
   }
 
   // action === "kcal" (기본).

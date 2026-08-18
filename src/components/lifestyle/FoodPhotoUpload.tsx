@@ -48,6 +48,16 @@ export default function FoodPhotoUpload() {
       clearTimeout(successTimerRef.current);
       successTimerRef.current = null;
     }
+    // Codex P2 (PR #310 2회차): HEIC 는 Claude Vision 미지원 → 업로드 전에 명시적 reject.
+    // 이전엔 원본 그대로 서버 전송 → Vision 실패 → 422. 사용자가 원인을 알기 어려움.
+    const isHeic = /^image\/heic$/i.test(file.type) || /\.heic$/i.test(file.name);
+    if (isHeic) {
+      setState({
+        kind: "error",
+        message: "HEIC 형식은 지원되지 않습니다. iPhone 설정 > 카메라 > 포맷 을 '가장 호환성 있게' 로 변경하거나, 다른 사진 앱에서 JPEG 로 저장 후 재업로드해주세요.",
+      });
+      return;
+    }
     setState({ kind: "uploading", filename: file.name });
     try {
       const blob = await downscaleImage(file);
@@ -156,13 +166,8 @@ export default function FoodPhotoUpload() {
   );
 }
 
-/** client-side downscale via canvas. HEIC 등 브라우저 미지원 포맷은 원본 그대로 리턴. */
+/** client-side downscale via canvas. HEIC 는 caller (onFile) 에서 이미 reject 되어 여기 안 옴. */
 async function downscaleImage(file: File): Promise<Blob> {
-  // HEIC 는 브라우저 <img> 로 못 열음 — 서버로 원본 전달, 서버가 처리 (Claude Vision 은 HEIC 지원 안 함
-  // 이므로 실질적으로는 fail 가능). 사용자 경험 개선은 향후 heic2any 라이브러리.
-  const isHeic = /^image\/heic$/i.test(file.type) || /\.heic$/i.test(file.name);
-  if (isHeic) return file;
-
   const dataUrl = await readAsDataURL(file);
   const img = await loadImage(dataUrl);
   const { width, height } = img;

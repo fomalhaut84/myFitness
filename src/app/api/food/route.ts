@@ -12,7 +12,9 @@ import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 
 // #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
-const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp", "image/heic"]);
+// Codex P2 (PR #310 2회차): HEIC 는 Claude Vision 이 처리 못 함 → 무조건 실패. whitelist 에서
+// 제외해 명확한 4xx 반환. Client 도 HEIC 감지 시 사전 reject.
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
