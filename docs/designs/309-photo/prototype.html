@@ -1,0 +1,286 @@
+<!doctype html>
+<html lang="ko" data-theme="dark">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>#309 사진 등록 UI 프로토타입</title>
+<style>
+  :root {
+    --bg: #0b0b0d;
+    --card: #121216;
+    --border: #26262c;
+    --surface: #1b1b21;
+    --bright: #ececf0;
+    --sub: #b9b9c1;
+    --muted: #8b8b93;
+    --dim: #6a6a72;
+    --accent: #22c55e;
+    --warn: #fbbf24;
+    --err: #f87171;
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  }
+  body { background: var(--bg); color: var(--bright); margin: 0; padding: 24px 16px; }
+  h1 { font-size: 20px; margin: 0 0 6px 0; }
+  .hint { font-size: 12px; color: var(--dim); margin-bottom: 24px; }
+  .stage { display: grid; grid-template-columns: 1fr; gap: 24px; max-width: 720px; margin: 0 auto; }
+  @media (min-width: 900px) { .stage { grid-template-columns: 1fr 1fr; max-width: 1200px; } }
+
+  .board { border: 1px solid var(--border); background: var(--card); border-radius: 14px; padding: 20px; }
+  .board h2 { font-size: 13px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); margin: 0 0 14px 0; font-weight: 600; }
+
+  /* TodayFoodSection replica */
+  .section-header { display: flex; align-items: center; justify-content: space-between; margin-bottom: 12px; gap: 8px; flex-wrap: wrap; }
+  .section-title { font-size: 17px; font-weight: 600; }
+  .section-title .k { font-size: 11px; color: var(--dim); font-weight: 400; margin-left: 8px; }
+  .kcal-summary { font-size: 13px; font-family: ui-monospace, monospace; }
+  .kcal-summary .u { color: var(--dim); margin-left: 4px; }
+
+  /* Photo button primary variant */
+  .btn-photo {
+    display: inline-flex; align-items: center; gap: 6px;
+    padding: 6px 12px;
+    font-size: 12px; font-weight: 500;
+    background: linear-gradient(180deg, var(--surface) 0%, var(--card) 100%);
+    color: var(--bright);
+    border: 1px solid var(--border);
+    border-radius: 8px;
+    cursor: pointer;
+    transition: border-color .15s, background .15s;
+  }
+  .btn-photo:hover { border-color: var(--muted); background: var(--surface); }
+  .btn-photo .icon { font-size: 14px; }
+
+  /* Card */
+  .food-card { border: 1px solid var(--border); background: var(--card); border-radius: 12px; padding: 20px; }
+  .empty { text-align: center; color: var(--dim); font-size: 13px; padding: 24px 0; }
+  .row { display: flex; gap: 12px; padding: 12px 0; border-bottom: 1px solid rgba(255,255,255,.05); font-size: 13px; }
+  .row:last-child { border-bottom: none; }
+  .row .meta { font-size: 11px; color: var(--dim); }
+  .row .desc { color: var(--bright); word-break: break-word; }
+  .row .price { font-family: ui-monospace, monospace; color: var(--sub); margin-left: auto; align-self: center; }
+
+  /* Upload states */
+  .upload-status { margin-top: 10px; padding: 10px 12px; border-radius: 10px; font-size: 12px; display: flex; align-items: center; gap: 10px; }
+  .upload-status.uploading { background: rgba(251,191,36,.06); border: 1px solid rgba(251,191,36,.25); color: var(--warn); }
+  .upload-status.success { background: rgba(34,197,94,.08); border: 1px solid rgba(34,197,94,.3); color: var(--accent); }
+  .upload-status.error { background: rgba(248,113,113,.06); border: 1px solid rgba(248,113,113,.25); color: var(--err); }
+
+  .spinner { width: 12px; height: 12px; border: 2px solid rgba(251,191,36,.25); border-top-color: var(--warn); border-radius: 50%; animation: spin 0.7s linear infinite; }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  .caption-note { font-size: 11px; color: var(--muted); margin-top: 6px; }
+
+  /* Mobile note */
+  .device-tag { display: inline-block; font-size: 10px; letter-spacing: .18em; text-transform: uppercase; color: var(--dim); background: var(--surface); border: 1px solid var(--border); padding: 2px 8px; border-radius: 4px; margin-left: 8px; }
+</style>
+</head>
+<body>
+  <h1>#309 사진 등록 — 웹 UI</h1>
+  <div class="hint">/lifestyle 페이지 <b>오늘 음식</b> 섹션 헤더에 📷 버튼 추가. 클릭 → 파일 선택 (모바일 <code>capture="environment"</code> 로 카메라 즉시 호출) → Vision 분석 → 로그 리스트 갱신.</div>
+
+  <div class="stage">
+    <!-- State 1: Idle (empty logs) -->
+    <div class="board">
+      <h2>State 1 · 오늘 기록 없음 <span class="device-tag">idle</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <button class="btn-photo"><span class="icon">📷</span>사진 등록</button>
+      </div>
+      <div class="food-card">
+        <div class="empty">오늘 기록된 음식이 없습니다.<br />텔레그램에서 텍스트 입력 or 위 📷 버튼으로 사진 등록.</div>
+      </div>
+    </div>
+
+    <!-- State 2: Idle (with existing logs) -->
+    <div class="board">
+      <h2>State 2 · 기록 있음 · 사진 등록 가능 <span class="device-tag">idle</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="kcal-summary">총 1,240<span class="u">kcal</span></span>
+          <button class="btn-photo"><span class="icon">📷</span>사진 등록</button>
+        </div>
+      </div>
+      <div class="food-card">
+        <div class="row">
+          <div>
+            <div class="meta">08:20 · 아침</div>
+            <div class="desc">그릭요거트 그래놀라 · 바나나</div>
+          </div>
+          <span class="price">420 kcal</span>
+        </div>
+        <div class="row">
+          <div>
+            <div class="meta">12:40 · 점심</div>
+            <div class="desc">김치찌개 밥 · 계란말이</div>
+          </div>
+          <span class="price">820 kcal</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- State 3: Uploading -->
+    <div class="board">
+      <h2>State 3 · Vision 분석 중 <span class="device-tag">uploading</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <button class="btn-photo" disabled style="opacity:.55; cursor:not-allowed;"><span class="icon">📷</span>업로드 중…</button>
+      </div>
+      <div class="upload-status uploading">
+        <div class="spinner"></div>
+        <div>
+          <div><b>food_2026_08_18_1937.jpg</b></div>
+          <div style="color:var(--muted); font-size:11px; margin-top:2px;">AI 분석 중… (~30초)</div>
+        </div>
+      </div>
+      <div class="food-card" style="margin-top:12px;">
+        <div class="row">
+          <div>
+            <div class="meta">08:20 · 아침</div>
+            <div class="desc">그릭요거트 그래놀라 · 바나나</div>
+          </div>
+          <span class="price">420 kcal</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- State 4: Success -->
+    <div class="board">
+      <h2>State 4 · 성공 (row refresh) <span class="device-tag">success</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <div style="display:flex; align-items:center; gap:12px;">
+          <span class="kcal-summary">총 2,010<span class="u">kcal</span></span>
+          <button class="btn-photo"><span class="icon">📷</span>사진 등록</button>
+        </div>
+      </div>
+      <div class="upload-status success">
+        <span>✓</span>
+        <div>사진 분석 완료 · <b>스테이크 샐러드 · 감자튀김</b> (770 kcal) 저장됨</div>
+      </div>
+      <div class="food-card" style="margin-top:12px;">
+        <div class="row">
+          <div>
+            <div class="meta">08:20 · 아침</div>
+            <div class="desc">그릭요거트 그래놀라 · 바나나</div>
+          </div>
+          <span class="price">420 kcal</span>
+        </div>
+        <div class="row">
+          <div>
+            <div class="meta">12:40 · 점심</div>
+            <div class="desc">김치찌개 밥 · 계란말이</div>
+          </div>
+          <span class="price">820 kcal</span>
+        </div>
+        <div class="row" style="background:rgba(34,197,94,.05); margin: 0 -20px; padding: 12px 20px;">
+          <div>
+            <div class="meta" style="color:var(--accent);">19:37 · 저녁 · <span style="text-transform:uppercase; letter-spacing:.1em; font-size:9px;">new</span></div>
+            <div class="desc">스테이크 샐러드 · 감자튀김</div>
+          </div>
+          <span class="price">770 kcal</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- State 5: Error -->
+    <div class="board">
+      <h2>State 5 · 실패 <span class="device-tag">error</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <button class="btn-photo"><span class="icon">📷</span>사진 등록</button>
+      </div>
+      <div class="upload-status error">
+        <span>✗</span>
+        <div>
+          <div>Vision 분석 실패 · 다시 시도해주세요</div>
+          <div style="color:var(--muted); font-size:11px; margin-top:2px;">timeout after 45s · 텍스트로 입력 or 다른 사진 시도</div>
+        </div>
+      </div>
+      <div class="food-card" style="margin-top:12px;">
+        <div class="row">
+          <div>
+            <div class="meta">08:20 · 아침</div>
+            <div class="desc">그릭요거트 그래놀라 · 바나나</div>
+          </div>
+          <span class="price">420 kcal</span>
+        </div>
+      </div>
+    </div>
+
+    <!-- Bot flow reference -->
+    <div class="board">
+      <h2>Bot flow (참고) <span class="device-tag">telegram</span></h2>
+      <div style="font-size:12px; color:var(--sub); line-height:1.6;">
+        1. 사용자가 <b>사진 전송</b> (캡션 optional)<br />
+        2. 봇: <i>&quot;사진 분석 중…&quot;</i> reply (즉시)<br />
+        3. Vision 완료 → <code>✅ 저녁 기록 완료 / 📝 스테이크 샐러드 / 📊 약 770 kcal / 🥩 P 45g · C 32g · F 38g</code><br />
+        4. inline <code>[🔢 kcal] [📝 설명] [🗑️ 삭제]</code> 3 버튼<br />
+        <div class="caption-note">웹과 동일한 estimator/저장 경로 공유. UI 는 텔레그램 표준 메시지 (변경 최소).</div>
+      </div>
+    </div>
+
+    <!-- Description edit — Web -->
+    <div class="board">
+      <h2>State 6 · 설명 정정 (Web inline) <span class="device-tag">edit-desc</span></h2>
+      <div class="section-header">
+        <div class="section-title">오늘 음식 <span class="k">(AI 자동 kcal 추정)</span></div>
+        <span class="kcal-summary">총 2,010<span class="u">kcal</span></span>
+      </div>
+      <div class="food-card">
+        <div class="row">
+          <div>
+            <div class="meta">08:20 · 아침</div>
+            <div class="desc">그릭요거트 그래놀라 · 바나나</div>
+          </div>
+          <span class="price">420 kcal</span>
+        </div>
+        <div class="row" style="background:rgba(59,130,246,.05); padding: 12px 20px; margin: 0 -20px;">
+          <div style="flex:1;">
+            <div class="meta">19:37 · 저녁</div>
+            <div style="display:flex; gap:6px; align-items:center; margin-top:6px;">
+              <input type="text" value="치킨 샐러드 · 감자튀김" style="flex:1; background:var(--surface); border:1px solid var(--muted); border-radius:6px; padding:6px 10px; color:var(--bright); font-size:13px;" />
+              <button style="padding:6px 12px; background:var(--accent); color:#0b0b0d; border:none; border-radius:6px; font-size:12px; font-weight:600; cursor:pointer;">저장</button>
+              <button style="padding:6px 10px; background:transparent; color:var(--dim); border:1px solid var(--border); border-radius:6px; font-size:12px; cursor:pointer;">취소</button>
+            </div>
+            <div class="caption-note" style="margin-top:6px;">설명 변경 시 kcal/매크로가 자동 재추정됩니다.</div>
+          </div>
+        </div>
+        <div class="row">
+          <div>
+            <div class="meta">12:40 · 점심</div>
+            <div class="desc">김치찌개 밥 · 계란말이 <span class="device-tag" style="margin-left:0;">✏️ 📝 🗑️</span></div>
+          </div>
+          <span class="price">820 kcal</span>
+        </div>
+      </div>
+      <div class="caption-note">각 row 오른쪽에 <b>📝</b> 아이콘 (설명 편집) + 기존 <b>✏️</b> (kcal) · <b>🗑️</b> (삭제). 클릭 시 위처럼 inline text input 노출.</div>
+    </div>
+
+    <!-- Bot description edit -->
+    <div class="board">
+      <h2>State 7 · 설명 정정 (Bot) <span class="device-tag">telegram</span></h2>
+      <div style="background: #17212b; color: #ecf0f1; padding: 14px; border-radius: 12px; font-size: 13px; line-height: 1.5;">
+        <div style="opacity:.7; font-size: 11px; margin-bottom: 6px;">Bot · 오후 7:37</div>
+        <div>✅ 저녁 기록 완료<br />📝 스테이크 샐러드 · 감자튀김<br />📊 약 770 kcal<br />🥩 P 45g · C 32g · F 38g</div>
+        <div style="display:flex; gap:6px; margin-top: 10px;">
+          <span style="padding:6px 10px; background:#2b5278; border-radius:8px; font-size:12px;">🔢 kcal</span>
+          <span style="padding:6px 10px; background:#2b5278; border-radius:8px; font-size:12px;">📝 설명</span>
+          <span style="padding:6px 10px; background:#2b5278; border-radius:8px; font-size:12px;">🗑️ 삭제</span>
+        </div>
+        <div style="margin-top: 14px; opacity: .75; font-size: 11px;">↓ 📝 설명 탭 후 프롬프트</div>
+        <div style="background: rgba(255,255,255,.06); padding: 10px; border-radius: 8px; margin-top: 4px;">
+          📝 &quot;스테이크 샐러드 · 감자튀김&quot; 의 새 설명을 텍스트로 답장해주세요.<br />
+          <span style="opacity:.6; font-size:11px;">현재 값: 스테이크 샐러드 · 감자튀김</span>
+        </div>
+        <div style="margin-top: 8px; font-size: 12px;">
+          <b>사용자 →</b> <span style="opacity:.8;">치킨 샐러드 · 감자튀김</span>
+        </div>
+        <div style="margin-top: 8px; padding: 10px; background: rgba(34,197,94,.1); border-radius:8px; font-size:12px;">
+          ✓ 설명 변경 완료. kcal/매크로 재추정 대기 (backfill cron).
+        </div>
+      </div>
+    </div>
+  </div>
+</body>
+</html>
