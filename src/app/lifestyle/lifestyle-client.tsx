@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { useState } from "react";
 import { useRouter } from "next/navigation";
 import WeeklyActivitySummary from "@/components/lifestyle/WeeklyActivitySummary";
 import MonthlyHeatmap from "@/components/lifestyle/MonthlyHeatmap";
@@ -151,20 +151,20 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  // Codex P2 (릴리즈 PR #313 4/5회차): description save 성공 후 router.refresh() 가 SSR 반영
-  // 을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value → stale
-  // 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
-  // fixed timer (1.5s) 는 network/server load 시 refresh 지연이면 stale window 발생 → 대신
-  // "expected description" 을 저장, log.description 이 그 값과 같아지면 (SSR 실제 반영) 자동
-  // 해제. 무한 pending 방지 fallback timer 30s (극단 케이스 · 사용자 UX 보호).
+  // Codex P2 (릴리즈 PR #313 4/5/6회차): description save 성공 후 router.refresh() 가 SSR
+  // 반영을 마치기 전 사용자가 kcal editor 를 열면 log.estimatedKcal 이 여전히 old value →
+  // stale 값이 draft 로 복원돼 저장 시 새 desc 에 old kcal 적용.
+  //
+  // 해결: expectedDescription 을 저장, log.description 이 그 값으로 갱신되면 (실제 SSR
+  // 반영) 자동 해제. render-time derive 라 setState-in-effect 룰 무관.
+  //
+  // fallback timer 는 제거 — RSC refresh 실패 / 30s 이상 pending 이면 timer 가 stale
+  // prop 을 editable 로 만들어 회귀 발생. refresh 가 실패하는 극단 케이스에선 pending 이
+  // 무한 남지만, kcal edit 을 잠근 채 사용자가 페이지 새로고침으로 회복하는 게 stale kcal
+  // 을 새 desc 에 잘못 적용하는 것보다 안전.
   const [expectedDescription, setExpectedDescription] = useState<string | null>(null);
   const descPending =
     expectedDescription !== null && log.description !== expectedDescription;
-  useEffect(() => {
-    if (expectedDescription === null) return;
-    const t = setTimeout(() => setExpectedDescription(null), 30_000);
-    return () => clearTimeout(t);
-  }, [expectedDescription]);
 
 
   async function saveDesc() {
