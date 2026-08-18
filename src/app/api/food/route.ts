@@ -1,10 +1,24 @@
 import { NextResponse } from "next/server";
+import fs from "fs/promises";
+import os from "os";
+import path from "path";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+
+// #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
+const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
+// Codex P2 (PR #310 8회차): multipart body 는 image + boundary + header overhead 포함해 이미지
+// 상한보다 항상 크다. Content-Length 상한을 image 상한 + 64KB 여유로 잡아 8MB 근접 이미지가
+// framing overhead 로 413 튕기지 않게. image.size 후속 체크는 MAX_PHOTO_BYTES 유지.
+const MAX_MULTIPART_BODY_BYTES = MAX_PHOTO_BYTES + 64 * 1024;
+// Codex P2 (PR #310 2회차): HEIC 는 Claude Vision 이 처리 못 함 → 무조건 실패. whitelist 에서
+// 제외해 명확한 4xx 반환. Client 도 HEIC 감지 시 사전 reject.
+const ALLOWED_PHOTO_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 
 const MAX_RETRY = 3;
 const RETRY_DELAY_MS = 50;
@@ -54,6 +68,14 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
+  const contentType = request.headers.get("content-type") ?? "";
+  if (contentType.startsWith("multipart/form-data")) {
+    return handlePhotoPost(request);
+  }
+  return handleJsonPost(request);
+}
+
+async function handleJsonPost(request: Request) {
   try {
     const body = await request.json();
     const { description, mealType, date } = body;
@@ -161,5 +183,163 @@ export async function POST(request: Request) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
   }
+}
+
+// #309 (M14 Phase 2 #5): 사진 업로드 처리. Vision 응답 파싱 후 FoodLog 저장.
+// 이미지는 temp 파일로 저장 (Claude CLI @-reference 필요) → 처리 후 즉시 삭제 (spec: 저장 안 함).
+async function handlePhotoPost(request: Request) {
+  // Codex P2 (PR #310 6회차): formData() 는 전체 body 를 메모리에 파싱한 뒤에야 image.size 로
+  // 검증 → 악의적 client 가 무제한 payload 로 메모리 exhaust 시킬 수 있음. Content-Length 를
+  // 파싱 전에 확인해 pre-reject. Content-Length 없는 chunked transfer 는 411 Length Required
+  // (일반 브라우저 upload 는 항상 Content-Length 를 보냄).
+  const contentLengthRaw = request.headers.get("content-length");
+  if (!contentLengthRaw) {
+    return NextResponse.json(
+      { error: "Content-Length 헤더가 필요합니다" },
+      { status: 411 },
+    );
+  }
+  const contentLength = parseInt(contentLengthRaw, 10);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return NextResponse.json(
+      { error: `유효하지 않은 Content-Length: ${contentLengthRaw}` },
+      { status: 400 },
+    );
+  }
+  if (contentLength > MAX_MULTIPART_BODY_BYTES) {
+    return NextResponse.json(
+      {
+        error: `업로드 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB · 이미지 기준)을 초과합니다`,
+      },
+      { status: 413 },
+    );
+  }
+  let tempPath: string | null = null;
+  try {
+    const form = await request.formData();
+    const image = form.get("image");
+    if (!(image instanceof File)) {
+      return NextResponse.json({ error: "image 필드가 필요합니다" }, { status: 400 });
+    }
+    const mime = (image.type || "").toLowerCase();
+    if (mime && !ALLOWED_PHOTO_MIME.has(mime)) {
+      return NextResponse.json(
+        { error: `지원되지 않는 이미지 형식: ${mime}` },
+        { status: 400 },
+      );
+    }
+    if (image.size > MAX_PHOTO_BYTES) {
+      return NextResponse.json(
+        { error: `이미지 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB)을 초과합니다` },
+        { status: 400 },
+      );
+    }
+    const caption = String(form.get("description") ?? "").trim() || undefined;
+    const mealTypeRaw = form.get("mealType");
+    const mealType = typeof mealTypeRaw === "string" && mealTypeRaw.trim() ? mealTypeRaw.trim() : undefined;
+    const dateRaw = form.get("date");
+    let foodDate = new Date();
+    if (typeof dateRaw === "string" && dateRaw) {
+      foodDate = new Date(dateRaw);
+      if (isNaN(foodDate.getTime())) {
+        return NextResponse.json({ error: `유효하지 않은 날짜: ${dateRaw}` }, { status: 400 });
+      }
+    }
+
+    // temp 파일 (프로젝트 tmpdir 사용 · random 접미사).
+    // Codex P2 (PR #310 7회차): umask 022 환경에서 default 는 0644 → 다른 로컬 사용자가 읽음.
+    // 건강 데이터 프라이버시 위해 mode 0o600 + wx (exclusive create, 이름 충돌 시 EEXIST).
+    const ext = mimeToExt(mime) || path.extname(image.name || "") || ".jpg";
+    const rand = Math.random().toString(36).slice(2, 10);
+    tempPath = path.join(os.tmpdir(), `mfp-photo-${Date.now()}-${rand}${ext}`);
+    const buf = Buffer.from(await image.arrayBuffer());
+    await fs.writeFile(tempPath, buf, { mode: 0o600, flag: "wx" });
+
+    const estimate = await estimateNutritionFromPhoto({
+      imagePath: tempPath,
+      caption,
+      mealType,
+    });
+
+    // Codex P2 (PR #310): Vision 실패 시 FoodLog 를 저장하면 kcal null + meaningless description
+    // ("사진 (분석 실패)") 이 backfill 큐에 들어가 매 tick 텍스트 estimator 로 무한 재시도 (kcal
+    // null 은 attempts 무제한). 저장 없이 422 로 실패 응답 → client 가 재시도 유도.
+    // caption 이 있으면 사용자가 의미 있는 텍스트 로그 남긴 것이므로 저장 유지.
+    if (!estimate && !caption) {
+      return NextResponse.json(
+        {
+          error: "Vision 분석 실패 — 다시 시도하거나 텍스트로 입력해주세요",
+        },
+        { status: 422 },
+      );
+    }
+
+    // description 결정: 사용자 caption 우선 → Vision items 요약 → fallback.
+    const description = pickDescriptionFromEstimate(caption, estimate);
+
+    const log = await withSerializableRetry(async (tx) => {
+      const created = await tx.foodLog.create({
+        data: {
+          date: foodDate,
+          description,
+          estimatedKcal: estimate?.kcal ?? null,
+          proteinG: estimate?.proteinG ?? null,
+          carbsG: estimate?.carbsG ?? null,
+          fatG: estimate?.fatG ?? null,
+          mealType: mealType ?? null,
+        },
+      });
+      await recalculateCalorieBalance(foodDate, tx);
+      return created;
+    });
+
+    return NextResponse.json({
+      data: {
+        ...log,
+        date: log.date.toISOString(),
+        createdAt: log.createdAt.toISOString(),
+      },
+      estimate: estimate
+        ? {
+            kcal: estimate.kcal,
+            proteinG: estimate.proteinG,
+            carbsG: estimate.carbsG,
+            fatG: estimate.fatG,
+            confidence: estimate.confidence,
+            items: estimate.items,
+            notes: estimate.notes,
+          }
+        : null,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : String(error);
+    console.error("[api/food POST multipart] 예외:", message);
+    return NextResponse.json({ error: message }, { status: 500 });
+  } finally {
+    if (tempPath) {
+      await fs.unlink(tempPath).catch(() => {
+        // ignore — temp 정리 실패는 치명적이지 않음.
+      });
+    }
+  }
+}
+
+function mimeToExt(mime: string): string | null {
+  if (mime === "image/jpeg") return ".jpg";
+  if (mime === "image/png") return ".png";
+  if (mime === "image/webp") return ".webp";
+  if (mime === "image/heic") return ".heic";
+  return null;
+}
+
+function pickDescriptionFromEstimate(
+  caption: string | undefined,
+  estimate: { items?: Array<{ name: string }> } | null,
+): string {
+  if (caption) return caption;
+  if (estimate?.items && estimate.items.length > 0) {
+    return estimate.items.map((i) => i.name).join(" · ");
+  }
+  return "사진 (분석 실패)";
 }
 

@@ -6,6 +6,7 @@ import WeeklyActivitySummary from "@/components/lifestyle/WeeklyActivitySummary"
 import MonthlyHeatmap from "@/components/lifestyle/MonthlyHeatmap";
 import ConsistencyScore from "@/components/lifestyle/ConsistencyScore";
 import SleepRegularity from "@/components/lifestyle/SleepRegularity";
+import FoodPhotoUpload from "@/components/lifestyle/FoodPhotoUpload";
 
 interface WeekSummary {
   count: number;
@@ -98,29 +99,34 @@ function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
   const isPartial = missingCount > 0;
   return (
     <div>
-      <div className="flex items-baseline justify-between mb-3">
+      <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-lg font-semibold">
           오늘 음식
           <span className="text-[11px] text-dim font-normal ml-2">
             (AI 자동 kcal 추정)
           </span>
         </h2>
-        {hasEstimate && (
-          <span className="text-[13px] font-[family-name:var(--font-geist-mono)]">
-            {isPartial ? "부분 합계" : "총"} {totalKcal.toLocaleString("ko-KR")}
-            <span className="text-dim ml-1">kcal</span>
-            {isPartial && (
-              <span className="text-dim ml-2 text-[11px]">
-                ({missingCount}개 추정 대기)
-              </span>
-            )}
-          </span>
-        )}
+        <div className="flex items-center gap-3">
+          {hasEstimate && (
+            <span className="text-[13px] font-[family-name:var(--font-geist-mono)]">
+              {isPartial ? "부분 합계" : "총"} {totalKcal.toLocaleString("ko-KR")}
+              <span className="text-dim ml-1">kcal</span>
+              {isPartial && (
+                <span className="text-dim ml-2 text-[11px]">
+                  ({missingCount}개 추정 대기)
+                </span>
+              )}
+            </span>
+          )}
+          {/* #309: 사진 등록 버튼 (Vision 자동 추정). */}
+          <FoodPhotoUpload />
+        </div>
       </div>
       <div className="bg-card border border-border rounded-xl p-5">
         {logs.length === 0 ? (
           <div className="text-[13px] text-dim text-center py-6">
-            오늘 기록된 음식이 없습니다. 텔레그램에서 &quot;점심 김치찌개 밥&quot; 처럼 입력하면 자동 기록됩니다.
+            오늘 기록된 음식이 없습니다.<br />
+            텔레그램에서 &quot;점심 김치찌개 밥&quot; 입력 or 위 <b>📷 사진 등록</b> 버튼으로 자동 기록.
           </div>
         ) : (
           <ul className="divide-y divide-border/50">
@@ -137,11 +143,52 @@ function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
 function FoodRow({ log }: { log: FoodLogEntry }) {
   const router = useRouter();
   const [editingKcal, setEditingKcal] = useState(false);
+  // #309: description 정정 인라인 편집.
+  const [editingDesc, setEditingDesc] = useState(false);
+  const [descInput, setDescInput] = useState(log.description);
   const [kcalInput, setKcalInput] = useState(
     log.estimatedKcal !== null ? String(log.estimatedKcal) : "",
   );
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  async function saveDesc() {
+    if (saving) return;
+    const trimmed = descInput.trim();
+    if (trimmed.length === 0) {
+      setError("설명은 비워둘 수 없습니다");
+      return;
+    }
+    if (trimmed.length > 500) {
+      setError("설명은 500자 이내여야 합니다");
+      return;
+    }
+    if (trimmed === log.description) {
+      // no-op — 편집 종료.
+      setEditingDesc(false);
+      setError(null);
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const res = await fetch(`/api/food/${log.id}`, {
+        method: "PATCH",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({ description: trimmed }),
+      });
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body?.error ?? `요청 실패 (${res.status})`);
+      }
+      setEditingDesc(false);
+      router.refresh();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : String(e));
+    } finally {
+      setSaving(false);
+    }
+  }
 
   async function saveKcal() {
     if (saving) return;
@@ -217,7 +264,44 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
             {time} · {label}
           </span>
         </div>
-        <div className="text-bright break-words">{log.description}</div>
+        {editingDesc ? (
+          <div className="flex items-center gap-2 mt-1">
+            <input
+              type="text"
+              value={descInput}
+              onChange={(e) => setDescInput(e.target.value)}
+              placeholder="예: 치킨 샐러드 · 감자튀김"
+              className="flex-1 bg-surface border border-muted rounded px-2 py-1 text-[13px] text-bright"
+              autoFocus
+            />
+            <button
+              type="button"
+              onClick={saveDesc}
+              disabled={saving}
+              className="text-[11px] text-accent border border-accent/40 rounded px-2 py-1 hover:bg-accent/10 disabled:opacity-50"
+            >
+              저장
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                setEditingDesc(false);
+                setDescInput(log.description);
+                setError(null);
+              }}
+              className="text-[11px] text-dim border border-border rounded px-2 py-1"
+            >
+              취소
+            </button>
+          </div>
+        ) : (
+          <div className="text-bright break-words">{log.description}</div>
+        )}
+        {editingDesc && (
+          <div className="text-[11px] text-dim mt-1">
+            설명 변경 시 kcal/매크로가 자동 재추정됩니다.
+          </div>
+        )}
         {error && <div className="text-[11px] text-red-400 mt-1">{error}</div>}
       </div>
       <div className="flex items-center gap-2 shrink-0">
@@ -262,8 +346,22 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
               type="button"
               onClick={() => setEditingKcal(true)}
               className="text-[11px] text-dim hover:text-bright underline"
+              title="kcal 편집"
             >
               편집
+            </button>
+            {/* #309: description 정정 버튼. */}
+            <button
+              type="button"
+              onClick={() => {
+                setEditingDesc(true);
+                setDescInput(log.description);
+                setError(null);
+              }}
+              className="text-[11px] text-dim hover:text-bright"
+              title="설명 편집"
+            >
+              📝
             </button>
             <button
               type="button"

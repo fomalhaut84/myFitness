@@ -39,21 +39,22 @@ async function recalcWithRetry(date: Date, retries: number): Promise<boolean> {
   return false;
 }
 
-const MEAL_PATTERNS = [
+// #309: food-photo.ts 에서 재사용.
+export const MEAL_PATTERNS = [
   { pattern: /^(아침|조식)/, type: "breakfast" },
   { pattern: /^(점심|중식)/, type: "lunch" },
   { pattern: /^(저녁|석식)/, type: "dinner" },
   { pattern: /^(간식|야식)/, type: "snack" },
 ];
 
-const MEAL_LABELS: Record<string, string> = {
+export const MEAL_LABELS: Record<string, string> = {
   breakfast: "아침",
   lunch: "점심",
   dinner: "저녁",
   snack: "간식",
 };
 
-const CONFIDENCE_LABEL: Record<NutritionEstimate["confidence"], string> = {
+export const CONFIDENCE_LABEL: Record<NutritionEstimate["confidence"], string> = {
   low: "낮음",
   med: "중간",
   high: "높음",
