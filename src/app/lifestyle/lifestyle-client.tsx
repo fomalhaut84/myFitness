@@ -187,6 +187,9 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
       // 리셋 (backfill 재추정 대기). router.refresh() 후 log.estimatedKcal 이 null 이지만
       // client component state 는 보존되어 kcalInput 이 이전 kcal 유지 → 이후 kcal 편집
       // 열면 stale 값 노출 · 저장 시 새 description 에 옛 kcal 적용됨. 초기화 필수.
+      // Codex P2 (릴리즈 PR #313): kcal editor 가 열려있었다면 in-progress 값이 blank 로
+      // silently discarded → 사용자 혼란. editor 자체를 닫아 상태 변경을 명시.
+      setEditingKcal(false);
       setKcalInput("");
       router.refresh();
     } catch (e) {
