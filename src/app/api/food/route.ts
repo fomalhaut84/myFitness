@@ -184,6 +184,32 @@ async function handleJsonPost(request: Request) {
 // #309 (M14 Phase 2 #5): 사진 업로드 처리. Vision 응답 파싱 후 FoodLog 저장.
 // 이미지는 temp 파일로 저장 (Claude CLI @-reference 필요) → 처리 후 즉시 삭제 (spec: 저장 안 함).
 async function handlePhotoPost(request: Request) {
+  // Codex P2 (PR #310 6회차): formData() 는 전체 body 를 메모리에 파싱한 뒤에야 image.size 로
+  // 검증 → 악의적 client 가 무제한 payload 로 메모리 exhaust 시킬 수 있음. Content-Length 를
+  // 파싱 전에 확인해 pre-reject. Content-Length 없는 chunked transfer 는 411 Length Required
+  // (일반 브라우저 upload 는 항상 Content-Length 를 보냄).
+  const contentLengthRaw = request.headers.get("content-length");
+  if (!contentLengthRaw) {
+    return NextResponse.json(
+      { error: "Content-Length 헤더가 필요합니다" },
+      { status: 411 },
+    );
+  }
+  const contentLength = parseInt(contentLengthRaw, 10);
+  if (!Number.isFinite(contentLength) || contentLength < 0) {
+    return NextResponse.json(
+      { error: `유효하지 않은 Content-Length: ${contentLengthRaw}` },
+      { status: 400 },
+    );
+  }
+  if (contentLength > MAX_PHOTO_BYTES) {
+    return NextResponse.json(
+      {
+        error: `이미지 크기가 상한(${MAX_PHOTO_BYTES / (1024 * 1024)}MB)을 초과합니다`,
+      },
+      { status: 413 },
+    );
+  }
   let tempPath: string | null = null;
   try {
     const form = await request.formData();
