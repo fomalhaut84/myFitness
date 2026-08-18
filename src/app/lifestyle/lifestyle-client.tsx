@@ -353,7 +353,17 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
             </span>
             <button
               type="button"
-              onClick={() => setEditingKcal(true)}
+              onClick={() => {
+                // Codex P2 (릴리즈 PR #313): kcal editor 열 때 항상 최신 log.estimatedKcal
+                // 로 draft 재초기화. description edit 이후 kcalInput 이 "" 로 리셋됐지만
+                // backfill 이 새 kcal 을 채워둔 상태에서 editor 를 blank 로 열면 저장 시
+                // PATCH { estimatedKcal: null } → 새로 추정된 값 파괴 회귀.
+                setKcalInput(
+                  log.estimatedKcal !== null ? String(log.estimatedKcal) : "",
+                );
+                setError(null);
+                setEditingKcal(true);
+              }}
               className="text-[11px] text-dim hover:text-bright underline"
               title="kcal 편집"
             >
