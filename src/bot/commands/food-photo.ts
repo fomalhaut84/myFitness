@@ -107,6 +107,16 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
       mealType,
     });
 
+    // Codex P2 (PR #310): Vision 실패 + caption 없음 → FoodLog 저장 안 함 (kcal null +
+    // meaningless description "사진 (분석 실패)" 이 backfill 큐에 들어가 매 tick 텍스트
+    // estimator 로 무한 재시도). 사용자에게 재시도/텍스트 입력 안내만.
+    if (!estimate && !caption) {
+      await ctx.reply(
+        "⚠️ Vision 분석 실패 — 사진을 다시 보내거나, 텍스트 (예: 아침 김치찌개 밥) 로 입력해주세요.",
+      );
+      return;
+    }
+
     // description 결정: caption 우선 → Vision items 요약 → fallback.
     const description = caption
       ? caption

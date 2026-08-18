@@ -91,8 +91,10 @@ export async function estimateNutritionFromPhoto(
   const spawnFn = opts.spawnImpl ?? spawn;
   const prompt = buildPhotoPrompt(input);
 
-  // `--tools "Read"` — Vision 은 File 리드가 필요할 수 있음. `--tools ""` 로도 CLI 가 `@`
-  // 를 pre-process 해 이미지 콘텐츠로 넣는 것으로 확인되지만, 안전하게 Read 허용.
+  // Codex P1 (PR #310): `--tools "Read"` 는 caption/image 로 prompt-injection 되면 임의 서버
+  // 파일 (예: .env) 을 읽어 items[].name / notes 에 실어 응답 가능 → API/봇이 그대로 노출.
+  // `--tools ""` 로 tool 차단. Claude CLI 는 `@<path>` 를 pre-process 해 이미지 콘텐츠로
+  // 삽입하므로 tool 없이도 Vision 작동.
   const args = [
     "-p",
     prompt,
@@ -103,7 +105,7 @@ export async function estimateNutritionFromPhoto(
     "--max-turns",
     "1",
     "--tools",
-    "Read",
+    "",
   ];
 
   return new Promise<NutritionEstimate | null>((resolve) => {

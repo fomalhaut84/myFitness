@@ -3,7 +3,7 @@
 // #309 (M14 Phase 2 #5): 웹 음식 사진 등록 버튼.
 // 파일 선택 → client-side downscale (max 1600px, JPEG q=0.85) → multipart POST /api/food → refresh.
 
-import { useRef, useState } from "react";
+import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 
 const MAX_DIMENSION = 1600;
@@ -19,6 +19,19 @@ export default function FoodPhotoUpload() {
   const router = useRouter();
   const inputRef = useRef<HTMLInputElement>(null);
   const [state, setState] = useState<UploadState>({ kind: "idle" });
+  // Codex P2 (PR #310): success state 의 3초 timer 를 새 업로드 시작 시 clear.
+  // 이전엔 첫 업로드 timer 가 두 번째 업로드 진행 중에 fire 해서 uploading state 를 idle 로
+  // 덮어씀 → 스피너 사라지고 버튼 재활성 → 중복 제출 유도.
+  const successTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  useEffect(() => {
+    return () => {
+      if (successTimerRef.current !== null) {
+        clearTimeout(successTimerRef.current);
+        successTimerRef.current = null;
+      }
+    };
+  }, []);
 
   const openPicker = () => {
     if (state.kind === "uploading") return;
@@ -30,14 +43,23 @@ export default function FoodPhotoUpload() {
     // 재선택을 위해 value 초기화 (같은 파일 다시 선택 가능).
     e.target.value = "";
     if (!file) return;
+    // 이전 success timer 가 남아있으면 취소 (P2 fix).
+    if (successTimerRef.current !== null) {
+      clearTimeout(successTimerRef.current);
+      successTimerRef.current = null;
+    }
     setState({ kind: "uploading", filename: file.name });
     try {
       const blob = await downscaleImage(file);
+      // Codex P2 (PR #310): downscaleImage 가 HEIC 원본을 리턴한 경우 (.jpg / image/jpeg
+      // wrapper 로 감싸면 서버는 JPEG 로 오인해 저장하지만 payload 는 HEIC → Vision 디코딩
+      // 불가). blob 이 original file 과 동일 참조면 원본 filename/type 유지.
+      const uploadFile =
+        blob === file
+          ? file
+          : new File([blob], stripExt(file.name) + ".jpg", { type: "image/jpeg" });
       const form = new FormData();
-      form.append(
-        "image",
-        new File([blob], stripExt(file.name) + ".jpg", { type: "image/jpeg" }),
-      );
+      form.append("image", uploadFile);
       const res = await fetch("/api/food", { method: "POST", body: form });
       if (!res.ok) {
         const body = await res.json().catch(() => ({}));
@@ -45,15 +67,31 @@ export default function FoodPhotoUpload() {
       }
       const payload = (await res.json()) as {
         data: { description: string; estimatedKcal: number | null };
+        estimate: unknown | null;
       };
+      // Codex P2 (PR #310): estimate=null 은 Vision 실패 (caption 있어서 저장은 됐지만
+      // kcal/macros 는 null). success 로 표시하면 사용자가 "분석 완료" 로 오해 → warning.
+      if (payload.estimate === null) {
+        setState({
+          kind: "error",
+          message: "Vision 분석 실패 · 저장된 로그의 kcal 편집 or 재시도",
+        });
+        router.refresh();
+        return;
+      }
       setState({
         kind: "success",
         description: payload.data.description,
         kcal: payload.data.estimatedKcal,
       });
       router.refresh();
-      // 3초 후 idle 로 복귀.
-      setTimeout(() => setState({ kind: "idle" }), 3000);
+      // 3초 후 idle 로 복귀. ref 로 timer 추적 (재업로드 시 clear).
+      successTimerRef.current = setTimeout(() => {
+        successTimerRef.current = null;
+        // Codex P2 (PR #310): 현재 state 가 여전히 이 success 인 경우에만 idle 로 복귀
+        // (그 사이 다른 upload 로 state 가 바뀌었으면 그대로 유지).
+        setState((prev) => (prev.kind === "success" ? { kind: "idle" } : prev));
+      }, 3000);
     } catch (err) {
       setState({
         kind: "error",

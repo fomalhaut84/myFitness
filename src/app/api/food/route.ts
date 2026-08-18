@@ -227,6 +227,19 @@ async function handlePhotoPost(request: Request) {
       mealType,
     });
 
+    // Codex P2 (PR #310): Vision 실패 시 FoodLog 를 저장하면 kcal null + meaningless description
+    // ("사진 (분석 실패)") 이 backfill 큐에 들어가 매 tick 텍스트 estimator 로 무한 재시도 (kcal
+    // null 은 attempts 무제한). 저장 없이 422 로 실패 응답 → client 가 재시도 유도.
+    // caption 이 있으면 사용자가 의미 있는 텍스트 로그 남긴 것이므로 저장 유지.
+    if (!estimate && !caption) {
+      return NextResponse.json(
+        {
+          error: "Vision 분석 실패 — 다시 시도하거나 텍스트로 입력해주세요",
+        },
+        { status: 422 },
+      );
+    }
+
     // description 결정: 사용자 caption 우선 → Vision items 요약 → fallback.
     const description = pickDescriptionFromEstimate(caption, estimate);
 
