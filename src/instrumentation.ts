@@ -11,12 +11,15 @@ export async function register() {
     // startCronJobs 가 malformed SYNC_CRON 등으로 sync throw 하면 이후 라인이 실행 안 됨 →
     // 웹 프로세스 재시작 loop 마다 이전 프로세스 photo 잔존. 봇 프로세스가 별개로 재시작
     // 안 되는 경우 이 sweep 이 유일한 정리 시점. 로컬 fs 만 접근 — 부팅 초기에 안전.
-    const { sweepStalePhotoTempFiles } = await import(
+    // Codex P2 (PR #312 3회차): startup sweep + periodic sweeper 병행 (PM2 즉시 재시작으로
+    // 남은 orphan 이 STALE_THRESHOLD_MS 미만이라 skip 되는 케이스 커버).
+    const { sweepStalePhotoTempFiles, startPhotoTempSweeper } = await import(
       "@/lib/nutrition/photo-temp-cleanup"
     );
     sweepStalePhotoTempFiles().catch((err) => {
       console.error("[photo-cleanup] startup sweep failed:", err);
     });
+    startPhotoTempSweeper();
 
     const { startCronJobs } = await import("@/lib/cron");
     startCronJobs();

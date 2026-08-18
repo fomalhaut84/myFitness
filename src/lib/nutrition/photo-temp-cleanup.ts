@@ -10,6 +10,9 @@ import path from "path";
 
 /** 이 시간보다 오래된 파일만 삭제. 현재 처리 중일 수 있는 파일 (Vision 45s) 은 남김. */
 const STALE_THRESHOLD_MS = 5 * 60 * 1000; // 5분
+/** periodic sweep 간격 — STALE_THRESHOLD_MS 와 같게 두면 즉시 restart 후 남은 파일도
+ *  다음 tick 에 정리 (threshold 살짝 넘긴 시점). */
+const SWEEP_INTERVAL_MS = STALE_THRESHOLD_MS;
 const PREFIX = "mfp-photo-";
 
 export interface SweepResult {
@@ -62,4 +65,27 @@ export async function sweepStalePhotoTempFiles(
     );
   }
   return result;
+}
+
+// Codex P2 (PR #312 3회차): startup sweep 만으로는 PM2 즉시 재시작 시 crash 로 남은 orphan
+// 이 STALE_THRESHOLD_MS 미만이라 skip → 다음 restart 전까지 무기한 남음. periodic sweep
+// 추가로 boot 후 STALE_THRESHOLD_MS 간격으로 계속 정리.
+let sweeperTimer: ReturnType<typeof setInterval> | null = null;
+
+export function startPhotoTempSweeper(): void {
+  if (sweeperTimer !== null) return;
+  sweeperTimer = setInterval(() => {
+    sweepStalePhotoTempFiles().catch((err) => {
+      console.error("[photo-cleanup] periodic sweep failed:", err);
+    });
+  }, SWEEP_INTERVAL_MS);
+  sweeperTimer.unref?.();
+}
+
+/** 테스트 편의: sweeper 중지. 프로덕션에선 process lifecycle 로 자연 종료. */
+export function stopPhotoTempSweeper(): void {
+  if (sweeperTimer !== null) {
+    clearInterval(sweeperTimer);
+    sweeperTimer = null;
+  }
 }
