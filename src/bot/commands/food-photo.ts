@@ -3,8 +3,11 @@
 // 이미지는 처리 후 즉시 삭제 (spec: 보관 안 함).
 
 import fs from "fs/promises";
+import { createWriteStream } from "fs";
+import https from "https";
 import os from "os";
 import path from "path";
+import { pipeline } from "stream/promises";
 import type { Bot, Context } from "grammy";
 import prisma from "../prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
@@ -12,8 +15,12 @@ import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
 import { buildFoodInlineKeyboard } from "./food-edit-callback";
 import { MEAL_LABELS, MEAL_PATTERNS, CONFIDENCE_LABEL } from "./food";
+import { telegramAgent } from "../index";
 
 const TG_FILE_HOST = "https://api.telegram.org/file/bot";
+// Codex P1 (PR #310 3회차): grammy 는 IPv4-only agent 로 통신하는데 download 가 global fetch 면
+// IPv6-preferred 로 stall 위험. https.request 로 telegramAgent 재사용.
+const DOWNLOAD_TIMEOUT_MS = 30_000;
 
 /** KST 시간대별 mealType 추정. 사용자가 캡션으로 명시하지 않은 경우 fallback. */
 function guessMealTypeByKstTime(now: Date = new Date()): string {
@@ -37,10 +44,26 @@ function extractMealFromCaption(caption?: string): { mealType: string; residual:
 }
 
 async function downloadTo(url: string, dest: string): Promise<void> {
-  const res = await fetch(url);
-  if (!res.ok) throw new Error(`텔레그램 파일 다운로드 실패 (${res.status})`);
-  const buf = Buffer.from(await res.arrayBuffer());
-  await fs.writeFile(dest, buf);
+  return new Promise((resolve, reject) => {
+    const req = https.get(
+      url,
+      { agent: telegramAgent, timeout: DOWNLOAD_TIMEOUT_MS },
+      (res) => {
+        if (res.statusCode !== 200) {
+          res.resume();
+          reject(new Error(`텔레그램 파일 다운로드 실패 (${res.statusCode ?? "?"})`));
+          return;
+        }
+        pipeline(res, createWriteStream(dest))
+          .then(() => resolve())
+          .catch(reject);
+      },
+    );
+    req.on("timeout", () => {
+      req.destroy(new Error(`텔레그램 다운로드 timeout (${DOWNLOAD_TIMEOUT_MS}ms)`));
+    });
+    req.on("error", reject);
+  });
 }
 
 export function registerFoodPhotoHandler(bot: Bot): void {

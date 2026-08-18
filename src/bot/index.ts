@@ -21,7 +21,8 @@ import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
 // ETIMEDOUT으로 누적되는 것을 방지하기 위해 IPv4 강제. keepAlive로 cron 호출 시
 // TCP/TLS 핸드셰이크 비용도 절감. 자세한 배경은 docs/specs/bot-telegram-ipv6-timeout-202606.md 참조.
-const telegramAgent = new Agent({ family: 4, keepAlive: true });
+// #309: food-photo download 도 같은 agent 재사용. export 로 노출.
+export const telegramAgent = new Agent({ family: 4, keepAlive: true });
 
 // grammy client.timeoutSeconds는 모든 API 호출(getUpdates 포함) 공통 abort timer.
 // long-polling의 Telegram side hold 기본값(30s) 위에 충분한 마진 확보 필요.
