@@ -15,6 +15,11 @@ const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
   description: z.string().trim().min(1).max(500).optional(),
   mealType: z.enum(["breakfast", "lunch", "dinner", "snack"]).nullable().optional(),
+  // Codex P2 (PR #313 12회차): client 가 kcal 저장 시 draft 를 뽑은 시점의 row updatedAt 을
+  // 함께 전송해 stale-vs-fresh 판정. server 는 저장 직전 fetch 한 updatedAt 과 비교, 다르면
+  // 409. description 값 비교는 A→B→A restore 커버 못 함 — monotonic revision (updatedAt)
+  // 로 근본 방어. ISO string 으로 직렬화.
+  expectedRevision: z.string().datetime().optional(),
 });
 
 interface Params {
@@ -69,7 +74,13 @@ export async function PATCH(request: Request, ctx: Params) {
     // 최종 write payload 에서 제거. 이전 approach 는 existing 을 읽고 판정한 뒤 여전히
     // description/mealType 을 payload 에 포함시켜 update → 그 사이 다른 PATCH 가 description
     // 을 Y 로 바꾸고 macros 도 populate 됐다면 A 의 stale X 로 덮어써서 macros mismatch 발생.
-    const updateData: Record<string, unknown> = { ...data };
+    // Codex P2 (PR #313 10회차): expectedRevision 은 스냅샷 매칭용 control metadata —
+    // Prisma FoodLog 컬럼 아님. spread 시 update.data 에 포함되면 500 (unknown field).
+    // 별도 변수로 뽑아 payload 에서 제외.
+    const { expectedRevision, ...dataForWrite } = data;
+    const expectedRevisionDate =
+      expectedRevision !== undefined ? new Date(expectedRevision) : undefined;
+    const updateData: Record<string, unknown> = { ...dataForWrite };
     if (data.description !== undefined && !descChanged) delete updateData.description;
     if (data.mealType !== undefined && !mealChanged) delete updateData.mealType;
     let updated: {
@@ -109,16 +120,59 @@ export async function PATCH(request: Request, ctx: Params) {
         updateData.carbsG = null;
         updateData.fatG = null;
         updateData.nutritionAttempts = null;
-        updated = await prisma.foodLog.update({
-          where: { id },
-          data: updateData,
-          select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
-        });
+        // Codex P2 (PR #313 11/12회차): null 경로도 expectedRevision snapshot 매칭. 이전엔
+        // helper 를 안 거쳐 stale draft (예: kcal editor 오픈 이후 다른 writer 가 row 를 변경
+        // 하고 backfill 로 새 kcal/macros 저장) 로 blank 저장 시 새 row 의 macros 를 파괴.
+        // updateMany + where.updatedAt snapshot → count 0 이면 409 (monotonic revision 이라
+        // A→B→A restore 도 안전).
+        if (expectedRevisionDate !== undefined) {
+          const res = await prisma.foodLog.updateMany({
+            where: { id, updatedAt: expectedRevisionDate },
+            data: updateData,
+          });
+          if (res.count === 0) {
+            return NextResponse.json(
+              {
+                error:
+                  "로그가 다른 경로로 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+              },
+              { status: 409 },
+            );
+          }
+          const fetched = await prisma.foodLog.findUnique({
+            where: { id },
+            select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+          });
+          if (!fetched) {
+            return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+          }
+          updated = fetched;
+        } else {
+          updated = await prisma.foodLog.update({
+            where: { id },
+            data: updateData,
+            select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+          });
+        }
       } else {
-        const correction = await applyKcalCorrection(prisma, id, data.estimatedKcal);
+        const correction = await applyKcalCorrection(
+          prisma,
+          id,
+          data.estimatedKcal,
+          expectedRevisionDate,
+        );
         if (!correction.ok) {
           if (correction.reason === "not-found") {
             return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+          }
+          if (correction.reason === "stale") {
+            return NextResponse.json(
+              {
+                error:
+                  "로그가 다른 경로로 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+              },
+              { status: 409 },
+            );
           }
           return NextResponse.json(
             { error: "동시 수정 감지, 다시 시도해주세요" },

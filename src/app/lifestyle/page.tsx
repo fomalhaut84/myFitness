@@ -94,7 +94,15 @@ export default async function LifestylePage() {
   const todayFoodLogs = await prisma.foodLog.findMany({
     where: { date: { gte: todayKstStart, lt: tomorrowKstStart } },
     orderBy: { createdAt: "asc" },
-    select: { id: true, date: true, description: true, mealType: true, estimatedKcal: true },
+    // #309 Codex P2 (PR #313 12회차): kcal editor snapshot 매칭용 updatedAt 함께 fetch.
+    select: {
+      id: true,
+      date: true,
+      description: true,
+      mealType: true,
+      estimatedKcal: true,
+      updatedAt: true,
+    },
   });
 
   const sleepEntries = sleepRecords.map((r) => {
@@ -128,6 +136,7 @@ export default async function LifestylePage() {
         mealType: f.mealType,
         estimatedKcal: f.estimatedKcal,
         timeIso: f.date.toISOString(),
+        updatedAt: f.updatedAt.toISOString(),
       }))}
     />
   );
