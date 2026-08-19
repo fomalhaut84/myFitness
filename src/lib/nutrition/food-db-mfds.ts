@@ -187,7 +187,11 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
     return { hit: null, envelopeValid: true };
   }
 
-  let best: { hit: MfdsHit; score: number } | null = null;
+  // Codex P2 (PR #316 6/10회차): 모든 후보 수집 후 랭킹 (score desc, name length asc).
+  // Top 이 진짜 unique 인지 확인 — score + name.length 둘 다 동률이면서 이름 다른 다른 후보
+  // 있으면 ambiguous (예: "김치찌개_꽁치" vs "김치찌개_참치" 둘 다 FOOD_REF_NM=김치찌개,
+  // length 6) → reject. defensible match 없음으로 caller AI 폴백.
+  const candidates: { hit: MfdsHit; score: number }[] = [];
   for (const raw of itemArr) {
     if (!raw || typeof raw !== "object") continue;
     const row = raw as Record<string, unknown>;
@@ -196,26 +200,29 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
     const refName = toStr(pickField(row, ["FOOD_REF_NM", "foodRefNm"]));
     const score = scoreCandidate(hit.name, refName, query);
     if (score < MATCH_SCORE_THRESHOLD) continue;
-    if (!best) {
-      best = { hit, score };
-    } else if (score > best.score) {
-      best = { hit, score };
-    } else if (score === best.score && hit.name.length < best.hit.name.length) {
-      // Codex P2 (PR #316 6회차): 동률 tie-breaker — candidate name 짧을수록 generic 이라
-      // "김치찌개" 같은 base query 에 더 부합. FOOD_REF_NM 매치가 90 동률로 여럿 나오는
-      // 케이스에서 API 순서 대신 결정적 (name length) 로 선택.
-      best = { hit, score };
-    }
-    if (best.score >= 100) break; // exact — 더 볼 필요 없음.
+    candidates.push({ hit, score });
   }
-  if (!best) {
+  if (candidates.length === 0) {
     console.warn(
       `[mfds] no defensible match for "${query}" (candidates=${itemArr.length})`,
     );
-    // envelope 정상 + 후보 있지만 정합성 낮음 → real no-defensible-match — cache OK.
     return { hit: null, envelopeValid: true };
   }
-  return { hit: best.hit, envelopeValid: true };
+  candidates.sort(
+    (a, b) => b.score - a.score || a.hit.name.length - b.hit.name.length,
+  );
+  const top = candidates[0];
+  const tied = candidates.filter(
+    (c) => c.score === top.score && c.hit.name.length === top.hit.name.length,
+  );
+  const distinctNames = new Set(tied.map((c) => c.hit.name));
+  if (distinctNames.size > 1) {
+    console.warn(
+      `[mfds] ambiguous tied match for "${query}" (${distinctNames.size} variants: ${Array.from(distinctNames).join(", ")}) — reject`,
+    );
+    return { hit: null, envelopeValid: true };
+  }
+  return { hit: top.hit, envelopeValid: true };
 }
 
 export interface FetchMfdsOptions {

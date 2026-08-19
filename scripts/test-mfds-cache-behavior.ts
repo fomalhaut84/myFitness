@@ -160,6 +160,36 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 5-c: ambiguous tied match — 같은 FOOD_REF_NM + 같은 name.length + 이름 다른 여러
+  //   variants 이면 defensible match 없음으로 null 반환 (Codex P2 PR #316 10회차).
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: [
+              { FOOD_NM_KR: "김치찌개_꽁치", FOOD_REF_NM: "김치찌개", AMT_NUM1: 89, AMT_NUM3: 7.14, AMT_NUM4: 5.18, AMT_NUM6: 3.54 },
+              { FOOD_NM_KR: "김치찌개_참치", FOOD_REF_NM: "김치찌개", AMT_NUM1: 95, AMT_NUM3: 8, AMT_NUM4: 6, AMT_NUM6: 4 },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const first = await fetchMfdsFood("김치찌개_ambig_test", { fetchImpl: mock });
+    // 두 번째 호출: ambiguous 는 envelopeValid=true 라 negative-caching 됨.
+    await fetchMfdsFood("김치찌개_ambig_test", { fetchImpl: mock });
+    const ok = calls === 1 && first === null;
+    console.log(
+      `${ok ? "✓" : "✗"} ambiguous tied → null 반환 + 캐시 (calls=${calls}, first=${first === null ? "null" : first.name})`,
+    );
+    allPass = allPass && ok;
+  }
+
   // Case 5-b: collapsed single-result — body.items 가 row object 자체.
   //   (Codex P2 PR #316 9회차)
   {
