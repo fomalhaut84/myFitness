@@ -72,7 +72,11 @@ export async function PATCH(request: Request, ctx: Params) {
     // 최종 write payload 에서 제거. 이전 approach 는 existing 을 읽고 판정한 뒤 여전히
     // description/mealType 을 payload 에 포함시켜 update → 그 사이 다른 PATCH 가 description
     // 을 Y 로 바꾸고 macros 도 populate 됐다면 A 의 stale X 로 덮어써서 macros mismatch 발생.
-    const updateData: Record<string, unknown> = { ...data };
+    // Codex P2 (PR #313 10회차): expectedDescription 은 스냅샷 매칭용 control metadata —
+     // Prisma FoodLog 컬럼 아님. spread 시 update.data 에 포함되면 500 (unknown field).
+     // 별도 변수로 뽑아 payload 에서 제외.
+    const { expectedDescription, ...dataForWrite } = data;
+    const updateData: Record<string, unknown> = { ...dataForWrite };
     if (data.description !== undefined && !descChanged) delete updateData.description;
     if (data.mealType !== undefined && !mealChanged) delete updateData.mealType;
     let updated: {
@@ -122,7 +126,7 @@ export async function PATCH(request: Request, ctx: Params) {
           prisma,
           id,
           data.estimatedKcal,
-          data.expectedDescription,
+          expectedDescription,
         );
         if (!correction.ok) {
           if (correction.reason === "not-found") {
