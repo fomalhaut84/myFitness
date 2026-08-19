@@ -99,13 +99,19 @@ function scoreCandidate(
   return 0;
 }
 
-/** row 를 MfdsHit 로 파싱. 실패 시 null. */
+/** row 를 MfdsHit 로 파싱. 실패 시 null.
+ *  Codex P2 (PR #316 7회차): legacy `NUTR_CONT*` 필드 (openapi.foodsafetykorea.go.kr I2790)
+ *  는 "per serving" 인데 이 parser 는 per-100g 로 취급 → scaleFromHit 이 quantityG/100 로
+ *  곱해 값이 잘못 스케일 (예: 30g serving 150 kcal 이 45 kcal 로 저장). 후보에서 제거해
+ *  legacy endpoint (다른 semantics) 를 명시적으로 미지원. 정확 스펙 없이는 SERVING_WT 로
+ *  정규화 불가 — 필요 시 별도 parser 로 확장.
+ */
 function rowToHit(row: Record<string, unknown>): MfdsHit | null {
-  const name = toStr(pickField(row, ["FOOD_NM_KR", "foodNm", "food_nm", "DESC_KOR"]));
-  const kcal = toNumOrNull(pickField(row, ["AMT_NUM1", "enerc", "NUTR_CONT1"]));
-  const carbs = toNumOrNull(pickField(row, ["AMT_NUM6", "chocdf", "NUTR_CONT2"]));
-  const protein = toNumOrNull(pickField(row, ["AMT_NUM3", "prot", "NUTR_CONT3"]));
-  const fat = toNumOrNull(pickField(row, ["AMT_NUM4", "fatce", "NUTR_CONT4"]));
+  const name = toStr(pickField(row, ["FOOD_NM_KR", "foodNm", "food_nm"]));
+  const kcal = toNumOrNull(pickField(row, ["AMT_NUM1", "enerc"]));
+  const carbs = toNumOrNull(pickField(row, ["AMT_NUM6", "chocdf"]));
+  const protein = toNumOrNull(pickField(row, ["AMT_NUM3", "prot"]));
+  const fat = toNumOrNull(pickField(row, ["AMT_NUM4", "fatce"]));
   const servingRaw = toNumOrNull(
     pickField(row, ["SERVING_SIZE", "servSize", "STD_SIZE", "srvSize"]),
   );
