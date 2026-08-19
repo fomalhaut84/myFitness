@@ -12,6 +12,13 @@ export interface FoodQueryItem {
   query: string;
   /** 예상 섭취량 g (사용자 명시 or 한식 표준 1인분 추정) */
   quantityG: number;
+  /**
+   * true = description 에서 명시적 수량 (예: "300g", "1공기") 추출.
+   * false = 한식 표준 1인분 추정 (AI inferred). Estimator 가 confidence 산정에 사용
+   * (Codex P2 PR #316 5회차: inferred 이면 total 이 uncertain portion 에 스케일되므로
+   * confidence 를 "high" 대신 "med" 로 낮춤).
+   */
+  explicit: boolean;
 }
 
 export interface ExtractFoodQueryInput {
@@ -47,14 +54,15 @@ function buildPrompt(input: ExtractFoodQueryInput): string {
     "- quantityG: 사용자가 양 (300g, 1공기 등) 을 명시하면 그것을 g 으로 환산.",
     "  * 명시 안 되면 한식 표준 1인분 (밥 1공기 = 210g, 국/찌개 1대접 = 300g, 고기 1인분 = 150g,",
     "    반찬 1접시 = 50g, 라면 1봉지 = 500g 완성, 우유 1컵 = 200g, 사과 1개 = 200g 등).",
+    "- explicit: 사용자가 양을 텍스트로 명시했으면 true, 표준 1인분으로 추정했으면 false.",
     "- 확실치 않은 항목도 최선의 추정으로 포함 (miss 는 caller 가 fallback).",
     "- 응답은 오직 JSON 하나만. 설명·마크다운·코드펜스 금지.",
     "",
     "응답 형식:",
     "{",
     '  "items": [',
-    '    {"query": "김치찌개", "quantityG": 350},',
-    '    {"query": "쌀밥", "quantityG": 210}',
+    '    {"query": "김치찌개", "quantityG": 350, "explicit": false},',
+    '    {"query": "쌀밥", "quantityG": 300, "explicit": true}',
     "  ]",
     "}",
     "",
@@ -74,7 +82,12 @@ interface AiJson {
 
 function toItem(raw: unknown): FoodQueryItem | null {
   if (!raw || typeof raw !== "object") return null;
-  const r = raw as { query?: unknown; quantityG?: unknown; quantity_g?: unknown };
+  const r = raw as {
+    query?: unknown;
+    quantityG?: unknown;
+    quantity_g?: unknown;
+    explicit?: unknown;
+  };
   const q = typeof r.query === "string" ? r.query.trim() : "";
   if (!q) return null;
   const qtyRaw = r.quantityG ?? r.quantity_g;
@@ -82,7 +95,9 @@ function toItem(raw: unknown): FoodQueryItem | null {
   if (qty === null) return null;
   // 상한 방어 (한 item 2kg 초과는 오답 취급).
   if (qty > 2000) return null;
-  return { query: q, quantityG: qty };
+  // explicit 필드 없거나 boolean 아니면 안전하게 false (inferred).
+  const explicit = r.explicit === true;
+  return { query: q, quantityG: qty, explicit };
 }
 
 export function parseExtractFoodQueryResponse(rawText: string): FoodQueryItem[] | null {

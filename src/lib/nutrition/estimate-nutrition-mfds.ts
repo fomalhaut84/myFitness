@@ -15,6 +15,10 @@ import type {
 // MFDS 는 quantityG 최대 2kg / item * N 로 큰 total 가능 (예: 기름 2kg = 18,000 kcal 저장 위험).
 const MAX_KCAL_SANITY = 5000;
 const MAX_ITEM_KCAL = 3000;
+// Codex P2 (PR #316 5회차): item count 상한. 사용자 description 이 prompt-like input 이나 대량
+// 목록이면 Claude 가 수십~수백 item 반환 → Promise.all 이 즉시 MFDS API 를 그만큼 fan-out →
+// quota/rate-limit 부담. 한 meal 이 15개 넘는 실무 케이스 rare — 초과 시 null 폴백.
+const MAX_ITEMS = 15;
 
 export interface EstimateMfdsOptions {
   /** 각 API 호출 timeout (default 10s). extract-food-query 는 별도 timeout. */
@@ -70,6 +74,13 @@ export async function estimateNutritionFromMfds(
     mealType: input.mealType,
   });
   if (!queryItems || queryItems.length === 0) return null;
+  // Codex P2 (PR #316 5회차): item count 상한 초과 시 null 폴백 (fan-out API 호출 방어).
+  if (queryItems.length > MAX_ITEMS) {
+    console.warn(
+      `[nutrition-mfds] items (${queryItems.length}) > MAX_ITEMS (${MAX_ITEMS}) — 폴백`,
+    );
+    return null;
+  }
 
   // 2) 각 item MFDS 조회 (병렬, cache 우선). 하나라도 miss 면 null (all-or-nothing).
   const hits = await Promise.all(
@@ -121,13 +132,23 @@ export async function estimateNutritionFromMfds(
     ? Math.round(items.reduce((acc, it) => acc + (it.fatG ?? 0), 0) * 10) / 10
     : null;
 
+  // Codex P2 (PR #316 5회차): quantityG 가 사용자 명시 (explicit) 이면 high, 하나라도 AI
+  // 추정 (inferred) 이면 med — 100g 값은 정확해도 total 이 uncertain portion 에 스케일되므로.
+  const allExplicit = queryItems.every((qi) => qi.explicit);
+  const confidence: NutritionEstimate["confidence"] = allExplicit ? "high" : "med";
+  const inferredCount = queryItems.filter((qi) => !qi.explicit).length;
+  const notes =
+    inferredCount === 0
+      ? `오픈식약처 DB (${items.length}개 항목 매치, 양 명시)`
+      : `오픈식약처 DB (${items.length}개 항목 매치, ${inferredCount}개 항목 양 추정)`;
+
   return {
     kcal: totalKcal,
     proteinG: sumP,
     carbsG: sumC,
     fatG: sumF,
-    confidence: "high",   // MFDS 표준 데이터 기반이라 텍스트 AI 추정보다 신뢰도 높음.
+    confidence,
     items,
-    notes: `오픈식약처 DB (${items.length}개 항목 매치)`,
+    notes,
   };
 }
