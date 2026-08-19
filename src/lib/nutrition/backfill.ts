@@ -230,7 +230,15 @@ export async function runFoodKcalBackfill(
             description: r.description,
             mealType: r.mealType ?? undefined,
           });
-          if (aiEst) est = aiEst;
+          // Codex P2 (릴리즈 PR #317): AI 도 partial 이면 MFDS 유지 (MFDS 가 있는 경우).
+          // MFDS 아예 없으면 AI 그대로 채택 (partial 이라도 kcal 확보 위해).
+          if (aiEst) {
+            const aiComplete =
+              aiEst.proteinG !== null && aiEst.carbsG !== null && aiEst.fatG !== null;
+            if (!est || aiComplete) {
+              est = aiEst;
+            }
+          }
         }
         if (!est) {
           if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;
