@@ -181,9 +181,19 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
   } else if (itemsRaw !== undefined) {
     // items 존재하지만 배열/객체 형태 아님 → structural.
     return { hit: null, envelopeValid: false };
+  } else {
+    // Codex P2 (PR #316 12회차): items 필드 자체가 없음. body.totalCount 로 real no-match
+    // 여부 판정 — 명시 0 이면 cache OK (real no-match), 그 외 (양수/누락) 는 upstream schema/
+    // serialization 문제 (envelope invalid, 다음 재시도) 로 negative cache poisoning 방지.
+    const totalRaw = body.totalCount;
+    const totalNum = typeof totalRaw === "number" ? totalRaw : Number(totalRaw);
+    if (Number.isFinite(totalNum) && totalNum === 0) {
+      return { hit: null, envelopeValid: true };
+    }
+    return { hit: null, envelopeValid: false };
   }
-  // items 필드 자체가 없거나 빈 배열이면 real no-match — cache OK.
   if (itemArr.length === 0) {
+    // 빈 배열 items — real no-match. cache OK.
     return { hit: null, envelopeValid: true };
   }
 

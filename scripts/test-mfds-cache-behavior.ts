@@ -102,6 +102,49 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 4-e: items 필드 없음 + totalCount > 0 (upstream schema/serialization) → cache X.
+  //   (Codex P2 PR #316 12회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: { totalCount: 12, pageNo: 1, numOfRows: 5 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case4e", { fetchImpl: mock });
+    await fetchMfdsFood("case4e", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} items 필드 누락 + totalCount > 0 → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 4-f: items 필드 없음 + totalCount === 0 (real no-match) → cache OK.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: { totalCount: 0, pageNo: 1, numOfRows: 5 },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case4f", { fetchImpl: mock });
+    await fetchMfdsFood("case4f", { fetchImpl: mock });
+    const ok = calls === 1;
+    console.log(`${ok ? "✓" : "✗"} items 필드 누락 + totalCount === 0 → cache (calls=${calls}, expect 1)`);
+    allPass = allPass && ok;
+  }
+
   // Case 4-c: HTTP 200 + structural failure (null / {} / header 없음) → 캐시 X.
   //   (Codex P2 PR #316 6회차)
   {
