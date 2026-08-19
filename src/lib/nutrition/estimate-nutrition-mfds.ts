@@ -11,10 +11,14 @@ import type {
   NutritionItem,
 } from "./estimate-nutrition";
 
-// Codex P2 (PR #316 4회차): 텍스트 estimator (parseNutritionResponse) 와 동일 sanity 유지.
+// Codex P2 (PR #316 4/8회차): 텍스트 estimator (parseNutritionResponse) 와 동일 sanity 유지.
 // MFDS 는 quantityG 최대 2kg / item * N 로 큰 total 가능 (예: 기름 2kg = 18,000 kcal 저장 위험).
 const MAX_KCAL_SANITY = 5000;
 const MAX_ITEM_KCAL = 3000;
+// Codex P2 (PR #316 8회차): 1항목 macro 500g 초과는 오답 (기존 estimate-nutrition.ts 상한).
+const MAX_ITEM_GRAM = 500;
+// P·4 + C·4 + F·9 ≈ item.kcal ±25% (텍스트 estimator 규칙 동일).
+const MACRO_KCAL_TOLERANCE = 0.25;
 // Codex P2 (PR #316 5회차): item count 상한. 사용자 description 이 prompt-like input 이나 대량
 // 목록이면 Claude 가 수십~수백 item 반환 → Promise.all 이 즉시 MFDS API 를 그만큼 fan-out →
 // quota/rate-limit 부담. 한 meal 이 15개 넘는 실무 케이스 rare — 초과 시 null 폴백.
@@ -103,14 +107,42 @@ export async function estimateNutritionFromMfds(
     carbsG: s.carbsG,
     fatG: s.fatG,
   }));
-  // Codex P2 (PR #316 4회차): item 별 · total sanity 검증. MFDS 는 quantityG 2kg × N item 로
-  // 큰 값 가능 → 텍스트 estimator MAX_KCAL_SANITY (5000) / MAX_ITEM_KCAL (3000) 동일 적용.
-  // 실패 시 null → caller (AI text estimator) 폴백.
-  if (items.some((it) => it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL))) {
-    console.warn(
-      `[nutrition-mfds] item kcal sanity 초과 (>${MAX_ITEM_KCAL}) — 폴백`,
-    );
-    return null;
+  // Codex P2 (PR #316 4/8회차): item 별 · total sanity 검증. 텍스트 estimator 와 동일 규칙:
+  // kcal 상한 (MAX_KCAL_SANITY 5000 / MAX_ITEM_KCAL 3000), 매크로 non-negative & <500g,
+  // P·4 + C·4 + F·9 ≈ item.kcal ±25%. malformed API 응답이나 mis-mapped 필드로 인한
+  // 왜곡된 estimate 저장 방지. 실패 시 null → caller (AI text estimator) 폴백.
+  const macroConsistent = (it: NutritionItem): boolean => {
+    if (it.kcal === null) return true;
+    const allNull = it.proteinG === null && it.carbsG === null && it.fatG === null;
+    if (allNull) return true;
+    const tol = Math.max(30, it.kcal * MACRO_KCAL_TOLERANCE);
+    const knownLowerBound =
+      (it.proteinG ?? 0) * 4 + (it.carbsG ?? 0) * 4 + (it.fatG ?? 0) * 9;
+    const allNonNull =
+      it.proteinG !== null && it.carbsG !== null && it.fatG !== null;
+    if (allNonNull) {
+      return Math.abs(knownLowerBound - it.kcal) <= tol;
+    }
+    // 부분 macros — 알려진 값만으로도 item kcal + tol 초과면 오답.
+    return knownLowerBound <= it.kcal + tol;
+  };
+  for (const it of items) {
+    if (it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL)) {
+      console.warn(`[nutrition-mfds] item kcal sanity 초과 (>${MAX_ITEM_KCAL}) — 폴백`);
+      return null;
+    }
+    if (
+      (it.proteinG !== null && (it.proteinG < 0 || it.proteinG > MAX_ITEM_GRAM)) ||
+      (it.carbsG !== null && (it.carbsG < 0 || it.carbsG > MAX_ITEM_GRAM)) ||
+      (it.fatG !== null && (it.fatG < 0 || it.fatG > MAX_ITEM_GRAM))
+    ) {
+      console.warn(`[nutrition-mfds] item macro sanity (>${MAX_ITEM_GRAM}g) — 폴백`);
+      return null;
+    }
+    if (!macroConsistent(it)) {
+      console.warn(`[nutrition-mfds] 4·4·9 consistency 실패 (${it.name}) — 폴백`);
+      return null;
+    }
   }
   const totalKcal = items.reduce((acc, it) => acc + (it.kcal ?? 0), 0);
   if (totalKcal < 0 || totalKcal > MAX_KCAL_SANITY) {

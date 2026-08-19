@@ -9,6 +9,9 @@ const DEFAULT_BASE_URL =
   "https://apis.data.go.kr/1471000/FoodNtrCpntDbInfo02/getFoodNtrCpntDbInq02";
 const DEFAULT_TIMEOUT_MS = 10_000;
 const CACHE_TTL_MS = 24 * 60 * 60 * 1000;
+// Codex P2 (PR #316 8회차): Map 무한 성장 방지. TTL 은 return 만 막고 삭제 안 함 → long-lived
+// 프로세스에서 distinct query 계속 축적. size cap + set 시 expired 정리 + FIFO eviction.
+const MAX_CACHE_SIZE = 1000;
 
 export interface MfdsHit {
   /** DB 상 정식 식품명 */
@@ -53,7 +56,9 @@ function toNumOrNull(v: unknown): number | null {
   const m = raw.match(/^-?\d+(?:\.\d+)?/);
   if (!m) return null;
   const n = Number(m[0]);
-  return Number.isFinite(n) ? n : null;
+  // Codex P2 (PR #316 8회차): nutrient 값은 non-negative. 음수는 malformed → null.
+  if (!Number.isFinite(n) || n < 0) return null;
+  return n;
 }
 
 function toStr(v: unknown): string | null {
@@ -226,7 +231,11 @@ export async function fetchMfdsFood(
   const key = normalizeKey(trimmed);
   const now = Date.now();
   const cached = cache.get(key);
-  if (cached && cached.expiresAt > now) return cached.hit;
+  if (cached) {
+    if (cached.expiresAt > now) return cached.hit;
+    // Codex P2 (PR #316 8회차): expired 발견 시 즉시 삭제 (accumulation 방지).
+    cache.delete(key);
+  }
 
   const apiKeyRaw = process.env.MFDS_API_KEY;
   if (!apiKeyRaw) {
@@ -318,6 +327,16 @@ export async function fetchMfdsFood(
   }
 
   if (cacheable) {
+    // Codex P2 (PR #316 8회차): set 시 만료된 entries 정리 + size cap 초과 시 FIFO eviction.
+    for (const [k, v] of cache) {
+      if (v.expiresAt <= now) cache.delete(k);
+    }
+    while (cache.size >= MAX_CACHE_SIZE) {
+      // Map iterator 는 insertion order — 가장 오래된 것부터 삭제.
+      const oldest = cache.keys().next().value;
+      if (oldest === undefined) break;
+      cache.delete(oldest);
+    }
     cache.set(key, { hit, expiresAt: now + CACHE_TTL_MS });
   }
   return hit;
