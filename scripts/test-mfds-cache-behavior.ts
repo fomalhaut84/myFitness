@@ -13,6 +13,32 @@ async function main() {
 
   let allPass = true;
 
+  // Case 0: Encoding key (% 포함) 인 경우 double-encoding 방지 — decodeURIComponent 로 원본
+  // 복구 후 URLSearchParams 가 정상 재-encode. serviceKey param 이 최종 URL 에서 encoded 원본
+  // (한 번만) 이 되어야 함.  (Codex P2 PR #316 4회차)
+  {
+    clearMfdsCache();
+    process.env.MFDS_API_KEY = "abc%2Bxyz%3D"; // Encoding key sample
+    let requestedUrl = "";
+    const mock: typeof fetch = async (input) => {
+      requestedUrl = typeof input === "string" ? input : input instanceof URL ? input.toString() : String(input);
+      return new Response(
+        JSON.stringify({ header: { resultCode: "00" }, body: { items: [] } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("dummy", { fetchImpl: mock });
+    // URLSearchParams re-encode → 최종 URL 에 %2B / %3D (원본 encoded) 형태로 딱 한 번.
+    const ok =
+      requestedUrl.includes("serviceKey=abc%2Bxyz%3D") &&
+      !requestedUrl.includes("%252B") &&
+      !requestedUrl.includes("%253D");
+    console.log(`${ok ? "✓" : "✗"} Encoding key 자동 decode (double-encoding 방지)`);
+    if (!ok) console.log(`   requested: ${requestedUrl}`);
+    allPass = allPass && ok;
+    process.env.MFDS_API_KEY = "test-key"; // 이후 케이스 원복
+  }
+
   // Case 1: HTTP 500 → 캐시 되면 안 됨.
   {
     clearMfdsCache();
@@ -97,7 +123,7 @@ async function main() {
     allPass = allPass && ok;
   }
 
-  // Case 5: 정상 hit → 캐시 됨.
+  // Case 5: 정상 hit (query 와 이름 일치) → 캐시 됨.
   {
     clearMfdsCache();
     let calls = 0;
@@ -108,17 +134,17 @@ async function main() {
           header: { resultCode: "00" },
           body: {
             items: [
-              { FOOD_NM_KR: "김치찌개", AMT_NUM1: 89, AMT_NUM3: 7.14, AMT_NUM4: 5.18, AMT_NUM6: 3.54, SERVING_SIZE: "100g" },
+              { FOOD_NM_KR: "김치찌개", FOOD_REF_NM: "김치찌개", AMT_NUM1: 89, AMT_NUM3: 7.14, AMT_NUM4: 5.18, AMT_NUM6: 3.54, SERVING_SIZE: "100g" },
             ],
           },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     };
-    await fetchMfdsFood("case5", { fetchImpl: mock });
-    await fetchMfdsFood("case5", { fetchImpl: mock });
-    const ok = calls === 1;
-    console.log(`${ok ? "✓" : "✗"} 정상 hit → 캐시 (calls=${calls}, expect 1)`);
+    const first = await fetchMfdsFood("김치찌개", { fetchImpl: mock });
+    await fetchMfdsFood("김치찌개", { fetchImpl: mock });
+    const ok = calls === 1 && first?.name === "김치찌개";
+    console.log(`${ok ? "✓" : "✗"} 정상 hit → 캐시 (calls=${calls}, expect 1, hit=${first?.name ?? "null"})`);
     allPass = allPass && ok;
   }
 

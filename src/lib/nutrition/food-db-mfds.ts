@@ -188,10 +188,24 @@ export async function fetchMfdsFood(
   const cached = cache.get(key);
   if (cached && cached.expiresAt > now) return cached.hit;
 
-  const apiKey = process.env.MFDS_API_KEY;
-  if (!apiKey) {
+  const apiKeyRaw = process.env.MFDS_API_KEY;
+  if (!apiKeyRaw) {
     console.warn("[mfds] MFDS_API_KEY 환경변수 없음 — AI 폴백");
     return null;
+  }
+  // Codex P2 (PR #316 4회차): data.go.kr 는 "Encoding key" (URL-encoded, %2B / %3D 포함) 와
+  // "Decoding key" (raw) 를 별도 제공. URLSearchParams.set 은 값을 재-encode 하므로 encoded
+  // key 를 그대로 넣으면 %252B, %253D 등 double-encoded → API reject. `%` 포함되면 이미
+  // encoded 로 판정하고 decodeURIComponent 로 원본 복구 → set 시 정상 재-encode.
+  let apiKey = apiKeyRaw;
+  if (apiKey.includes("%")) {
+    try {
+      apiKey = decodeURIComponent(apiKey);
+    } catch (err) {
+      console.warn(
+        `[mfds] MFDS_API_KEY decode 실패 (raw 그대로 사용): ${err instanceof Error ? err.message : String(err)}`,
+      );
+    }
   }
 
   // Codex P2 (PR #316 2회차): MFDS_BASE_URL override 가 malformed 이면 new URL 이 sync

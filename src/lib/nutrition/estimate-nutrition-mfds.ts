@@ -11,6 +11,11 @@ import type {
   NutritionItem,
 } from "./estimate-nutrition";
 
+// Codex P2 (PR #316 4회차): 텍스트 estimator (parseNutritionResponse) 와 동일 sanity 유지.
+// MFDS 는 quantityG 최대 2kg / item * N 로 큰 total 가능 (예: 기름 2kg = 18,000 kcal 저장 위험).
+const MAX_KCAL_SANITY = 5000;
+const MAX_ITEM_KCAL = 3000;
+
 export interface EstimateMfdsOptions {
   /** 각 API 호출 timeout (default 10s). extract-food-query 는 별도 timeout. */
   fetchTimeoutMs?: number;
@@ -87,7 +92,22 @@ export async function estimateNutritionFromMfds(
     carbsG: s.carbsG,
     fatG: s.fatG,
   }));
+  // Codex P2 (PR #316 4회차): item 별 · total sanity 검증. MFDS 는 quantityG 2kg × N item 로
+  // 큰 값 가능 → 텍스트 estimator MAX_KCAL_SANITY (5000) / MAX_ITEM_KCAL (3000) 동일 적용.
+  // 실패 시 null → caller (AI text estimator) 폴백.
+  if (items.some((it) => it.kcal !== null && (it.kcal < 0 || it.kcal > MAX_ITEM_KCAL))) {
+    console.warn(
+      `[nutrition-mfds] item kcal sanity 초과 (>${MAX_ITEM_KCAL}) — 폴백`,
+    );
+    return null;
+  }
   const totalKcal = items.reduce((acc, it) => acc + (it.kcal ?? 0), 0);
+  if (totalKcal < 0 || totalKcal > MAX_KCAL_SANITY) {
+    console.warn(
+      `[nutrition-mfds] total kcal sanity 초과 (${totalKcal} > ${MAX_KCAL_SANITY}) — 폴백`,
+    );
+    return null;
+  }
   const allP = items.every((it) => it.proteinG !== null);
   const allC = items.every((it) => it.carbsG !== null);
   const allF = items.every((it) => it.fatG !== null);
