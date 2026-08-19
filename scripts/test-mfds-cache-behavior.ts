@@ -263,6 +263,35 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 5-e: 같은 score, name.length 다름 — 이전엔 length 짧은 것 arbitrary 채택 → 신규
+  //   정책은 모든 top-score 후보를 ambiguity 로 판정. (Codex P1 릴리즈 PR #317)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: [
+              { FOOD_NM_KR: "김치찌개_참치", FOOD_REF_NM: "김치찌개", AMT_NUM1: 95, AMT_NUM3: 8, AMT_NUM4: 6, AMT_NUM6: 4 },
+              { FOOD_NM_KR: "김치찌개_돼지고기", FOOD_REF_NM: "김치찌개", AMT_NUM1: 120, AMT_NUM3: 10, AMT_NUM4: 8, AMT_NUM6: 5 },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const first = await fetchMfdsFood("김치찌개_ambig_length_test", { fetchImpl: mock });
+    await fetchMfdsFood("김치찌개_ambig_length_test", { fetchImpl: mock });
+    const ok = calls === 1 && first === null;
+    console.log(
+      `${ok ? "✓" : "✗"} score 동률 · length 다름 → null (계열 다양성) (calls=${calls}, first=${first === null ? "null" : first.name})`,
+    );
+    allPass = allPass && ok;
+  }
+
   // Case 5-b: collapsed single-result — body.items 가 row object 자체.
   //   (Codex P2 PR #316 9회차)
   {

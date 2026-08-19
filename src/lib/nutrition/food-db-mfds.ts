@@ -218,17 +218,14 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
     );
     return { hit: null, envelopeValid: true };
   }
-  candidates.sort(
-    (a, b) => b.score - a.score || a.hit.name.length - b.hit.name.length,
-  );
+  candidates.sort((a, b) => b.score - a.score);
   const top = candidates[0];
-  const tied = candidates.filter(
-    (c) => c.score === top.score && c.hit.name.length === top.hit.name.length,
-  );
-  // Codex P2 (PR #316 10/11회차): 완전 동률 (score + length) 인 여러 후보 중 이름 다른 것
-  // 있으면 ambiguous. 이름 같아도 (같은 FOOD_NM_KR 이지만 다른 브랜드/데이터 소스로 nutrient
-  // 다를 수 있음) tuple (kcal/protein/carbs/fat) 다르면 ambiguous — 첫 것 arbitrary accept
-  // 방지.
+  // Codex P1 (PR #317, PR #316 10/11회차): 같은 score 인 모든 후보로 ambiguity 판정.
+  // 이전엔 name.length 도 같은 경우만 tied 로 봤는데, length 다른 variants (예: 김치찌개_참치
+  // vs 김치찌개_돼지고기 · 둘 다 score 90) 는 짧은 것 arbitrary 채택 → nutritionally 다름.
+  // length 는 정보량 tie-breaker 로 무의미 (score 이미 exact 100 vs base 80 로 구분됨).
+  // 같은 이름 (다른 브랜드/데이터 소스로 nutrient 다를 수 있음) → tuple 도 비교.
+  const tied = candidates.filter((c) => c.score === top.score);
   const distinctNames = new Set(tied.map((c) => c.hit.name));
   const tupleKey = (h: MfdsHit): string =>
     `${h.kcalPer100g}|${h.proteinPer100g ?? "?"}|${h.carbsPer100g ?? "?"}|${h.fatPer100g ?? "?"}`;
