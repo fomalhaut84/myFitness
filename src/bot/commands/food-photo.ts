@@ -204,7 +204,25 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
     }
 
     // 최종 응답 (ack 삭제는 아래 finally 에서 정리).
-    await ctx.reply(lines.join("\n"), {
+    // Codex P2 (릴리즈 PR #311): Vision 이 items 많거나 notes 길면 4096 초과 → reply 실패 →
+    // 저장 이후 outer catch 로 "사진 처리 오류" 안내 → 사용자가 재전송해 중복 로그 유발.
+    // Codex P2 (PR #314): UTF-16 surrogate pair 사이에서 자르면 unpaired high surrogate →
+    // malformed Unicode → Telegram reject. code point 단위로 순회하며 4095 UTF-16 code
+    // units (1 for '…') 이내로 맞춤.
+    const TELEGRAM_MAX_MESSAGE = 4096;
+    let replyText = lines.join("\n");
+    if (replyText.length > TELEGRAM_MAX_MESSAGE) {
+      const limit = TELEGRAM_MAX_MESSAGE - 1; // '…' 자리 확보
+      let utf16Len = 0;
+      let cut = 0;
+      for (const ch of replyText) {
+        if (utf16Len + ch.length > limit) break;
+        utf16Len += ch.length;
+        cut += ch.length;
+      }
+      replyText = replyText.slice(0, cut) + "…";
+    }
+    await ctx.reply(replyText, {
       reply_markup: buildFoodInlineKeyboard(log.id),
     });
   } finally {
