@@ -172,6 +172,12 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
     const nested = (itemsRaw as { item?: unknown }).item;
     if (Array.isArray(nested)) itemArr = nested;
     else if (nested) itemArr = [nested];
+    else {
+      // Codex P2 (PR #316 9회차): `.item` wrapper 없이 `body.items` 자체가 row object 인
+      // collapsed single-result shape 지원. 이전엔 itemArr 빈 채로 no-match cache → 유효
+      // row 를 24h negatively 캐시하는 회귀.
+      itemArr = [itemsRaw];
+    }
   } else if (itemsRaw !== undefined) {
     // items 존재하지만 배열/객체 형태 아님 → structural.
     return { hit: null, envelopeValid: false };

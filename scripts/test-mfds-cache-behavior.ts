@@ -160,6 +160,40 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 5-b: collapsed single-result — body.items 가 row object 자체.
+  //   (Codex P2 PR #316 9회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: {
+              FOOD_NM_KR: "쌀밥",
+              FOOD_REF_NM: "쌀밥",
+              AMT_NUM1: 166,
+              AMT_NUM3: 3.36,
+              AMT_NUM4: 0.32,
+              AMT_NUM6: 37.33,
+              SERVING_SIZE: "100g",
+            },
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const first = await fetchMfdsFood("쌀밥", { fetchImpl: mock });
+    await fetchMfdsFood("쌀밥", { fetchImpl: mock });
+    const ok = calls === 1 && first?.name === "쌀밥";
+    console.log(
+      `${ok ? "✓" : "✗"} collapsed single-result (items=object) → hit + 캐시 (calls=${calls}, hit=${first?.name ?? "null"})`,
+    );
+    allPass = allPass && ok;
+  }
+
   // Case 5: 정상 hit (query 와 이름 일치) → 캐시 됨.
   {
     clearMfdsCache();
