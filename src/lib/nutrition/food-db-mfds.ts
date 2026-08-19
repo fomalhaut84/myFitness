@@ -123,28 +123,52 @@ function rowToHit(row: Record<string, unknown>): MfdsHit | null {
 /**
  * data.go.kr 표준 응답: { header: {resultCode, resultMsg}, body: { items: [...], totalCount, ... } }
  * items 는 배열 or 객체 (단일 결과일 때 축소되는 서비스 있음).
- * Codex P2 (PR #316 3회차): items 전체를 랭킹해 최고 스코어 match 선택. 임계 미만이면 null.
+ * Codex P2 (PR #316 3/6회차): items 전체를 랭킹해 최고 스코어 match 선택. 임계 미만이면 null.
+ * Codex P2 (PR #316 6회차): envelopeValid 반환 — HTTP 200 이지만 구조 오류 (null, {}, header
+ * 없음 등) 는 negative cache 로 두면 안 됨 (transient 취급). caller 가 envelopeValid=true
+ * 인 경우만 캐시. 동률 tie-breaker: candidate name 짧을수록 generic → 원본 query 에 가까움.
  */
-function parseMfdsResponse(payload: unknown, query: string): MfdsHit | null {
-  if (!payload || typeof payload !== "object") return null;
+export interface ParseResult {
+  hit: MfdsHit | null;
+  envelopeValid: boolean;
+}
+
+function parseMfdsResponse(payload: unknown, query: string): ParseResult {
+  if (!payload || typeof payload !== "object") {
+    return { hit: null, envelopeValid: false };
+  }
   const root = payload as Record<string, unknown>;
   const header = root.header as Record<string, unknown> | undefined;
-  if (header && header.resultCode !== undefined && header.resultCode !== "00") {
+  if (!header || header.resultCode === undefined) {
+    // envelope 자체가 없음 → 서비스 오류/schema 문제. cache X.
+    return { hit: null, envelopeValid: false };
+  }
+  if (header.resultCode !== "00") {
     console.warn(
       `[mfds] API resultCode=${String(header.resultCode)} msg=${String(header.resultMsg ?? "?")}`,
     );
-    return null;
+    // transient/config — cache X.
+    return { hit: null, envelopeValid: false };
   }
   const body = root.body as Record<string, unknown> | undefined;
-  const itemsRaw = body?.items;
+  if (!body || typeof body !== "object") {
+    return { hit: null, envelopeValid: false };
+  }
+  const itemsRaw = body.items;
   let itemArr: unknown[] = [];
   if (Array.isArray(itemsRaw)) itemArr = itemsRaw;
   else if (itemsRaw && typeof itemsRaw === "object") {
     const nested = (itemsRaw as { item?: unknown }).item;
     if (Array.isArray(nested)) itemArr = nested;
     else if (nested) itemArr = [nested];
+  } else if (itemsRaw !== undefined) {
+    // items 존재하지만 배열/객체 형태 아님 → structural.
+    return { hit: null, envelopeValid: false };
   }
-  if (itemArr.length === 0) return null;
+  // items 필드 자체가 없거나 빈 배열이면 real no-match — cache OK.
+  if (itemArr.length === 0) {
+    return { hit: null, envelopeValid: true };
+  }
 
   let best: { hit: MfdsHit; score: number } | null = null;
   for (const raw of itemArr) {
@@ -155,16 +179,26 @@ function parseMfdsResponse(payload: unknown, query: string): MfdsHit | null {
     const refName = toStr(pickField(row, ["FOOD_REF_NM", "foodRefNm"]));
     const score = scoreCandidate(hit.name, refName, query);
     if (score < MATCH_SCORE_THRESHOLD) continue;
-    if (!best || score > best.score) best = { hit, score };
+    if (!best) {
+      best = { hit, score };
+    } else if (score > best.score) {
+      best = { hit, score };
+    } else if (score === best.score && hit.name.length < best.hit.name.length) {
+      // Codex P2 (PR #316 6회차): 동률 tie-breaker — candidate name 짧을수록 generic 이라
+      // "김치찌개" 같은 base query 에 더 부합. FOOD_REF_NM 매치가 90 동률로 여럿 나오는
+      // 케이스에서 API 순서 대신 결정적 (name length) 로 선택.
+      best = { hit, score };
+    }
     if (best.score >= 100) break; // exact — 더 볼 필요 없음.
   }
   if (!best) {
     console.warn(
       `[mfds] no defensible match for "${query}" (candidates=${itemArr.length})`,
     );
-    return null;
+    // envelope 정상 + 후보 있지만 정합성 낮음 → real no-defensible-match — cache OK.
+    return { hit: null, envelopeValid: true };
   }
-  return best.hit;
+  return { hit: best.hit, envelopeValid: true };
 }
 
 export interface FetchMfdsOptions {
@@ -254,21 +288,13 @@ export async function fetchMfdsFood(
       }
       try {
         const payload = JSON.parse(rawText);
-        // Codex P2 (feat/315-1 2회차): HTTP 200 인데 header.resultCode !== "00" 은
-        // auth/quota/rate-limit 등 transient·config 오류. parseMfdsResponse 는 null 로
-        // 반환하지만 이전엔 cacheable=true 로 마킹 → 24h negative cache poisoning →
-        // 서비스/자격 복구 후에도 그 검색어 24h 불가. resultCode "00" 확인 후에만 캐시.
-        const header = (payload as { header?: { resultCode?: unknown } })?.header;
-        const resultCode = header?.resultCode;
-        if (resultCode !== undefined && resultCode !== "00") {
-          console.warn(
-            `[mfds] API resultCode=${String(resultCode)} for "${trimmed}" — transient/config, 캐시 X`,
-          );
-          // cacheable 은 false 로 유지 → 다음 호출 재시도.
-        } else {
-          hit = parseMfdsResponse(payload, trimmed);
-          cacheable = true; // 성공 응답 (hit 유무 무관) 만 캐시
-        }
+        // Codex P2 (PR #316 6회차): parseMfdsResponse 가 envelope 유효성 (header/body 구조 +
+        // resultCode "00") 을 판단. envelopeValid=true 인 경우만 캐시 → HTTP 200 이지만 null,
+        // {}, header 없음 등 structural failure 는 다음 호출 재시도. resultCode !="00" 도 여기
+        // 서 함께 처리.
+        const parsed = parseMfdsResponse(payload, trimmed);
+        hit = parsed.hit;
+        cacheable = parsed.envelopeValid;
       } catch (err) {
         console.warn(
           `[mfds] JSON parse 실패 for "${trimmed}": ${err instanceof Error ? err.message : String(err)}`,

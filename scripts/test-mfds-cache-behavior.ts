@@ -102,6 +102,43 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 4-c: HTTP 200 + structural failure (null / {} / header 없음) → 캐시 X.
+  //   (Codex P2 PR #316 6회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(JSON.stringify(null), {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    await fetchMfdsFood("case4c", { fetchImpl: mock });
+    await fetchMfdsFood("case4c", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} structural (null payload) → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 4-d: HTTP 200 + {} (envelope 없음) → 캐시 X.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response("{}", {
+        status: 200,
+        headers: { "content-type": "application/json" },
+      });
+    };
+    await fetchMfdsFood("case4d", { fetchImpl: mock });
+    await fetchMfdsFood("case4d", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} structural (empty envelope) → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
   // Case 4-b: HTTP 200 + header.resultCode !== "00" (auth/quota 오류) → 캐시 되면 안 됨.
   //   (Codex P2 feat/315-1 2회차)
   {
