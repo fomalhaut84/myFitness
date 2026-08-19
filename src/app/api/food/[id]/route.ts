@@ -116,11 +116,39 @@ export async function PATCH(request: Request, ctx: Params) {
         updateData.carbsG = null;
         updateData.fatG = null;
         updateData.nutritionAttempts = null;
-        updated = await prisma.foodLog.update({
-          where: { id },
-          data: updateData,
-          select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
-        });
+        // Codex P2 (PR #313 11회차): null 경로도 expectedDescription snapshot 매칭. 이전엔
+        // helper 를 안 거쳐 stale draft (예: kcal editor 오픈 이후 다른 writer 가 desc 를 바꿔
+        // backfill 로 새 kcal/macros 저장) 로 blank 저장 시 새 desc 의 macros 를 파괴.
+        // updateMany + where.description snapshot → count 0 이면 409.
+        if (expectedDescription !== undefined) {
+          const res = await prisma.foodLog.updateMany({
+            where: { id, description: expectedDescription },
+            data: updateData,
+          });
+          if (res.count === 0) {
+            return NextResponse.json(
+              {
+                error:
+                  "설명이 다른 경로로 변경되었습니다. 새로고침 후 다시 시도해주세요.",
+              },
+              { status: 409 },
+            );
+          }
+          const fetched = await prisma.foodLog.findUnique({
+            where: { id },
+            select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+          });
+          if (!fetched) {
+            return NextResponse.json({ error: "로그를 찾을 수 없습니다" }, { status: 404 });
+          }
+          updated = fetched;
+        } else {
+          updated = await prisma.foodLog.update({
+            where: { id },
+            data: updateData,
+            select: { id: true, date: true, estimatedKcal: true, description: true, mealType: true },
+          });
+        }
       } else {
         const correction = await applyKcalCorrection(
           prisma,
