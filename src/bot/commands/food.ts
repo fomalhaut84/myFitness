@@ -4,6 +4,7 @@ import {
   estimateNutritionFromText,
   type NutritionEstimate,
 } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { applyKcalCorrection, scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
@@ -252,17 +253,28 @@ export async function handleFoodInput(
     }
   }
 
-  // 2b) AI 로 kcal + 매크로 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
+  // 2b) MFDS estimator 먼저 → miss 시 AI text estimator (완료까지 await — 사용자 응답 한 번).
   //     실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
+  // #315: 오픈식약처 (표준 데이터) 우선 → AI 추정보다 정확 · AI 호출 절감.
   let estimate: NutritionEstimate | null = null;
   if (needsAI) {
     try {
-      estimate = await estimateNutritionFromText({ description, mealType });
+      estimate = await estimateNutritionFromMfds({ description, mealType });
     } catch (err) {
       console.warn(
-        "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
+        "[bot/food] MFDS estimator 예외:",
         err instanceof Error ? err.message : String(err),
       );
+    }
+    if (!estimate) {
+      try {
+        estimate = await estimateNutritionFromText({ description, mealType });
+      } catch (err) {
+        console.warn(
+          "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
   }
 

@@ -6,6 +6,7 @@
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
@@ -203,10 +204,26 @@ export async function runFoodKcalBackfill(
       let aiPartialConsumesAttempt = false;
       const stillNeedsAI = kcal === null || (needsSomeMacro && macroTuple === null);
       if (stillNeedsAI) {
-        const est = await estimateNutritionFromText({
-          description: r.description,
-          mealType: r.mealType ?? undefined,
-        });
+        // #315: MFDS (오픈식약처) estimator 먼저 → miss 시 AI text estimator.
+        let est = null as Awaited<ReturnType<typeof estimateNutritionFromMfds>>;
+        try {
+          est = await estimateNutritionFromMfds({
+            description: r.description,
+            mealType: r.mealType ?? undefined,
+          });
+        } catch (mfdsErr) {
+          if (verbose) {
+            console.warn(
+              `  [nutrition] MFDS estimator 예외 (log ${r.id}): ${mfdsErr instanceof Error ? mfdsErr.message : String(mfdsErr)}`,
+            );
+          }
+        }
+        if (!est) {
+          est = await estimateNutritionFromText({
+            description: r.description,
+            mealType: r.mealType ?? undefined,
+          });
+        }
         if (!est) {
           if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;
           if (kcal === null) {

@@ -1,0 +1,108 @@
+// #315 (M14 Phase 2 #4): 오픈식약처 기반 nutrition estimator.
+// - description → AI 검색어 추출 → 각 item MFDS 조회 → 100g 당 값을 quantityG 로 scale
+//   → NutritionEstimate 반환 (텍스트 estimator 와 동일 shape).
+// - 통합 flow: repeat-lookup miss → MFDS estimator → miss → AI text estimator (기존).
+
+import { extractFoodQuery, type FoodQueryItem } from "./extract-food-query";
+import { fetchMfdsFood, type MfdsHit } from "./food-db-mfds";
+import type {
+  NutritionEstimate,
+  NutritionEstimateInput,
+  NutritionItem,
+} from "./estimate-nutrition";
+
+export interface EstimateMfdsOptions {
+  /** 각 API 호출 timeout (default 10s). extract-food-query 는 별도 timeout. */
+  fetchTimeoutMs?: number;
+  /** 테스트용 fetch 주입 */
+  fetchImpl?: typeof fetch;
+}
+
+interface ScaledItem {
+  name: string;
+  kcal: number;
+  proteinG: number | null;
+  carbsG: number | null;
+  fatG: number | null;
+}
+
+/** 100g 기준 hit 을 quantityG 로 scale. 각 macro 는 null propagate. */
+function scaleFromHit(hit: MfdsHit, quantityG: number): ScaledItem {
+  const ratio = quantityG / 100;
+  const scale1 = (v: number | null): number | null =>
+    v === null ? null : Math.round(v * ratio * 10) / 10;
+  return {
+    name: hit.name,
+    kcal: Math.round(hit.kcalPer100g * ratio),
+    proteinG: scale1(hit.proteinPer100g),
+    carbsG: scale1(hit.carbsPer100g),
+    fatG: scale1(hit.fatPer100g),
+  };
+}
+
+/**
+ * MFDS estimator.
+ * - 모든 item MFDS hit + kcal 확보 시 total 반환. 일부 miss 는 total 계산 불가로 null 반환
+ *   → caller (AI text estimator) 폴백. 이번 스코프에서는 "all-or-nothing" 로 단순화 (부분
+ *   MFDS hit + 부분 AI 병합은 소스 혼합 정합성 이슈 · #299 tupleFromSource 정책 유지).
+ * - AI 검색어 추출 실패 → null.
+ */
+export async function estimateNutritionFromMfds(
+  input: NutritionEstimateInput,
+  opts: EstimateMfdsOptions = {},
+): Promise<NutritionEstimate | null> {
+  const description = input.description?.trim();
+  if (!description) return null;
+
+  // 1) 검색어 추출.
+  const queryItems = await extractFoodQuery({
+    description,
+    mealType: input.mealType,
+  });
+  if (!queryItems || queryItems.length === 0) return null;
+
+  // 2) 각 item MFDS 조회 (병렬, cache 우선). 하나라도 miss 면 null (all-or-nothing).
+  const hits = await Promise.all(
+    queryItems.map(async (qi: FoodQueryItem) => {
+      const hit = await fetchMfdsFood(qi.query, {
+        timeoutMs: opts.fetchTimeoutMs,
+        fetchImpl: opts.fetchImpl,
+      });
+      return hit ? scaleFromHit(hit, qi.quantityG) : null;
+    }),
+  );
+  if (hits.some((h) => h === null)) return null;
+  const scaled = hits as ScaledItem[];
+
+  // 3) NutritionEstimate 조립. 텍스트 estimator 와 동일한 total/allNonNull propagate 규칙.
+  const items: NutritionItem[] = scaled.map((s) => ({
+    name: s.name,
+    kcal: s.kcal,
+    proteinG: s.proteinG,
+    carbsG: s.carbsG,
+    fatG: s.fatG,
+  }));
+  const totalKcal = items.reduce((acc, it) => acc + (it.kcal ?? 0), 0);
+  const allP = items.every((it) => it.proteinG !== null);
+  const allC = items.every((it) => it.carbsG !== null);
+  const allF = items.every((it) => it.fatG !== null);
+  const sumP = allP
+    ? Math.round(items.reduce((acc, it) => acc + (it.proteinG ?? 0), 0) * 10) / 10
+    : null;
+  const sumC = allC
+    ? Math.round(items.reduce((acc, it) => acc + (it.carbsG ?? 0), 0) * 10) / 10
+    : null;
+  const sumF = allF
+    ? Math.round(items.reduce((acc, it) => acc + (it.fatG ?? 0), 0) * 10) / 10
+    : null;
+
+  return {
+    kcal: totalKcal,
+    proteinG: sumP,
+    carbsG: sumC,
+    fatG: sumF,
+    confidence: "high",   // MFDS 표준 데이터 기반이라 텍스트 AI 추정보다 신뢰도 높음.
+    items,
+    notes: `오픈식약처 DB (${items.length}개 항목 매치)`,
+  };
+}
