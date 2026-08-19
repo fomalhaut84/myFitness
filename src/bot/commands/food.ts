@@ -276,7 +276,15 @@ export async function handleFoodInput(
     if (mfdsMissesMacros) {
       try {
         const aiEst = await estimateNutritionFromText({ description, mealType });
-        if (aiEst) estimate = aiEst;
+        // Codex P2 (릴리즈 PR #317): AI 도 partial 이면 MFDS 유지 (kcal 이라도 정확).
+        // MFDS 가 아예 없으면 (estimate null) AI 를 그대로 (partial 이든 뭐든) 채택.
+        if (aiEst) {
+          const aiComplete =
+            aiEst.proteinG !== null && aiEst.carbsG !== null && aiEst.fatG !== null;
+          if (!estimate || aiComplete) {
+            estimate = aiEst;
+          }
+        }
       } catch (err) {
         console.warn(
           "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
