@@ -294,6 +294,33 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 5-f: items 존재하지만 rowToHit 파싱 실패 (upstream partial/schema) → structural.
+  //   (Codex P2 릴리즈 PR #317 3회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: [
+              { NUM: "1", FOOD_CD: "X" }, // name/kcal 없음
+              { NUM: "2", FOOD_CD: "Y" },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case5f", { fetchImpl: mock });
+    await fetchMfdsFood("case5f", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} items 파싱 실패 → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
   // Case 5-b: collapsed single-result — body.items 가 row object 자체.
   //   (Codex P2 PR #316 9회차)
   {

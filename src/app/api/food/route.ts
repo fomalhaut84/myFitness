@@ -172,15 +172,25 @@ async function handleJsonPost(request: Request) {
           carbsG = estimate.carbsG;
           fatG = estimate.fatG;
         } else {
-          const retainedKcal = hitKcal ?? estimatedKcal;
-          const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
-            proteinG: estimate.proteinG,
-            carbsG: estimate.carbsG,
-            fatG: estimate.fatG,
-          });
-          proteinG = scaled.proteinG;
-          carbsG = scaled.carbsG;
-          fatG = scaled.fatG;
+          // Codex P2 (릴리즈 PR #317 3회차): bot/backfill 과 정합 — AI 가 complete 일 때만
+          // MFDS macros 를 replace. AI 도 partial 이면 MFDS 유지 (kcal + 일부 macros 라도
+          // 표준 데이터 신뢰). 이전엔 unconditional overwrite → AI partial 이 MFDS 를
+          // 덮어 valid database nutrients 소실.
+          const aiComplete =
+            estimate.proteinG !== null &&
+            estimate.carbsG !== null &&
+            estimate.fatG !== null;
+          if (aiComplete) {
+            const retainedKcal = hitKcal ?? estimatedKcal;
+            const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
+              proteinG: estimate.proteinG,
+              carbsG: estimate.carbsG,
+              fatG: estimate.fatG,
+            });
+            proteinG = scaled.proteinG;
+            carbsG = scaled.carbsG;
+            fatG = scaled.fatG;
+          }
         }
       }
     }
