@@ -253,9 +253,11 @@ export async function handleFoodInput(
     }
   }
 
-  // 2b) MFDS estimator 먼저 → miss 시 AI text estimator (완료까지 await — 사용자 응답 한 번).
-  //     실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
+  // 2b) MFDS estimator 먼저 → miss/partial 시 AI text estimator (완료까지 await — 사용자
+  //     응답 한 번). 실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
   // #315: 오픈식약처 (표준 데이터) 우선 → AI 추정보다 정확 · AI 호출 절감.
+  // Codex P2 (PR #316 2회차): MFDS 가 kcal 만 반환 (partial macros) 이면 사용자에게 partial
+  // 만 보여주고 backfill 대기 → API/backfill 경로와 정합 위해 AI text 로 macros 채움 시도.
   let estimate: NutritionEstimate | null = null;
   if (needsAI) {
     try {
@@ -266,9 +268,15 @@ export async function handleFoodInput(
         err instanceof Error ? err.message : String(err),
       );
     }
-    if (!estimate) {
+    const mfdsMissesMacros =
+      !estimate ||
+      estimate.proteinG === null ||
+      estimate.carbsG === null ||
+      estimate.fatG === null;
+    if (mfdsMissesMacros) {
       try {
-        estimate = await estimateNutritionFromText({ description, mealType });
+        const aiEst = await estimateNutritionFromText({ description, mealType });
+        if (aiEst) estimate = aiEst;
       } catch (err) {
         console.warn(
           "[bot/food] nutrition 추정 예외 (log 저장은 완료):",

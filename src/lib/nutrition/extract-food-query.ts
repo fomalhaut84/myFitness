@@ -106,8 +106,12 @@ export function parseExtractFoodQueryResponse(rawText: string): FoodQueryItem[] 
   if (!parsed || typeof parsed !== "object" || Array.isArray(parsed)) return null;
   const body = parsed as AiJson;
   if (!Array.isArray(body.items) || body.items.length === 0) return null;
+  // Codex P2 (PR #316 2회차): 일부 item 만 invalid (예: 3kg 초과 · malformed) 시 survivors 만
+  // 반환하면 downstream all-or-nothing MFDS 가 loss 감지 못함 → meal 일부만 저장돼 total kcal
+  // 왜곡. raw count 와 validated count 다르면 전체 reject → caller (AI text estimator) 폴백.
+  const rawCount = body.items.length;
   const items = body.items.map(toItem).filter((x): x is FoodQueryItem => x !== null);
-  if (items.length === 0) return null;
+  if (items.length !== rawCount) return null;
   return items;
 }
 

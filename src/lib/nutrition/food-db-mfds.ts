@@ -139,8 +139,19 @@ export async function fetchMfdsFood(
     return null;
   }
 
+  // Codex P2 (PR #316 2회차): MFDS_BASE_URL override 가 malformed 이면 new URL 이 sync
+  // throw → caller (API route / bot / backfill) 로 전파돼 log 저장 못 하고 AI 폴백도 못 함
+  // (client 의 failure-to-null 컨벤션 위반). URL 생성을 try 로 감싸 null 반환.
   const baseUrl = process.env.MFDS_BASE_URL || DEFAULT_BASE_URL;
-  const url = new URL(baseUrl);
+  let url: URL;
+  try {
+    url = new URL(baseUrl);
+  } catch (err) {
+    console.warn(
+      `[mfds] MFDS_BASE_URL 파싱 실패 ("${baseUrl}"): ${err instanceof Error ? err.message : String(err)}`,
+    );
+    return null;
+  }
   url.searchParams.set("serviceKey", apiKey);
   url.searchParams.set("type", "json");
   url.searchParams.set("pageNo", "1");
