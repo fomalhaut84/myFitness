@@ -265,6 +265,8 @@ async function main() {
 
   // Case 5-e: 같은 score, name.length 다름 — 이전엔 length 짧은 것 arbitrary 채택 → 신규
   //   정책은 모든 top-score 후보를 ambiguity 로 판정. (Codex P1 릴리즈 PR #317)
+  //   query "김치찌개" 로 실제 tie path 진입: FOOD_REF_NM 매치 score 90 두 후보.
+  //   각 case 마다 clearMfdsCache() 하므로 다른 case 와 상호 무영향.
   {
     clearMfdsCache();
     let calls = 0;
@@ -276,15 +278,15 @@ async function main() {
           body: {
             items: [
               { FOOD_NM_KR: "김치찌개_참치", FOOD_REF_NM: "김치찌개", AMT_NUM1: 95, AMT_NUM3: 8, AMT_NUM4: 6, AMT_NUM6: 4 },
-              { FOOD_NM_KR: "김치찌개_돼지고기", FOOD_REF_NM: "김치찌개", AMT_NUM1: 120, AMT_NUM3: 10, AMT_NUM4: 8, AMT_NUM6: 5 },
+              { FOOD_NM_KR: "김치찌개_돼지고기고추장", FOOD_REF_NM: "김치찌개", AMT_NUM1: 120, AMT_NUM3: 10, AMT_NUM4: 8, AMT_NUM6: 5 },
             ],
           },
         }),
         { status: 200, headers: { "content-type": "application/json" } },
       );
     };
-    const first = await fetchMfdsFood("김치찌개_ambig_length_test", { fetchImpl: mock });
-    await fetchMfdsFood("김치찌개_ambig_length_test", { fetchImpl: mock });
+    const first = await fetchMfdsFood("김치찌개", { fetchImpl: mock });
+    await fetchMfdsFood("김치찌개", { fetchImpl: mock });
     const ok = calls === 1 && first === null;
     console.log(
       `${ok ? "✓" : "✗"} score 동률 · length 다름 → null (계열 다양성) (calls=${calls}, first=${first === null ? "null" : first.name})`,
