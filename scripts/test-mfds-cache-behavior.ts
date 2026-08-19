@@ -190,6 +190,36 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 5-d: same FOOD_NM_KR 여러 rows 중 nutrient 다름 (다른 브랜드/데이터 소스) →
+  //   distinctNames=1 이지만 distinctTuples>1 → ambiguous null 반환.
+  //   (Codex P2 PR #316 11회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: [
+              { FOOD_NM_KR: "우유", FOOD_REF_NM: "우유", AMT_NUM1: 66, AMT_NUM3: 3.3, AMT_NUM4: 3.6, AMT_NUM6: 4.9 },
+              { FOOD_NM_KR: "우유", FOOD_REF_NM: "우유", AMT_NUM1: 42, AMT_NUM3: 3.4, AMT_NUM4: 1.0, AMT_NUM6: 4.8 },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    const first = await fetchMfdsFood("우유", { fetchImpl: mock });
+    await fetchMfdsFood("우유", { fetchImpl: mock });
+    const ok = calls === 1 && first === null;
+    console.log(
+      `${ok ? "✓" : "✗"} same name / diff nutrients → null 반환 + 캐시 (calls=${calls}, first=${first === null ? "null" : first.name})`,
+    );
+    allPass = allPass && ok;
+  }
+
   // Case 5-b: collapsed single-result — body.items 가 row object 자체.
   //   (Codex P2 PR #316 9회차)
   {

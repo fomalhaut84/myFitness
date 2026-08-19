@@ -215,10 +215,17 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
   const tied = candidates.filter(
     (c) => c.score === top.score && c.hit.name.length === top.hit.name.length,
   );
+  // Codex P2 (PR #316 10/11회차): 완전 동률 (score + length) 인 여러 후보 중 이름 다른 것
+  // 있으면 ambiguous. 이름 같아도 (같은 FOOD_NM_KR 이지만 다른 브랜드/데이터 소스로 nutrient
+  // 다를 수 있음) tuple (kcal/protein/carbs/fat) 다르면 ambiguous — 첫 것 arbitrary accept
+  // 방지.
   const distinctNames = new Set(tied.map((c) => c.hit.name));
-  if (distinctNames.size > 1) {
+  const tupleKey = (h: MfdsHit): string =>
+    `${h.kcalPer100g}|${h.proteinPer100g ?? "?"}|${h.carbsPer100g ?? "?"}|${h.fatPer100g ?? "?"}`;
+  const distinctTuples = new Set(tied.map((c) => tupleKey(c.hit)));
+  if (distinctNames.size > 1 || distinctTuples.size > 1) {
     console.warn(
-      `[mfds] ambiguous tied match for "${query}" (${distinctNames.size} variants: ${Array.from(distinctNames).join(", ")}) — reject`,
+      `[mfds] ambiguous tied match for "${query}" (names=${distinctNames.size} tuples=${distinctTuples.size}) — reject`,
     );
     return { hit: null, envelopeValid: true };
   }
