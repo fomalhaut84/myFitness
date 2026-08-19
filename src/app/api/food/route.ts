@@ -134,9 +134,13 @@ async function handleJsonPost(request: Request) {
     // hit 있으면 사용 (표준 데이터라 AI 추정보다 정확). miss 시에만 AI 폴백.
     // hit.kcal 이 있는데 macros 만 부족한 경우: MFDS 로 macros 채우고 hit.kcal 에 맞춰 스케일.
     const macrosIncomplete = proteinG === null || carbsG === null || fatG === null;
+    // Codex P2 (릴리즈 PR #317 4회차): MFDS 결과 유무를 outer scope 에 track — AI 폴백
+    // 단계에서 "MFDS 있음" 인 경우만 aiComplete guard 적용해 partial 소실 방지.
+    let mfdsProvided = false;
     if (estimatedKcal === null || macrosIncomplete) {
       const mfds = await estimateNutritionFromMfds({ description, mealType });
       if (mfds) {
+        mfdsProvided = true;
         if (estimatedKcal === null) {
           estimatedKcal = mfds.kcal;
           proteinG = mfds.proteinG;
@@ -172,15 +176,25 @@ async function handleJsonPost(request: Request) {
           carbsG = estimate.carbsG;
           fatG = estimate.fatG;
         } else {
-          const retainedKcal = hitKcal ?? estimatedKcal;
-          const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
-            proteinG: estimate.proteinG,
-            carbsG: estimate.carbsG,
-            fatG: estimate.fatG,
-          });
-          proteinG = scaled.proteinG;
-          carbsG = scaled.carbsG;
-          fatG = scaled.fatG;
+          // Codex P2 (릴리즈 PR #317 3/4회차): bot/backfill 과 정합 — MFDS 가 있을 때만
+          // AI complete guard 적용. AI 도 partial 이면 MFDS valid nutrients 유지.
+          // MFDS 없는 경우 (repeat-lookup kcal 만) 는 AI partial 이라도 accept 해야 —
+          // 이전엔 이 케이스도 aiComplete false 로 폐기 → macros 전부 null 저장.
+          const aiComplete =
+            estimate.proteinG !== null &&
+            estimate.carbsG !== null &&
+            estimate.fatG !== null;
+          if (!mfdsProvided || aiComplete) {
+            const retainedKcal = hitKcal ?? estimatedKcal;
+            const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
+              proteinG: estimate.proteinG,
+              carbsG: estimate.carbsG,
+              fatG: estimate.fatG,
+            });
+            proteinG = scaled.proteinG;
+            carbsG = scaled.carbsG;
+            fatG = scaled.fatG;
+          }
         }
       }
     }

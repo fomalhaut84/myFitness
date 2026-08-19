@@ -202,15 +202,26 @@ function parseMfdsResponse(payload: unknown, query: string): ParseResult {
   // 있으면 ambiguous (예: "김치찌개_꽁치" vs "김치찌개_참치" 둘 다 FOOD_REF_NM=김치찌개,
   // length 6) → reject. defensible match 없음으로 caller AI 폴백.
   const candidates: { hit: MfdsHit; score: number }[] = [];
+  let anyParseable = false;
   for (const raw of itemArr) {
     if (!raw || typeof raw !== "object") continue;
     const row = raw as Record<string, unknown>;
     const hit = rowToHit(row);
     if (!hit) continue;
+    anyParseable = true;
     const refName = toStr(pickField(row, ["FOOD_REF_NM", "foodRefNm"]));
     const score = scoreCandidate(hit.name, refName, query);
     if (score < MATCH_SCORE_THRESHOLD) continue;
     candidates.push({ hit, score });
+  }
+  // Codex P2 (릴리즈 PR #317 3회차): items 존재하지만 rowToHit 로 하나도 파싱 못 하면
+  // (모든 row 가 name/kcal 누락 · upstream partial/schema 문제) structural failure → cache X,
+  // 재시도. "parseable rows below threshold" (real no-defensible-match) 는 cache OK.
+  if (!anyParseable) {
+    console.warn(
+      `[mfds] no parseable rows for "${query}" (candidates=${itemArr.length}) — structural`,
+    );
+    return { hit: null, envelopeValid: false };
   }
   if (candidates.length === 0) {
     console.warn(
