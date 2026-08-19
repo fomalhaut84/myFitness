@@ -3,9 +3,24 @@ import { getBot } from "./index";
 import { startBotScheduler } from "./notifications/scheduler";
 import { sanitizeError } from "./utils/error";
 import { sweepOrphanedJobs, startOrphanSweeper } from "@/lib/report-job";
+import {
+  sweepStalePhotoTempFiles,
+  startPhotoTempSweeper,
+} from "@/lib/nutrition/photo-temp-cleanup";
 
 async function main() {
   console.log("[bot] myFitness 텔레그램 봇 시작...");
+
+  // #309 (Codex P2 PR #312 2회차): photo temp sweep 은 로컬 fs 만 접근 — 네트워크 의존
+  // (bot.init / deleteWebhook) 이전에 실행해야 텔레그램 unavailable 시에도 정리 진행.
+  // 봇 프로세스만 재시작하는 경우 웹 프로세스 sweep 은 트리거 안 되므로 이 sweep 이
+  // 유일한 정리 시점.
+  // Codex P2 (PR #312 3회차): startup sweep 은 5분 이상 지난 파일만 삭제 — PM2 즉시 재시작
+  // 으로 남은 orphan (5분 미만) 은 skip → 다음 restart 전까지 남음. periodic sweeper 병행.
+  await sweepStalePhotoTempFiles().catch((err) => {
+    console.error("[photo-cleanup] sweep failed:", err);
+  });
+  startPhotoTempSweeper();
 
   const bot = getBot();
 
