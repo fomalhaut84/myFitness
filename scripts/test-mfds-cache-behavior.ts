@@ -1,0 +1,111 @@
+// #315 회귀: fetchMfdsFood 캐시 정책 검증.
+// 사전 리뷰 P1 (feat/315-1): transient error 를 24h negative cache 로 poisoning 하면
+// API 복구 후에도 그 검색어는 24h 재시도 불가 → MFDS 정확도 이점 무력화.
+// 정상 응답 (hit or no-match) 만 캐시, 5xx/timeout/parse-fail 은 캐시 안 함.
+//
+// 실행: npx tsx scripts/test-mfds-cache-behavior.ts
+
+import { fetchMfdsFood, clearMfdsCache } from "@/lib/nutrition/food-db-mfds";
+
+async function main() {
+  // 함수가 API_KEY 없으면 조기 return null. 테스트용 dummy key.
+  process.env.MFDS_API_KEY = "test-key";
+
+  let allPass = true;
+
+  // Case 1: HTTP 500 → 캐시 되면 안 됨.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response("Internal Error", { status: 500 });
+    };
+    await fetchMfdsFood("case1", { fetchImpl: mock });
+    await fetchMfdsFood("case1", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} HTTP 500 → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 2: network error (throw) → 캐시 되면 안 됨.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      throw new Error("ECONNREFUSED");
+    };
+    await fetchMfdsFood("case2", { fetchImpl: mock });
+    await fetchMfdsFood("case2", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} network error → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 3: JSON parse 실패 → 캐시 되면 안 됨.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response("not-json-<html>", { status: 200 });
+    };
+    await fetchMfdsFood("case3", { fetchImpl: mock });
+    await fetchMfdsFood("case3", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} JSON parse 실패 → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 4: 정상 응답 no-match (body.items 빈 배열) → 캐시 됨 (반복 miss 방지).
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({ header: { resultCode: "00" }, body: { items: [] } }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case4", { fetchImpl: mock });
+    await fetchMfdsFood("case4", { fetchImpl: mock });
+    const ok = calls === 1;
+    console.log(`${ok ? "✓" : "✗"} 정상 no-match → 캐시 (calls=${calls}, expect 1)`);
+    allPass = allPass && ok;
+  }
+
+  // Case 5: 정상 hit → 캐시 됨.
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "00" },
+          body: {
+            items: [
+              { FOOD_NM_KR: "김치찌개", AMT_NUM1: 89, AMT_NUM3: 7.14, AMT_NUM4: 5.18, AMT_NUM6: 3.54, SERVING_SIZE: "100g" },
+            ],
+          },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case5", { fetchImpl: mock });
+    await fetchMfdsFood("case5", { fetchImpl: mock });
+    const ok = calls === 1;
+    console.log(`${ok ? "✓" : "✗"} 정상 hit → 캐시 (calls=${calls}, expect 1)`);
+    allPass = allPass && ok;
+  }
+
+  console.log(allPass ? "ALL PASS" : "FAIL");
+  process.exit(allPass ? 0 : 1);
+}
+
+main().catch((err) => {
+  console.error("[test-mfds-cache] 예외:", err);
+  process.exit(1);
+});

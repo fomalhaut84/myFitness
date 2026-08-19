@@ -153,6 +153,11 @@ export async function fetchMfdsFood(
   const timer = setTimeout(() => controller.abort(), timeoutMs);
 
   let hit: MfdsHit | null = null;
+  // 사전 리뷰 P1 (feat/315-1): transient error (network/HTTP 5xx/timeout/parse fail) 을
+  // negative cache 로 24h poisoning 하면 API 복구된 후에도 그 검색어는 24h 재시도 불가 →
+  // MFDS 정확도 이점 무력화. 정상 응답을 파싱한 경우 (hit=null 인 real "no match" 포함) 만
+  // 캐시. Transient 는 다음 호출에서 재시도.
+  let cacheable = false;
   try {
     const res = await fetchFn(url.toString(), { signal: controller.signal });
     if (!res.ok) {
@@ -160,33 +165,36 @@ export async function fetchMfdsFood(
       console.warn(
         `[mfds] HTTP ${res.status} for "${trimmed}": ${errBody.slice(0, 500)}`,
       );
+      // HTTP non-2xx — transient (5xx) or auth issue (401/403). 캐시 X (다음 재시도).
     } else {
       const rawText = await res.text();
       if (opts.logRaw) {
         console.log(`[mfds] raw response for "${trimmed}":`);
         console.log(rawText.slice(0, 2000));
       }
-      let payload: unknown;
       try {
-        payload = JSON.parse(rawText);
+        const payload = JSON.parse(rawText);
+        hit = parseMfdsResponse(payload);
+        cacheable = true; // 정상 응답 (hit 유무 무관) 만 캐시
       } catch (err) {
         console.warn(
           `[mfds] JSON parse 실패 for "${trimmed}": ${err instanceof Error ? err.message : String(err)}`,
         );
-        payload = null;
+        // parse 실패는 서버 오류 가능성 — 캐시 X
       }
-      hit = parseMfdsResponse(payload);
     }
   } catch (err) {
     console.warn(
       `[mfds] fetch 실패 for "${trimmed}": ${err instanceof Error ? err.message : String(err)}`,
     );
+    // network / AbortError (timeout) — 캐시 X
   } finally {
     clearTimeout(timer);
   }
 
-  // Negative cache 포함 (반복 miss API 호출 방지).
-  cache.set(key, { hit, expiresAt: now + CACHE_TTL_MS });
+  if (cacheable) {
+    cache.set(key, { hit, expiresAt: now + CACHE_TTL_MS });
+  }
   return hit;
 }
 

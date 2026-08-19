@@ -159,6 +159,9 @@ async function handleJsonPost(request: Request) {
     // Codex P2 (PR #300 15회차): 여전히 estimatedKcal null 이거나 macros 미완이면 AI text
     // estimator 폴백. hit.kcal 이 있는데 macros 만 부족한 경우: AI 로 macros 채우고 hit.kcal
     // 에 맞춰 스케일 (consistency 유지 · backfill retry 상한에 의존 안 함).
+    // 사전 리뷰 P1 (feat/315-1): retainedKcal 은 hitKcal ?? estimatedKcal — MFDS 가 kcal 을
+    // 채운 경로 (hitKcal=null 이지만 estimatedKcal != null) 도 안전하게 스케일 target 유지.
+    // 이전엔 hitKcal 하나만 참조 → MFDS 채운 macros 가 scaleMacrosForNewKcal(null, ...) 로 전부 null 파괴.
     const stillIncomplete = estimatedKcal === null || proteinG === null || carbsG === null || fatG === null;
     if (stillIncomplete) {
       const estimate = await estimateNutritionFromText({ description, mealType });
@@ -169,7 +172,8 @@ async function handleJsonPost(request: Request) {
           carbsG = estimate.carbsG;
           fatG = estimate.fatG;
         } else {
-          const scaled = scaleMacrosForNewKcal(hitKcal, estimate.kcal, {
+          const retainedKcal = hitKcal ?? estimatedKcal;
+          const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
             proteinG: estimate.proteinG,
             carbsG: estimate.carbsG,
             fatG: estimate.fatG,
