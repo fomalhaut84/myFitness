@@ -204,7 +204,15 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
     }
 
     // 최종 응답 (ack 삭제는 아래 finally 에서 정리).
-    await ctx.reply(lines.join("\n"), {
+    // Codex P2 (릴리즈 PR #311): Vision 이 items 많거나 notes 길면 4096 초과 → reply 실패 →
+    // 저장 이후 outer catch 로 "사진 처리 오류" 안내 → 사용자가 재전송해 중복 로그 유발.
+    // 안전하게 4096 이하로 truncate. 마지막 문자에 '…' 로 잘렸음을 표시.
+    const TELEGRAM_MAX_MESSAGE = 4096;
+    let replyText = lines.join("\n");
+    if (replyText.length > TELEGRAM_MAX_MESSAGE) {
+      replyText = replyText.slice(0, TELEGRAM_MAX_MESSAGE - 1) + "…";
+    }
+    await ctx.reply(replyText, {
       reply_markup: buildFoodInlineKeyboard(log.id),
     });
   } finally {
