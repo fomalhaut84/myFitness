@@ -54,6 +54,11 @@ export async function estimateNutritionFromMfds(
   const description = input.description?.trim();
   if (!description) return null;
 
+  // Codex P1 (feat/315-1 2회차): MFDS_API_KEY 없으면 extractFoodQuery (Claude CLI 18s) 낭비.
+  // 조기 return → caller (AI text estimator) 폴백. API 키가 문서상 optional 이므로 이 경로도
+  // 흔한 시나리오.
+  if (!process.env.MFDS_API_KEY) return null;
+
   // 1) 검색어 추출.
   const queryItems = await extractFoodQuery({
     description,

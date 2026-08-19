@@ -218,11 +218,19 @@ export async function runFoodKcalBackfill(
             );
           }
         }
-        if (!est) {
-          est = await estimateNutritionFromText({
+        // Codex P2 (feat/315-1 2회차): MFDS 가 kcal 만 반환 (partial macros) 인데 macros 가
+        // 필요한 경우 tupleFromSource 가 아래에서 fail → aiPartialConsumesAttempt 만 세팅되어
+        // AI text fallback 못 시도 → 매 tick 같은 partial 결과 반복 (cache hit) → 3회 후
+        // permanent skip. MFDS 가 macro 요구사항을 만족 못 하면 이 자리에서 AI text 시도.
+        const mfdsMissesMacros =
+          needsSomeMacro &&
+          (!est || est.proteinG === null || est.carbsG === null || est.fatG === null);
+        if (!est || mfdsMissesMacros) {
+          const aiEst = await estimateNutritionFromText({
             description: r.description,
             mealType: r.mealType ?? undefined,
           });
+          if (aiEst) est = aiEst;
         }
         if (!est) {
           if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;

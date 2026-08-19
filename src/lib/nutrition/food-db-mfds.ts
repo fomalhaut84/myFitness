@@ -174,8 +174,21 @@ export async function fetchMfdsFood(
       }
       try {
         const payload = JSON.parse(rawText);
-        hit = parseMfdsResponse(payload);
-        cacheable = true; // 정상 응답 (hit 유무 무관) 만 캐시
+        // Codex P2 (feat/315-1 2회차): HTTP 200 인데 header.resultCode !== "00" 은
+        // auth/quota/rate-limit 등 transient·config 오류. parseMfdsResponse 는 null 로
+        // 반환하지만 이전엔 cacheable=true 로 마킹 → 24h negative cache poisoning →
+        // 서비스/자격 복구 후에도 그 검색어 24h 불가. resultCode "00" 확인 후에만 캐시.
+        const header = (payload as { header?: { resultCode?: unknown } })?.header;
+        const resultCode = header?.resultCode;
+        if (resultCode !== undefined && resultCode !== "00") {
+          console.warn(
+            `[mfds] API resultCode=${String(resultCode)} for "${trimmed}" — transient/config, 캐시 X`,
+          );
+          // cacheable 은 false 로 유지 → 다음 호출 재시도.
+        } else {
+          hit = parseMfdsResponse(payload);
+          cacheable = true; // 성공 응답 (hit 유무 무관) 만 캐시
+        }
       } catch (err) {
         console.warn(
           `[mfds] JSON parse 실패 for "${trimmed}": ${err instanceof Error ? err.message : String(err)}`,

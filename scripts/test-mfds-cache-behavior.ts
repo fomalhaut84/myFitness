@@ -76,6 +76,27 @@ async function main() {
     allPass = allPass && ok;
   }
 
+  // Case 4-b: HTTP 200 + header.resultCode !== "00" (auth/quota 오류) → 캐시 되면 안 됨.
+  //   (Codex P2 feat/315-1 2회차)
+  {
+    clearMfdsCache();
+    let calls = 0;
+    const mock: typeof fetch = async () => {
+      calls++;
+      return new Response(
+        JSON.stringify({
+          header: { resultCode: "22", resultMsg: "SERVICE_KEY_IS_NOT_REGISTERED_ERROR" },
+        }),
+        { status: 200, headers: { "content-type": "application/json" } },
+      );
+    };
+    await fetchMfdsFood("case4b", { fetchImpl: mock });
+    await fetchMfdsFood("case4b", { fetchImpl: mock });
+    const ok = calls === 2;
+    console.log(`${ok ? "✓" : "✗"} resultCode!="00" → 재시도 (calls=${calls}, expect 2)`);
+    allPass = allPass && ok;
+  }
+
   // Case 5: 정상 hit → 캐시 됨.
   {
     clearMfdsCache();
