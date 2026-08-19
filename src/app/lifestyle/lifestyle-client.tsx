@@ -27,6 +27,8 @@ interface FoodLogEntry {
   mealType: string | null;
   estimatedKcal: number | null;
   timeIso: string;
+  // #309 Codex P2 (PR #313 12회차): kcal editor snapshot 매칭용 row revision (ISO).
+  updatedAt: string;
 }
 
 interface LifestyleClientProps {
@@ -149,12 +151,12 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
   const [kcalInput, setKcalInput] = useState(
     log.estimatedKcal !== null ? String(log.estimatedKcal) : "",
   );
-  // Codex P2 (PR #313 10회차): kcal editor 를 열 때 시점의 description 을 함께 캡처.
-  // saveKcal 이 이 snapshot 을 expectedDescription 으로 전송 → server 가 저장 직전 실제
-  // description 과 비교. 만약 editor 열려있는 동안 refresh 로 log.description 이 바뀌면
-  // snapshot 은 낡은 값 → server 가 mismatch 로 409 → stale kcal 이 새 desc 에 잘못 저장되는
-  // 회귀 차단.
-  const [kcalDescSnapshot, setKcalDescSnapshot] = useState<string | null>(null);
+  // Codex P2 (PR #313 10/12회차): kcal editor 를 열 때 시점의 row revision (updatedAt) 을
+  // 캡처. saveKcal 이 이 snapshot 을 expectedRevision 으로 전송 → server 가 저장 직전 실제
+  // updatedAt 과 비교. editor 열려있는 동안 다른 writer (bot desc edit, backfill 등) 가 row
+  // 를 update 하면 snapshot 은 낡은 값 → server 가 mismatch 로 409 → stale kcal 이 새 row
+  // 에 잘못 저장되는 회귀 차단 (monotonic revision 이라 A→B→A restore 도 안전).
+  const [kcalRevSnapshot, setKcalRevSnapshot] = useState<string | null>(null);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   // Codex P2 (릴리즈 PR #313 4-9회차): stale draft 회귀는 client-side guard 로 완벽 판정이
@@ -232,16 +234,16 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
     setSaving(true);
     setError(null);
     try {
-      // Codex P2 (릴리즈 PR #313 9/10회차): editor open 시점의 description snapshot 을 전송.
-      // log.description (latest) 을 그대로 쓰면 editor 가 열려있는 동안 refresh 로 description
-      // 이 바뀌었을 때 새 desc = expected 로 server 가 accept → stale kcalInput 이 새 desc 에
-      // 잘못 저장. snapshot 이 없는 경우 (초기 mount 등) 만 log.description fallback.
+      // Codex P2 (PR #313 9/10/12회차): editor open 시점의 row revision snapshot 을 전송.
+      // log.updatedAt (latest) 을 그대로 쓰면 editor 열려있는 동안 refresh 로 row 가 바뀐
+      // 경우 새 rev = expected 로 server 가 accept → stale kcalInput 이 새 row 에 잘못 저장.
+      // snapshot 이 없는 경우 (초기 mount) 만 log.updatedAt fallback.
       const res = await fetch(`/api/food/${log.id}`, {
         method: "PATCH",
         headers: { "content-type": "application/json" },
         body: JSON.stringify({
           estimatedKcal: n,
-          expectedDescription: kcalDescSnapshot ?? log.description,
+          expectedRevision: kcalRevSnapshot ?? log.updatedAt,
         }),
       });
       if (!res.ok) {
@@ -249,7 +251,7 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
         throw new Error(body?.error ?? `요청 실패 (${res.status})`);
       }
       setEditingKcal(false);
-      setKcalDescSnapshot(null);
+      setKcalRevSnapshot(null);
       router.refresh();
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
@@ -356,7 +358,7 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
               onClick={() => {
                 setEditingKcal(false);
                 setKcalInput(log.estimatedKcal !== null ? String(log.estimatedKcal) : "");
-                setKcalDescSnapshot(null);
+                setKcalRevSnapshot(null);
                 setError(null);
               }}
               className="text-[11px] text-dim border border-border rounded px-2 py-1"
@@ -379,13 +381,14 @@ function FoodRow({ log }: { log: FoodLogEntry }) {
                 // 로 draft 재초기화. description edit 이후 kcalInput 이 "" 로 리셋됐지만
                 // backfill 이 새 kcal 을 채워둔 상태에서 editor 를 blank 로 열면 저장 시
                 // PATCH { estimatedKcal: null } → 새로 추정된 값 파괴 회귀.
-                // 10회차: editor 오픈 시점의 description 도 snapshot → saveKcal 이 이 값을
-                // expectedDescription 으로 전송. editor 열려있는 동안 refresh 로 desc 가
-                // 바뀌면 snapshot 은 낡음 → server 가 409 로 stale kcal 저장 차단.
+                // 10/12회차: editor 오픈 시점의 row revision (updatedAt) 도 snapshot →
+                // saveKcal 이 이 값을 expectedRevision 으로 전송. editor 열려있는 동안
+                // 다른 writer 로 row 가 바뀌면 snapshot 은 낡음 → server 가 409 로 stale
+                // kcal 저장 차단.
                 setKcalInput(
                   log.estimatedKcal !== null ? String(log.estimatedKcal) : "",
                 );
-                setKcalDescSnapshot(log.description);
+                setKcalRevSnapshot(log.updatedAt);
                 setError(null);
                 setEditingKcal(true);
               }}

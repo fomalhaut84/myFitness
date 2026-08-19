@@ -31,6 +31,7 @@ interface KcalCorrectableClient {
         carbsG: true;
         fatG: true;
         description: true;
+        updatedAt: true;
       };
     }) => Promise<{
       estimatedKcal: number | null;
@@ -38,6 +39,7 @@ interface KcalCorrectableClient {
       carbsG: number | null;
       fatG: number | null;
       description: string;
+      updatedAt: Date;
     } | null>;
     updateMany: (args: {
       where: {
@@ -47,6 +49,7 @@ interface KcalCorrectableClient {
         carbsG: number | null;
         fatG: number | null;
         description?: string;
+        updatedAt?: Date;
       };
       data: Record<string, unknown>;
     }) => Promise<{ count: number }>;
@@ -55,23 +58,24 @@ interface KcalCorrectableClient {
 
 export type ApplyKcalCorrectionResult =
   | { ok: true }
-  | { ok: false; reason: "not-found" | "conflict" | "description-mismatch" };
+  | { ok: false; reason: "not-found" | "conflict" | "stale" };
 
 /**
  * Codex P2 (PR #300): 사용자 kcal 정정 (PATCH · 봇 /food_kcal · 봇 [수정] 답장) 을
  * concurrency-safe 하게 적용. fetch → scale → 스냅샷 매칭 update 를 최대 3회 재시도.
  * backfill 이 사이에 macros 를 채운 경우 stale null 로 stomp 하지 않음.
  *
- * Codex P2 (PR #313 9회차): expectedDescription 이 주어지면 fetch 시 실제 description 과
- * 비교. mismatch 이면 `description-mismatch` 반환 — client 는 stale draft (예: web description
- * PATCH 이후 refresh 반영 전에 사용자가 kcal editor 를 열어 old kcal 을 저장하려는 경우) 로
- * 새 description 에 옛 kcal 을 잘못 적용하는 회귀 차단. 미지정 시 기존 동작 유지 (봇 등).
+ * Codex P2 (PR #313 9/12회차): expectedRevision (client 가 editor 열 시점의 row updatedAt) 이
+ * 주어지면 fetch 시 실제 updatedAt 과 비교. mismatch 이면 `stale` 반환 — 사용자가 editor 를
+ * 열고 있는 동안 다른 writer (bot description edit / backfill 등) 가 row 를 update 했다는
+ * 뜻. description value 만 비교하면 A→B→A restore 케이스에서 우회 가능해 monotonic
+ * revision 사용. 미지정 시 기존 동작 유지 (봇 등 legacy caller — snapshot 없이 lastwrite).
  */
 export async function applyKcalCorrection(
   client: KcalCorrectableClient,
   id: string,
   newKcal: number,
-  expectedDescription?: string,
+  expectedRevision?: Date,
 ): Promise<ApplyKcalCorrectionResult> {
   const MAX_ATTEMPT = 3;
   for (let i = 0; i < MAX_ATTEMPT; i++) {
@@ -83,14 +87,15 @@ export async function applyKcalCorrection(
         carbsG: true,
         fatG: true,
         description: true,
+        updatedAt: true,
       },
     });
     if (!existing) return { ok: false, reason: "not-found" };
     if (
-      expectedDescription !== undefined &&
-      existing.description !== expectedDescription
+      expectedRevision !== undefined &&
+      existing.updatedAt.getTime() !== expectedRevision.getTime()
     ) {
-      return { ok: false, reason: "description-mismatch" };
+      return { ok: false, reason: "stale" };
     }
     const scaled = scaleMacrosForNewKcal(newKcal, existing.estimatedKcal, existing);
     const res = await client.foodLog.updateMany({
@@ -100,7 +105,7 @@ export async function applyKcalCorrection(
         proteinG: existing.proteinG,
         carbsG: existing.carbsG,
         fatG: existing.fatG,
-        ...(expectedDescription !== undefined ? { description: expectedDescription } : {}),
+        ...(expectedRevision !== undefined ? { updatedAt: expectedRevision } : {}),
       },
       data: {
         estimatedKcal: newKcal,
