@@ -63,10 +63,69 @@ function toStr(v: unknown): string | null {
 }
 
 /**
+ * Codex P2 (PR #316 3회차): 검색어 vs candidate name 유사도 스코어. FOOD_NM_KR 부분매치는
+ * "김치찌개" → "김치찌개_꽁치" 같은 variant 를 첫 결과로 반환할 수 있어 랭킹 없이 accept
+ * 하면 nutritionally 다른 항목이 high-confidence 로 저장/캐시됨.
+ * - exact normalize 일치: 100
+ * - underscore/괄호 앞 base name 일치 (예: "김치찌개_꽁치" → base "김치찌개"): 80
+ * - startsWith: 60
+ * - contains (원본 fallback): 40
+ * - 그 외: 0 (임계 threshold 로 필터)
+ */
+const MATCH_SCORE_THRESHOLD = 60;
+
+function normalizeName(s: string): string {
+  return s.toLowerCase().trim().replace(/\s+/g, " ");
+}
+
+function scoreCandidate(
+  candidateName: string,
+  refName: string | null,
+  query: string,
+): number {
+  const nq = normalizeName(query);
+  const nc = normalizeName(candidateName);
+  if (!nq || !nc) return 0;
+  // 100: 정확 이름 일치.
+  if (nc === nq) return 100;
+  // 90: FOOD_REF_NM (참조 카테고리 이름) 일치 — variant 여러 개가 같은 카테고리를 공유하는
+  //     경우 defensible match (예: query "김치찌개" ↔ FOOD_REF_NM "김치찌개" · 여러 variants).
+  if (refName && normalizeName(refName) === nq) return 90;
+  // 80: underscore/괄호 앞 base name 일치 (참조 필드 없는 경우 fallback).
+  const base = nc.split(/[_(（\[]/)[0].trim();
+  if (base === nq) return 80;
+  if (nc.startsWith(nq)) return 60;
+  if (nc.includes(nq)) return 40;
+  return 0;
+}
+
+/** row 를 MfdsHit 로 파싱. 실패 시 null. */
+function rowToHit(row: Record<string, unknown>): MfdsHit | null {
+  const name = toStr(pickField(row, ["FOOD_NM_KR", "foodNm", "food_nm", "DESC_KOR"]));
+  const kcal = toNumOrNull(pickField(row, ["AMT_NUM1", "enerc", "NUTR_CONT1"]));
+  const carbs = toNumOrNull(pickField(row, ["AMT_NUM6", "chocdf", "NUTR_CONT2"]));
+  const protein = toNumOrNull(pickField(row, ["AMT_NUM3", "prot", "NUTR_CONT3"]));
+  const fat = toNumOrNull(pickField(row, ["AMT_NUM4", "fatce", "NUTR_CONT4"]));
+  const servingRaw = toNumOrNull(
+    pickField(row, ["SERVING_SIZE", "servSize", "STD_SIZE", "srvSize"]),
+  );
+  if (!name || kcal === null) return null;
+  return {
+    name,
+    kcalPer100g: kcal,
+    proteinPer100g: protein,
+    carbsPer100g: carbs,
+    fatPer100g: fat,
+    servingSizeG: servingRaw !== null && servingRaw > 0 ? servingRaw : null,
+  };
+}
+
+/**
  * data.go.kr 표준 응답: { header: {resultCode, resultMsg}, body: { items: [...], totalCount, ... } }
  * items 는 배열 or 객체 (단일 결과일 때 축소되는 서비스 있음).
+ * Codex P2 (PR #316 3회차): items 전체를 랭킹해 최고 스코어 match 선택. 임계 미만이면 null.
  */
-function parseMfdsResponse(payload: unknown): MfdsHit | null {
+function parseMfdsResponse(payload: unknown, query: string): MfdsHit | null {
   if (!payload || typeof payload !== "object") return null;
   const root = payload as Record<string, unknown>;
   const header = root.header as Record<string, unknown> | undefined;
@@ -86,30 +145,26 @@ function parseMfdsResponse(payload: unknown): MfdsHit | null {
     else if (nested) itemArr = [nested];
   }
   if (itemArr.length === 0) return null;
-  const first = itemArr[0];
-  if (!first || typeof first !== "object") return null;
-  const row = first as Record<string, unknown>;
 
-  // 필드 이름 후보 (data.go.kr 다양한 스펙 커버):
-  const name = toStr(pickField(row, ["FOOD_NM_KR", "foodNm", "food_nm", "DESC_KOR"]));
-  const kcal = toNumOrNull(pickField(row, ["AMT_NUM1", "enerc", "NUTR_CONT1"]));
-  const carbs = toNumOrNull(pickField(row, ["AMT_NUM6", "chocdf", "NUTR_CONT2"]));
-  const protein = toNumOrNull(pickField(row, ["AMT_NUM3", "prot", "NUTR_CONT3"]));
-  const fat = toNumOrNull(pickField(row, ["AMT_NUM4", "fatce", "NUTR_CONT4"]));
-  const servingRaw = toNumOrNull(
-    pickField(row, ["SERVING_SIZE", "servSize", "STD_SIZE", "srvSize"]),
-  );
-
-  if (!name || kcal === null) return null;
-
-  return {
-    name,
-    kcalPer100g: kcal,
-    proteinPer100g: protein,
-    carbsPer100g: carbs,
-    fatPer100g: fat,
-    servingSizeG: servingRaw !== null && servingRaw > 0 ? servingRaw : null,
-  };
+  let best: { hit: MfdsHit; score: number } | null = null;
+  for (const raw of itemArr) {
+    if (!raw || typeof raw !== "object") continue;
+    const row = raw as Record<string, unknown>;
+    const hit = rowToHit(row);
+    if (!hit) continue;
+    const refName = toStr(pickField(row, ["FOOD_REF_NM", "foodRefNm"]));
+    const score = scoreCandidate(hit.name, refName, query);
+    if (score < MATCH_SCORE_THRESHOLD) continue;
+    if (!best || score > best.score) best = { hit, score };
+    if (best.score >= 100) break; // exact — 더 볼 필요 없음.
+  }
+  if (!best) {
+    console.warn(
+      `[mfds] no defensible match for "${query}" (candidates=${itemArr.length})`,
+    );
+    return null;
+  }
+  return best.hit;
 }
 
 export interface FetchMfdsOptions {
@@ -197,7 +252,7 @@ export async function fetchMfdsFood(
           );
           // cacheable 은 false 로 유지 → 다음 호출 재시도.
         } else {
-          hit = parseMfdsResponse(payload);
+          hit = parseMfdsResponse(payload, trimmed);
           cacheable = true; // 성공 응답 (hit 유무 무관) 만 캐시
         }
       } catch (err) {
