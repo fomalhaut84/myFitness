@@ -6,6 +6,7 @@
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
@@ -203,10 +204,42 @@ export async function runFoodKcalBackfill(
       let aiPartialConsumesAttempt = false;
       const stillNeedsAI = kcal === null || (needsSomeMacro && macroTuple === null);
       if (stillNeedsAI) {
-        const est = await estimateNutritionFromText({
-          description: r.description,
-          mealType: r.mealType ?? undefined,
-        });
+        // #315: MFDS (오픈식약처) estimator 먼저 → miss 시 AI text estimator.
+        let est = null as Awaited<ReturnType<typeof estimateNutritionFromMfds>>;
+        try {
+          est = await estimateNutritionFromMfds({
+            description: r.description,
+            mealType: r.mealType ?? undefined,
+          });
+        } catch (mfdsErr) {
+          if (verbose) {
+            console.warn(
+              `  [nutrition] MFDS estimator 예외 (log ${r.id}): ${mfdsErr instanceof Error ? mfdsErr.message : String(mfdsErr)}`,
+            );
+          }
+        }
+        // Codex P2 (feat/315-1 2회차): MFDS 가 kcal 만 반환 (partial macros) 인데 macros 가
+        // 필요한 경우 tupleFromSource 가 아래에서 fail → aiPartialConsumesAttempt 만 세팅되어
+        // AI text fallback 못 시도 → 매 tick 같은 partial 결과 반복 (cache hit) → 3회 후
+        // permanent skip. MFDS 가 macro 요구사항을 만족 못 하면 이 자리에서 AI text 시도.
+        const mfdsMissesMacros =
+          needsSomeMacro &&
+          (!est || est.proteinG === null || est.carbsG === null || est.fatG === null);
+        if (!est || mfdsMissesMacros) {
+          const aiEst = await estimateNutritionFromText({
+            description: r.description,
+            mealType: r.mealType ?? undefined,
+          });
+          // Codex P2 (릴리즈 PR #317): AI 도 partial 이면 MFDS 유지 (MFDS 가 있는 경우).
+          // MFDS 아예 없으면 AI 그대로 채택 (partial 이라도 kcal 확보 위해).
+          if (aiEst) {
+            const aiComplete =
+              aiEst.proteinG !== null && aiEst.carbsG !== null && aiEst.fatG !== null;
+            if (!est || aiComplete) {
+              est = aiEst;
+            }
+          }
+        }
         if (!est) {
           if (r.estimatedKcal !== null) aiFailureConsumesAttempt = true;
           if (kcal === null) {

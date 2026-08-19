@@ -6,6 +6,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
@@ -129,11 +130,44 @@ async function handleJsonPost(request: Request) {
         lookupErr instanceof Error ? lookupErr.message : String(lookupErr),
       );
     }
-    // Codex P2 (PR #300 15회차): estimatedKcal null 이거나 macros 미완이면 AI 호출.
-    // hit.kcal 이 있는데 macros 만 부족한 경우: AI 로 macros 채우고 hit.kcal 에 맞춰 스케일
-    // (consistency 유지 · backfill retry 상한에 의존 안 함).
+    // #315 (M14 Phase 2 #4): repeat-lookup 다음 우선순위로 MFDS (오픈식약처) 조회.
+    // hit 있으면 사용 (표준 데이터라 AI 추정보다 정확). miss 시에만 AI 폴백.
+    // hit.kcal 이 있는데 macros 만 부족한 경우: MFDS 로 macros 채우고 hit.kcal 에 맞춰 스케일.
     const macrosIncomplete = proteinG === null || carbsG === null || fatG === null;
+    // Codex P2 (릴리즈 PR #317 4회차): MFDS 결과 유무를 outer scope 에 track — AI 폴백
+    // 단계에서 "MFDS 있음" 인 경우만 aiComplete guard 적용해 partial 소실 방지.
+    let mfdsProvided = false;
     if (estimatedKcal === null || macrosIncomplete) {
+      const mfds = await estimateNutritionFromMfds({ description, mealType });
+      if (mfds) {
+        mfdsProvided = true;
+        if (estimatedKcal === null) {
+          estimatedKcal = mfds.kcal;
+          proteinG = mfds.proteinG;
+          carbsG = mfds.carbsG;
+          fatG = mfds.fatG;
+        } else {
+          // hit.kcal 보존, MFDS macros 를 hit.kcal 로 스케일해 채움.
+          const scaled = scaleMacrosForNewKcal(hitKcal, mfds.kcal, {
+            proteinG: mfds.proteinG,
+            carbsG: mfds.carbsG,
+            fatG: mfds.fatG,
+          });
+          proteinG = scaled.proteinG;
+          carbsG = scaled.carbsG;
+          fatG = scaled.fatG;
+        }
+      }
+    }
+
+    // Codex P2 (PR #300 15회차): 여전히 estimatedKcal null 이거나 macros 미완이면 AI text
+    // estimator 폴백. hit.kcal 이 있는데 macros 만 부족한 경우: AI 로 macros 채우고 hit.kcal
+    // 에 맞춰 스케일 (consistency 유지 · backfill retry 상한에 의존 안 함).
+    // 사전 리뷰 P1 (feat/315-1): retainedKcal 은 hitKcal ?? estimatedKcal — MFDS 가 kcal 을
+    // 채운 경로 (hitKcal=null 이지만 estimatedKcal != null) 도 안전하게 스케일 target 유지.
+    // 이전엔 hitKcal 하나만 참조 → MFDS 채운 macros 가 scaleMacrosForNewKcal(null, ...) 로 전부 null 파괴.
+    const stillIncomplete = estimatedKcal === null || proteinG === null || carbsG === null || fatG === null;
+    if (stillIncomplete) {
       const estimate = await estimateNutritionFromText({ description, mealType });
       if (estimate) {
         if (estimatedKcal === null) {
@@ -142,15 +176,25 @@ async function handleJsonPost(request: Request) {
           carbsG = estimate.carbsG;
           fatG = estimate.fatG;
         } else {
-          // hit.kcal 보존, AI macros 를 hit.kcal 로 스케일해 채움.
-          const scaled = scaleMacrosForNewKcal(hitKcal, estimate.kcal, {
-            proteinG: estimate.proteinG,
-            carbsG: estimate.carbsG,
-            fatG: estimate.fatG,
-          });
-          proteinG = scaled.proteinG;
-          carbsG = scaled.carbsG;
-          fatG = scaled.fatG;
+          // Codex P2 (릴리즈 PR #317 3/4회차): bot/backfill 과 정합 — MFDS 가 있을 때만
+          // AI complete guard 적용. AI 도 partial 이면 MFDS valid nutrients 유지.
+          // MFDS 없는 경우 (repeat-lookup kcal 만) 는 AI partial 이라도 accept 해야 —
+          // 이전엔 이 케이스도 aiComplete false 로 폐기 → macros 전부 null 저장.
+          const aiComplete =
+            estimate.proteinG !== null &&
+            estimate.carbsG !== null &&
+            estimate.fatG !== null;
+          if (!mfdsProvided || aiComplete) {
+            const retainedKcal = hitKcal ?? estimatedKcal;
+            const scaled = scaleMacrosForNewKcal(retainedKcal, estimate.kcal, {
+              proteinG: estimate.proteinG,
+              carbsG: estimate.carbsG,
+              fatG: estimate.fatG,
+            });
+            proteinG = scaled.proteinG;
+            carbsG = scaled.carbsG;
+            fatG = scaled.fatG;
+          }
         }
       }
     }

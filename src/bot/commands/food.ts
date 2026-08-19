@@ -4,6 +4,7 @@ import {
   estimateNutritionFromText,
   type NutritionEstimate,
 } from "@/lib/nutrition/estimate-nutrition";
+import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { applyKcalCorrection, scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
@@ -252,17 +253,44 @@ export async function handleFoodInput(
     }
   }
 
-  // 2b) AI 로 kcal + 매크로 추정 (실패 시 null). 완료까지 await — 사용자 응답은 한 번에.
-  //     실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
+  // 2b) MFDS estimator 먼저 → miss/partial 시 AI text estimator (완료까지 await — 사용자
+  //     응답 한 번). 실패해도 log 저장은 이미 성공. repeat hit 이 complete 이면 스킵.
+  // #315: 오픈식약처 (표준 데이터) 우선 → AI 추정보다 정확 · AI 호출 절감.
+  // Codex P2 (PR #316 2회차): MFDS 가 kcal 만 반환 (partial macros) 이면 사용자에게 partial
+  // 만 보여주고 backfill 대기 → API/backfill 경로와 정합 위해 AI text 로 macros 채움 시도.
   let estimate: NutritionEstimate | null = null;
   if (needsAI) {
     try {
-      estimate = await estimateNutritionFromText({ description, mealType });
+      estimate = await estimateNutritionFromMfds({ description, mealType });
     } catch (err) {
       console.warn(
-        "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
+        "[bot/food] MFDS estimator 예외:",
         err instanceof Error ? err.message : String(err),
       );
+    }
+    const mfdsMissesMacros =
+      !estimate ||
+      estimate.proteinG === null ||
+      estimate.carbsG === null ||
+      estimate.fatG === null;
+    if (mfdsMissesMacros) {
+      try {
+        const aiEst = await estimateNutritionFromText({ description, mealType });
+        // Codex P2 (릴리즈 PR #317): AI 도 partial 이면 MFDS 유지 (kcal 이라도 정확).
+        // MFDS 가 아예 없으면 (estimate null) AI 를 그대로 (partial 이든 뭐든) 채택.
+        if (aiEst) {
+          const aiComplete =
+            aiEst.proteinG !== null && aiEst.carbsG !== null && aiEst.fatG !== null;
+          if (!estimate || aiComplete) {
+            estimate = aiEst;
+          }
+        }
+      } catch (err) {
+        console.warn(
+          "[bot/food] nutrition 추정 예외 (log 저장은 완료):",
+          err instanceof Error ? err.message : String(err),
+        );
+      }
     }
   }
 
