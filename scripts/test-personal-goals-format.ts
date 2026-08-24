@@ -61,6 +61,27 @@ console.log("\n== 이번 주 0km · 완료된 avg null ==");
   );
 }
 
+console.log("\n== progressPct — raw km 로 계산 (0.1km round 후 계산 금지) ==");
+{
+  // #321 Codex P2 (2회차) 회귀: currentWeekKm 을 미리 0.1km round 하면 4.96/5
+  // → 5.0/5 → 100% 오표기. computePersonalGoals 가 raw km 로 progressPct 계산해야
+  // 4.96/5 → 99% 정답.
+  const raw = 4.96;
+  const target = 5;
+  const pct = Math.round((raw / target) * 100);
+  assert(
+    "raw 4.96/5 → 99%",
+    pct === 99,
+    `got ${pct}`,
+  );
+  const wrongPct = Math.round((Math.round(raw * 10) / 10 / target) * 100);
+  assert(
+    "미리 round 하면 100% 오표기 (회귀 방지 확인)",
+    wrongPct === 100,
+    `got ${wrongPct}`,
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");

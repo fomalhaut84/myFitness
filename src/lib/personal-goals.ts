@@ -126,7 +126,9 @@ async function currentWeekKm(now: Date): Promise<number> {
     select: { distance: true },
   });
   const totalMeters = activities.reduce((sum, a) => sum + (a.distance ?? 0), 0);
-  return Math.round((totalMeters / 1000) * 10) / 10;
+  // #321 Codex P2 (2회차): raw km 반환. computePersonalGoals 가 progressPct 계산 시
+  // raw 사용, 노출 필드는 별도로 round. 미리 round 하면 4.96/5 → 5.0/5 → 100% 오표기.
+  return totalMeters / 1000;
 }
 
 /**
@@ -146,7 +148,8 @@ async function completedWeeksAvgKm(now: Date, weeks = 4): Promise<number | null>
   });
   if (activities.length === 0) return null;
   const totalMeters = activities.reduce((sum, a) => sum + (a.distance ?? 0), 0);
-  return Math.round((totalMeters / 1000 / weeks) * 10) / 10;
+  // raw km/week 반환 (표시 시 round). currentWeekKm 과 정책 통일.
+  return totalMeters / 1000 / weeks;
 }
 
 async function latestVO2max(): Promise<number | null> {
@@ -197,15 +200,18 @@ export async function computePersonalGoals(): Promise<PersonalGoalsProgress> {
     // #321 Codex P2: now 공유 캡처. currentWeekKm upper bound / weekStartIso /
     // completedWeeksAvgKm boundary 모두 동일 base 로 정합.
     const now = new Date();
-    const [thisWeek, avg] = await Promise.all([
+    const [thisWeekRaw, avgRaw] = await Promise.all([
       currentWeekKm(now),
       completedWeeksAvgKm(now),
     ]);
+    // #321 Codex P2 (2회차): raw km 로 progressPct 계산 후 노출 필드만 round.
+    // 미리 0.1km round 하면 4.96/5 → 5.0/5 → 100% 로 오표기됨.
+    const round1 = (v: number) => Math.round(v * 10) / 10;
     result.targetWeeklyKm = {
       target: profile.targetWeeklyKm,
-      currentWeekKm: thisWeek,
-      completedWeeksAvg: avg,
-      progressPct: Math.round((thisWeek / profile.targetWeeklyKm) * 100),
+      currentWeekKm: round1(thisWeekRaw),
+      completedWeeksAvg: avgRaw === null ? null : round1(avgRaw),
+      progressPct: Math.round((thisWeekRaw / profile.targetWeeklyKm) * 100),
       weekStartIso: startOfWeekKST(now).toISOString(),
     };
   }
