@@ -121,7 +121,14 @@ export async function applyKcalCorrection(
         proteinG: existing.proteinG,
         carbsG: existing.carbsG,
         fatG: existing.fatG,
-        ...(expectedRevision !== undefined ? { updatedAt: expectedRevision } : {}),
+        // Codex P2 (PR #324 2회차): items snapshot 을 update 절에 포함시켜야 concurrent
+        // description edit (kcal/macros 는 그대로지만 items 를 클리어한 write) 을 감지.
+        // items 직접 비교는 JSON serialization order 이슈 있어 위험 → read 시점의
+        // `existing.updatedAt` 을 snapshot 으로 사용. Prisma 는 update 시 updatedAt 을
+        // 자동 갱신하므로 그 사이 어떤 writer 라도 있었으면 이 predicate 가 miss.
+        // expectedRevision (client editor snapshot) 이 있으면 그것을 우선 (사용자가 열어둔
+        // 시점 기준 stale 감지).
+        updatedAt: expectedRevision ?? existing.updatedAt,
       },
       data: {
         estimatedKcal: newKcal,

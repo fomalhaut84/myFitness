@@ -299,7 +299,13 @@ export async function runFoodKcalBackfill(
       // lookup 은 breakdown 미제공) → est 있는 경로에서만 저장.
       // Codex P2 (2회차): retained kcal 로 스케일 — tupleFromSource 가 macros 를 kcal 로
       // 스케일하는 것과 정합. est.kcal=550 · retained kcal=400 이면 items 도 400/550 스케일.
-      if (capturedEstItems !== null && macroTuple !== null) {
+      // Codex P2 (3회차): macroTuple null (partial macros) 이어도 kcal 은 저장되면 items 도
+      // 함께 저장 — API/bot creation 은 partial estimate 도 items 저장. 이 gate 를 macros 완전
+      // 조건으로 제한하면 kcal-missing row 가 매 tick partial estimate 로 attempts 소진 후
+      // 영구적으로 items 없이 남음. writeData.estimatedKcal 이 채워지는 순간 items 도 채운다.
+      const willWriteKcal = writeData.estimatedKcal !== undefined;
+      const willWriteMacros = macroTuple !== null;
+      if (capturedEstItems !== null && (willWriteMacros || willWriteKcal)) {
         const scaledItems = scaleItemsForNewKcal(kcal, capturedEstKcal, capturedEstItems);
         if (scaledItems !== null) {
           writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
