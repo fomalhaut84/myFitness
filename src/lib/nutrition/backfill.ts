@@ -356,6 +356,13 @@ export async function runFoodKcalBackfill(
             writeData.items = Prisma.DbNull;
           }
         }
+      } else if (needsSomeMacro && macroTuple === null) {
+        // Codex P2 (PR #326 4회차): capturedItems null (repeat miss + est null) 인데 backfill
+        // row 는 partial macros 상태 → 기존 DB items 가 partial 이든 뭐든 top-level 과 mismatch
+        // 위험. attempts 소진 후 terminal 인 채로 mismatch 지속되지 않도록 items 도 클리어
+        // (이미 null 이면 no-op). 매우 rare 하게 items complete 인 row 가 loss 가능하나 그런
+        // race 는 backfill 재수집으로 회복 (creation path 는 items 저장).
+        writeData.items = Prisma.DbNull;
       }
 
       let anyWritten = false;
