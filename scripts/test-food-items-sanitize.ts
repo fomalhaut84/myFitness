@@ -183,6 +183,34 @@ console.log("\n== backfill items ↔ top-level 정합 정책 (릴리즈 PR #325 
   );
 }
 
+console.log("\n== backfill sourceKcal <= 0 방어 (PR #326 Codex P2 회귀) ==");
+{
+  // scaleItemsForNewKcal(target, source<=0, items) → 원본 items 그대로 반환 (스케일 no-op).
+  // backfill 이 이 결과로 top-level 파생하면 0-kcal source 값이 positive kcal 에 mismatch 부착.
+  const zeroSourceItems = [
+    { name: "A", kcal: 100, proteinG: 5, carbsG: 20, fatG: 3 },
+    { name: "B", kcal: 200, proteinG: 8, carbsG: 30, fatG: 5 },
+  ];
+  const scaled = scaleItemsForNewKcal(400, 0, zeroSourceItems);
+  const scaledSum = scaled!.reduce((s, it) => s + (it.kcal ?? 0), 0);
+  assert(
+    "source=0 → 원본 items 유지 (scaleItemsForNewKcal 계약)",
+    scaledSum === 300,
+    `sum=${scaledSum} (원본 100+200=300, target 400 과 mismatch)`,
+  );
+  // canDeriveTopLevel 판정: sourceKcal>0 이어야 top-level 파생 안전.
+  const canDerive = (source: number | null) =>
+    source !== null && source > 0;
+  assert(
+    "source=0 → canDerive false",
+    !canDerive(0),
+  );
+  assert(
+    "source>0 → canDerive true",
+    canDerive(550),
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");
