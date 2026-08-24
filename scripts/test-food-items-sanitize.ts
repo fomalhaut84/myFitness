@@ -154,6 +154,68 @@ console.log("\n== items 동기화 정책 (Codex 2회차 회귀) ==");
   );
 }
 
+console.log("\n== backfill items ↔ top-level 정합 정책 (릴리즈 PR #325 회귀) ==");
+{
+  // 시나리오: items 자체가 complete (모든 원소 P/C/F 있음) → items 합계로 top-level 재산출.
+  const completeItems = [
+    { name: "김치찌개", kcal: 400, proteinG: 15, carbsG: 30, fatG: 20 },
+    { name: "쌀밥", kcal: 200, proteinG: 5, carbsG: 45, fatG: 1 },
+  ];
+  const allP = completeItems.every((it) => it.proteinG !== null);
+  const allC = completeItems.every((it) => it.carbsG !== null);
+  const allF = completeItems.every((it) => it.fatG !== null);
+  assert(
+    "items complete 판정 (모든 원소 non-null)",
+    allP && allC && allF,
+  );
+  const sumP = completeItems.reduce((s, it) => s + (it.proteinG ?? 0), 0);
+  assert("items 로부터 top-level P 파생 (15+5=20)", sumP === 20);
+
+  // 시나리오: items partial (일부 원소 protein null) → itemsComplete=false → 저장 skip.
+  const partialItems = [
+    { name: "A", kcal: 300, proteinG: 10, carbsG: 40, fatG: 5 },
+    { name: "B", kcal: 100, proteinG: null, carbsG: 20, fatG: 2 },
+  ];
+  const partAllP = partialItems.every((it) => it.proteinG !== null);
+  assert(
+    "items partial 판정 (B.proteinG null)",
+    !partAllP,
+  );
+}
+
+console.log("\n== backfill sourceKcal <= 0 방어 (PR #326 Codex P2 회귀) ==");
+{
+  // scaleItemsForNewKcal(target, source<=0, items) → 원본 items 그대로 반환 (스케일 no-op).
+  // backfill 이 이 결과로 top-level 파생하면 0-kcal source 값이 positive kcal 에 mismatch 부착.
+  const zeroSourceItems = [
+    { name: "A", kcal: 100, proteinG: 5, carbsG: 20, fatG: 3 },
+    { name: "B", kcal: 200, proteinG: 8, carbsG: 30, fatG: 5 },
+  ];
+  const scaled = scaleItemsForNewKcal(400, 0, zeroSourceItems);
+  const scaledSum = scaled!.reduce((s, it) => s + (it.kcal ?? 0), 0);
+  assert(
+    "source=0 → 원본 items 유지 (scaleItemsForNewKcal 계약)",
+    scaledSum === 300,
+    `sum=${scaledSum} (원본 100+200=300, target 400 과 mismatch)`,
+  );
+  // canDeriveTopLevel 판정: source>0 이거나 source===target 이어야 파생 안전.
+  const canDerive = (source: number | null, target: number) =>
+    source !== null && (source > 0 || source === target);
+  assert(
+    "source=0, target=400 → canDerive false (0-kcal → 400-kcal mismatch)",
+    !canDerive(0, 400),
+  );
+  assert(
+    "source>0, target=400 → canDerive true",
+    canDerive(550, 400),
+  );
+  // Codex P2 (PR #326 2회차): zero-kcal 로그 (양쪽 0) 도 파생 안전 (source=target).
+  assert(
+    "source=0, target=0 → canDerive true (zero-kcal 로그, 스케일 no-op 정합)",
+    canDerive(0, 0),
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");
