@@ -14,6 +14,7 @@ import BackfillNotice from "@/components/nutrition/BackfillNotice";
 import NutritionFoodList, {
   type NutritionFoodItem,
 } from "@/components/nutrition/NutritionFoodList";
+import { sanitizeFoodItemBreakdown } from "@/lib/nutrition/food-items";
 
 export const dynamic = "force-dynamic";
 
@@ -59,6 +60,9 @@ export default async function NutritionPage() {
           fatG: true,
           // Codex P2 (PR #300 4회차): terminal vs pending 구분에 필요.
           nutritionAttempts: true,
+          // #322 (M14 Phase 3 #2): estimator 산출 item 별 분해. NutritionFoodList 카드
+          // 확장 (접기/펼치기) 로 노출.
+          items: true,
         },
       }),
       aggregateRecentMacros(now, 8),
@@ -222,6 +226,8 @@ export default async function NutritionPage() {
     proteinG: l.proteinG,
     carbsG: l.carbsG,
     fatG: l.fatG,
+    // #322: JSON 저장이라 shape 검증 후 통과. 잘못된 shape 은 undefined 로 (UI 는 토글 숨김).
+    items: sanitizeFoodItemBreakdown(l.items),
   }));
 
   // Codex P2 (PR #300 4회차): pending (backfill 재시도 대상) 과 terminal (attempts 상한

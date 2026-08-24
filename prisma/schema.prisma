@@ -271,6 +271,10 @@ model FoodLog {
   // Codex P2 (PR #313 12회차): row 변경마다 auto-updated. kcal 정정 snapshot 매칭에 사용해
   // description-value 만으로는 커버 못 하는 A→B→A restore 등 edge case 방어.
   updatedAt     DateTime @updatedAt @default(now())
+  // #322 (M14 Phase 3 #2): estimator 산출 item 별 분해 (비빔밥/계란국 각 kcal + P/C/F).
+  // shape: Array<{ name: string; kcal: number|null; proteinG: number|null; carbsG: number|null; fatG: number|null }>.
+  // nullable — legacy row 및 estimator 실패 시 null. UI 카드는 items 있으면 접기/펼치기로 세부 노출.
+  items         Json?
 
   @@index([date])
 }

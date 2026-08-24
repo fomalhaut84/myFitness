@@ -5,7 +5,10 @@
 
 import prisma from "@/lib/prisma";
 import { Prisma } from "@/generated/prisma/client";
-import { estimateNutritionFromText } from "@/lib/nutrition/estimate-nutrition";
+import {
+  estimateNutritionFromText,
+  type NutritionEstimate,
+} from "@/lib/nutrition/estimate-nutrition";
 import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mfds";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -202,6 +205,8 @@ export async function runFoodKcalBackfill(
       // 무한 재호출 방지 위해 소비. macros-only bucket 에 한함.
       let aiFailureConsumesAttempt = false;
       let aiPartialConsumesAttempt = false;
+      // #322 (M14 Phase 3 #2): estimator items 를 write 단계에서 사용. 블록 밖 캡처.
+      let capturedEstItems: NutritionEstimate["items"] | null = null;
       const stillNeedsAI = kcal === null || (needsSomeMacro && macroTuple === null);
       if (stillNeedsAI) {
         // #315: MFDS (오픈식약처) estimator 먼저 → miss 시 AI text estimator.
@@ -255,6 +260,8 @@ export async function runFoodKcalBackfill(
               aiPartialConsumesAttempt = true;
             }
           }
+          // #322: est.items 를 블록 밖 write 단계로 캡처.
+          capturedEstItems = est.items ?? null;
         }
       }
       if (kcal === null) continue;
@@ -266,6 +273,7 @@ export async function runFoodKcalBackfill(
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
+        items?: Prisma.InputJsonValue;
       } = {};
       const snapshotWhere = {
         estimatedKcal: r.estimatedKcal,
@@ -280,6 +288,12 @@ export async function runFoodKcalBackfill(
         writeData.proteinG = macroTuple.proteinG;
         writeData.carbsG = macroTuple.carbsG;
         writeData.fatG = macroTuple.fatG;
+      }
+      // #322 (M14 Phase 3 #2): estimator 산출 items 저장 — legacy row 는 items null 이었으니
+      // backfill 이 recompute 되는 김에 items 도 채운다. hit-only 경로는 items 없음 (repeat
+      // lookup 은 breakdown 미제공) → est 있는 경로에서만 저장.
+      if (capturedEstItems !== null && macroTuple !== null) {
+        writeData.items = capturedEstItems as unknown as Prisma.InputJsonValue;
       }
 
       let anyWritten = false;

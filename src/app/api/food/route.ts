@@ -10,6 +10,7 @@ import { estimateNutritionFromMfds } from "@/lib/nutrition/estimate-nutrition-mf
 import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import { scaleItemsForNewKcal, type FoodItemBreakdown } from "@/lib/nutrition/food-items";
 
 // #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -107,6 +108,9 @@ async function handleJsonPost(request: Request) {
     let carbsG: number | null = null;
     let fatG: number | null = null;
     let hitKcal: number | null = null;
+    // #322 (M14 Phase 3 #2): estimator 산출 items 저장. repeat-lookup 은 item breakdown
+    // 이 없어 null 유지, MFDS/AI text estimator 만 items 제공.
+    let items: FoodItemBreakdown[] | null = null;
     try {
       // Codex P2 (PR #301 27회차): client 가 mealType 없이 보내면 undefined → 저장 시
       // `mealType ?? null` 로 null 저장. lookup 은 null-meal 클래스 매치되려면 null 로 전달해야
@@ -141,7 +145,11 @@ async function handleJsonPost(request: Request) {
       const mfds = await estimateNutritionFromMfds({ description, mealType });
       if (mfds) {
         mfdsProvided = true;
+        // #322 사전 리뷰 P1: items 는 저장 top-level kcal 기준으로 스케일 (retain 방식과 정합).
+        // 아래 else 분기 (hit.kcal 보존) 에선 hitKcal 로 스케일. estimatedKcal null 이면
+        // MFDS total 이 그대로 top-level 이라 스케일 no-op (source=target).
         if (estimatedKcal === null) {
+          items = mfds.items;
           estimatedKcal = mfds.kcal;
           proteinG = mfds.proteinG;
           carbsG = mfds.carbsG;
@@ -156,6 +164,9 @@ async function handleJsonPost(request: Request) {
           proteinG = scaled.proteinG;
           carbsG = scaled.carbsG;
           fatG = scaled.fatG;
+          // #322 사전 리뷰 P1: items 도 top-level kcal (hitKcal) 로 스케일 — items 합계와
+          // top-level kcal 정합. hitKcal 없으면 estimatedKcal (선재 값) 로 fallback.
+          items = scaleItemsForNewKcal(hitKcal ?? estimatedKcal, mfds.kcal, mfds.items);
         }
       }
     }
@@ -171,6 +182,8 @@ async function handleJsonPost(request: Request) {
       const estimate = await estimateNutritionFromText({ description, mealType });
       if (estimate) {
         if (estimatedKcal === null) {
+          // AI 가 top-level kcal 도 제공 → items 스케일 no-op (source=target).
+          items = estimate.items;
           estimatedKcal = estimate.kcal;
           proteinG = estimate.proteinG;
           carbsG = estimate.carbsG;
@@ -194,6 +207,10 @@ async function handleJsonPost(request: Request) {
             proteinG = scaled.proteinG;
             carbsG = scaled.carbsG;
             fatG = scaled.fatG;
+            // #322 사전 리뷰 P1: items 도 retainedKcal 로 스케일. MFDS 가 이미 items 를
+            // 채웠어도 이 AI 폴백에서 새 items 로 덮어써 새 kcal 정합화 (aiComplete guard
+            // 통과했다는 건 AI 값 채택 = items 도 AI 기준).
+            items = scaleItemsForNewKcal(retainedKcal, estimate.kcal, estimate.items);
           }
         }
       }
@@ -210,6 +227,7 @@ async function handleJsonPost(request: Request) {
           carbsG,
           fatG,
           mealType: mealType ?? null,
+          items: (items ?? undefined) as Prisma.InputJsonValue | undefined,
         },
       });
       await recalculateCalorieBalance(foodDate, tx);
@@ -331,6 +349,8 @@ async function handlePhotoPost(request: Request) {
           carbsG: estimate?.carbsG ?? null,
           fatG: estimate?.fatG ?? null,
           mealType: mealType ?? null,
+          // #322: Vision estimator items 저장 (사진 → 항목별 kcal/P/C/F 분해).
+          items: (estimate?.items ?? undefined) as Prisma.InputJsonValue | undefined,
         },
       });
       await recalculateCalorieBalance(foodDate, tx);
