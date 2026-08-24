@@ -5,6 +5,10 @@
 // 단일 사용자 앱이라 pool 크기 부담 없음.
 
 import prisma from "@/lib/prisma";
+import {
+  sanitizeFoodItemBreakdown,
+  type FoodItemBreakdown,
+} from "@/lib/nutrition/food-items";
 
 /** 조회 창 (일). 이보다 오래된 로그는 매치 대상 아님. */
 const LOOKUP_WINDOW_DAYS = 30;
@@ -118,6 +122,10 @@ export interface RepeatLookupHit {
   date: Date;
   mealType: string | null;
   description: string;
+  // #322 (Codex P2, PR #324 3회차): 원본 로그 items breakdown 을 복사해 새 로그도 세부 확장
+  // 가능하게. legacy row (items null) 또는 malformed 는 null. caller 는 sanitize 없이 그대로
+  // 저장 (같은 description 이라 스케일 불필요).
+  items: FoodItemBreakdown[] | null;
 }
 
 /**
@@ -159,6 +167,8 @@ export async function findRecentSameDescription(
       carbsG: true,
       fatG: true,
       date: true,
+      // #322 Codex P2 (PR #324 3회차): 원본 items breakdown 도 함께 재사용.
+      items: true,
     },
     take: POOL_CAP,
   });
@@ -195,5 +205,6 @@ export async function findRecentSameDescription(
     date: chosen.date,
     mealType: chosen.mealType,
     description: chosen.description,
+    items: sanitizeFoodItemBreakdown(chosen.items),
   };
 }

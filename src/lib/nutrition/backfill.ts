@@ -11,6 +11,10 @@ import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import {
+  scaleItemsForNewKcal,
+  type FoodItemBreakdown,
+} from "@/lib/nutrition/food-items";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -170,6 +174,13 @@ export async function runFoodKcalBackfill(
         };
       };
 
+      // #322 (M14 Phase 3 #2): items 를 write 단계에서 사용. source-agnostic 캡처
+      // (hit / est 어느 쪽이든 items 확보되면 저장). Codex P2 (PR #324 4회차): hit-only
+      // 완전 tuple 경로 (stillNeedsAI=false) + partial est 경로 (kcal/macros 둘 다 write X)
+      // 에서도 items 를 저장하도록 통합. capturedSourceKcal 은 items 스케일 base.
+      let capturedItems: FoodItemBreakdown[] | null = null;
+      let capturedSourceKcal: number | null = null;
+
       // 1) Repeat lookup
       try {
         // Codex P2 (PR #301 27회차): r.mealType 이 null (null-meal 로그) 이면 그대로 null 전달.
@@ -185,6 +196,12 @@ export async function runFoodKcalBackfill(
           // hit 이 완전 macros 이면 이번 write 후보. 부분이면 스킵 (다른 source 시도).
           if (kcal !== null) {
             macroTuple = tupleFromSource(hit.kcal, hit.proteinG, hit.carbsG, hit.fatG, kcal);
+          }
+          // Codex P2 (PR #324 4회차): hit.items 도 backfill 이 재사용. est 가 나중에 오면
+          // est.items 로 덮어씀 (더 최신 estimator 결과 우선).
+          if (hit.items !== null) {
+            capturedItems = hit.items;
+            capturedSourceKcal = hit.kcal;
           }
         }
       } catch (lookupErr) {
@@ -255,6 +272,12 @@ export async function runFoodKcalBackfill(
               aiPartialConsumesAttempt = true;
             }
           }
+          // #322: est.items / est.kcal 를 블록 밖 write 단계로 캡처 (items 스케일 base).
+          // est 가 있으면 hit.items 를 덮어씀 (재추정 결과가 최신).
+          if (est.items) {
+            capturedItems = est.items;
+            capturedSourceKcal = est.kcal;
+          }
         }
       }
       if (kcal === null) continue;
@@ -266,6 +289,7 @@ export async function runFoodKcalBackfill(
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
+        items?: Prisma.InputJsonValue;
       } = {};
       const snapshotWhere = {
         estimatedKcal: r.estimatedKcal,
@@ -280,6 +304,18 @@ export async function runFoodKcalBackfill(
         writeData.proteinG = macroTuple.proteinG;
         writeData.carbsG = macroTuple.carbsG;
         writeData.fatG = macroTuple.fatG;
+      }
+      // #322 items 저장 — capturedItems 확보되면 조건 없이 (hit-only complete tuple,
+      // partial est macros-only bucket 어느 경우든) retained kcal 로 스케일해 저장. legacy
+      // row 는 items null 이었으니 backfill 이 채워야 UI 확장 가능.
+      // Codex P2 (PR #324 4회차): 이전엔 (willWriteKcal || willWriteMacros) gate 로
+      // 제한 → hit-only complete (macroTuple 있어도 stillNeedsAI=false 라 capturedEstItems
+      // null) 와 macro-only partial est (writeData 필드 둘 다 안 셋) 케이스에서 items 상실.
+      if (capturedItems !== null) {
+        const scaledItems = scaleItemsForNewKcal(kcal, capturedSourceKcal, capturedItems);
+        if (scaledItems !== null) {
+          writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+        }
       }
 
       let anyWritten = false;
