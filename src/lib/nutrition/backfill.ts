@@ -319,11 +319,12 @@ export async function runFoodKcalBackfill(
           const allF = scaledItems.every((it) => it.fatG !== null);
           const itemsComplete = allP && allC && allF;
           // Codex P2 (PR #326): scaleItemsForNewKcal 은 source <= 0 이면 원본 유지 (스케일
-          // no-op). 0-kcal source items 를 unscaled 로 top-level 파생하면 retained positive
-          // kcal 과 mismatch. source > 0 (스케일 가능) 이거나 source === target (재사용 정합)
-          // 인 경우만 파생 안전.
+          // no-op). 0-kcal source items 를 unscaled 로 target=positive kcal 에 파생하면
+          // mismatch. source > 0 (스케일 가능) 이거나 source === target (동일 kcal — zero-kcal
+          // 로그 both 0 포함, 재사용 정합) 인 경우만 파생 안전.
           const canDeriveTopLevel =
-            capturedSourceKcal !== null && capturedSourceKcal > 0;
+            capturedSourceKcal !== null &&
+            (capturedSourceKcal > 0 || capturedSourceKcal === kcal);
           if (macroTuple !== null) {
             // macros complete + items → 저장.
             writeData.items = scaledItems as unknown as Prisma.InputJsonValue;

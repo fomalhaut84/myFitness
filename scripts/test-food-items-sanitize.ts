@@ -198,16 +198,21 @@ console.log("\n== backfill sourceKcal <= 0 방어 (PR #326 Codex P2 회귀) ==")
     scaledSum === 300,
     `sum=${scaledSum} (원본 100+200=300, target 400 과 mismatch)`,
   );
-  // canDeriveTopLevel 판정: sourceKcal>0 이어야 top-level 파생 안전.
-  const canDerive = (source: number | null) =>
-    source !== null && source > 0;
+  // canDeriveTopLevel 판정: source>0 이거나 source===target 이어야 파생 안전.
+  const canDerive = (source: number | null, target: number) =>
+    source !== null && (source > 0 || source === target);
   assert(
-    "source=0 → canDerive false",
-    !canDerive(0),
+    "source=0, target=400 → canDerive false (0-kcal → 400-kcal mismatch)",
+    !canDerive(0, 400),
   );
   assert(
-    "source>0 → canDerive true",
-    canDerive(550),
+    "source>0, target=400 → canDerive true",
+    canDerive(550, 400),
+  );
+  // Codex P2 (PR #326 2회차): zero-kcal 로그 (양쪽 0) 도 파생 안전 (source=target).
+  assert(
+    "source=0, target=0 → canDerive true (zero-kcal 로그, 스케일 no-op 정합)",
+    canDerive(0, 0),
   );
 }
 
