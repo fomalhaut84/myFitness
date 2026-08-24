@@ -393,7 +393,7 @@ export default function ProfileClient({
                 className={INPUT_CLASS}
               />
             </Field>
-            <Field label="주간 러닝 거리 목표 (km)" hint="최근 4주 avg 대비 % 진행도 계산">
+            <Field label="주간 러닝 거리 목표 (km)" hint="이번 주 (KST 월요일 시작) 누적 거리 대비 % 진행도. 매주 월요일 리셋.">
               <input
                 type="number"
                 step="0.1"
