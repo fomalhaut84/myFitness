@@ -12,6 +12,7 @@ import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 import {
+  sanitizeFoodItemBreakdown,
   scaleItemsForNewKcal,
   type FoodItemBreakdown,
 } from "@/lib/nutrition/food-items";
@@ -87,6 +88,9 @@ export async function runFoodKcalBackfill(
     carbsG: number | null;
     fatG: number | null;
     nutritionAttempts: number | null;
+    // #322 Codex P2 (PR #325 2회차): 기존 items 를 fetch 해서 partial vs complete 판정.
+    // Round 4 fix (무조건 클리어) 가 transient 실패 시 valid items 손실 유발 → Round 6 지적.
+    items: Prisma.JsonValue | null;
   }
   const rows: Row[] = [];
 
@@ -94,7 +98,7 @@ export async function runFoodKcalBackfill(
     // Codex P2 (PR #300): SQL 도 attempts 상한 반영.
     const pool = await prisma.$queryRaw<Row[]>`
       SELECT id, description, "mealType", date,
-             "estimatedKcal", "proteinG", "carbsG", "fatG", "nutritionAttempts"
+             "estimatedKcal", "proteinG", "carbsG", "fatG", "nutritionAttempts", "items"
       FROM "FoodLog"
       WHERE "createdAt" < ${cutoff}
         AND (
@@ -126,6 +130,7 @@ export async function runFoodKcalBackfill(
           carbsG: true,
           fatG: true,
           nutritionAttempts: true,
+          items: true,
         },
         take: PAGE,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
@@ -357,12 +362,58 @@ export async function runFoodKcalBackfill(
           }
         }
       } else if (needsSomeMacro && macroTuple === null) {
-        // Codex P2 (PR #326 4회차): capturedItems null (repeat miss + est null) 인데 backfill
-        // row 는 partial macros 상태 → 기존 DB items 가 partial 이든 뭐든 top-level 과 mismatch
-        // 위험. attempts 소진 후 terminal 인 채로 mismatch 지속되지 않도록 items 도 클리어
-        // (이미 null 이면 no-op). 매우 rare 하게 items complete 인 row 가 loss 가능하나 그런
-        // race 는 backfill 재수집으로 회복 (creation path 는 items 저장).
-        writeData.items = Prisma.DbNull;
+        // Codex P2 (PR #325 릴리즈 2회차): 이전 Round 4 는 무조건 클리어 → transient 실패 시
+        // valid items 손실. 이제 기존 items 를 sanitize 해서:
+        //   - items complete (모든 원소 P/C/F non-null) → 유지 (transient 실패 대응).
+        //     이 경우 items 로부터 top-level 재산출 (macros complete 확보 → mismatch 해소).
+        //   - items partial 또는 null 또는 malformed → DbNull 클리어 (mismatch 방지).
+        const existingItems = sanitizeFoodItemBreakdown(r.items);
+        const existingComplete =
+          existingItems !== null &&
+          existingItems.every(
+            (it) =>
+              it.proteinG !== null &&
+              it.carbsG !== null &&
+              it.fatG !== null,
+          );
+        if (existingComplete && kcal !== null) {
+          // existing items 는 이미 저장된 kcal (r.estimatedKcal) 기준. 현재 kcal 이 같으면
+          // 그대로 파생. 다르면 스케일 (source>0 or source===target 방어).
+          const canDerive =
+            r.estimatedKcal !== null &&
+            (r.estimatedKcal > 0 || r.estimatedKcal === kcal);
+          if (canDerive) {
+            const scaled = scaleItemsForNewKcal(
+              kcal,
+              r.estimatedKcal,
+              existingItems,
+            );
+            if (scaled !== null) {
+              const round1 = (v: number) => Math.round(v * 10) / 10;
+              const sumP = round1(
+                scaled.reduce((s, it) => s + (it.proteinG ?? 0), 0),
+              );
+              const sumC = round1(
+                scaled.reduce((s, it) => s + (it.carbsG ?? 0), 0),
+              );
+              const sumF = round1(
+                scaled.reduce((s, it) => s + (it.fatG ?? 0), 0),
+              );
+              writeData.proteinG = sumP;
+              writeData.carbsG = sumC;
+              writeData.fatG = sumF;
+              // items 는 스케일 결과가 원본과 다르면 (kcal 바뀜) 갱신, 같으면 (r.estimatedKcal ===
+              // kcal) 굳이 재저장 안 함 → cleanup-only 카운트 우회.
+              if (r.estimatedKcal !== kcal) {
+                writeData.items = scaled as unknown as Prisma.InputJsonValue;
+              }
+              macroTuple = { proteinG: sumP, carbsG: sumC, fatG: sumF };
+            }
+          }
+        } else {
+          // partial/null/malformed → 클리어.
+          writeData.items = Prisma.DbNull;
+        }
       }
 
       let anyWritten = false;

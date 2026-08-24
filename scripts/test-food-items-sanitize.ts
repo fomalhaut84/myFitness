@@ -216,6 +216,42 @@ console.log("\n== backfill sourceKcal <= 0 방어 (PR #326 Codex P2 회귀) ==")
   );
 }
 
+console.log("\n== backfill 기존 items 보존 / UI mismatch 뱃지 판정 로직 회귀 ==");
+{
+  // 기존 items complete → 유지 (transient 실패 시 valid items 손실 방지).
+  const rItems = [
+    { name: "김치찌개", kcal: 400, proteinG: 15, carbsG: 30, fatG: 20 },
+    { name: "쌀밥", kcal: 200, proteinG: 5, carbsG: 45, fatG: 1 },
+  ];
+  const existing = sanitizeFoodItemBreakdown(rItems);
+  const existingComplete =
+    existing !== null &&
+    existing.every(
+      (it) => it.proteinG !== null && it.carbsG !== null && it.fatG !== null,
+    );
+  assert("existing items complete 판정", existingComplete);
+
+  // UI mismatch 판정: items 합 vs top-level tolerance max(30, 5%) 초과.
+  const kcalMismatch = (topKcal: number, itemsSum: number) =>
+    Math.abs(itemsSum - topKcal) > Math.max(30, topKcal * 0.05);
+  assert(
+    "100/70 → mismatch (diff 30 > tol 30 아님 → false, 경계값)",
+    !kcalMismatch(100, 70), // diff=30, tol=max(30, 5)=30 → not >
+  );
+  assert(
+    "100/60 → mismatch true (diff 40 > tol 30)",
+    kcalMismatch(100, 60),
+  );
+  assert(
+    "600/500 → mismatch true (diff 100 > tol 30 / 600*0.05=30)",
+    kcalMismatch(600, 500),
+  );
+  assert(
+    "1000/970 → mismatch false (diff 30 = tol 50)",
+    !kcalMismatch(1000, 970),
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");

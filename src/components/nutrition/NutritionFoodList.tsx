@@ -84,6 +84,16 @@ function FoodCard({ item }: { item: NutritionFoodItem }) {
     item.carbsG == null ||
     item.fatG == null;
   const hasBreakdown = Array.isArray(item.items) && item.items.length > 0;
+  // #322 Codex P2 (릴리즈 PR #325): items sum vs top-level kcal mismatch 뱃지.
+  // estimator 는 tolerance max(30, 5%) 이내면 통과 → 저장 후 UI 확장 시 100 kcal top-level +
+  // items 합 70 kcal 같은 시각 mismatch 가능. 사용자가 "정정된 총합" 임을 인지하도록 표시.
+  const itemsKcalSum = hasBreakdown
+    ? item.items!.reduce((s, it) => s + (it.kcal ?? 0), 0)
+    : null;
+  const kcalMismatch =
+    itemsKcalSum !== null &&
+    item.kcal !== null &&
+    Math.abs(itemsKcalSum - item.kcal) > Math.max(30, item.kcal * 0.05);
   return (
     <div
       className={`px-4 py-3 flex flex-col gap-1.5 ${
@@ -102,6 +112,15 @@ function FoodCard({ item }: { item: NutritionFoodItem }) {
             <span className="text-[9px] font-[family-name:var(--font-geist-mono)] uppercase tracking-wider px-1.5 py-[1px] rounded"
               style={{ color: "#fcd34d", border: "1px solid rgba(245,158,11,.35)" }}>
               부분 미측정
+            </span>
+          )}
+          {kcalMismatch && (
+            <span
+              className="text-[9px] font-[family-name:var(--font-geist-mono)] uppercase tracking-wider px-1.5 py-[1px] rounded"
+              style={{ color: "#93c5fd", border: "1px solid rgba(59,130,246,.35)" }}
+              title={`items 합 ${Math.round(itemsKcalSum!)} kcal ↔ 총합 ${item.kcal} kcal`}
+            >
+              총합 정정됨
             </span>
           )}
         </div>
