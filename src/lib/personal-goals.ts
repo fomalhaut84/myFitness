@@ -10,7 +10,8 @@
  */
 
 import prisma from "@/lib/prisma";
-import { daysAgoKST, todayKST } from "@/lib/garmin/utils";
+import { daysAgoKST } from "@/lib/garmin/utils";
+import { startOfWeekKST, weekStartKST } from "@/lib/date";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 
@@ -38,8 +39,14 @@ export interface PaceGoal {
 
 export interface WeeklyKmGoal {
   target: number; // km/week
-  current: number | null; // 최근 4주 평균 (km/week)
-  progressPct: number | null; // (current / target) * 100
+  /** 이번 주 (KST Mon 00:00 ~ now) 누적 러닝 km */
+  currentWeekKm: number | null;
+  /** 완료된 지난 N주 (오늘 속한 주 제외, 기본 4주) avg km/week */
+  completedWeeksAvg: number | null;
+  /** currentWeekKm / target * 100 (이번 주 진행률) */
+  progressPct: number | null;
+  /** 이번 주 시작 (KST Mon 00:00) ISO — UI/AI 컨텍스트에서 기간 명시용 */
+  weekStartIso: string;
 }
 
 export interface VO2MaxGoal {
@@ -100,14 +107,33 @@ async function recentAvgPace(days = 30): Promise<number | null> {
 }
 
 /**
- * 최근 4주 러닝 주간 평균 (km/week).
- * 활동을 KST 주 단위 (월~일) 로 그룹핑하지 않고 간단히 total_km / 4 로 근사.
+ * 이번 주 (KST Mon 00:00 ~ now) 누적 러닝 km.
+ * 활동이 하나도 없어도 0 반환 (null 이 아님) — 주 시작 직후 "0 km" 진행 표현 가능.
  */
-async function recentWeeklyKm(weeks = 4): Promise<number | null> {
-  const since = new Date(todayKST().getTime() - weeks * 7 * DAY_MS);
+async function currentWeekKm(): Promise<number> {
+  const weekStart = startOfWeekKST();
   const activities = await prisma.activity.findMany({
     where: {
-      startTime: { gte: since },
+      startTime: { gte: weekStart },
+      ...RUNNING_ACTIVITY_FILTER,
+      distance: { not: null, gt: 0 },
+    },
+    select: { distance: true },
+  });
+  const totalMeters = activities.reduce((sum, a) => sum + (a.distance ?? 0), 0);
+  return Math.round((totalMeters / 1000) * 10) / 10;
+}
+
+/**
+ * 완료된 지난 N주 (오늘 속한 주 제외) 러닝 avg km/week.
+ * 표본 없을 시 null (기존 recentWeeklyKm 동작 유지).
+ */
+async function completedWeeksAvgKm(weeks = 4): Promise<number | null> {
+  const thisWeekStart = startOfWeekKST();
+  const rangeStart = weekStartKST(weeks); // N주 전 월요일
+  const activities = await prisma.activity.findMany({
+    where: {
+      startTime: { gte: rangeStart, lt: thisWeekStart },
       ...RUNNING_ACTIVITY_FILTER,
       distance: { not: null, gt: 0 },
     },
@@ -115,7 +141,7 @@ async function recentWeeklyKm(weeks = 4): Promise<number | null> {
   });
   if (activities.length === 0) return null;
   const totalMeters = activities.reduce((sum, a) => sum + (a.distance ?? 0), 0);
-  return totalMeters / 1000 / weeks;
+  return Math.round((totalMeters / 1000 / weeks) * 10) / 10;
 }
 
 async function latestVO2max(): Promise<number | null> {
@@ -163,14 +189,16 @@ export async function computePersonalGoals(): Promise<PersonalGoalsProgress> {
   }
 
   if (profile.targetWeeklyKm !== null) {
-    const current = await recentWeeklyKm();
+    const [thisWeek, avg] = await Promise.all([
+      currentWeekKm(),
+      completedWeeksAvgKm(),
+    ]);
     result.targetWeeklyKm = {
       target: profile.targetWeeklyKm,
-      current,
-      progressPct:
-        current !== null
-          ? Math.round((current / profile.targetWeeklyKm) * 100)
-          : null,
+      currentWeekKm: thisWeek,
+      completedWeeksAvg: avg,
+      progressPct: Math.round((thisWeek / profile.targetWeeklyKm) * 100),
+      weekStartIso: startOfWeekKST().toISOString(),
     };
   }
 
@@ -221,11 +249,15 @@ export function formatGoalsForPrompt(goals: PersonalGoalsProgress): string {
   }
   if (goals.targetWeeklyKm) {
     const g = goals.targetWeeklyKm;
-    const currentStr =
-      g.current !== null ? `${g.current.toFixed(1)}km` : "데이터 없음";
-    const pctStr = g.progressPct !== null ? ` (${g.progressPct}%)` : "";
+    const thisStr =
+      g.currentWeekKm !== null ? `${g.currentWeekKm.toFixed(1)}km` : "0km";
+    const pctStr = g.progressPct !== null ? ` (진행 ${g.progressPct}%)` : "";
+    const avgStr =
+      g.completedWeeksAvg !== null
+        ? ` · 완료된 최근 4주 avg ${g.completedWeeksAvg.toFixed(1)}km/week`
+        : " · 완료된 최근 4주 데이터 없음";
     lines.push(
-      `- 주간 러닝 거리 목표: ${g.target}km/week (최근 4주 avg ${currentStr}${pctStr})`,
+      `- 주간 러닝 거리 목표: 이번 주 ${thisStr} / ${g.target}km${pctStr}${avgStr}`,
     );
   }
   if (goals.targetVO2max) {
