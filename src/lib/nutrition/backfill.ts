@@ -377,7 +377,16 @@ export async function runFoodKcalBackfill(
           },
           data: writeData,
         });
-        if (updated.count > 0) {
+        // Codex P2 (PR #326 5회차): items-only cleanup write (repeat miss + est null,
+        // items = DbNull) 도 count > 0 반환. 이걸 anyWritten=true 로 카운트하면 result.ok
+        // 증가 → 사실 backfill 실패인데 성공 리포트. real progress (kcal/macros 실제로
+        // 채워짐) 여부로만 anyWritten 결정. items cleanup 은 정합성 유지 fire-and-forget.
+        const realProgress =
+          writeData.estimatedKcal !== undefined ||
+          writeData.proteinG !== undefined ||
+          writeData.carbsG !== undefined ||
+          writeData.fatG !== undefined;
+        if (updated.count > 0 && realProgress) {
           anyWritten = true;
           kcalWritten = writeData.estimatedKcal !== undefined;
         }
