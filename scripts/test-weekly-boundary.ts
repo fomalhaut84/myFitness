@@ -164,6 +164,27 @@ console.log("\n== activities/page weekLabel — UTC 서버라도 KST wall-clock 
   );
 }
 
+console.log("\n== lifestyle summarizeWeek — activeDates 그룹핑 KST 정합 ==");
+{
+  // #321 Codex P2 회귀: 서버 로컬 TZ formatDateLocal 로 그룹핑하면 UTC 서버에서
+  // KST 오전 활동은 UTC 전날, KST 오후 활동은 UTC 당일로 저장돼 activeDates 가
+  // 실제 활동 요일 수보다 큼 → restDays 저평가.
+  // ymdKST 로 KST 요일 그룹핑하면 같은 KST 하루 안의 두 활동은 하나의 요일로 collapse.
+  //
+  // 시나리오: 사용자가 KST 월요일 07:00 과 20:00 두 번 운동 (UTC 로는 일요일 22:00 +
+  // 월요일 11:00 — UTC 요일 두 개).
+  const startTimes = [
+    new Date("2025-01-05T22:00:00Z"), // KST Mon 07:00
+    new Date("2025-01-06T11:00:00Z"), // KST Mon 20:00
+  ];
+  const ymdKstSet = new Set(startTimes.map((d) => ymdKST(d)));
+  assert(
+    "KST 하루 안 두 활동 → 요일 1개로 collapse",
+    ymdKstSet.size === 1 && [...ymdKstSet][0] === "2025-01-06",
+    `got ${[...ymdKstSet].join(",")}`,
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");

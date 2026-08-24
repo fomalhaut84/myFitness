@@ -109,12 +109,17 @@ async function recentAvgPace(days = 30): Promise<number | null> {
 /**
  * 이번 주 (KST Mon 00:00 ~ now) 누적 러닝 km.
  * 활동이 하나도 없어도 0 반환 (null 이 아님) — 주 시작 직후 "0 km" 진행 표현 가능.
+ *
+ * #321 Codex P2: now upper bound 필수. lower-bound 만 쓰면 device clock skew 나
+ * imported record 의 미래 startTime 이 포함되어 currentWeekKm / progressPct 부풀림.
+ * caller (computePersonalGoals) 가 now 를 캡처해서 넘겨야 `startOfWeekKST(now)` 와
+ * 정확히 동일 base 로 정합. base 는 helper 내에서도 재사용해 μs 단위 skew 방지.
  */
-async function currentWeekKm(): Promise<number> {
-  const weekStart = startOfWeekKST();
+async function currentWeekKm(now: Date): Promise<number> {
+  const weekStart = startOfWeekKST(now);
   const activities = await prisma.activity.findMany({
     where: {
-      startTime: { gte: weekStart },
+      startTime: { gte: weekStart, lt: now },
       ...RUNNING_ACTIVITY_FILTER,
       distance: { not: null, gt: 0 },
     },
@@ -128,9 +133,9 @@ async function currentWeekKm(): Promise<number> {
  * 완료된 지난 N주 (오늘 속한 주 제외) 러닝 avg km/week.
  * 표본 없을 시 null (기존 recentWeeklyKm 동작 유지).
  */
-async function completedWeeksAvgKm(weeks = 4): Promise<number | null> {
-  const thisWeekStart = startOfWeekKST();
-  const rangeStart = weekStartKST(weeks); // N주 전 월요일
+async function completedWeeksAvgKm(now: Date, weeks = 4): Promise<number | null> {
+  const thisWeekStart = startOfWeekKST(now);
+  const rangeStart = weekStartKST(weeks, now); // N주 전 월요일
   const activities = await prisma.activity.findMany({
     where: {
       startTime: { gte: rangeStart, lt: thisWeekStart },
@@ -189,16 +194,19 @@ export async function computePersonalGoals(): Promise<PersonalGoalsProgress> {
   }
 
   if (profile.targetWeeklyKm !== null) {
+    // #321 Codex P2: now 공유 캡처. currentWeekKm upper bound / weekStartIso /
+    // completedWeeksAvgKm boundary 모두 동일 base 로 정합.
+    const now = new Date();
     const [thisWeek, avg] = await Promise.all([
-      currentWeekKm(),
-      completedWeeksAvgKm(),
+      currentWeekKm(now),
+      completedWeeksAvgKm(now),
     ]);
     result.targetWeeklyKm = {
       target: profile.targetWeeklyKm,
       currentWeekKm: thisWeek,
       completedWeeksAvg: avg,
       progressPct: Math.round((thisWeek / profile.targetWeeklyKm) * 100),
-      weekStartIso: startOfWeekKST().toISOString(),
+      weekStartIso: startOfWeekKST(now).toISOString(),
     };
   }
 

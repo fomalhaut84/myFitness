@@ -1,6 +1,6 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
-import { todayKST } from "@/lib/garmin/utils";
+import { todayKST, ymdKST } from "@/lib/garmin/utils";
 import { startOfWeekKST, weekStartKST } from "@/lib/date";
 import LifestyleClient from "./lifestyle-client";
 
@@ -38,8 +38,11 @@ export default async function LifestylePage() {
   ]);
 
   function summarizeWeek(activities: typeof thisWeekActivities, weekStart: Date) {
+    // #321 Codex P2: 주 경계는 KST-aligned 인데 그룹핑에 서버 로컬 TZ formatDateLocal 을
+    // 쓰면 UTC 서버에서 KST 오전 활동이 UTC 전날로 갈라져 activeDates 과대 → restDays
+    // 저평가. ymdKST 로 KST 요일 그룹핑 통일.
     const activeDates = new Set(
-      activities.map((a) => formatDateLocal(a.startTime))
+      activities.map((a) => ymdKST(a.startTime))
     );
     const daysInWeek = Math.min(
       7,
