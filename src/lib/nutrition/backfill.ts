@@ -289,7 +289,7 @@ export async function runFoodKcalBackfill(
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
-        items?: Prisma.InputJsonValue;
+        items?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
       } = {};
       const snapshotWhere = {
         estimatedKcal: r.estimatedKcal,
@@ -347,7 +347,14 @@ export async function runFoodKcalBackfill(
             // 후단 attempts 로직 (aiPartialConsumesAttempt) 정합 위해 macroTuple 도 채움.
             macroTuple = { proteinG: sumP, carbsG: sumC, fatG: sumF };
           }
-          // else: items partial + macros partial → 저장 skip (mismatch 방지).
+          // else: items partial + macros partial → mismatch 방지 위해 기존 DB items 도 클리어.
+          // Codex P2 (PR #326 3회차): skip 만으로는 부족 — creation path 는 partial est 도
+          // items 저장하므로 기존 row items 가 complete 이지 partial 이지 확정 불가. top-level
+          // 이 partial 인 채로 items 유지되면 UI 확장 시 mismatch. DbNull 로 SQL NULL 저장 →
+          // UI 는 items 토글 숨김 · "부분 미측정" 뱃지로 표시.
+          else {
+            writeData.items = Prisma.DbNull;
+          }
         }
       }
 
