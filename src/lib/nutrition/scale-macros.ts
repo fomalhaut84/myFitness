@@ -3,6 +3,12 @@
 // - 이전엔 kcal 만 갱신하고 macro 는 이전 AI 추정값 유지 → mismatched 데이터 (Codex P2 PR #300).
 // - 스케일 불가한 경우 (원본 kcal null 이거나 0) → macros 도 null 로 (backfill 이 재추정).
 
+import { Prisma } from "@/generated/prisma/client";
+import {
+  scaleItemsForNewKcal,
+  sanitizeFoodItemBreakdown,
+} from "@/lib/nutrition/food-items";
+
 export interface MacroValues {
   proteinG: number | null;
   carbsG: number | null;
@@ -32,6 +38,7 @@ interface KcalCorrectableClient {
         fatG: true;
         description: true;
         updatedAt: true;
+        items: true;
       };
     }) => Promise<{
       estimatedKcal: number | null;
@@ -40,6 +47,7 @@ interface KcalCorrectableClient {
       fatG: number | null;
       description: string;
       updatedAt: Date;
+      items: Prisma.JsonValue | null;
     } | null>;
     updateMany: (args: {
       where: {
@@ -88,6 +96,7 @@ export async function applyKcalCorrection(
         fatG: true,
         description: true,
         updatedAt: true,
+        items: true,
       },
     });
     if (!existing) return { ok: false, reason: "not-found" };
@@ -98,6 +107,13 @@ export async function applyKcalCorrection(
       return { ok: false, reason: "stale" };
     }
     const scaled = scaleMacrosForNewKcal(newKcal, existing.estimatedKcal, existing);
+    // #322 Codex P2: items 도 함께 정정 kcal 로 스케일. macros 만 스케일하고 items 는
+    // 원본 유지하면 접기/펼치기 확장 시 합계가 정정된 top-level 과 어긋남.
+    // resetAttempts 인 경로 (스케일 기준 없음) 는 items 도 클리어 → backfill 이 재추정.
+    const existingItems = sanitizeFoodItemBreakdown(existing.items);
+    const scaledItems = scaled.resetAttempts
+      ? null
+      : scaleItemsForNewKcal(newKcal, existing.estimatedKcal, existingItems);
     const res = await client.foodLog.updateMany({
       where: {
         id,
@@ -112,6 +128,13 @@ export async function applyKcalCorrection(
         proteinG: scaled.proteinG,
         carbsG: scaled.carbsG,
         fatG: scaled.fatG,
+        // scaledItems null (resetAttempts) 이면 Prisma.DbNull 로 SQL NULL 저장 →
+        // items 클리어 (JS null 은 Prisma JSON JsonNull literal 로 저장돼 semantics 다름).
+        // scaledItems === existingItems (no-op) 은 그대로 재저장해도 무해.
+        items:
+          scaledItems === null
+            ? Prisma.DbNull
+            : (scaledItems as unknown as Prisma.InputJsonValue),
         ...(scaled.resetAttempts ? { nutritionAttempts: null } : {}),
       },
     });

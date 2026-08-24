@@ -107,6 +107,11 @@ export async function PATCH(request: Request, ctx: Params) {
       updateData.carbsG = null;
       updateData.fatG = null;
       updateData.nutritionAttempts = null;
+      // #322 Codex P2: description/mealType 이 바뀌면 items 도 이전 컨텍스트 breakdown 이라
+      // stale — 새 description 과 어긋난 음식명/영양이 UI 에 노출됨. Prisma.DbNull 로
+      // SQL NULL 저장 (JS null 은 Prisma JSON 에서 JsonNull literal 로 저장돼 의미 다름).
+      // backfill 은 items IS NULL 도 재추정 후 items 함께 채움.
+      updateData.items = Prisma.DbNull;
       updated = await prisma.foodLog.update({
         where: { id },
         data: updateData,
@@ -120,6 +125,8 @@ export async function PATCH(request: Request, ctx: Params) {
         updateData.carbsG = null;
         updateData.fatG = null;
         updateData.nutritionAttempts = null;
+        // #322 Codex P2: kcal null 로 리셋되면 items breakdown 도 무의미 (분모 없음).
+        updateData.items = Prisma.DbNull;
         // Codex P2 (PR #313 11/12회차): null 경로도 expectedRevision snapshot 매칭. 이전엔
         // helper 를 안 거쳐 stale draft (예: kcal editor 오픈 이후 다른 writer 가 row 를 변경
         // 하고 backfill 로 새 kcal/macros 저장) 로 blank 저장 시 새 row 의 macros 를 파괴.

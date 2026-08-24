@@ -14,6 +14,7 @@ import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import { scaleItemsForNewKcal } from "@/lib/nutrition/food-items";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -206,7 +207,10 @@ export async function runFoodKcalBackfill(
       let aiFailureConsumesAttempt = false;
       let aiPartialConsumesAttempt = false;
       // #322 (M14 Phase 3 #2): estimator items 를 write 단계에서 사용. 블록 밖 캡처.
+      // Codex P2 (2회차): items 스케일에 est.kcal 필요 → 함께 캡처. tupleFromSource 가
+      // macros 를 retained kcal 로 스케일하듯이 items 도 동일 비율 스케일해야 정합.
       let capturedEstItems: NutritionEstimate["items"] | null = null;
+      let capturedEstKcal: number | null = null;
       const stillNeedsAI = kcal === null || (needsSomeMacro && macroTuple === null);
       if (stillNeedsAI) {
         // #315: MFDS (오픈식약처) estimator 먼저 → miss 시 AI text estimator.
@@ -260,8 +264,9 @@ export async function runFoodKcalBackfill(
               aiPartialConsumesAttempt = true;
             }
           }
-          // #322: est.items 를 블록 밖 write 단계로 캡처.
+          // #322: est.items / est.kcal 를 블록 밖 write 단계로 캡처 (items 스케일 base).
           capturedEstItems = est.items ?? null;
+          capturedEstKcal = est.kcal ?? null;
         }
       }
       if (kcal === null) continue;
@@ -292,8 +297,13 @@ export async function runFoodKcalBackfill(
       // #322 (M14 Phase 3 #2): estimator 산출 items 저장 — legacy row 는 items null 이었으니
       // backfill 이 recompute 되는 김에 items 도 채운다. hit-only 경로는 items 없음 (repeat
       // lookup 은 breakdown 미제공) → est 있는 경로에서만 저장.
+      // Codex P2 (2회차): retained kcal 로 스케일 — tupleFromSource 가 macros 를 kcal 로
+      // 스케일하는 것과 정합. est.kcal=550 · retained kcal=400 이면 items 도 400/550 스케일.
       if (capturedEstItems !== null && macroTuple !== null) {
-        writeData.items = capturedEstItems as unknown as Prisma.InputJsonValue;
+        const scaledItems = scaleItemsForNewKcal(kcal, capturedEstKcal, capturedEstItems);
+        if (scaledItems !== null) {
+          writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+        }
       }
 
       let anyWritten = false;

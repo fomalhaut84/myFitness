@@ -123,6 +123,37 @@ console.log("\n== scaleItemsForNewKcal — no-op / edge cases ==");
   assert("source 0 → 원본 유지 (division 방어)", zeroSource?.[0].kcal === 100);
 }
 
+console.log("\n== items 동기화 정책 (Codex 2회차 회귀) ==");
+{
+  // kcal correction 시나리오: existing kcal=400, items 합 400 (이미 정합). 새 kcal=500.
+  // scaleItemsForNewKcal(500, 400, ...) → items 도 500/400 스케일 → 새 합계 500 정합.
+  const existingItems = [
+    { name: "비빔밥", kcal: 260, proteinG: 11, carbsG: 44, fatG: 6 },
+    { name: "계란국", kcal: 140, proteinG: 6, carbsG: 4, fatG: 8 },
+  ];
+  const scaled = scaleItemsForNewKcal(500, 400, existingItems);
+  const scaledSum = scaled!.reduce((s, it) => s + (it.kcal ?? 0), 0);
+  assert(
+    "kcal correction 400 → 500: items 합계도 ≈ 500",
+    Math.abs(scaledSum - 500) <= 2,
+    `sum=${scaledSum}`,
+  );
+
+  // backfill retained scenario: kcal=400 저장, est.kcal=550 · est.items 합 550.
+  // scaleItemsForNewKcal(400, 550, ...) → 새 items 합 400 정합.
+  const estItems = [
+    { name: "김치찌개", kcal: 350, proteinG: 15, carbsG: 30, fatG: 15 },
+    { name: "쌀밥", kcal: 200, proteinG: 5, carbsG: 40, fatG: 1 },
+  ];
+  const backfillScaled = scaleItemsForNewKcal(400, 550, estItems);
+  const bSum = backfillScaled!.reduce((s, it) => s + (it.kcal ?? 0), 0);
+  assert(
+    "backfill retained 400 · est 550: items 합계도 ≈ 400",
+    Math.abs(bSum - 400) <= 2,
+    `sum=${bSum}`,
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");
