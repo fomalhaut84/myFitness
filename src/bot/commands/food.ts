@@ -328,13 +328,14 @@ export async function handleFoodInput(
     try {
       // #322 (M14 Phase 3 #2): estimate.items 저장. hit.kcal 로 top-level 을 보존한 경우
       // items 도 hit.kcal 기준으로 스케일 (사전 리뷰 P1 — items 합계 vs top-level kcal
-      // mismatch 방지). repeat-hit-only 는 estimate 없어 items null.
+      // mismatch 방지). estimate 없으면 (repeat-hit-only) hit.items 를 재사용
+      // (Codex P2 PR #324 3회차 — 같은 description 반복 로그도 세부 breakdown 유지).
       const decidedItems =
         estimate?.items
           ? repeatHit && !repeatMacrosComplete
             ? scaleItemsForNewKcal(repeatHit.kcal, estimate.kcal, estimate.items)
             : estimate.items
-          : null;
+          : (repeatHit?.items ?? null);
       const updated = await prisma.foodLog.updateMany({
         where: {
           id: log.id,

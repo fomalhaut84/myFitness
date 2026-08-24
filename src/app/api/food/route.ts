@@ -127,6 +127,9 @@ async function handleJsonPost(request: Request) {
           carbsG = hit.carbsG;
           fatG = hit.fatG;
         }
+        // #322 Codex P2 (PR #324 3회차): 원본 로그 items 도 재사용 (같은 description 이라
+        // 스케일 불필요). MFDS/AI estimator 가 아래에서 items 를 다시 생성하면 그 값이 우선.
+        if (hit.items !== null) items = hit.items;
       }
     } catch (lookupErr) {
       console.warn(
