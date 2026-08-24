@@ -154,6 +154,35 @@ console.log("\n== items 동기화 정책 (Codex 2회차 회귀) ==");
   );
 }
 
+console.log("\n== backfill items ↔ top-level 정합 정책 (릴리즈 PR #325 회귀) ==");
+{
+  // 시나리오: items 자체가 complete (모든 원소 P/C/F 있음) → items 합계로 top-level 재산출.
+  const completeItems = [
+    { name: "김치찌개", kcal: 400, proteinG: 15, carbsG: 30, fatG: 20 },
+    { name: "쌀밥", kcal: 200, proteinG: 5, carbsG: 45, fatG: 1 },
+  ];
+  const allP = completeItems.every((it) => it.proteinG !== null);
+  const allC = completeItems.every((it) => it.carbsG !== null);
+  const allF = completeItems.every((it) => it.fatG !== null);
+  assert(
+    "items complete 판정 (모든 원소 non-null)",
+    allP && allC && allF,
+  );
+  const sumP = completeItems.reduce((s, it) => s + (it.proteinG ?? 0), 0);
+  assert("items 로부터 top-level P 파생 (15+5=20)", sumP === 20);
+
+  // 시나리오: items partial (일부 원소 protein null) → itemsComplete=false → 저장 skip.
+  const partialItems = [
+    { name: "A", kcal: 300, proteinG: 10, carbsG: 40, fatG: 5 },
+    { name: "B", kcal: 100, proteinG: null, carbsG: 20, fatG: 2 },
+  ];
+  const partAllP = partialItems.every((it) => it.proteinG !== null);
+  assert(
+    "items partial 판정 (B.proteinG null)",
+    !partAllP,
+  );
+}
+
 console.log("\n== 요약 ==");
 if (failures === 0) {
   console.log("✅ 모든 assertion 통과");

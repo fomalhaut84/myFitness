@@ -305,16 +305,42 @@ export async function runFoodKcalBackfill(
         writeData.carbsG = macroTuple.carbsG;
         writeData.fatG = macroTuple.fatG;
       }
-      // #322 items 저장 — capturedItems 확보되면 조건 없이 (hit-only complete tuple,
-      // partial est macros-only bucket 어느 경우든) retained kcal 로 스케일해 저장. legacy
-      // row 는 items null 이었으니 backfill 이 채워야 UI 확장 가능.
-      // Codex P2 (PR #324 4회차): 이전엔 (willWriteKcal || willWriteMacros) gate 로
-      // 제한 → hit-only complete (macroTuple 있어도 stillNeedsAI=false 라 capturedEstItems
-      // null) 와 macro-only partial est (writeData 필드 둘 다 안 셋) 케이스에서 items 상실.
+      // #322 items 저장 — capturedItems 확보되면 retained kcal 로 스케일 후 저장.
+      // Codex P2 (릴리즈 PR #325): items 저장은 top-level macros 와 정합해야. macroTuple 이
+      // 있으면 top-level 채워지므로 items 저장. macroTuple 없어도 items 자체가 complete
+      // (모든 item 이 P/C/F all-non-null) 이면 items 합계로 top-level 도 재산출해 함께 저장
+      // (attempts 상한 소진 회피 + 데이터 완전성 확보). 둘 다 partial 이면 mismatch 방지 위해
+      // items skip (top-level "P —" 인데 items 펼침 protein 값 있는 시각적 불일치 방지).
       if (capturedItems !== null) {
         const scaledItems = scaleItemsForNewKcal(kcal, capturedSourceKcal, capturedItems);
         if (scaledItems !== null) {
-          writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+          const allP = scaledItems.every((it) => it.proteinG !== null);
+          const allC = scaledItems.every((it) => it.carbsG !== null);
+          const allF = scaledItems.every((it) => it.fatG !== null);
+          const itemsComplete = allP && allC && allF;
+          if (macroTuple !== null) {
+            // macros complete + items → 저장.
+            writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+          } else if (itemsComplete && needsSomeMacro) {
+            // items 자체가 complete → top-level P/C/F 재산출. items 도 저장.
+            const round1 = (v: number) => Math.round(v * 10) / 10;
+            const sumP = round1(
+              scaledItems.reduce((s, it) => s + (it.proteinG ?? 0), 0),
+            );
+            const sumC = round1(
+              scaledItems.reduce((s, it) => s + (it.carbsG ?? 0), 0),
+            );
+            const sumF = round1(
+              scaledItems.reduce((s, it) => s + (it.fatG ?? 0), 0),
+            );
+            writeData.proteinG = sumP;
+            writeData.carbsG = sumC;
+            writeData.fatG = sumF;
+            writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            // 후단 attempts 로직 (aiPartialConsumesAttempt) 정합 위해 macroTuple 도 채움.
+            macroTuple = { proteinG: sumP, carbsG: sumC, fatG: sumF };
+          }
+          // else: items partial + macros partial → 저장 skip (mismatch 방지).
         }
       }
 
