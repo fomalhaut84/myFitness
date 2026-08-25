@@ -398,8 +398,13 @@ export async function runFoodKcalBackfill(
               writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
             } else if (!existingIsComplete()) {
               writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            } else {
+              // Codex P2 (PR #327 4회차): existing complete + captured partial → preserve
+              // items. 그런데 이때 top-level 은 위에서 hit macros (macroTuple) 로 이미
+              // 세팅됨 → items 합 (existing 값) 과 mismatch. tryPreserveExistingItems() 로
+              // top-level 을 existing items 로 재파생 (hit macros 덮어써 정합).
+              tryPreserveExistingItems();
             }
-            // else: existing complete + captured partial → 손대지 않음 (preserve).
           } else if (itemsComplete && needsSomeMacro && canDeriveTopLevel) {
             const round1 = (v: number) => Math.round(v * 10) / 10;
             const sumP = round1(
