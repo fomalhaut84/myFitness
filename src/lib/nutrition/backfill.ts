@@ -11,6 +11,11 @@ import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
+import {
+  sanitizeFoodItemBreakdown,
+  scaleItemsForNewKcal,
+  type FoodItemBreakdown,
+} from "@/lib/nutrition/food-items";
 
 export interface RunFoodBackfillOptions {
   /** 1회 실행 처리 상한. 미지정 시 전량. */
@@ -83,6 +88,9 @@ export async function runFoodKcalBackfill(
     carbsG: number | null;
     fatG: number | null;
     nutritionAttempts: number | null;
+    // #322 Codex P2 (PR #325 2회차): 기존 items 를 fetch 해서 partial vs complete 판정.
+    // Round 4 fix (무조건 클리어) 가 transient 실패 시 valid items 손실 유발 → Round 6 지적.
+    items: Prisma.JsonValue | null;
   }
   const rows: Row[] = [];
 
@@ -90,7 +98,7 @@ export async function runFoodKcalBackfill(
     // Codex P2 (PR #300): SQL 도 attempts 상한 반영.
     const pool = await prisma.$queryRaw<Row[]>`
       SELECT id, description, "mealType", date,
-             "estimatedKcal", "proteinG", "carbsG", "fatG", "nutritionAttempts"
+             "estimatedKcal", "proteinG", "carbsG", "fatG", "nutritionAttempts", "items"
       FROM "FoodLog"
       WHERE "createdAt" < ${cutoff}
         AND (
@@ -122,6 +130,7 @@ export async function runFoodKcalBackfill(
           carbsG: true,
           fatG: true,
           nutritionAttempts: true,
+          items: true,
         },
         take: PAGE,
         ...(cursorId ? { cursor: { id: cursorId }, skip: 1 } : {}),
@@ -170,6 +179,13 @@ export async function runFoodKcalBackfill(
         };
       };
 
+      // #322 (M14 Phase 3 #2): items 를 write 단계에서 사용. source-agnostic 캡처
+      // (hit / est 어느 쪽이든 items 확보되면 저장). Codex P2 (PR #324 4회차): hit-only
+      // 완전 tuple 경로 (stillNeedsAI=false) + partial est 경로 (kcal/macros 둘 다 write X)
+      // 에서도 items 를 저장하도록 통합. capturedSourceKcal 은 items 스케일 base.
+      let capturedItems: FoodItemBreakdown[] | null = null;
+      let capturedSourceKcal: number | null = null;
+
       // 1) Repeat lookup
       try {
         // Codex P2 (PR #301 27회차): r.mealType 이 null (null-meal 로그) 이면 그대로 null 전달.
@@ -185,6 +201,12 @@ export async function runFoodKcalBackfill(
           // hit 이 완전 macros 이면 이번 write 후보. 부분이면 스킵 (다른 source 시도).
           if (kcal !== null) {
             macroTuple = tupleFromSource(hit.kcal, hit.proteinG, hit.carbsG, hit.fatG, kcal);
+          }
+          // Codex P2 (PR #324 4회차): hit.items 도 backfill 이 재사용. est 가 나중에 오면
+          // est.items 로 덮어씀 (더 최신 estimator 결과 우선).
+          if (hit.items !== null) {
+            capturedItems = hit.items;
+            capturedSourceKcal = hit.kcal;
           }
         }
       } catch (lookupErr) {
@@ -255,6 +277,12 @@ export async function runFoodKcalBackfill(
               aiPartialConsumesAttempt = true;
             }
           }
+          // #322: est.items / est.kcal 를 블록 밖 write 단계로 캡처 (items 스케일 base).
+          // est 가 있으면 hit.items 를 덮어씀 (재추정 결과가 최신).
+          if (est.items) {
+            capturedItems = est.items;
+            capturedSourceKcal = est.kcal;
+          }
         }
       }
       if (kcal === null) continue;
@@ -266,6 +294,7 @@ export async function runFoodKcalBackfill(
         proteinG?: number | null;
         carbsG?: number | null;
         fatG?: number | null;
+        items?: Prisma.InputJsonValue | Prisma.NullableJsonNullValueInput;
       } = {};
       const snapshotWhere = {
         estimatedKcal: r.estimatedKcal,
@@ -281,6 +310,131 @@ export async function runFoodKcalBackfill(
         writeData.carbsG = macroTuple.carbsG;
         writeData.fatG = macroTuple.fatG;
       }
+      // #322 items 저장 — capturedItems 확보되면 retained kcal 로 스케일 후 저장.
+      // Codex P2 (릴리즈 PR #325 / #327 2/3회차): 5 케이스:
+      //   A) captured complete + macros complete → captured 저장
+      //   B) captured partial + macros complete → existing complete 이면 유지, 아니면 partial 저장
+      //   C) captured complete + macros partial → top-level 도 items 로 파생
+      //   D) captured partial + macros partial → existing complete 이면 preserve, 아니면 DbNull
+      //   E) captured null + macros partial → existing complete 이면 preserve, 아니면 DbNull
+      //
+      // 헬퍼 (1): existing DB items 가 complete 인지.
+      const existingIsComplete = (): boolean => {
+        const existingItems = sanitizeFoodItemBreakdown(r.items);
+        return (
+          existingItems !== null &&
+          existingItems.every(
+            (it) =>
+              it.proteinG !== null &&
+              it.carbsG !== null &&
+              it.fatG !== null,
+          )
+        );
+      };
+      // 헬퍼 (2): existing complete 이면 유지 + top-level 재산출. 반환값은 "활용 완료" 여부.
+      const tryPreserveExistingItems = (): boolean => {
+        if (kcal === null) return false;
+        const existingItems = sanitizeFoodItemBreakdown(r.items);
+        const existingComplete =
+          existingItems !== null &&
+          existingItems.every(
+            (it) =>
+              it.proteinG !== null &&
+              it.carbsG !== null &&
+              it.fatG !== null,
+          );
+        if (!existingComplete) return false;
+        // existing items 는 r.estimatedKcal 기준. 스케일 가능 조건.
+        const canDerive =
+          r.estimatedKcal !== null &&
+          (r.estimatedKcal > 0 || r.estimatedKcal === kcal);
+        if (!canDerive) return false;
+        const scaled = scaleItemsForNewKcal(
+          kcal,
+          r.estimatedKcal,
+          existingItems,
+        );
+        if (scaled === null) return false;
+        const round1 = (v: number) => Math.round(v * 10) / 10;
+        const sumP = round1(
+          scaled.reduce((s, it) => s + (it.proteinG ?? 0), 0),
+        );
+        const sumC = round1(
+          scaled.reduce((s, it) => s + (it.carbsG ?? 0), 0),
+        );
+        const sumF = round1(
+          scaled.reduce((s, it) => s + (it.fatG ?? 0), 0),
+        );
+        writeData.proteinG = sumP;
+        writeData.carbsG = sumC;
+        writeData.fatG = sumF;
+        // items 스케일 결과가 원본과 다르면 갱신, 같으면 (r.estimatedKcal === kcal) 재저장 X
+        // → cleanup-only 카운트 우회.
+        if (r.estimatedKcal !== kcal) {
+          writeData.items = scaled as unknown as Prisma.InputJsonValue;
+        }
+        macroTuple = { proteinG: sumP, carbsG: sumC, fatG: sumF };
+        return true;
+      };
+
+      if (capturedItems !== null) {
+        const scaledItems = scaleItemsForNewKcal(kcal, capturedSourceKcal, capturedItems);
+        if (scaledItems !== null) {
+          const allP = scaledItems.every((it) => it.proteinG !== null);
+          const allC = scaledItems.every((it) => it.carbsG !== null);
+          const allF = scaledItems.every((it) => it.fatG !== null);
+          const itemsComplete = allP && allC && allF;
+          // Codex P2 (PR #326): source <= 0 이면 scaleItemsForNewKcal 이 원본 유지 (no-op) →
+          // unscaled top-level 파생 시 mismatch. source > 0 또는 source === target 만 안전.
+          const canDeriveTopLevel =
+            capturedSourceKcal !== null &&
+            (capturedSourceKcal > 0 || capturedSourceKcal === kcal);
+          if (macroTuple !== null) {
+            // macros complete → items 정합화.
+            // Codex P2 (PR #327 3회차): captured items 가 partial 이면 existing complete 를
+            // 덮어쓰지 않음. captured complete 이면 저장 (최신 우선), captured partial +
+            // existing partial/null 이면 captured 저장 (없는 것보단 있는 게 낫다).
+            if (itemsComplete) {
+              writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            } else if (!existingIsComplete()) {
+              writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            } else {
+              // Codex P2 (PR #327 4회차): existing complete + captured partial → preserve
+              // items. 그런데 이때 top-level 은 위에서 hit macros (macroTuple) 로 이미
+              // 세팅됨 → items 합 (existing 값) 과 mismatch. tryPreserveExistingItems() 로
+              // top-level 을 existing items 로 재파생 (hit macros 덮어써 정합).
+              tryPreserveExistingItems();
+            }
+          } else if (itemsComplete && needsSomeMacro && canDeriveTopLevel) {
+            const round1 = (v: number) => Math.round(v * 10) / 10;
+            const sumP = round1(
+              scaledItems.reduce((s, it) => s + (it.proteinG ?? 0), 0),
+            );
+            const sumC = round1(
+              scaledItems.reduce((s, it) => s + (it.carbsG ?? 0), 0),
+            );
+            const sumF = round1(
+              scaledItems.reduce((s, it) => s + (it.fatG ?? 0), 0),
+            );
+            writeData.proteinG = sumP;
+            writeData.carbsG = sumC;
+            writeData.fatG = sumF;
+            writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            macroTuple = { proteinG: sumP, carbsG: sumC, fatG: sumF };
+          } else {
+            // captured items partial + macros partial → existing complete 이면 보존, 아니면 클리어.
+            // Codex P2 (PR #327 2회차): partial captured 로 existing complete 를 덮어쓰지 않음.
+            if (!tryPreserveExistingItems()) {
+              writeData.items = Prisma.DbNull;
+            }
+          }
+        }
+      } else if (needsSomeMacro && macroTuple === null) {
+        // capturedItems null (repeat miss + est null) → existing complete 이면 보존, 아니면 클리어.
+        if (!tryPreserveExistingItems()) {
+          writeData.items = Prisma.DbNull;
+        }
+      }
 
       let anyWritten = false;
       let kcalWritten = false;
@@ -294,7 +448,16 @@ export async function runFoodKcalBackfill(
           },
           data: writeData,
         });
-        if (updated.count > 0) {
+        // Codex P2 (PR #326 5회차): items-only cleanup write (repeat miss + est null,
+        // items = DbNull) 도 count > 0 반환. 이걸 anyWritten=true 로 카운트하면 result.ok
+        // 증가 → 사실 backfill 실패인데 성공 리포트. real progress (kcal/macros 실제로
+        // 채워짐) 여부로만 anyWritten 결정. items cleanup 은 정합성 유지 fire-and-forget.
+        const realProgress =
+          writeData.estimatedKcal !== undefined ||
+          writeData.proteinG !== undefined ||
+          writeData.carbsG !== undefined ||
+          writeData.fatG !== undefined;
+        if (updated.count > 0 && realProgress) {
           anyWritten = true;
           kcalWritten = writeData.estimatedKcal !== undefined;
         }

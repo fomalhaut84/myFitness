@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
-import { todayKST } from "@/lib/garmin/utils";
+import { todayKST, ymdKST } from "@/lib/garmin/utils";
+import { startOfWeekKST, weekStartKST } from "@/lib/date";
 import LifestyleClient from "./lifestyle-client";
 
 export const dynamic = "force-dynamic";
@@ -12,21 +13,12 @@ function daysAgoLocal(n: number): Date {
   return d;
 }
 
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay(); // 0=일
-  // 일요일(0)이면 6일 전, 나머지는 (day-1)일 전 → 월요일 시작
-  const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
-  return d;
-}
-
 export default async function LifestylePage() {
   const now = new Date();
-  const thisWeekStart = startOfWeek(now);
-  const lastWeekStart = new Date(thisWeekStart);
-  lastWeekStart.setDate(lastWeekStart.getDate() - 7);
+  // #321: KST Mon 00:00 기준 (서버 로컬 TZ 대신). lifestyle 주 요약이 personal-goals
+  // "이번 주 진행" 과 동일한 주 경계를 쓰도록 통일.
+  const thisWeekStart = startOfWeekKST(now);
+  const lastWeekStart = weekStartKST(1, now);
   const twentyEightDaysAgo = daysAgoLocal(27);
   const fourteenDaysAgo = daysAgoLocal(14);
   const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
@@ -46,8 +38,11 @@ export default async function LifestylePage() {
   ]);
 
   function summarizeWeek(activities: typeof thisWeekActivities, weekStart: Date) {
+    // #321 Codex P2: 주 경계는 KST-aligned 인데 그룹핑에 서버 로컬 TZ formatDateLocal 을
+    // 쓰면 UTC 서버에서 KST 오전 활동이 UTC 전날로 갈라져 activeDates 과대 → restDays
+    // 저평가. ymdKST 로 KST 요일 그룹핑 통일.
     const activeDates = new Set(
-      activities.map((a) => formatDateLocal(a.startTime))
+      activities.map((a) => ymdKST(a.startTime))
     );
     const daysInWeek = Math.min(
       7,

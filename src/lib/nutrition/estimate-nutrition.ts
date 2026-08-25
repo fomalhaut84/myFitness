@@ -13,6 +13,10 @@ const DEFAULT_TIMEOUT_MS = 18_000; // 매크로 추가로 응답 길이 증가, 
 const MAX_KCAL_SANITY = 5000;
 const MAX_ITEM_KCAL = 3000;
 const MAX_ITEM_GRAM = 500; // 1항목이 특정 매크로 500g 넘으면 오답.
+// #322 사전 리뷰 P0: MFDS estimator 는 이미 MAX_ITEMS=15 로 fan-out 방어. AI 경로도 동일
+// 상한 — hallucination · adversarial caption 으로 100+ items 반환 시 JSONB storage bloat
+// 방지. 실사용에서 한 meal 이 15개 넘는 케이스는 rare.
+const MAX_ITEMS = 15;
 const MACRO_KCAL_TOLERANCE = 0.25; // P·4 + C·4 + F·9 ≈ kcal ±25%.
 
 export interface NutritionEstimateInput {
@@ -183,6 +187,8 @@ export function parseNutritionResponse(rawText: string): NutritionEstimate | nul
     typeof totalRaw === "number" && Number.isFinite(totalRaw) ? Math.round(totalRaw) : null;
   if (total === null || total < 0 || total > MAX_KCAL_SANITY) return null;
   if (!Array.isArray(body.items) || body.items.length === 0) return null;
+  // #322 사전 리뷰 P0: items 상한. MFDS 와 동일 (MAX_ITEMS=15).
+  if (body.items.length > MAX_ITEMS) return null;
   const rawCount = body.items.length;
   const items = body.items.map(toItem).filter((x): x is NutritionItem => x !== null);
   if (items.length !== rawCount) return null;

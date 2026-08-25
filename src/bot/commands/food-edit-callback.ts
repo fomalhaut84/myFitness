@@ -370,6 +370,9 @@ async function handleDescReply(
         carbsG: null,
         fatG: null,
         nutritionAttempts: null,
+        // #322 Codex P2: description 이 바뀌면 items 도 stale (이전 컨텍스트 breakdown).
+        // null 로 클리어 → backfill 이 새 description 으로 재추정.
+        items: Prisma.DbNull,
       },
     });
 

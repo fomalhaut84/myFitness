@@ -10,6 +10,7 @@ import path from "path";
 import { pipeline } from "stream/promises";
 import type { Bot, Context } from "grammy";
 import prisma from "../prisma";
+import type { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-photo";
@@ -167,6 +168,8 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
         proteinG: estimate?.proteinG ?? null,
         carbsG: estimate?.carbsG ?? null,
         fatG: estimate?.fatG ?? null,
+        // #322: Vision estimator items 저장 (사진 → 항목별 분해).
+        items: (estimate?.items ?? undefined) as Prisma.InputJsonValue | undefined,
       },
       select: { id: true },
     });

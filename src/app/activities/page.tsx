@@ -1,6 +1,8 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import { resolveMaxHR } from "@/lib/fitness/zones";
+import { weekStartKST } from "@/lib/date";
+import { ymdKST } from "@/lib/garmin/utils";
 import ActivitiesClient from "./activities-client";
 
 export const dynamic = "force-dynamic";
@@ -9,15 +11,6 @@ function weeksAgo(n: number): Date {
   const d = new Date();
   d.setDate(d.getDate() - n * 7);
   d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function startOfWeek(date: Date): Date {
-  const d = new Date(date);
-  d.setHours(0, 0, 0, 0);
-  const day = d.getDay();
-  const diff = day === 0 ? 6 : day - 1;
-  d.setDate(d.getDate() - diff);
   return d;
 }
 
@@ -103,14 +96,18 @@ export default async function ActivitiesPage() {
   });
 
   const weeklyVolumes: { weekLabel: string; distanceKm: number; count: number }[] = [];
+  // #321: KST Mon 00:00 기준 (서버 로컬 TZ 대신). 이번 주 = i=0, 지난 주 = i=1 ...
+  // label 은 KST wall-clock 기준 (UTC 서버에서 Date.getMonth/getDate 쓰면 KST Mon 인스턴트가
+  // 전날 UTC 로 보이므로 하루 밀림 → ymdKST 로 KST 날짜 문자열 파싱).
   for (let i = 7; i >= 0; i--) {
-    const wStart = startOfWeek(new Date(now.getTime() - i * 7 * 24 * 60 * 60 * 1000));
+    const wStart = weekStartKST(i, now);
     const wEnd = new Date(wStart.getTime() + 7 * 24 * 60 * 60 * 1000);
     const weekRuns = allRecentRunning.filter(
       (a) => a.startTime >= wStart && a.startTime < wEnd
     );
+    const [, mm, dd] = ymdKST(wStart).split("-");
     weeklyVolumes.push({
-      weekLabel: `${wStart.getMonth() + 1}/${wStart.getDate()}`,
+      weekLabel: `${Number(mm)}/${Number(dd)}`,
       distanceKm: Math.round(weekRuns.reduce((s, a) => s + (a.distance ?? 0), 0) / 100) / 10,
       count: weekRuns.length,
     });
