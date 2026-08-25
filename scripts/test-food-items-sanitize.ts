@@ -231,9 +231,10 @@ console.log("\n== backfill 기존 items 보존 / UI mismatch 뱃지 판정 로�
     );
   assert("existing items complete 판정", existingComplete);
 
-  // UI mismatch 판정: items 합 vs top-level tolerance max(30, 5%) 초과.
+  // UI mismatch 판정: items 합 vs top-level tolerance max(30, round(5%)) 초과.
+  // Codex P2 (PR #327): estimator 와 동일 rounded 계산.
   const kcalMismatch = (topKcal: number, itemsSum: number) =>
-    Math.abs(itemsSum - topKcal) > Math.max(30, topKcal * 0.05);
+    Math.abs(itemsSum - topKcal) > Math.max(30, Math.round(topKcal * 0.05));
   assert(
     "100/70 → mismatch (diff 30 > tol 30 아님 → false, 경계값)",
     !kcalMismatch(100, 70), // diff=30, tol=max(30, 5)=30 → not >
@@ -249,6 +250,13 @@ console.log("\n== backfill 기존 items 보존 / UI mismatch 뱃지 판정 로�
   assert(
     "1000/970 → mismatch false (diff 30 = tol 50)",
     !kcalMismatch(1000, 970),
+  );
+  // Codex P2 (PR #327): estimator 정합 회귀. 610/579 → estimator tolerance
+  // max(30, round(610*0.05)=31) = 31 (통과), UI 도 동일 tol=31 → false (뱃지 안 뜸).
+  // 이전 unrounded (30.5) 로직은 31 > 30.5 → true 오판정.
+  assert(
+    "610/579 → mismatch false (estimator tolerance 31 정합, false positive 방지)",
+    !kcalMismatch(610, 579),
   );
 }
 

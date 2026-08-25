@@ -87,13 +87,16 @@ function FoodCard({ item }: { item: NutritionFoodItem }) {
   // #322 Codex P2 (릴리즈 PR #325): items sum vs top-level kcal mismatch 뱃지.
   // estimator 는 tolerance max(30, 5%) 이내면 통과 → 저장 후 UI 확장 시 100 kcal top-level +
   // items 합 70 kcal 같은 시각 mismatch 가능. 사용자가 "정정된 총합" 임을 인지하도록 표시.
+  // Codex P2 (PR #327): estimator (parseNutritionResponse) 는 Math.round(total * 0.05) 로
+  // 계산하니 UI 도 동일하게. unrounded 5% 쓰면 610/579 (diff 31, estimator tol 31 통과) 를
+  // UI 만 mismatch (tol 30.5) 로 오판정 → false positive 뱃지.
   const itemsKcalSum = hasBreakdown
     ? item.items!.reduce((s, it) => s + (it.kcal ?? 0), 0)
     : null;
   const kcalMismatch =
     itemsKcalSum !== null &&
     item.kcal !== null &&
-    Math.abs(itemsKcalSum - item.kcal) > Math.max(30, item.kcal * 0.05);
+    Math.abs(itemsKcalSum - item.kcal) > Math.max(30, Math.round(item.kcal * 0.05));
   return (
     <div
       className={`px-4 py-3 flex flex-col gap-1.5 ${
