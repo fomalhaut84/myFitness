@@ -311,14 +311,27 @@ export async function runFoodKcalBackfill(
         writeData.fatG = macroTuple.fatG;
       }
       // #322 items 저장 — capturedItems 확보되면 retained kcal 로 스케일 후 저장.
-      // Codex P2 (릴리즈 PR #325 / #327 3회차): 세 케이스:
-      //   A) capturedItems complete → 저장 + (macros 부족하면) top-level 도 items 로 파생
-      //   B) capturedItems partial + existing items complete → existing 보존 + 파생 (덮어쓰기 X)
-      //   C) capturedItems partial + existing partial/null → DbNull 클리어 (mismatch 방지)
-      //   D) capturedItems null + macros partial → B/C 정책 동일 (existing preserve 시도)
+      // Codex P2 (릴리즈 PR #325 / #327 2/3회차): 5 케이스:
+      //   A) captured complete + macros complete → captured 저장
+      //   B) captured partial + macros complete → existing complete 이면 유지, 아니면 partial 저장
+      //   C) captured complete + macros partial → top-level 도 items 로 파생
+      //   D) captured partial + macros partial → existing complete 이면 preserve, 아니면 DbNull
+      //   E) captured null + macros partial → existing complete 이면 preserve, 아니면 DbNull
       //
-      // Helper: existing DB items 가 complete 이면 유지 + top-level 재산출, 아니면 클리어.
-      // 반환값은 "기존 items 활용 완료" 여부. false 면 caller 가 별도 처리.
+      // 헬퍼 (1): existing DB items 가 complete 인지.
+      const existingIsComplete = (): boolean => {
+        const existingItems = sanitizeFoodItemBreakdown(r.items);
+        return (
+          existingItems !== null &&
+          existingItems.every(
+            (it) =>
+              it.proteinG !== null &&
+              it.carbsG !== null &&
+              it.fatG !== null,
+          )
+        );
+      };
+      // 헬퍼 (2): existing complete 이면 유지 + top-level 재산출. 반환값은 "활용 완료" 여부.
       const tryPreserveExistingItems = (): boolean => {
         if (kcal === null) return false;
         const existingItems = sanitizeFoodItemBreakdown(r.items);
@@ -377,7 +390,16 @@ export async function runFoodKcalBackfill(
             capturedSourceKcal !== null &&
             (capturedSourceKcal > 0 || capturedSourceKcal === kcal);
           if (macroTuple !== null) {
-            writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            // macros complete → items 정합화.
+            // Codex P2 (PR #327 3회차): captured items 가 partial 이면 existing complete 를
+            // 덮어쓰지 않음. captured complete 이면 저장 (최신 우선), captured partial +
+            // existing partial/null 이면 captured 저장 (없는 것보단 있는 게 낫다).
+            if (itemsComplete) {
+              writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            } else if (!existingIsComplete()) {
+              writeData.items = scaledItems as unknown as Prisma.InputJsonValue;
+            }
+            // else: existing complete + captured partial → 손대지 않음 (preserve).
           } else if (itemsComplete && needsSomeMacro && canDeriveTopLevel) {
             const round1 = (v: number) => Math.round(v * 10) / 10;
             const sumP = round1(
