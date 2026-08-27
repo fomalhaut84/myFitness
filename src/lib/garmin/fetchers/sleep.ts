@@ -2,6 +2,7 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, todayKSTString, withRateLimit } from "../utils";
+import { extractSleepSpO2 } from "./sleep-spo2";
 
 export async function syncSleep(
   client: GarminConnect,
@@ -53,6 +54,8 @@ export async function syncSleep(
           }
         : null;
 
+      const spo2 = extractSleepSpO2(sleepData);
+
       const data = {
         sleepStart: new Date(dto.sleepStartTimestampGMT),
         sleepEnd: new Date(dto.sleepEndTimestampGMT),
@@ -71,10 +74,9 @@ export async function syncSleep(
           : null,
         sleepScore: dto.sleepScores?.overall?.value ?? null,
         // M2: 추가 지표
-        avgSpO2: toFloat(
-          (sleepData as unknown as Record<string, unknown>).averageSpo2 ??
-          (dto as unknown as Record<string, unknown>).averageSpo2
-        ),
+        avgSpO2: spo2.avg,
+        lowestSpO2: spo2.lowest,
+        highestSpO2: spo2.highest,
         avgRespiration: toFloat(dto.averageRespirationValue),
         lowestRespiration: toFloat(dto.lowestRespirationValue),
         highestRespiration: toFloat(dto.highestRespirationValue),

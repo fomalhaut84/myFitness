@@ -1,5 +1,6 @@
 import "dotenv/config";
 import { PrismaClient } from "../src/generated/prisma/client";
+import { extractSleepSpO2 } from "../src/lib/garmin/fetchers/sleep-spo2";
 
 const prisma = new PrismaClient();
 
@@ -41,8 +42,18 @@ async function backfillActivities() {
 
 async function backfillSleep() {
   console.log("\n=== SleepRecord M2 필드 backfill ===");
+  // #338: SpO2 는 파싱 키 오타로 전 기간 null 이었다. 호흡수는 이미 백필된 행이 많아
+  // avgRespiration 조건만으로는 그 행들을 다시 훑지 못하므로 SpO2 결측도 조건에 포함한다.
+  // 실제로 SpO2 를 측정하지 않은 야간은 매 실행마다 재선택되지만 update 는 멱등이라 무해.
   const records = await prisma.sleepRecord.findMany({
-    where: { avgRespiration: null },
+    where: {
+      OR: [
+        { avgRespiration: null },
+        { avgSpO2: null },
+        { lowestSpO2: null },
+        { highestSpO2: null },
+      ],
+    },
     select: { id: true, rawData: true },
   });
 
@@ -79,10 +90,15 @@ async function backfillSleep() {
         }
       : undefined;
 
+    // fetcher 와 동일한 파싱 경로를 재사용 — 키 오타가 한쪽에만 남는 것을 방지.
+    const spo2 = extractSleepSpO2(raw);
+
     await prisma.sleepRecord.update({
       where: { id: r.id },
       data: {
-        avgSpO2: toFloat(raw.averageSpo2 ?? dto.averageSpo2),
+        avgSpO2: spo2.avg,
+        lowestSpO2: spo2.lowest,
+        highestSpO2: spo2.highest,
         avgRespiration: toFloat(dto.averageRespirationValue),
         lowestRespiration: toFloat(dto.lowestRespirationValue),
         highestRespiration: toFloat(dto.highestRespirationValue),
