@@ -60,7 +60,7 @@
     - 모든 items 의 필드가 non-null → `top[field] = sum` (0.1 단위 round).
     - 어느 item 이라도 필드 null → `top[field] = null` (부분 미측정 propagate).
     - Zero-summing null 은 undercount 유발이라 금지. 기존 값 유지도 stale 라 금지.
-    - Top-level null 결과이면 backfill 큐에 재진입 (`nutritionAttempts` 리셋 안 함 — items 편집으로 attempts 이력 유지).
+    - Top-level null 결과이면 backfill 큐에 재진입. **`nutritionAttempts` 는 리셋** (Round 18 Codex P2 재재재재재지적: `runFoodKcalBackfill` (`backfill.ts:58-74`) 는 kcal-present macro-partial 행에서 attempts >= MAX 이면 excluded. terminal 상태 row 는 사용자 편집으로 null 생겨도 재진입 못함. items 편집은 **user-induced new estimation context** 이므로 attempts 새로 부여 정당). 원래 spec 이 "이력 유지" 로 잘못 명시된 것 정정.
 - **주의 (Codex P2 재지적)**: items 는 whole-array JSON write 라 concurrent item edit or backfill 과 race → silent overwrite. 기존 `applyKcalCorrection` 은 `FoodLog.updatedAt` snapshot (client 는 `expectedRevision` 전달) 로 409 conflict 반환. items endpoint 도 동일 conditional-update 계약 필요 (client 가 draft 편집 열 시점 updatedAt 전송 → server updateMany where updatedAt 매칭).
 - **주의 (Codex P2 재재지적, backfill 쪽 race)**: endpoint 만 revision guard 해도 `backfill.ts:442-449` 의 update 는 description/mealType/kcal/macros 스냅샷만 사용해 `updatedAt` 미포함. 사용자 item rename or derived total 변경 없는 편집 시 stale backfill 이 endpoint 성공 후 덮어씀. **backfill update 절에도 `updatedAt` snapshot 매칭 추가** 필요.
 
