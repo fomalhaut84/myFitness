@@ -51,6 +51,7 @@
 - **배경**: v2.25.0 items breakdown 저장됐지만 편집은 항상 log 전체 재기록. 비빔밥/계란국 중 계란국만 삭제/정정 불가.
 - **스코프**: `NutritionFoodList` 확장 카드 각 item 옆 편집/삭제 버튼. `PATCH /api/food/[id]/items` 신설. items 개별 write 시 top-level 재산출 정책 필요 (v2.25.0 스케일 로직 재활용).
 - **주의 (Codex P2)**: top-level kcal 이 바뀌면 그 날의 `DailySummary.estimatedIntakeCalories` / `calorieBalance` 도 stale. 기존 whole-log PATCH (`src/app/api/food/[id]/route.ts:206-223`) 는 `recalculateCalorieBalance` 호출 + 실패 시 `markStaleRecalcDate` 로 큐잉. 새 items endpoint 도 동일 후처리 포함 필수.
+- **주의 (Codex P2 재지적)**: items 는 whole-array JSON write 라 concurrent item edit or backfill 과 race → silent overwrite. 기존 `applyKcalCorrection` 은 `FoodLog.updatedAt` snapshot (client 는 `expectedRevision` 전달) 로 409 conflict 반환. items endpoint 도 동일 conditional-update 계약 필요 (client 가 draft 편집 열 시점 updatedAt 전송 → server updateMany where updatedAt 매칭).
 
 ### B-4. Estimator provenance 저장 + Items 별 source 표시
 - **배경**: 현 `FoodLog` 스키마에는 source 필드가 **없음** (사전 리뷰 지적). estimator notes 는 응답으로만 전송되고 저장 안 됨. 개별 item 이 어느 source 에서 왔는지 알 수 없음.
@@ -60,7 +61,7 @@
      - **Log 단위** (`FoodLog` 신규 컬럼): `viaRepeat: Boolean @default(false)` — 이 log 가 `repeat-lookup` 로 이전 로그 kcal/macros/items 를 재사용했는지. items 가 null 인 legacy source row (repeat hit) 에도 flag 저장 가능해야 하므로 item JSON 이 아닌 **log-level 컬럼** 로 분리. Prisma migration 필요 (`ALTER TABLE "FoodLog" ADD COLUMN "viaRepeat" BOOLEAN NOT NULL DEFAULT false`).
      - 예: MFDS 로 처음 계산 + 오늘 재기록 = `items[i].source="mfds"`, `log.viaRepeat=true`.
      - `source` 를 "repeat" 로 세팅하면 원본 estimator 정보 loss + repeat 뱃지 unreachable 방지.
-  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 (mfds/ai/vision) 붙여 저장. `repeat-lookup` hit 는 원본 items[i].source 를 그대로 전파하면서 `log.viaRepeat = true` 로 마킹.
+  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 (mfds/ai/vision) 붙여 저장. `repeat-lookup` hit 는 원본 items[i].source 를 그대로 전파. `log.viaRepeat=true` 세팅은 **실제로 hit 의 kcal / macros / items 중 하나 이상이 write 에 채택된 경우만** — hit 발생 자체가 아니라 채택 여부 기준 (Codex P2 재재지적). backfill 에서 partial hit 이 rejected 되고 MFDS/AI 로 다시 채워진 경우 viaRepeat=false 유지.
   3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요 (source 미제공/null 이면 그대로 통과, invalid enum 값이면 null 로 normalize).
   4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시. 카드 헤더 (log 단위) 에 `log.viaRepeat===true` 이면 "재사용" 배지 별도 노출.
   5. **회귀 테스트**: `scripts/test-food-items-sanitize.ts` 에 source 보존 · null 통과 · invalid normalize 케이스 추가. legacy shape (source 필드 자체 없음) 이 sanitize 통과 검증.
@@ -86,6 +87,7 @@
 ### C-3. Lifestyle 페이지 직접 진입도 date-aware
 - **배경**: v2.26.0 lifestyle 은 `?date=` 지원하지만 이 페이지 자체엔 date nav 없음. 사용자가 lifestyle 진입 후 다른 날짜 편집하려면 URL 수동 편집 or nutrition 페이지 우회.
 - **스코프**: `TodayFoodSection` 헤더 옆에도 nav (또는 `NutritionDateNav` 재사용). 스코프 좁게: nutrition 링크가 primary entrypoint 로 유지될지 사용자 판단 필요.
+- **주의 (Codex P2)**: `NutritionDateNav.navigateTo` 는 `/nutrition` pathname 하드코딩. lifestyle 페이지에서 재사용하면 매 클릭마다 lifestyle 벗어남 → 목적 실패. 재사용 접근 시 `basePath` prop (또는 `usePathname()` 기반 route-neutral) 로 리팩터 필요. 별도 컴포넌트 신설 (`DateNav` shared) 도 대안.
 
 ---
 
