@@ -90,3 +90,27 @@ export function fmtSpO2(
       : "";
   return `${Math.round(avg)}%${range}`;
 }
+
+/**
+ * epoch ms(또는 Date) → KST "HH:MM".
+ *
+ * ⚠️ `value` 가 `number | Date` 인 이유 (#342, Codex P1): Recharts 의
+ * `scale="time"` 축은 내부적으로 d3 `scaleTime` 을 쓰고, `.ticks()` 는 도메인이
+ * 숫자여도 **Date 객체**를 반환한다. 이 값을 숫자로 가정하고 `value + 9h` 를 하면
+ * `Date + number` 가 **문자열 결합**이 되고, 그 문자열을 다시 파싱하면 원래 instant 로
+ * 돌아와 오프셋이 통째로 사라진다 → 축은 UTC, 헤더는 KST 로 9시간 어긋난다.
+ * 반드시 `getTime()` 으로 정규화한 뒤 오프셋을 더한다.
+ */
+export function formatEpochKST(value: number | Date | string): string {
+  const ms =
+    value instanceof Date
+      ? value.getTime()
+      : typeof value === "number"
+        ? value
+        : Number(value);
+  if (!Number.isFinite(ms)) return "-";
+  const kst = new Date(ms + 9 * 60 * 60 * 1000);
+  const h = String(kst.getUTCHours()).padStart(2, "0");
+  const m = String(kst.getUTCMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
+}

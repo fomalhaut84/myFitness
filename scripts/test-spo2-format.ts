@@ -5,7 +5,7 @@
 //
 // Run: npx tsx scripts/test-spo2-format.ts
 
-import { fmtSpO2 } from "@/lib/format";
+import { fmtSpO2, formatEpochKST } from "@/lib/format";
 import {
   comparablePrevSpO2,
   resolveSpO2Source,
@@ -115,6 +115,42 @@ assert(
   "오늘 출처가 null 이면 비교 불가",
   comparablePrevSpO2(null, null, 92) === null,
 );
+
+console.log("\n== formatEpochKST: Date tick 정규화 (Codex P1 회귀) ==");
+{
+  // 회귀: Recharts scale="time" 축은 d3 scaleTime 을 쓰고 .ticks() 가 Date 를 반환한다.
+  // 숫자로 가정하고 `value + 9h` 하면 Date + number 가 문자열 결합이 되어 오프셋이
+  // 사라지고 축이 UTC 로 표시됐다 (헤더는 KST → 9시간 불일치).
+  const ms = Date.UTC(2026, 3, 1, 15, 0, 0); // = 2026-04-02 00:00 KST
+  assert("number 입력 → '00:00'", formatEpochKST(ms) === "00:00", formatEpochKST(ms));
+  assert(
+    "Date 입력도 동일하게 '00:00' (UTC '15:00' 아님)",
+    formatEpochKST(new Date(ms)) === "00:00",
+    formatEpochKST(new Date(ms)),
+  );
+  assert(
+    "number 와 Date 결과 일치",
+    formatEpochKST(ms) === formatEpochKST(new Date(ms)),
+  );
+}
+{
+  const ms = Date.UTC(2026, 3, 1, 14, 34, 0); // = 23:34 KST
+  assert("14:34 UTC → 23:34 KST", formatEpochKST(ms) === "23:34", formatEpochKST(ms));
+  assert(
+    "Date 로도 23:34",
+    formatEpochKST(new Date(ms)) === "23:34",
+    formatEpochKST(new Date(ms)),
+  );
+}
+{
+  // 날짜 경계 넘김
+  const ms = Date.UTC(2026, 3, 1, 16, 30, 0); // = 다음날 01:30 KST
+  assert("자정 넘김 → 01:30", formatEpochKST(ms) === "01:30", formatEpochKST(ms));
+}
+assert("숫자 문자열도 처리", formatEpochKST(String(Date.UTC(2026, 3, 1, 15, 0, 0))) === "00:00");
+assert("NaN → '-'", formatEpochKST(NaN) === "-");
+assert("Invalid Date → '-'", formatEpochKST(new Date("nope")) === "-");
+assert("파싱 불가 문자열 → '-'", formatEpochKST("nope") === "-");
 
 console.log(failures === 0 ? "\n✅ 전체 통과" : `\n❌ 실패 ${failures}건`);
 process.exit(failures === 0 ? 0 : 1);

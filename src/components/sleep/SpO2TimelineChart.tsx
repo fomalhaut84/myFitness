@@ -11,6 +11,7 @@ import {
   ReferenceDot,
 } from "recharts";
 import { buildSpO2ChartSeries, type SpO2Point } from "@/lib/garmin/sleep-spo2-series";
+import { formatEpochKST } from "@/lib/format";
 
 // docs/designs/342-sleep-spo2-chart/design-notes.md 참조.
 // sky-400 — 산소/호흡의 냉색. SleepScoreChart 의 바이올렛(#a78bfa)과 의도적으로 분리해
@@ -23,13 +24,6 @@ const AXIS = "#525252";
 
 interface SpO2TimelineChartProps {
   series: SpO2Point[];
-}
-
-function fmtKST(ms: number): string {
-  const kst = new Date(ms + 9 * 60 * 60 * 1000);
-  const h = String(kst.getUTCHours()).padStart(2, "0");
-  const m = String(kst.getUTCMinutes()).padStart(2, "0");
-  return `${h}:${m}`;
 }
 
 export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
@@ -60,7 +54,7 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <div className="text-[11px] text-dim tracking-wider uppercase">야간 SpO2</div>
         <div className="text-[11px] text-sub font-[family-name:var(--font-geist-mono)]">
-          최저 {Math.round(min)}% · {fmtKST(lowestAt)}
+          최저 {Math.round(min)}% · {formatEpochKST(lowestAt)}
         </div>
       </div>
 
@@ -78,7 +72,7 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
             type="number"
             scale="time"
             domain={["dataMin", "dataMax"]}
-            tickFormatter={fmtKST}
+            tickFormatter={formatEpochKST}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 9, fill: AXIS }}
@@ -120,8 +114,11 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
               typeof value === "number" ? `${Math.round(value)}%` : String(value),
               "SpO2",
             ]}
+            // 축 tick 과 마찬가지로 Date 가 올 수 있다 — formatEpochKST 가 정규화한다.
             labelFormatter={(label) =>
-              typeof label === "number" ? fmtKST(label) : String(label)
+              typeof label === "number" || label instanceof Date
+                ? formatEpochKST(label)
+                : String(label)
             }
           />
 
