@@ -3,6 +3,9 @@
 import { useState } from "react";
 import DOMPurify from "dompurify";
 import { marked } from "marked";
+import { fmtSpO2 } from "@/lib/format";
+import SpO2TimelineChart from "@/components/sleep/SpO2TimelineChart";
+import type { SpO2Point } from "@/lib/garmin/sleep-spo2-series";
 
 interface SleepData {
   date: string;
@@ -29,13 +32,6 @@ interface SleepData {
 
 function fmtSleep(min: number): string {
   return `${Math.floor(min / 60)}h ${min % 60}m`;
-}
-
-/** AI 평가 프롬프트용. 결측을 "없음%" 같은 어색한 문구로 흘리지 않는다. */
-function fmtSpO2(avg: number | null, lowest: number | null): string {
-  if (avg == null) return "측정없음";
-  const range = lowest != null ? ` (최저 ${lowest.toFixed(0)}%)` : "";
-  return `${avg.toFixed(0)}%${range}`;
 }
 
 function fmtTime(iso: string): string {
@@ -70,7 +66,13 @@ const SCORE_LABELS: Record<string, string> = {
   POOR: "부족",
 };
 
-export default function SleepDetailClient({ record }: { record: SleepData }) {
+export default function SleepDetailClient({
+  record,
+  spo2Series,
+}: {
+  record: SleepData;
+  spo2Series: SpO2Point[];
+}) {
   const [aiEval, setAiEval] = useState<string | null>(null);
   const [aiLoading, setAiLoading] = useState(false);
 
@@ -93,7 +95,7 @@ export default function SleepDetailClient({ record }: { record: SleepData }) {
           prompt: `${record.date} 수면을 평가해줘: 총 ${fmtSleep(record.totalSleep)}, 점수 ${record.sleepScore ?? "없음"}, ` +
             `깊은수면 ${record.deepSleep ?? 0}분, REM ${record.remSleep ?? 0}분, ` +
             `HRV ${record.hrvOvernight ? Math.round(record.hrvOvernight) : "없음"}ms, ` +
-            `SpO2 ${fmtSpO2(record.avgSpO2, record.lowestSpO2)}, 안정시HR ${record.restingHR ?? "없음"}, ` +
+            `SpO2 ${fmtSpO2(record.avgSpO2, record.lowestSpO2, { fallback: "측정없음" })}, 안정시HR ${record.restingHR ?? "없음"}, ` +
             `배터리충전 ${record.bodyBatteryChange ?? "없음"}. 3줄 이내로 평가해줘.`,
           category: "sleep",
         }),
@@ -241,6 +243,10 @@ export default function SleepDetailClient({ record }: { record: SleepData }) {
           )}
         </div>
       </div>
+
+      {/* 야간 SpO2 추이 — 세 숫자가 답하지 못하는 "언제 · 얼마나 오래" 를 보여준다.
+          데이터 없는 야간은 컴포넌트가 스스로 렌더하지 않는다. */}
+      <SpO2TimelineChart series={spo2Series} />
 
       {/* AI 평가 */}
       <div>

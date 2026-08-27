@@ -5,6 +5,9 @@ interface SummaryCardProps {
   prevValue: number | null;
   icon: React.ReactNode;
   invertDelta?: boolean; // true일 때 감소가 좋음 (심박)
+  // #341: delta 를 낼 수 없는 이유가 "데이터 없음" 이 아닐 때 쓰는 문구.
+  // 값은 있는데 전일과 비교가 불가한 경우 (예: SpO2 측정 종류 불일치).
+  deltaNote?: string;
 }
 
 export default function SummaryCard({
@@ -14,6 +17,7 @@ export default function SummaryCard({
   prevValue,
   icon,
   invertDelta = false,
+  deltaNote,
 }: SummaryCardProps) {
   const delta =
     value !== null && prevValue !== null ? value - prevValue : null;
@@ -79,7 +83,9 @@ export default function SummaryCard({
 
       {delta === null && (
         <div className="mt-2">
-          <span className="text-[11px] text-dim">데이터 없음</span>
+          <span className="text-[11px] text-dim">
+            {deltaNote ?? (value !== null ? "전일 비교 없음" : "데이터 없음")}
+          </span>
         </div>
       )}
     </div>

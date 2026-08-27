@@ -1,5 +1,6 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+import { resolveSpO2Source, resolveSpO2Value } from "@/lib/spo2-source";
 import DashboardClient from "./dashboard-client";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
 import TodayWorkoutHero from "./components/TodayWorkoutHero";
@@ -85,7 +86,10 @@ export default async function DashboardPage() {
     restingHR: todaySummary?.restingHR ?? null,
     sleepScore: todaySleep?.sleepScore ?? null,
     bodyBattery: todaySummary?.bodyBattery ?? null,
-    spo2: todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2 ?? null,
+    // #341: 수면 SpO2(야간)와 주간 SpO2(활동 중 산발 측정)는 측정 환경이 달라 값의
+    // 의미가 다르다. 폴백을 유지하되 출처를 숨기지 않는다. 판정은 @/lib/spo2-source 단일 소스.
+    spo2: resolveSpO2Value(todaySleep?.avgSpO2, todaySummary?.avgSpo2),
+    spo2Source: resolveSpO2Source(todaySleep?.avgSpO2, todaySummary?.avgSpo2),
     intakeCalories: todaySummary?.estimatedIntakeCalories ?? null,
     availableCalories: todaySummary?.availableCalories ?? null,
     calorieBalance: todaySummary?.calorieBalance ?? null,
@@ -97,7 +101,8 @@ export default async function DashboardPage() {
     restingHR: yesterdaySummary?.restingHR ?? null,
     sleepScore: yesterdaySleep?.sleepScore ?? null,
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
-    spo2: yesterdaySleep?.avgSpO2 ?? yesterdaySummary?.avgSpo2 ?? null,
+    spo2: resolveSpO2Value(yesterdaySleep?.avgSpO2, yesterdaySummary?.avgSpo2),
+    spo2Source: resolveSpO2Source(yesterdaySleep?.avgSpO2, yesterdaySummary?.avgSpo2),
     intakeCalories: yesterdaySummary?.estimatedIntakeCalories ?? null,
     availableCalories: yesterdaySummary?.availableCalories ?? null,
     calorieBalance: yesterdaySummary?.calorieBalance ?? null,

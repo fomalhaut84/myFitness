@@ -1,6 +1,7 @@
 import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import SleepDetailClient from "./sleep-detail-client";
+import { extractSleepSpO2Series } from "@/lib/garmin/sleep-spo2-series";
 import Link from "next/link";
 
 export const dynamic = "force-dynamic";
@@ -31,6 +32,10 @@ export default async function SleepDetailPage({ params }: PageProps) {
 
   if (!record) notFound();
 
+  // #342: epoch SpO2 는 rawData 에 이미 보존되어 있다 (스키마 변경 불필요).
+  // 원본 element 는 7개 필드 × 최대 463개이므로 { t, v } 로 축약해 전달한다.
+  const spo2Series = extractSleepSpO2Series(record.rawData);
+
   return (
     <div>
       <Link
@@ -44,6 +49,7 @@ export default async function SleepDetailPage({ params }: PageProps) {
       </Link>
 
       <SleepDetailClient
+        spo2Series={spo2Series}
         record={{
           date: dateStr,
           totalSleep: record.totalSleep,

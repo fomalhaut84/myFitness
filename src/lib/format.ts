@@ -66,3 +66,51 @@ export function formatDateTime(isoStr: string): string {
   const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
   return `${date} ${time}`;
 }
+
+/**
+ * SpO2 표시 — 정수 % (도메인 룰: 심박수 bpm 과 동일 취급).
+ *
+ * #341: 봇과 웹이 각자 구현하던 것을 단일 소스로 통합. 최저값은 야간 저산소 판단의
+ * 기준이라 있으면 병기한다.
+ *
+ * @param lowest 있으면 ` (최저 N%)` 병기
+ * @param opts.fallback avg 결측 시 문구 (기본 "-")
+ */
+export function fmtSpO2(
+  avg: number | null | undefined,
+  lowest?: number | null,
+  opts?: { fallback?: string },
+): string {
+  if (avg === null || avg === undefined || !Number.isFinite(avg)) {
+    return opts?.fallback ?? "-";
+  }
+  const range =
+    lowest !== null && lowest !== undefined && Number.isFinite(lowest)
+      ? ` (최저 ${Math.round(lowest)}%)`
+      : "";
+  return `${Math.round(avg)}%${range}`;
+}
+
+/**
+ * epoch ms(또는 Date) → KST "HH:MM".
+ *
+ * ⚠️ `value` 가 `number | Date` 인 이유 (#342, Codex P1): Recharts 의
+ * `scale="time"` 축은 내부적으로 d3 `scaleTime` 을 쓰고, `.ticks()` 는 도메인이
+ * 숫자여도 **Date 객체**를 반환한다. 이 값을 숫자로 가정하고 `value + 9h` 를 하면
+ * `Date + number` 가 **문자열 결합**이 되고, 그 문자열을 다시 파싱하면 원래 instant 로
+ * 돌아와 오프셋이 통째로 사라진다 → 축은 UTC, 헤더는 KST 로 9시간 어긋난다.
+ * 반드시 `getTime()` 으로 정규화한 뒤 오프셋을 더한다.
+ */
+export function formatEpochKST(value: number | Date | string): string {
+  const ms =
+    value instanceof Date
+      ? value.getTime()
+      : typeof value === "number"
+        ? value
+        : Number(value);
+  if (!Number.isFinite(ms)) return "-";
+  const kst = new Date(ms + 9 * 60 * 60 * 1000);
+  const h = String(kst.getUTCHours()).padStart(2, "0");
+  const m = String(kst.getUTCMinutes()).padStart(2, "0");
+  return `${h}:${m}`;
+}
