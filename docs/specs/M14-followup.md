@@ -28,7 +28,7 @@
 - **배경**: `/nutrition?date=X` 는 카드/리스트만 selected 날짜 · 트렌드/도넛/근손실 위험 (7일 aggregate) 은 오늘 기준 유지. 스코프 축소된 상태.
 - **스코프**: `page.tsx` fetch (`aggregateRecentMacros`, `activities7d`, `latestBalances`) 에 selected 날짜 기준 옵션. 근손실 위험 assessor 도 재계산. UI 뷰 라벨 "최근 7일" → "선택 날짜 기준 7일" 로 조정.
 - **결정 필요**: 도넛 "오늘" 탭도 selected 날짜로 재라벨링 vs "선택 날짜" 로 아예 rename (C-2 와 함께).
-- **주의 (사전 리뷰 지적)**: `latestWeight` (`page.tsx:82`) 는 지금 항상 `orderBy date desc` 최신 row 반환 → 과거 날짜 조회 시 미래/현재 weight 가 `protein-per-kg` 산출과 근손실 assessor 에 섞임. 이 스코프에 반드시 "선택 날짜 이전 최신 weight" (`where: { date: { lte: selectedEnd } }`) 조회로 교체 포함.
+- **주의 (사전 리뷰 지적)**: `latestWeight` (`page.tsx:82`) 는 지금 항상 `orderBy date desc` 최신 row 반환 → 과거 날짜 조회 시 미래/현재 weight 가 `protein-per-kg` 산출과 근손실 assessor 에 섞임. 이 스코프에 반드시 "선택 날짜 당일까지의 최신 weight" 조회로 교체 포함. **Predicate 는 exclusive upper `where: { date: { lt: selectedEnd } }` 사용** — `lte: selectedEnd` 는 selectedEnd (다음 KST midnight) 와 `startOfDay` 정규화된 다음 날 row 가 정확히 같은 instant 라 다음 날 measurement 포함하는 boundary leak (Codex P2 재재지적).
 - **주의 (Codex P2 재지적)**: `todayLogsForDonut` (`page.tsx:178-192`) 는 v2.26.0 에서 도넛 "오늘" 뷰가 항상 실제 오늘 데이터로 남도록 하드코딩. A-2 스코프에 이 fetch 도 반드시 포함해 `selectedLogs` 재사용 (isToday 이면 그대로) 또는 selected day 범위로 재fetch 하도록 전환. C-2 (도넛 label date-aware) 만 하고 이 fetch 를 남기면 label 은 selected 인데 데이터는 오늘 → mismatch.
 
 ### A-3. Bot 명령으로 과거 식단 열람
@@ -54,10 +54,14 @@
 ### B-4. Estimator provenance 저장 + Items 별 source 표시
 - **배경**: 현 `FoodLog` 스키마에는 source 필드가 **없음** (사전 리뷰 지적). estimator notes 는 응답으로만 전송되고 저장 안 됨. 개별 item 이 어느 source 에서 왔는지 알 수 없음.
 - **스코프**:
-  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 **optional** `source: "mfds" | "ai" | "vision" | "repeat" | null` 필드. `null` (legacy fallback) 도 명시적으로 sanitize 통과해야 v2.25.0 이후 저장된 기존 items breakdown 이 UI 에서 사라지지 않음. Prisma schema 는 nullable JSON 이라 별도 migration 없이 shape 확장 가능 (기존 row 자동 호환).
-  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파.
+  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 두 optional 필드 (Codex P2 재재지적: repeat semantic 분리):
+     - `source: "mfds" | "ai" | "vision" | null` — **원본 estimator** (item 을 처음 산출한 곳). null = legacy fallback.
+     - `viaRepeat?: boolean` — 이 log 가 `repeat-lookup` 로 이전 로그 items 를 재사용했는지 (source 는 원본 그대로).
+     - 이 분리로 "MFDS 로 처음 계산했고 오늘 재기록 이라 repeat 재사용" = `source:"mfds", viaRepeat:true` 로 표현 가능. 만약 `source` 를 "repeat" 로 세팅하면 원본 estimator 정보 loss + repeat 뱃지 unreachable (원본 estimator 만 저장되어 repeat 뱃지가 붙는 시점이 없음).
+     - Prisma schema 는 nullable JSON 이라 별도 migration 없이 shape 확장 가능 (기존 row 자동 호환).
+  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 (mfds/ai/vision) 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파하면서 log 자체에 `viaRepeat:true` 마킹.
   3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요 (source 미제공/null 이면 그대로 통과, invalid enum 값이면 null 로 normalize).
-  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, Repeat: 회색, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시.
+  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시. 카드 헤더 (top-level) 에 `viaRepeat:true` 이면 "재사용" 배지 별도 노출 (item 별이 아니라 log 단위).
   5. **회귀 테스트**: `scripts/test-food-items-sanitize.ts` 에 source 보존 · null 통과 · invalid normalize 케이스 추가. legacy shape (source 필드 자체 없음) 이 sanitize 통과 검증.
 - **주의**: 스키마 · write path · helper · UI · 테스트 5단 변경. 우선순위 B 유지하되 스코프 큼. legacy row 하위호환 정책 (source optional + null fallback) 이 스코프 확정의 핵심.
 
