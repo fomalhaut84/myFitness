@@ -50,18 +50,19 @@
 ### B-3. Items 개별 편집 · 삭제
 - **배경**: v2.25.0 items breakdown 저장됐지만 편집은 항상 log 전체 재기록. 비빔밥/계란국 중 계란국만 삭제/정정 불가.
 - **스코프**: `NutritionFoodList` 확장 카드 각 item 옆 편집/삭제 버튼. `PATCH /api/food/[id]/items` 신설. items 개별 write 시 top-level 재산출 정책 필요 (v2.25.0 스케일 로직 재활용).
+- **주의 (Codex P2)**: top-level kcal 이 바뀌면 그 날의 `DailySummary.estimatedIntakeCalories` / `calorieBalance` 도 stale. 기존 whole-log PATCH (`src/app/api/food/[id]/route.ts:206-223`) 는 `recalculateCalorieBalance` 호출 + 실패 시 `markStaleRecalcDate` 로 큐잉. 새 items endpoint 도 동일 후처리 포함 필수.
 
 ### B-4. Estimator provenance 저장 + Items 별 source 표시
 - **배경**: 현 `FoodLog` 스키마에는 source 필드가 **없음** (사전 리뷰 지적). estimator notes 는 응답으로만 전송되고 저장 안 됨. 개별 item 이 어느 source 에서 왔는지 알 수 없음.
 - **스코프**:
-  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 두 optional 필드 (Codex P2 재재지적: repeat semantic 분리):
-     - `source: "mfds" | "ai" | "vision" | null` — **원본 estimator** (item 을 처음 산출한 곳). null = legacy fallback.
-     - `viaRepeat?: boolean` — 이 log 가 `repeat-lookup` 로 이전 로그 items 를 재사용했는지 (source 는 원본 그대로).
-     - 이 분리로 "MFDS 로 처음 계산했고 오늘 재기록 이라 repeat 재사용" = `source:"mfds", viaRepeat:true` 로 표현 가능. 만약 `source` 를 "repeat" 로 세팅하면 원본 estimator 정보 loss + repeat 뱃지 unreachable (원본 estimator 만 저장되어 repeat 뱃지가 붙는 시점이 없음).
-     - Prisma schema 는 nullable JSON 이라 별도 migration 없이 shape 확장 가능 (기존 row 자동 호환).
-  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 (mfds/ai/vision) 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파하면서 log 자체에 `viaRepeat:true` 마킹.
+  1. **Schema 확장** (Codex P2 재³재지적: repeat semantic 은 log 단위):
+     - **Item 단위** (`FoodItemBreakdown` JSON): `source: "mfds" | "ai" | "vision" | null` — 원본 estimator. null = legacy fallback.
+     - **Log 단위** (`FoodLog` 신규 컬럼): `viaRepeat: Boolean @default(false)` — 이 log 가 `repeat-lookup` 로 이전 로그 kcal/macros/items 를 재사용했는지. items 가 null 인 legacy source row (repeat hit) 에도 flag 저장 가능해야 하므로 item JSON 이 아닌 **log-level 컬럼** 로 분리. Prisma migration 필요 (`ALTER TABLE "FoodLog" ADD COLUMN "viaRepeat" BOOLEAN NOT NULL DEFAULT false`).
+     - 예: MFDS 로 처음 계산 + 오늘 재기록 = `items[i].source="mfds"`, `log.viaRepeat=true`.
+     - `source` 를 "repeat" 로 세팅하면 원본 estimator 정보 loss + repeat 뱃지 unreachable 방지.
+  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 (mfds/ai/vision) 붙여 저장. `repeat-lookup` hit 는 원본 items[i].source 를 그대로 전파하면서 `log.viaRepeat = true` 로 마킹.
   3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요 (source 미제공/null 이면 그대로 통과, invalid enum 값이면 null 로 normalize).
-  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시. 카드 헤더 (top-level) 에 `viaRepeat:true` 이면 "재사용" 배지 별도 노출 (item 별이 아니라 log 단위).
+  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시. 카드 헤더 (log 단위) 에 `log.viaRepeat===true` 이면 "재사용" 배지 별도 노출.
   5. **회귀 테스트**: `scripts/test-food-items-sanitize.ts` 에 source 보존 · null 통과 · invalid normalize 케이스 추가. legacy shape (source 필드 자체 없음) 이 sanitize 통과 검증.
 - **주의**: 스키마 · write path · helper · UI · 테스트 5단 변경. 우선순위 B 유지하되 스코프 큼. legacy row 하위호환 정책 (source optional + null fallback) 이 스코프 확정의 핵심.
 
@@ -75,7 +76,8 @@
 
 ### C-1. 주간 러닝 목표 미달 알림
 - **배경**: v2.25.0 "이번 주 X km / 목표 Y km" 진행률 표시. 미달 시 사용자 알림 없음.
-- **스코프**: 주말 일요일 저녁 or 월요일 아침 리포트에 "지난 주 목표 미달 N km" 문구 추가. `weekly-report.ts` 로직 확장.
+- **스코프**: 주간 리포트 (월요일 07:00 KST, `src/bot/notifications/scheduler.ts:90-98`) 에 "지난 주 목표 미달 N km" 문구 추가. `weekly-report.ts` + `personal-goals.ts` 로직 확장.
+- **주의 (Codex P2)**: 현재 `computePersonalGoals` 는 `currentWeekKm(now)` (이번 주 = 월요일 07:00 이면 0) + `completedWeeksAvgKm(4)` (4주 avg) 만 노출. 지난 주 정확한 shortfall 을 뽑으려면 `previousCompletedWeekKm()` 신규 헬퍼 필요 (`weekStartKST(1, now) ~ startOfWeekKST(now)` 러닝 총합). `PersonalGoalsProgress.targetWeeklyKm` shape 에 `lastWeekKm` 필드 추가 + 리포트가 그 값 참조.
 
 ### C-2. 도넛 카드 "선택 날짜" 인지 개선
 - **배경**: v2.26.0 도넛 "오늘" 뷰 하드코딩. 사용자가 과거 조회 시 도넛 label "오늘" 이 헷갈릴 수 있음 (뒤늦게 사전 리뷰에서 발견).
