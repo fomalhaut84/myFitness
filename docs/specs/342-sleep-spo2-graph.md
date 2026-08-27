@@ -80,7 +80,8 @@ const ms = Date.parse(`${raw.epochTimestamp}Z`);
 
 SpO2 고유 사항:
 - **Y축 domain 은 `[80, 100]` 고정** — `[0, 100]` 이면 실제 변동(83~100)이 하단에 눌려 안 보인다. 80 미만 값이 있으면 `[min-2, 100]` 으로 확장
-- X축은 시각 (KST `HH:mm`), `interval="preserveStartEnd"`
+- **X축은 수치 시간축** (`type="number" scale="time"` + `tickFormatter`). 카테고리 축(`HH:mm` 문자열)을 쓰면 살아남은 포인트가 등간격 배치되어 센서 dropout 이 압축된다 — 60분 공백이 1분 간격과 같은 거리로 그려져 "얼마나 오래" 판독을 훼손 (Codex P2)
+- **10분 초과 공백은 `v: null` 로 선을 끊는다** (`connectNulls={false}`). 수치 축만으로 간격은 이미 정확하므로, 끊기는 "보간조차 신뢰 불가" 를 뜻하는 별개 신호. 실측상 5~6분 공백은 야간당 2~3회 있는 정상 재측정 주기라 임계 미만
 - 90% 기준선 (`ReferenceLine`) — 다만 §4.5 의 해석 주의를 label 로 함께 표기
 - 최저 지점에 `ReferenceDot` + 툴팁에 시각 명시
 

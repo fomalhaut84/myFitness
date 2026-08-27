@@ -70,3 +70,49 @@ export function extractSleepSpO2Series(rawData: unknown): SpO2Point[] {
 
   return points.sort((a, b) => a.t - b.t);
 }
+
+/** 차트용 포인트 — 센서 공백 구간은 `v: null` 로 선을 끊는다. */
+export interface SpO2ChartPoint {
+  t: number;
+  v: number | null;
+}
+
+/**
+ * 선을 끊는 공백 임계.
+ *
+ * X축을 수치 시간축으로 쓰면 **간격 자체는 이미 정확히 표현된다** — 5분 공백은 1분
+ * 간격의 5배 폭으로 그려진다. 여기서 추가로 선을 끊는 것은 "이 구간은 보간조차
+ * 신뢰할 수 없다" 를 말하기 위해서다.
+ *
+ * 실측(6야간)에서 5~6분 공백은 야간당 2~3회 발생하는 정상적인 센서 재측정 주기다.
+ * 이 정도를 끊으면 차트가 이유 없이 조각나고, 그 5분 동안 SpO2 가 선형에서 크게
+ * 벗어났다고 볼 근거도 없다. 반면 10분 이상 끊긴 구간은 측정 중단에 가까워 선으로
+ * 이으면 없는 데이터를 주장하게 된다.
+ */
+export const SPO2_GAP_BREAK_MS = 10 * 60 * 1000;
+
+/**
+ * 시계열을 차트용으로 변환하면서 **센서 공백을 명시적으로 끊는다**.
+ *
+ * 끊지 않으면 60분 dropout 을 사이에 둔 두 포인트가 1분 간격 포인트와 똑같이 선으로
+ * 이어져, "저점이 얼마나 오래 지속됐나" 를 오독하게 만든다 (Codex P2). X축을 수치
+ * 시간축으로 쓰는 것과 짝이 되는 처리 — 축만 바꾸면 간격은 맞지만 공백 위를 직선이
+ * 가로지른다.
+ *
+ * 공백 직후에 `v: null` 포인트를 넣어 Area/Line 이 끊기게 한다 (`connectNulls={false}`).
+ */
+export function buildSpO2ChartSeries(
+  series: SpO2Point[],
+  gapMs: number = SPO2_GAP_BREAK_MS,
+): SpO2ChartPoint[] {
+  const out: SpO2ChartPoint[] = [];
+  for (let i = 0; i < series.length; i += 1) {
+    const prev = series[i - 1];
+    if (prev && series[i].t - prev.t > gapMs) {
+      // 직전 포인트 바로 뒤에 단절점을 둔다 — 공백 구간이 빈 채로 남는다.
+      out.push({ t: prev.t + 1, v: null });
+    }
+    out.push({ t: series[i].t, v: series[i].v });
+  }
+  return out;
+}

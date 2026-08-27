@@ -5,7 +5,11 @@
 //
 // Run: npx tsx scripts/test-sleep-spo2-series.ts
 
-import { extractSleepSpO2Series } from "@/lib/garmin/sleep-spo2-series";
+import {
+  buildSpO2ChartSeries,
+  extractSleepSpO2Series,
+  SPO2_GAP_BREAK_MS,
+} from "@/lib/garmin/sleep-spo2-series";
 
 let failures = 0;
 
@@ -153,6 +157,66 @@ for (const bad of [
     Array.isArray(out) && out.length === 0,
     JSON.stringify(out),
   );
+}
+
+console.log("\n== 차트 시리즈: 센서 공백을 null 로 끊는다 (Codex P2) ==");
+{
+  const MIN = 60 * 1000;
+  const base = Date.UTC(2026, 3, 1, 14, 0, 0);
+  const series = [
+    { t: base, v: 95 },
+    { t: base + 1 * MIN, v: 94 },
+    // 60분 dropout — 끊겨야 한다
+    { t: base + 61 * MIN, v: 93 },
+    { t: base + 62 * MIN, v: 92 },
+  ];
+  const out = buildSpO2ChartSeries(series);
+  assert("포인트 4 + 단절점 1 = 5", out.length === 5, JSON.stringify(out));
+  assert("단절점 v === null", out[2].v === null, JSON.stringify(out[2]));
+  assert(
+    "단절점은 공백 직전 포인트 바로 뒤",
+    out[2].t === base + 1 * MIN + 1,
+    String(out[2].t),
+  );
+  assert(
+    "실제 값은 모두 보존",
+    out.filter((p) => p.v !== null).map((p) => p.v).join(",") === "95,94,93,92",
+    JSON.stringify(out.map((p) => p.v)),
+  );
+  assert(
+    "t 는 단조 증가 (수치 시간축 전제)",
+    out.every((p, i) => i === 0 || p.t > out[i - 1].t),
+    JSON.stringify(out.map((p) => p.t)),
+  );
+}
+{
+  // 연속 구간은 끊지 않는다.
+  const MIN = 60 * 1000;
+  const base = Date.UTC(2026, 3, 1, 14, 0, 0);
+  const out = buildSpO2ChartSeries([
+    { t: base, v: 95 },
+    { t: base + 1 * MIN, v: 94 },
+    { t: base + 2 * MIN, v: 93 },
+  ]);
+  assert("단절점 없음", out.length === 3 && out.every((p) => p.v !== null));
+}
+{
+  // 임계 경계: 정확히 GAP_BREAK_MS 는 끊지 않고, 초과부터 끊는다.
+  const base = Date.UTC(2026, 3, 1, 14, 0, 0);
+  const exact = buildSpO2ChartSeries([
+    { t: base, v: 95 },
+    { t: base + SPO2_GAP_BREAK_MS, v: 94 },
+  ]);
+  assert("gap === 임계 → 끊지 않음", exact.length === 2, JSON.stringify(exact));
+  const over = buildSpO2ChartSeries([
+    { t: base, v: 95 },
+    { t: base + SPO2_GAP_BREAK_MS + 1, v: 94 },
+  ]);
+  assert("gap > 임계 → 끊음", over.length === 3 && over[1].v === null);
+}
+{
+  assert("빈 입력 → 빈 배열", buildSpO2ChartSeries([]).length === 0);
+  assert("포인트 1개 → 그대로", buildSpO2ChartSeries([{ t: 1, v: 95 }]).length === 1);
 }
 
 console.log(failures === 0 ? "\n✅ 전체 통과" : `\n❌ 실패 ${failures}건`);

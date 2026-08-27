@@ -10,7 +10,7 @@ import {
   ReferenceLine,
   ReferenceDot,
 } from "recharts";
-import type { SpO2Point } from "@/lib/garmin/sleep-spo2-series";
+import { buildSpO2ChartSeries, type SpO2Point } from "@/lib/garmin/sleep-spo2-series";
 
 // docs/designs/342-sleep-spo2-chart/design-notes.md 참조.
 // sky-400 — 산소/호흡의 냉색. SleepScoreChart 의 바이올렛(#a78bfa)과 의도적으로 분리해
@@ -49,16 +49,18 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
   // 차트가 거의 직선으로 보인다. 80 미만 관측 시에만 하단을 확장하되, 이상치 epoch
   // 하나로 스케일이 무너지지 않도록 70 에서 멈춘다.
   const yMin = Math.max(70, Math.min(80, Math.floor(min) - 2));
-  const lowestLabel = fmtKST(lowestAt);
 
-  const data = series.map((p) => ({ label: fmtKST(p.t), v: p.v }));
+  // X축은 수치 시간축. 카테고리 축(HH:mm label)을 쓰면 센서 공백이 압축되어 60분
+  // dropout 이 1분 간격과 같은 거리로 그려진다 — "언제 · 얼마나 오래" 를 오독하게 만든다.
+  // 공백 구간은 buildSpO2ChartSeries 가 null 포인트로 끊는다.
+  const data = buildSpO2ChartSeries(series);
 
   return (
     <div className="bg-card border border-border rounded-xl p-5 mb-6">
       <div className="flex items-baseline justify-between gap-3 mb-4">
         <div className="text-[11px] text-dim tracking-wider uppercase">야간 SpO2</div>
         <div className="text-[11px] text-sub font-[family-name:var(--font-geist-mono)]">
-          최저 {Math.round(min)}% · {lowestLabel}
+          최저 {Math.round(min)}% · {fmtKST(lowestAt)}
         </div>
       </div>
 
@@ -72,11 +74,14 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
           </defs>
 
           <XAxis
-            dataKey="label"
+            dataKey="t"
+            type="number"
+            scale="time"
+            domain={["dataMin", "dataMax"]}
+            tickFormatter={fmtKST}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 9, fill: AXIS }}
-            interval="preserveStartEnd"
             minTickGap={48}
           />
           <YAxis
@@ -115,6 +120,9 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
               typeof value === "number" ? `${Math.round(value)}%` : String(value),
               "SpO2",
             ]}
+            labelFormatter={(label) =>
+              typeof label === "number" ? fmtKST(label) : String(label)
+            }
           />
 
           <Area
@@ -124,11 +132,13 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
             strokeWidth={1.5}
             fill="url(#spo2Fill)"
             dot={false}
+            // 센서 공백 위를 직선이 가로지르지 않게 한다.
+            connectNulls={false}
             // 400+ 포인트에서 진입 애니메이션은 비용만 크다.
             isAnimationActive={false}
           />
 
-          <ReferenceDot x={lowestLabel} y={min} r={3.5} fill={LOW_MARK} stroke="none" />
+          <ReferenceDot x={lowestAt} y={min} r={3.5} fill={LOW_MARK} stroke="none" />
         </AreaChart>
       </ResponsiveContainer>
 
