@@ -7,7 +7,14 @@ const WEIGHT_URL =
   "https://connectapi.garmin.com/weight-service/weight/dateRange";
 
 interface WeightEntry {
-  date: number; // epoch ms
+  /**
+   * 사용자 로컬 (KST) wall-clock time 을 UTC 로 표기한 naive-TZ ms 값. 즉 KST 08:10 AM 재고면
+   * `date = 2026-08-27T08:10:03Z` 로 옴 (실제 UTC epoch 는 아님). 미래 필터·저장 시각 비교에는
+   * 사용 금지 — 오전 sync 에서 오늘 entry 를 "미래" 로 오인해 skip 하는 버그가 있었음 (#328 hotfix).
+   */
+  date: number;
+  /** 실제 UTC epoch ms. 미래 필터/시각 비교에 사용. */
+  timestampGMT?: number;
   weight: number; // gram
   bmi: number | null;
   bodyFat: number | null;
@@ -52,7 +59,15 @@ export async function syncBodyComposition(
 
   for (const entry of response.dateWeightList) {
     try {
-      const entryDate = new Date(entry.date);
+      // #328 hotfix: entry.date 는 KST 로컬 시각을 UTC 로 표기한 naive-TZ 값 (KST 08:10 →
+      // 08:10Z). Date.now() 는 실제 UTC 라 오전 sync 에서 오늘 entry 를 "미래" 로 오인해 skip.
+      // timestampGMT 가 실제 UTC epoch — 미래 필터에 사용. 폴백은 date (구식 응답 방어).
+      const utcMs =
+        typeof entry.timestampGMT === "number" ? entry.timestampGMT : entry.date;
+      const entryDate = new Date(utcMs);
+      // dayDate 계산은 KST wall-clock 기준이라 entry.date (KST-labeled) 로 파싱해도 같은
+      // 결과. 다만 timestampGMT 로 파싱한 entryDate 도 startOfDay (ymdKST) 통과 시 KST
+      // midnight 인스턴트로 정규화되므로 일관성 유지 위해 utcMs 재사용.
       const dayDate = startOfDay(entryDate);
 
       // 미래 instant 방지 (서버 타임존 무관 절대 시각 비교)
