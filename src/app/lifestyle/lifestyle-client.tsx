@@ -40,6 +40,9 @@ interface LifestyleClientProps {
   consistencyActiveDays: number;
   sleepEntries: SleepEntry[];
   todayFoodLogs: FoodLogEntry[];
+  /** #330: `?date=` 로 조회 중인 날짜 (YYYY-MM-DD). 오늘이면 todayYmd 과 동일. */
+  selectedYmd: string;
+  isToday: boolean;
 }
 
 export default function LifestyleClient({
@@ -51,6 +54,8 @@ export default function LifestyleClient({
   consistencyActiveDays,
   sleepEntries,
   todayFoodLogs,
+  selectedYmd,
+  isToday,
 }: LifestyleClientProps) {
   return (
     <div>
@@ -79,7 +84,7 @@ export default function LifestyleClient({
 
       {/* #283: 오늘 음식 로그 */}
       <div className="mt-6">
-        <TodayFoodSection logs={todayFoodLogs} />
+        <TodayFoodSection logs={todayFoodLogs} selectedYmd={selectedYmd} isToday={isToday} />
       </div>
     </div>
   );
@@ -92,18 +97,30 @@ const MEAL_LABEL: Record<string, string> = {
   snack: "간식",
 };
 
-function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
+function TodayFoodSection({
+  logs,
+  selectedYmd,
+  isToday,
+}: {
+  logs: FoodLogEntry[];
+  selectedYmd: string;
+  isToday: boolean;
+}) {
   const totalKcal = logs.reduce((s, l) => s + (l.estimatedKcal ?? 0), 0);
   const hasEstimate = logs.some((l) => l.estimatedKcal !== null);
   // Codex P2 (#283): null 항목이 있으면 총합을 완전한 하루 총량으로 오해할 수 있음.
   // "총" 대신 "부분 합계" + "N개 추정 대기" 라벨 표시.
   const missingCount = logs.filter((l) => l.estimatedKcal === null).length;
   const isPartial = missingCount > 0;
+  const heading = isToday ? "오늘 음식" : `${selectedYmd} 음식`;
+  const emptyText = isToday
+    ? '오늘 기록된 음식이 없습니다.'
+    : `${selectedYmd}에 기록된 음식이 없습니다.`;
   return (
     <div>
       <div className="flex items-start justify-between gap-3 mb-3 flex-wrap">
         <h2 className="text-lg font-semibold">
-          오늘 음식
+          {heading}
           <span className="text-[11px] text-dim font-normal ml-2">
             (AI 자동 kcal 추정)
           </span>
@@ -120,15 +137,22 @@ function TodayFoodSection({ logs }: { logs: FoodLogEntry[] }) {
               )}
             </span>
           )}
-          {/* #309: 사진 등록 버튼 (Vision 자동 추정). */}
-          <FoodPhotoUpload />
+          {/* #309: 사진 등록 버튼 (Vision 자동 추정). #330 Codex P1: 오늘일 때만 노출.
+              과거 조회 시 렌더하면 /api/food 가 date 파라미터 없어 new Date() 로 오늘에
+              저장 → silent 데이터 오염. 지금 촬영한 사진을 과거 날짜에 붙이는 UX 도 모호. */}
+          {isToday && <FoodPhotoUpload />}
         </div>
       </div>
       <div className="bg-card border border-border rounded-xl p-5">
         {logs.length === 0 ? (
           <div className="text-[13px] text-dim text-center py-6">
-            오늘 기록된 음식이 없습니다.<br />
-            텔레그램에서 &quot;점심 김치찌개 밥&quot; 입력 or 위 <b>📷 사진 등록</b> 버튼으로 자동 기록.
+            {emptyText}
+            {isToday && (
+              <>
+                <br />
+                텔레그램에서 &quot;점심 김치찌개 밥&quot; 입력 or 위 <b>📷 사진 등록</b> 버튼으로 자동 기록.
+              </>
+            )}
           </div>
         ) : (
           <ul className="divide-y divide-border/50">

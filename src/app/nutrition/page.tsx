@@ -14,7 +14,9 @@ import BackfillNotice from "@/components/nutrition/BackfillNotice";
 import NutritionFoodList, {
   type NutritionFoodItem,
 } from "@/components/nutrition/NutritionFoodList";
+import NutritionDateNav from "@/components/nutrition/NutritionDateNav";
 import { sanitizeFoodItemBreakdown } from "@/lib/nutrition/food-items";
+import { parseHistoryYmd } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -25,9 +27,9 @@ const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
 // Codex P2 (PR #300 6회차): 결손 데이터도 동일 gate. 1-2일치로 7일 평균을 대체 못 함.
 const MIN_DEFICIT_DAYS_FOR_ASSESSMENT = 4;
 
-function kstDayRange(): { start: Date; end: Date } {
-  const ymd = todayKSTString();
-  const [y, m, d] = ymd.split("-").map(Number);
+function kstDayRange(ymd?: string): { start: Date; end: Date } {
+  const target = ymd ?? todayKSTString();
+  const [y, m, d] = target.split("-").map(Number);
   const kstMidnightUTC = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
   return {
     start: new Date(kstMidnightUTC),
@@ -35,8 +37,19 @@ function kstDayRange(): { start: Date; end: Date } {
   };
 }
 
-export default async function NutritionPage() {
+export default async function NutritionPage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const now = new Date();
+  // #330: 선택된 날짜 (URL `?date=YYYY-MM-DD` invalid/미래 → 오늘 fallback).
+  // 식단 카드/리스트만 selected day 기준. 트렌드/도넛/근손실 위험은 오늘 기준 유지
+  // (선택 날짜 기반 재계산은 후속 이슈).
+  const sp = (await props.searchParams) ?? {};
+  const rawDate = typeof sp.date === "string" ? sp.date : undefined;
+  const todayKstYmd = todayKSTString();
+  const selectedYmd = parseHistoryYmd(rawDate, todayKstYmd) ?? todayKstYmd;
+  const isToday = selectedYmd === todayKstYmd;
+  const { start: selectedStart, end: selectedEnd } = kstDayRange(selectedYmd);
   const { start: todayStart, end: todayEnd } = kstDayRange();
   // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 필요 → 8일치 fetch.
   // trend/donut UI 는 today 포함 7일 (today-6..today) 유지 — 마지막 7일 slice 로 노출.
@@ -44,10 +57,10 @@ export default async function NutritionPage() {
   eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
 
   // 병렬 fetch
-  const [todayLogs, macros8d, latestWeight, latestBalances, activities7d, profile] =
+  const [selectedLogs, macros8d, latestWeight, latestBalances, activities7d, profile] =
     await Promise.all([
       prisma.foodLog.findMany({
-        where: { date: { gte: todayStart, lt: todayEnd } },
+        where: { date: { gte: selectedStart, lt: selectedEnd } },
         orderBy: { date: "asc" },
         select: {
           id: true,
@@ -162,10 +175,24 @@ export default async function NutritionPage() {
     bodyWeightKg,
   });
 
-  // 오늘 매크로 (도넛 today view 용).
+  // 오늘 매크로 (도넛 today view 용). #330: MacroDonut "today" 뷰는 항상 실제 오늘 데이터.
+  // 선택 날짜와 무관 (도넛/트렌드/근손실 위험은 오늘 기준 유지 원칙). isToday 면 selectedLogs
+  // 재사용, 아니면 별도 fetch.
+  const todayLogsForDonut = isToday
+    ? selectedLogs
+    : await prisma.foodLog.findMany({
+        where: { date: { gte: todayStart, lt: todayEnd } },
+        select: {
+          estimatedKcal: true,
+          proteinG: true,
+          carbsG: true,
+          fatG: true,
+          nutritionAttempts: true,
+        },
+      });
   // Codex P2 (PR #300): 오늘 로그가 없으면 "측정 0" 이 아니라 "데이터 없음" 이므로 모두 null.
   // Codex P2 (PR #300 12회차): kcal 도 별도 aggregate → 도넛 센터 표시 (macro-derived 는 ±25% 오차).
-  const todayMacros = todayLogs.length === 0
+  const todayMacros = todayLogsForDonut.length === 0
     ? {
         proteinG: null as number | null,
         carbsG: null as number | null,
@@ -174,7 +201,7 @@ export default async function NutritionPage() {
         hasAnyData: false,
       }
     : {
-        ...todayLogs.reduce<{
+        ...todayLogsForDonut.reduce<{
           proteinG: number | null;
           carbsG: number | null;
           fatG: number | null;
@@ -217,7 +244,7 @@ export default async function NutritionPage() {
 
   const trendPoints = macros7d.map((d) => ({ date: d.date, proteinG: d.proteinG }));
 
-  const foodItems: NutritionFoodItem[] = todayLogs.map((l) => ({
+  const foodItems: NutritionFoodItem[] = selectedLogs.map((l) => ({
     id: l.id,
     timeIso: l.date.toISOString(),
     mealType: l.mealType,
@@ -232,9 +259,11 @@ export default async function NutritionPage() {
 
   // Codex P2 (PR #300 4회차): pending (backfill 재시도 대상) 과 terminal (attempts 상한
   // 도달로 영구 미측정) 분리. terminal 은 "backfill 대기" 라 표현하면 오해.
+  // #330: 항상 오늘 로그 대상 카운트 (todayLogsForDonut). 배너 조건도 오늘만 (isToday) —
+  // 이중 방어지만 pending 계산 자체가 이미 오늘 기준이라 정합.
   let pendingToday = 0;
   let terminalToday = 0;
-  for (const l of todayLogs) {
+  for (const l of todayLogsForDonut) {
     const anyNull =
       l.estimatedKcal == null ||
       l.proteinG == null ||
@@ -267,8 +296,10 @@ export default async function NutritionPage() {
             <div className="text-[13px] font-[family-name:var(--font-geist-mono)] text-sub">{periodLabel}</div>
           </div>
         </div>
-        {/* Warning + Banner */}
-        {(pendingToday > 0 || terminalToday > 0) && (
+        {/* #330: 날짜 네비게이션 */}
+        <NutritionDateNav selectedYmd={selectedYmd} todayYmd={todayKstYmd} />
+        {/* Warning + Banner (오늘일 때만) */}
+        {isToday && (pendingToday > 0 || terminalToday > 0) && (
           <div className="mb-3">
             <BackfillNotice pendingCount={pendingToday} terminalCount={terminalToday} />
           </div>
@@ -297,7 +328,16 @@ export default async function NutritionPage() {
             </div>
           </div>
           <div className="lg:col-span-4">
-            <NutritionFoodList items={foodItems} />
+            <NutritionFoodList
+              items={foodItems}
+              headerLabel={isToday ? "오늘 식단" : `${selectedYmd} 식단`}
+              emptyLabel={
+                isToday
+                  ? "오늘 기록된 식단이 없습니다."
+                  : `${selectedYmd}에 기록된 식단이 없습니다.`
+              }
+              lifestyleDateParam={isToday ? undefined : selectedYmd}
+            />
           </div>
         </div>
       </div>
