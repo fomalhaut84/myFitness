@@ -9,6 +9,7 @@ import {
   buildSpO2ChartSeries,
   extractSleepSpO2Series,
   SPO2_GAP_BREAK_MS,
+  spo2ChartYAxis,
 } from "@/lib/garmin/sleep-spo2-series";
 
 let failures = 0;
@@ -217,6 +218,61 @@ console.log("\n== 차트 시리즈: 센서 공백을 null 로 끊는다 (Codex P
 {
   assert("빈 입력 → 빈 배열", buildSpO2ChartSeries([]).length === 0);
   assert("포인트 1개 → 그대로", buildSpO2ChartSeries([{ t: 1, v: 95 }]).length === 1);
+}
+
+console.log("\n== Y축 하한 · 눈금 (Codex P2) ==");
+{
+  // 평상시: 실변동(83~100)이 하단에 눌리지 않게 80 기준.
+  const a = spo2ChartYAxis(83);
+  assert("min 83 → yMin 80", a.yMin === 80, String(a.yMin));
+  assert(
+    "눈금 80/85/90/95/100",
+    a.ticks.join(",") === "80,85,90,95,100",
+    a.ticks.join(","),
+  );
+}
+{
+  // 낮은 관측이 있으면 하한을 막지 않고 담는다 — 막아도 Recharts 가 되늘리고,
+  // 잘라내면 Stat 카드 최저값과 어긋난다.
+  const a = spo2ChartYAxis(20);
+  assert("min 20 → yMin 18 (하한 고정 없음)", a.yMin === 18, String(a.yMin));
+  // Codex P2 의 핵심: 확장된 구간이 라벨 없이 남으면 안 된다.
+  // (구 코드는 domain 이 [20,100] 으로 늘어나도 눈금은 [70,90,95,100] 이라 20~70 이 무라벨)
+  assert(
+    "눈금이 하한 근처에서 시작해 100 까지 덮음",
+    a.ticks[0] - a.yMin < 10 && a.ticks[a.ticks.length - 1] === 100,
+    `yMin ${a.yMin} / ticks ${a.ticks.join(",")}`,
+  );
+  assert(
+    "눈금이 4개 이상 (확장 구간에도 눈금 존재)",
+    a.ticks.length >= 4 && a.ticks.filter((v) => v < 80).length >= 2,
+    a.ticks.join(","),
+  );
+  assert(
+    "눈금 간격이 균등",
+    a.ticks.slice(2).every((v, i) => v - a.ticks[i + 1] === a.ticks[2] - a.ticks[1]),
+    a.ticks.join(","),
+  );
+}
+{
+  const a = spo2ChartYAxis(72);
+  assert("min 72 → yMin 70", a.yMin === 70, String(a.yMin));
+  assert("100 포함", a.ticks[a.ticks.length - 1] === 100, a.ticks.join(","));
+  assert("yMin 포함 또는 첫 눈금과 근접", a.ticks[0] <= 75, a.ticks.join(","));
+}
+{
+  // 하한 라벨이 첫 눈금과 겹치지 않아야 한다.
+  for (const m of [78, 79, 80, 81, 84, 90, 95, 100]) {
+    const a = spo2ChartYAxis(m);
+    const dup = new Set(a.ticks).size !== a.ticks.length;
+    const sorted = a.ticks.every((v, i) => i === 0 || v > a.ticks[i - 1]);
+    assert(
+      `min ${m}: 눈금 중복/역전 없음 (${a.ticks.join(",")})`,
+      !dup && sorted,
+    );
+    assert(`min ${m}: yMin(${a.yMin}) <= 첫 눈금`, a.yMin <= a.ticks[0]);
+    assert(`min ${m}: 최저값이 domain 안`, a.yMin <= m);
+  }
 }
 
 console.log(failures === 0 ? "\n✅ 전체 통과" : `\n❌ 실패 ${failures}건`);

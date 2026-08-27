@@ -10,7 +10,11 @@ import {
   ReferenceLine,
   ReferenceDot,
 } from "recharts";
-import { buildSpO2ChartSeries, type SpO2Point } from "@/lib/garmin/sleep-spo2-series";
+import {
+  buildSpO2ChartSeries,
+  spo2ChartYAxis,
+  type SpO2Point,
+} from "@/lib/garmin/sleep-spo2-series";
 import { formatEpochKST } from "@/lib/format";
 
 // docs/designs/342-sleep-spo2-chart/design-notes.md 참조.
@@ -40,9 +44,9 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
   }
 
   // SpO2 는 좁은 대역에서 의미가 발생한다. [0,100] 이면 실제 변동이 하단에 눌려
-  // 차트가 거의 직선으로 보인다. 80 미만 관측 시에만 하단을 확장하되, 이상치 epoch
-  // 하나로 스케일이 무너지지 않도록 70 에서 멈춘다.
-  const yMin = Math.max(70, Math.min(80, Math.floor(min) - 2));
+  // 차트가 거의 직선으로 보인다. 하한·눈금은 spo2ChartYAxis 가 함께 결정한다
+  // (하한을 임의로 막으면 Recharts 가 domain 을 데이터에 맞춰 되늘려 무효가 된다).
+  const { yMin, ticks: yTicks } = spo2ChartYAxis(min);
 
   // X축은 수치 시간축. 카테고리 축(HH:mm label)을 쓰면 센서 공백이 압축되어 60분
   // dropout 이 1분 간격과 같은 거리로 그려진다 — "언제 · 얼마나 오래" 를 오독하게 만든다.
@@ -80,7 +84,7 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
           />
           <YAxis
             domain={[yMin, 100]}
-            ticks={[yMin, 90, 95, 100]}
+            ticks={yTicks}
             axisLine={false}
             tickLine={false}
             tick={{ fontSize: 9, fill: AXIS }}

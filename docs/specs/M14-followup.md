@@ -42,7 +42,7 @@
 
 ### A-4. SpO2 표시 일관성 정리 (#338 후속)
 
-- **Status**: 진행중 (이슈 #341, 브랜치 feat/342-1)
+- **Status**: 완료 (릴리즈 v2.27.0, 이슈 #341, PR #343)
 
 - **배경**: #338 사전 리뷰 P0 지적 2건. 이번 스코프에서 후속으로 분리.
 - **스코프 1 (surface 불일치)**: `src/app/page.tsx:88` 대시보드가 `todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2` 로 수면 SpO2 결측 시 **주간 SpO2 로 대체**한다. #338 에서 MCP `_context` 와 system prompt 는 "null 이면 미측정 — 주간값으로 대체 판단 금지" 로 정했으므로, 미측정 야간에 대시보드는 주간값을 · 모닝 리포트는 "측정 없음" 을 보여 같은 날짜에 두 surface 가 어긋난다. 폴백 제거 or 카드 label 을 `SpO2 (주간)` 으로 분기.
