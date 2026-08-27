@@ -77,10 +77,12 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
-    label: "매크로",
+    // #329: "매크로" → "영양". 페이지에 도넛(P/C/F 매크로영양소) + 오늘 식단 리스트가
+    // 함께 있어 사용자 관점에서 "영양" 이 더 정합.
+    label: "영양",
     href: "/nutrition",
     icon: (
-      // 도넛 아이콘 — 매크로 페이지 시그니처.
+      // 도넛 아이콘 — 영양 페이지 시그니처.
       <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
         <circle cx="10" cy="10" r="7" />
         <circle cx="10" cy="10" r="3" />
