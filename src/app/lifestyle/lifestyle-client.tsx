@@ -146,8 +146,13 @@ function TodayFoodSection({
       <div className="bg-card border border-border rounded-xl p-5">
         {logs.length === 0 ? (
           <div className="text-[13px] text-dim text-center py-6">
-            {emptyText}<br />
-            텔레그램에서 &quot;점심 김치찌개 밥&quot; 입력 or 위 <b>📷 사진 등록</b> 버튼으로 자동 기록.
+            {emptyText}
+            {isToday && (
+              <>
+                <br />
+                텔레그램에서 &quot;점심 김치찌개 밥&quot; 입력 or 위 <b>📷 사진 등록</b> 버튼으로 자동 기록.
+              </>
+            )}
           </div>
         ) : (
           <ul className="divide-y divide-border/50">
