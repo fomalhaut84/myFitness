@@ -110,6 +110,21 @@ Additive nullable — 기존 행 영향 없음. `prisma migrate reset` 금지 (d
 - 상세 페이지: 기존 `SpO2` Stat 유지 + `최저 SpO2` / `최고 SpO2` Stat 추가 (호흡수 최저/최고와 동일 패턴).
 - 봇: `🫁 SpO2: 94% (최저 83%)` — 최저값 있을 때만 괄호 병기.
 
+### 4.6 `lowestSpO2` 해석 기준 = 개인 baseline 상대 (중요)
+
+`avgSpO2` 의 절대 임계 (95%+ 정상 / 90% 미만 주의) 를 `lowestSpO2` 에 그대로 적용하면 안 된다.
+
+사전 리뷰 P1 지적: 이 사용자의 실측 `lowestSpO2` 는 §1 표 기준 **83 / 86 / 84 / 88 / 84 / 84** 로,
+절대 임계 90% 를 적용하면 측정된 6/6 야간 전부가 "저산소 주의" 에 해당한다. 손목 광학 센서는
+자세·압박에 따라 단발 저점이 80대 중반까지 흔히 내려가므로, 절대 임계 경고는 정보량이 0 이고
+alert fatigue 로 실제 이상치를 묻어버린다.
+
+따라서 AI 어드바이저 지침은 **개인 baseline 상대 판단**으로 고정한다:
+- `src/mcp/tools/fitness.ts` `_context.lowestSpO2` — "최근 7일 최저값 대비 5%p 이상 하락이 2일 이상 반복될 때만 언급"
+- `src/lib/ai/system-prompt.ts` `### SpO2` — 평균 임계를 최저값에 전이하지 말 것 + null 은 미측정으로 둘 것
+
+이 항목은 프롬프트 문구라 자동 테스트 대상이 아니다. 변경 시 이 절을 함께 갱신한다.
+
 ## 5. 변경 파일
 
 | 파일 | 변경 |
@@ -120,6 +135,7 @@ Additive nullable — 기존 행 영향 없음. `prisma migrate reset` 금지 (d
 | `src/lib/garmin/fetchers/sleep.ts` | `extractSleepSpO2` 사용 |
 | `scripts/backfill-m2-fields.ts` | 동일 함수 사용 + where 조건 확장 |
 | `src/mcp/tools/fitness.ts` | select 확장 + `_context` 갱신 |
+| `src/lib/ai/system-prompt.ts` | `### SpO2` 해석 기준 갱신 (최저값 baseline 상대 · null 처리) |
 | `src/app/sleep/[date]/page.tsx` | 신규 필드 전달 |
 | `src/app/sleep/[date]/sleep-detail-client.tsx` | 최저/최고 SpO2 Stat |
 | `src/bot/commands/sleep.ts` | SpO2 범위 표시 |
@@ -153,3 +169,5 @@ Additive nullable — 기존 행 영향 없음. `prisma migrate reset` 금지 (d
 - `wellnessEpochSPO2DataDTOList` (epoch 단위 원본) 저장/그래프화 — rawData 에 보존되어 있으므로 필요 시 별도 이슈
 - `averageSpO2HRSleep` (SpO2 측정 중 평균 심박) 저장 — 활용처 불명확
 - 저산소 이벤트 알림/경고 룰 — 별도 이슈
+- 대시보드 SpO2 폴백 (`src/app/page.tsx:88` 이 수면 SpO2 결측 시 주간 SpO2 로 대체) 정리 — 후속 백로그 A-4
+- SpO2 범위 포맷 로직 공용화 (봇 · 상세 페이지 중복) — 후속 백로그 A-4

@@ -42,18 +42,10 @@ async function backfillActivities() {
 
 async function backfillSleep() {
   console.log("\n=== SleepRecord M2 필드 backfill ===");
-  // #338: SpO2 는 파싱 키 오타로 전 기간 null 이었다. 호흡수는 이미 백필된 행이 많아
-  // avgRespiration 조건만으로는 그 행들을 다시 훑지 못하므로 SpO2 결측도 조건에 포함한다.
-  // 실제로 SpO2 를 측정하지 않은 야간은 매 실행마다 재선택되지만 update 는 멱등이라 무해.
+  // #338: SpO2 파싱 키 오타로 전 기간 재계산이 필요하다. lowestSpO2/highestSpO2 는
+  // 폴백이 없어 영구히 null 인 행이 존재하므로 결측 조건으로는 걸러지지 않는다 — 전수
+  // 재파생이 의도. 모든 필드가 rawData 에서 파생되는 멱등 연산이라 반복 실행이 안전하다.
   const records = await prisma.sleepRecord.findMany({
-    where: {
-      OR: [
-        { avgRespiration: null },
-        { avgSpO2: null },
-        { lowestSpO2: null },
-        { highestSpO2: null },
-      ],
-    },
     select: { id: true, rawData: true },
   });
 

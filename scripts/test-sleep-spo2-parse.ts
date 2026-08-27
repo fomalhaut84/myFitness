@@ -91,6 +91,28 @@ console.log("\n== 필드별 독립 폴백 ==");
   assert("dto 우선 (92)", out.avg === 92, JSON.stringify(out));
 }
 
+console.log("\n== 인자 shape 보호: dto 를 루트로 넘기면 안 된다 ==");
+{
+  // extractSleepSpO2 는 응답 루트를 받는다 (fetcher 는 sleepData, backfill 은 rawData).
+  // 누군가 dto 를 직접 넘기도록 "정리" 하면 #338 과 동일한 무성 null 회귀가 재발한다.
+  const out = extractSleepSpO2({ averageSpO2Value: 94, lowestSpO2Value: 83 });
+  assert(
+    "dto 직접 전달 → 전부 null",
+    out.avg === null && out.lowest === null && out.highest === null,
+    JSON.stringify(out),
+  );
+}
+
+console.log("\n== dto 값이 무효면 summary 로 폴백 ==");
+{
+  const out = extractSleepSpO2({
+    dailySleepDTO: { averageSpO2Value: 0, lowestSpO2Value: 101 },
+    wellnessSpO2SleepSummaryDTO: { averageSPO2: 94, lowestSPO2: 83 },
+  });
+  assert("avg = 94 (sentinel 0 폐기 후 폴백)", out.avg === 94, JSON.stringify(out));
+  assert("lowest = 83 (범위 밖 101 폐기 후 폴백)", out.lowest === 83, JSON.stringify(out));
+}
+
 console.log("\n== 미측정 야간 (2026-04-05 실사례) → 전부 null ==");
 {
   const out = extractSleepSpO2({
