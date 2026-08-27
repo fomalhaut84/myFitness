@@ -5,16 +5,26 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-08-27)
+## 현재 상태 (2026-08-27, SpO2 세션 종료 시점)
 
 **최근 릴리즈:**
 - **v2.24.0** — Phase 2 완료 (MFDS 외부 음식 DB · 사진 입력 · 매크로 추적)
 - **v2.25.0** — Phase 3 (주간 목표 Mon~Sun 마감 · 식단 items 세부 breakdown)
 - **v2.26.0** — Phase 4 (체중 sync fix 초기 · 네비 "매크로"→"영양" · 식단 히스토리 조회)
 - **v2.26.1** — Phase 4 hotfix (Garmin naive-TZ 이슈 완전 해결)
+- **v2.26.2** — 수면 SpO2 파싱 키 오타 수정 (#338) · 최저/최고 SpO2 저장
+- **v2.27.0** — 야간 SpO2 그래프 (#342) · SpO2 표시 일관성 (#341)
+
+### 인계 (다음 세션에서 이어갈 것)
+
+- **PR #347** (오픈, dev 대상) — 월간 SpO2 트렌드 차트 라벨 정정 (#346). **사용자 머지 대기.** self-review only (UI copy 1줄), 3-check 통과. 머지 후 → 이슈 close + 브랜치 정리 + 릴리즈 판단 (patch, v2.27.1). 단독 릴리즈할지 다음 작업과 묶을지는 사용자 판단
+- 배포 검증 미완: v2.27.0 그래프의 **X축 시각이 KST 인지** 실사용 확인 (Codex 2회차 회귀 지점이었음)
 
 **중요한 발견 (memory):**
 - Garmin `weight-service` API 의 `entry.date` 는 KST wall-clock 을 UTC 로 표기한 **naive-TZ** ms. 시각 비교 (미래/과거 필터) 에는 `entry.timestampGMT` 필수. `body-composition.ts` 는 v2.26.1 로 해결. 다른 fetcher (특히 `blood-pressure`) 도 같은 이슈 잠재.
+- Garmin SpO2 필드 casing 이 **엔드포인트마다 다름** (`averageSpO2Value` / `averageSPO2` / `averageSpo2`). 라이브러리 타입에 없어 캐스팅으로 읽으므로 오타가 컴파일에 안 걸리고 조용히 null 이 된다. → memory `project_garmin_spo2_field_casing`
+- 사용자 수면 최저 SpO2 baseline 은 **83~88**. 문헌 절대 임계(90% 미만 주의)를 적용하면 매일 오탐. → memory `project_user_spo2_baseline`
+- **Recharts 기본값 함정 2건** (v2.27.0 Codex P1/P2): `scale="time"` 축의 d3 `.ticks()` 는 도메인이 숫자여도 **Date 를 반환**하고, `allowDataOverflow` 기본 `false` 는 지정 domain 을 **데이터에 맞춰 되늘린다**. 차트 작업 시 옵션 기본 동작을 먼저 확인할 것.
 
 ---
 
@@ -39,23 +49,6 @@
 ### A-3. Bot 명령으로 과거 식단 열람
 - **배경**: `/nutrition?date=X` 는 웹 전용. 텔레그램 봇에서 과거 식단 조회 불가.
 - **스코프**: `/food_show <date>` 또는 `/reports food <date>` 신설. inline keyboard 로 어제/그저께 등 shortcut. cuid 타이핑 요구 금지 (feedback_bot_mobile_ux 정합).
-
-### A-4. SpO2 표시 일관성 정리 (#338 후속)
-
-- **Status**: 완료 (릴리즈 v2.27.0, 이슈 #341, PR #343)
-
-- **배경**: #338 사전 리뷰 P0 지적 2건. 이번 스코프에서 후속으로 분리.
-- **스코프 1 (surface 불일치)**: `src/app/page.tsx:88` 대시보드가 `todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2` 로 수면 SpO2 결측 시 **주간 SpO2 로 대체**한다. #338 에서 MCP `_context` 와 system prompt 는 "null 이면 미측정 — 주간값으로 대체 판단 금지" 로 정했으므로, 미측정 야간에 대시보드는 주간값을 · 모닝 리포트는 "측정 없음" 을 보여 같은 날짜에 두 surface 가 어긋난다. 폴백 제거 or 카드 label 을 `SpO2 (주간)` 으로 분기.
-- **스코프 2 (중복 포맷)**: `평균% (최저 N%)` 포맷이 `src/bot/commands/sleep.ts` 와 `src/app/sleep/[date]/sleep-detail-client.tsx` 에 각각 구현됨. `src/lib/format.ts` 로 `fmtSpO2(avg, lowest)` 승격해 공용화 (상세 페이지의 `"측정없음"` 분기는 AI 프롬프트 전용이라 옵션 인자로 분리).
-- **주의**: 봇은 `src/bot/utils/formatter.ts` 를 쓰고 웹은 `src/lib/format.ts` 를 쓴다. 공용화 시 어느 쪽을 단일 소스로 삼을지 먼저 결정.
-
-### A-5. 대시보드 월간 SpO2 트렌드 차트 라벨 (#341 후속)
-
-- **Status**: 진행중 (이슈 #346, 브랜치 fix/346-1)
-
-- **배경**: #341 사전 리뷰 참고 지적. 요약 카드는 `SpO2` / `SpO2 (주간)` 로 출처를 밝히게 됐는데, 같은 화면의 월간 트렌드 차트 (`src/app/dashboard-client.tsx:301-307`) 는 데이터가 100% `DailySummary.avgSpo2` (주간 측정) 인데 제목이 그냥 `SpO2` 다. 같은 화면에서 동일 라벨이 다른 측정 종류를 가리킨다.
-- **스코프**: 트렌드 차트 제목을 `SpO2 (주간)` 으로 변경, 또는 `SleepRecord.avgSpO2` 시리즈로 교체/병기. 후자는 데이터 소스 변경이라 스코프가 커짐 — 먼저 라벨만 정정하는 쪽 권장.
-- **주의**: v2.26.2 이전 기간은 `SleepRecord.avgSpO2` 가 전 기간 null 이었다. 백필 실행 여부에 따라 수면 시리즈로 교체 시 과거 구간이 비어 보일 수 있음.
 
 ---
 
@@ -155,4 +148,27 @@
 
 ## 완료 (참고)
 
-(현 시점 없음 — 릴리즈 완료 항목은 상단 "현재 상태" 참조)
+### A-4. SpO2 표시 일관성 정리 (#338 후속)
+
+- **Status**: 완료 (릴리즈 v2.27.0, 이슈 #341, PR #343)
+
+- **배경**: #338 사전 리뷰 P0 지적 2건. 이번 스코프에서 후속으로 분리.
+- **스코프 1 (surface 불일치)**: `src/app/page.tsx:88` 대시보드가 `todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2` 로 수면 SpO2 결측 시 **주간 SpO2 로 대체**한다. #338 에서 MCP `_context` 와 system prompt 는 "null 이면 미측정 — 주간값으로 대체 판단 금지" 로 정했으므로, 미측정 야간에 대시보드는 주간값을 · 모닝 리포트는 "측정 없음" 을 보여 같은 날짜에 두 surface 가 어긋난다. 폴백 제거 or 카드 label 을 `SpO2 (주간)` 으로 분기.
+- **스코프 2 (중복 포맷)**: `평균% (최저 N%)` 포맷이 `src/bot/commands/sleep.ts` 와 `src/app/sleep/[date]/sleep-detail-client.tsx` 에 각각 구현됨. `src/lib/format.ts` 로 `fmtSpO2(avg, lowest)` 승격해 공용화 (상세 페이지의 `"측정없음"` 분기는 AI 프롬프트 전용이라 옵션 인자로 분리).
+- **주의**: 봇은 `src/bot/utils/formatter.ts` 를 쓰고 웹은 `src/lib/format.ts` 를 쓴다. 공용화 시 어느 쪽을 단일 소스로 삼을지 먼저 결정.
+
+### A-5. 대시보드 월간 SpO2 트렌드 차트 라벨 (#341 후속)
+
+- **Status**: 진행중 (이슈 #346, 브랜치 fix/346-1)
+
+- **배경**: #341 사전 리뷰 참고 지적. 요약 카드는 `SpO2` / `SpO2 (주간)` 로 출처를 밝히게 됐는데, 같은 화면의 월간 트렌드 차트 (`src/app/dashboard-client.tsx:301-307`) 는 데이터가 100% `DailySummary.avgSpo2` (주간 측정) 인데 제목이 그냥 `SpO2` 다. 같은 화면에서 동일 라벨이 다른 측정 종류를 가리킨다.
+- **스코프**: 트렌드 차트 제목을 `SpO2 (주간)` 으로 변경, 또는 `SleepRecord.avgSpO2` 시리즈로 교체/병기. 후자는 데이터 소스 변경이라 스코프가 커짐 — 먼저 라벨만 정정하는 쪽 권장.
+- **주의**: v2.26.2 이전 기간은 `SleepRecord.avgSpO2` 가 전 기간 null 이었다. 백필 실행 여부에 따라 수면 시리즈로 교체 시 과거 구간이 비어 보일 수 있음.
+
+### (백로그 외) 수면 SpO2 파싱 키 오타
+- **Status**: 완료 (릴리즈 v2.26.2, 이슈 #338, PR #339)
+- 실사용 제보로 발견 — 모닝 리포트가 매번 "SpO2 측정값 없음(null)". `dailySleepDTO.averageSpo2` 라는 존재하지 않는 키를 읽어 전 기간 NULL. 실제 키는 `averageSpO2Value`. 백필 스크립트에도 동일 오타가 있어 백필로도 복구 불가했음. `rawData` 보존 덕에 재싱크 없이 전 기간 복구.
+
+### (백로그 외) 야간 SpO2 그래프
+- **Status**: 완료 (릴리즈 v2.27.0, 이슈 #342, PR #343 · #345)
+- `rawData.wellnessEpochSPO2DataDTOList` (야간당 260~463 포인트) 를 시계열 차트로. 스키마 변경 · 재싱크 없음.
