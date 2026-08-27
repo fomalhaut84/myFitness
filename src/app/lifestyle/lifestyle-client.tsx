@@ -137,8 +137,10 @@ function TodayFoodSection({
               )}
             </span>
           )}
-          {/* #309: 사진 등록 버튼 (Vision 자동 추정). */}
-          <FoodPhotoUpload />
+          {/* #309: 사진 등록 버튼 (Vision 자동 추정). #330 Codex P1: 오늘일 때만 노출.
+              과거 조회 시 렌더하면 /api/food 가 date 파라미터 없어 new Date() 로 오늘에
+              저장 → silent 데이터 오염. 지금 촬영한 사진을 과거 날짜에 붙이는 UX 도 모호. */}
+          {isToday && <FoodPhotoUpload />}
         </div>
       </div>
       <div className="bg-card border border-border rounded-xl p-5">
