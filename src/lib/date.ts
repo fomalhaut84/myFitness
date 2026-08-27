@@ -8,6 +8,12 @@ import { ymdKST } from "./garmin/utils";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * #330: /nutrition 히스토리 조회 하한. 이 이전 date 는 서버 파싱 시 오늘 fallback,
+ * 클라이언트 nav "이전" 버튼도 disabled. 서버·클라이언트 정합 위해 공유 상수.
+ */
+export const MIN_HISTORY_YMD = "2020-01-01";
+
+/**
  * KST 기준 이번 주 월요일 00:00 KST instant.
  * 일요일이면 6일 전 월요일, 나머지는 (day-1) 일 전 월요일.
  * base 기본은 지금 (KST 오늘). 테스트에서만 base 주입.

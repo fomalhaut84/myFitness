@@ -24,6 +24,10 @@ export interface NutritionFoodItem {
 
 interface Props {
   items: NutritionFoodItem[];
+  /** #330: 헤더 라벨 커스터마이즈. 기본 "오늘 식단". 과거 날짜 시 "YYYY-MM-DD 식단". */
+  headerLabel?: string;
+  /** 빈 리스트 안내 문구. 오늘/과거로 톤 다름. */
+  emptyLabel?: string;
 }
 
 const P_COLOR = "#22c55e";
@@ -168,18 +172,20 @@ function FoodCard({ item }: { item: NutritionFoodItem }) {
   );
 }
 
-export default function NutritionFoodList({ items }: Props) {
+export default function NutritionFoodList({ items, headerLabel, emptyLabel }: Props) {
   const missingCount = items.filter((i) =>
     i.kcal == null || i.proteinG == null || i.carbsG == null || i.fatG == null,
   ).length;
   const measuredKcal = items.filter((i) => i.kcal != null).reduce((s, i) => s + (i.kcal ?? 0), 0);
+  const label = headerLabel ?? "오늘 식단";
+  const empty = emptyLabel ?? "오늘 기록된 식단이 없습니다.";
 
   return (
     <div className="bg-card border border-border rounded-xl overflow-hidden">
       <div className="flex items-baseline justify-between px-4 pt-4 pb-2">
         <div>
-          <div className="text-[10px] tracking-[0.22em] uppercase text-dim font-[family-name:var(--font-geist-mono)]">Today</div>
-          <h2 className="text-[17px] font-semibold mt-0.5">오늘 식단 · {items.length}건</h2>
+          <div className="text-[10px] tracking-[0.22em] uppercase text-dim font-[family-name:var(--font-geist-mono)]">Day</div>
+          <h2 className="text-[17px] font-semibold mt-0.5">{label} · {items.length}건</h2>
         </div>
         <div className="text-[11px] font-[family-name:var(--font-geist-mono)] text-dim">
           {missingCount > 0 && <span className="mr-2" style={{ color: "#fcd34d" }}>미측정 {missingCount}</span>}
@@ -187,7 +193,7 @@ export default function NutritionFoodList({ items }: Props) {
         </div>
       </div>
       {items.length === 0 ? (
-        <div className="text-[13px] text-dim text-center py-6">오늘 기록된 식단이 없습니다.</div>
+        <div className="text-[13px] text-dim text-center py-6">{empty}</div>
       ) : (
         <div>
           {items.map((i, idx) => (
