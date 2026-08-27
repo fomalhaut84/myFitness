@@ -26,8 +26,13 @@ export async function syncBodyComposition(
   startDate: Date,
   endDate: Date
 ): Promise<number> {
+  // #328: Garmin `weight-service/weight/dateRange` API 는 endDate 를 exclusive 로
+  // 해석하는 것으로 관찰됨 (endDate=오늘 이면 오늘 측정 entry 누락). endDate 를 하루 뒤
+  // date 로 요청해 오늘 데이터 확실히 커버. entryDate > Date.now() 방어가 아래에서
+  // 미래 entry (내일 측정 - 실무상 없음) 를 필터링하니 over-fetch 는 안전.
   const startStr = formatDate(startDate);
-  const endStr = formatDate(endDate);
+  const endInclusive = new Date(endDate.getTime() + 24 * 60 * 60 * 1000);
+  const endStr = formatDate(endInclusive);
 
   let response: WeightResponse;
   try {

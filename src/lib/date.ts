@@ -8,6 +8,35 @@ import { ymdKST } from "./garmin/utils";
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 /**
+ * #330: /nutrition 히스토리 조회 하한. 이 이전 date 는 서버 파싱 시 오늘 fallback,
+ * 클라이언트 nav "이전" 버튼도 disabled. 서버·클라이언트 정합 위해 공유 상수.
+ */
+export const MIN_HISTORY_YMD = "2020-01-01";
+
+/**
+ * URL `?date=YYYY-MM-DD` 파싱. invalid / 미래 / MIN_HISTORY_YMD 이전 → null (caller 가
+ * 오늘로 fallback). URL 자체는 수정 안 함. `today` 는 KST 오늘 date string (테스트 주입용).
+ */
+export function parseHistoryYmd(raw: string | undefined, today: string): string | null {
+  if (!raw) return null;
+  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
+  if (!match) return null;
+  const [, y, m, d] = match;
+  const dt = new Date(`${raw}T00:00:00+09:00`);
+  if (Number.isNaN(dt.getTime())) return null;
+  const formatter = new Intl.DateTimeFormat("en-CA", {
+    timeZone: "Asia/Seoul",
+    year: "numeric",
+    month: "2-digit",
+    day: "2-digit",
+  });
+  if (formatter.format(dt) !== `${y}-${m}-${d}`) return null; // e.g. 2월 30일
+  if (raw > today) return null;
+  if (raw < MIN_HISTORY_YMD) return null;
+  return raw;
+}
+
+/**
  * KST 기준 이번 주 월요일 00:00 KST instant.
  * 일요일이면 6일 전 월요일, 나머지는 (day-1) 일 전 월요일.
  * base 기본은 지금 (KST 오늘). 테스트에서만 base 주입.

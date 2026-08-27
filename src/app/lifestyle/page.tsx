@@ -1,10 +1,12 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
-import { todayKST, ymdKST } from "@/lib/garmin/utils";
-import { startOfWeekKST, weekStartKST } from "@/lib/date";
+import { todayKST, todayKSTString, ymdKST } from "@/lib/garmin/utils";
+import { startOfWeekKST, weekStartKST, parseHistoryYmd } from "@/lib/date";
 import LifestyleClient from "./lifestyle-client";
 
 export const dynamic = "force-dynamic";
+
+const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 
 function daysAgoLocal(n: number): Date {
   const d = new Date();
@@ -13,8 +15,26 @@ function daysAgoLocal(n: number): Date {
   return d;
 }
 
-export default async function LifestylePage() {
+function kstDayRangeFor(ymd: string): { start: Date; end: Date } {
+  const [y, m, d] = ymd.split("-").map(Number);
+  const kstMidnightUTC = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
+  return {
+    start: new Date(kstMidnightUTC),
+    end: new Date(kstMidnightUTC + 24 * 60 * 60 * 1000),
+  };
+}
+
+export default async function LifestylePage(props: {
+  searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}) {
   const now = new Date();
+  // #330: /nutrition 히스토리 조회 링크에서 date 파라미터 전달받으면 오늘 음식 편집 UX 를
+  // 그 날짜 로그로 적용. 다른 컨텐츠 (활동/수면/히트맵) 는 오늘 기준 유지.
+  const sp = (await props.searchParams) ?? {};
+  const rawDate = typeof sp.date === "string" ? sp.date : undefined;
+  const todayYmd = todayKSTString();
+  const selectedYmd = parseHistoryYmd(rawDate, todayYmd) ?? todayYmd;
+  const isToday = selectedYmd === todayYmd;
   // #321: KST Mon 00:00 기준 (서버 로컬 TZ 대신). lifestyle 주 요약이 personal-goals
   // "이번 주 진행" 과 동일한 주 경계를 쓰도록 통일.
   const thisWeekStart = startOfWeekKST(now);
@@ -84,10 +104,12 @@ export default async function LifestylePage() {
   // #283: 오늘 (KST 자정 ~ 다음날 자정) 음식 로그 — kcal 편집/삭제용.
   // 사전 리뷰 P1-2: 서버 로컬 TZ 대신 todayKST() 로 진짜 KST midnight instant 사용
   // (recalculateCalorieBalance 의 KST-day 집계와 정합).
-  const todayKstStart = todayKST();
-  const tomorrowKstStart = new Date(todayKstStart.getTime() + 24 * 60 * 60 * 1000);
+  // #330: `?date=` 파라미터가 오늘 아니면 그 날짜 로그 fetch (편집 UX 도 그 날짜에 적용).
+  const { start: dayStart, end: dayEnd } = isToday
+    ? { start: todayKST(), end: new Date(todayKST().getTime() + 24 * 60 * 60 * 1000) }
+    : kstDayRangeFor(selectedYmd);
   const todayFoodLogs = await prisma.foodLog.findMany({
-    where: { date: { gte: todayKstStart, lt: tomorrowKstStart } },
+    where: { date: { gte: dayStart, lt: dayEnd } },
     orderBy: { createdAt: "asc" },
     // #309 Codex P2 (PR #313 12회차): kcal editor snapshot 매칭용 updatedAt 함께 fetch.
     select: {
@@ -125,6 +147,8 @@ export default async function LifestylePage() {
       month={now.getMonth() + 1}
       consistencyActiveDays={last28ActiveDates.size}
       sleepEntries={sleepEntries}
+      selectedYmd={selectedYmd}
+      isToday={isToday}
       todayFoodLogs={todayFoodLogs.map((f) => ({
         id: f.id,
         description: f.description,
