@@ -71,6 +71,7 @@
      - **Manual item edit path (B-3)**: 새 items endpoint 에서 사용자가 name/값 정정한 items 는 `source="manual"` 로 write (기존 estimator 태그 덮어씀).
      - **backfill fallback viaRepeat 정책 (Codex P2 재⁷지적)**: "non-repeat backfill 이 later 채우면 viaRepeat=false" 는 too aggressive. 시나리오: 처음 repeat hit 이 kcal 만 채우고 (viaRepeat=true) macros null → 나중 backfill 이 kcal 은 그대로 두고 (`backfill.ts:156` 은 기존 row kcal 로 초기화) macros/items 만 MFDS/AI 로 채움. 이 경우 kcal 은 여전히 reused. **backfill 이 kcal / macros / items 셋 모두 replace 한 경우만 viaRepeat=false** — 하나라도 기존 (repeat) 값 유지되면 flag 유지.
      - **applyKcalCorrection provenance (Codex P2 재⁸지적)**: 사용자 kcal 정정 시 `applyKcalCorrection` (`scale-macros.ts:109-145`) 이 items macros 를 rescale. 3 callers (PATCH `/api/food/[id]`, bot `/food_kcal`, bot reply) 모두 provenance policy 에 포함해야. Rescaled items 는 원본 estimator 값 아니라 사용자 정정 파생이라 **source="manual"** 로 마킹 (or 별도 `manuallyScaled` flag). Helper 갱신 필요.
+     - **Repeat component tracking (Codex P2 재⁹지적)**: viaRepeat 를 boolean 하나로 두면 "repeat 이 kcal 만 채웠고 사용자가 kcal 정정한 경우" 판정 불가 (kcal 대체됐지만 viaRepeat=true 유지 → false badge). **`repeatComponents: string[]` (예: `["kcal"]`, `["kcal","macros"]`, `["items"]`) 로 확장** — 어떤 component 가 repeat 에서 왔는지 추적. Write 경로 (kcal correction, backfill, replacement) 는 replace 한 component 를 `repeatComponents` 에서 제거. 배열 empty 되면 UI 는 badge 숨김. viaRepeat 는 derived (`repeatComponents.length > 0`) 로 계산.
   3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요 (source 미제공/null 이면 그대로 통과, invalid enum 값이면 null 로 normalize).
   4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시. 카드 헤더 (log 단위) 에 `log.viaRepeat===true` 이면 "재사용" 배지 별도 노출.
   5. **회귀 테스트**: `scripts/test-food-items-sanitize.ts` 에 source 보존 · null 통과 · invalid normalize 케이스 추가. legacy shape (source 필드 자체 없음) 이 sanitize 통과 검증.
@@ -88,6 +89,7 @@
 - **배경**: v2.25.0 "이번 주 X km / 목표 Y km" 진행률 표시. 미달 시 사용자 알림 없음.
 - **스코프**: 주간 리포트 (월요일 07:00 KST, `src/bot/notifications/scheduler.ts:90-98`) 에 "지난 주 목표 미달 N km" 문구 추가. `weekly-report.ts` + `personal-goals.ts` 로직 확장.
 - **주의 (Codex P2)**: 현재 `computePersonalGoals` 는 `currentWeekKm(now)` (이번 주 = 월요일 07:00 이면 0) + `completedWeeksAvgKm(4)` (4주 avg) 만 노출. 지난 주 정확한 shortfall 을 뽑으려면 `previousCompletedWeekKm()` 신규 헬퍼 필요 (`weekStartKST(1, now) ~ startOfWeekKST(now)` 러닝 총합). `PersonalGoalsProgress.targetWeeklyKm` shape 에 `lastWeekKm` 필드 추가 + 리포트가 그 값 참조.
+- **주의 (Codex P2 재재지적)**: `completedWeeksAvgKm` 은 empty 결과에 null 반환. `previousCompletedWeekKm()` 이 같은 관례 따르면 사용자가 지난 주 0km 뛰었을 때 alert 발동 안 됨 → 최대 미달을 놓침. **empty week = `0` 반환** 명시적 contract. 리포트 로직도 lastWeekKm===0 case 를 "완전 미달 (0/{target} km)" 로 처리.
 
 ### C-2. 도넛 카드 "선택 날짜" 인지 개선
 - **배경**: v2.26.0 도넛 "오늘" 뷰 하드코딩. 사용자가 과거 조회 시 도넛 label "오늘" 이 헷갈릴 수 있음 (뒤늦게 사전 리뷰에서 발견).
