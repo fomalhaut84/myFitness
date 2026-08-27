@@ -28,6 +28,7 @@
 - **배경**: `/nutrition?date=X` 는 카드/리스트만 selected 날짜 · 트렌드/도넛/근손실 위험 (7일 aggregate) 은 오늘 기준 유지. 스코프 축소된 상태.
 - **스코프**: `page.tsx` fetch (`aggregateRecentMacros`, `activities7d`, `latestBalances`) 에 selected 날짜 기준 옵션. 근손실 위험 assessor 도 재계산. UI 뷰 라벨 "최근 7일" → "선택 날짜 기준 7일" 로 조정.
 - **결정 필요**: 도넛 "오늘" 탭도 selected 날짜로 재라벨링 vs "선택 날짜" 로 아예 rename.
+- **주의 (사전 리뷰 지적)**: `latestWeight` (`page.tsx:82`) 는 지금 항상 `orderBy date desc` 최신 row 반환 → 과거 날짜 조회 시 미래/현재 weight 가 `protein-per-kg` 산출과 근손실 assessor 에 섞임. 이 스코프에 반드시 "선택 날짜 이전 최신 weight" (`where: { date: { lte: selectedEnd } }`) 조회로 교체 포함.
 
 ### A-3. Bot 명령으로 과거 식단 열람
 - **배경**: `/nutrition?date=X` 는 웹 전용. 텔레그램 봇에서 과거 식단 조회 불가.
@@ -49,9 +50,13 @@
 - **배경**: v2.25.0 items breakdown 저장됐지만 편집은 항상 log 전체 재기록. 비빔밥/계란국 중 계란국만 삭제/정정 불가.
 - **스코프**: `NutritionFoodList` 확장 카드 각 item 옆 편집/삭제 버튼. `PATCH /api/food/[id]/items` 신설. items 개별 write 시 top-level 재산출 정책 필요 (v2.25.0 스케일 로직 재활용).
 
-### B-4. Items 별 source (MFDS · AI · Vision) 표시
-- **배경**: 현재는 log 전체 source 만 (notes 문구). 개별 item 이 어느 source 에서 왔는지 알 수 없음.
-- **스코프**: `FoodItemBreakdown.source` 필드 추가 · estimator 별 source 태그 · UI 확장 표시.
+### B-4. Estimator provenance 저장 + Items 별 source 표시
+- **배경**: 현 `FoodLog` 스키마에는 source 필드가 **없음** (사전 리뷰 지적). estimator notes 는 응답으로만 전송되고 저장 안 됨. 개별 item 이 어느 source 에서 왔는지 알 수 없음.
+- **스코프**:
+  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 `source: "mfds" | "ai" | "vision" | "repeat"` 필드 or `FoodLog` 에 `sourcesJson` 별도 컬럼. Prisma migration 필요.
+  2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파.
+  3. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록).
+- **주의**: 단순 UI 확장이 아니라 스키마 · write path · UI 3단 변경. 우선순위 B 유지하되 스코프 큼.
 
 ### B-5. MCP `weight-loss` items 노출
 - **배경**: v2.25.0 items 저장했지만 MCP tool 응답에는 총합만 들어감. AI 어드바이저가 세부 조언 불가.
