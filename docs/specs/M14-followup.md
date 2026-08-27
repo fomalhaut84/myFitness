@@ -56,6 +56,11 @@
 - **배경**: v2.25.0 items breakdown 저장됐지만 편집은 항상 log 전체 재기록. 비빔밥/계란국 중 계란국만 삭제/정정 불가.
 - **스코프**: `NutritionFoodList` 확장 카드 각 item 옆 편집/삭제 버튼. `PATCH /api/food/[id]/items` 신설. items 개별 write 시 top-level 재산출 정책 필요 (v2.25.0 스케일 로직 재활용).
 - **주의 (Codex P2)**: top-level kcal 이 바뀌면 그 날의 `DailySummary.estimatedIntakeCalories` / `calorieBalance` 도 stale. 기존 whole-log PATCH (`src/app/api/food/[id]/route.ts:206-223`) 는 `recalculateCalorieBalance` 호출 + 실패 시 `markStaleRecalcDate` 로 큐잉. 새 items endpoint 도 동일 후처리 포함 필수.
+- **주의 (Codex P2 재재재재지적, null propagation)**: `FoodItemBreakdown` 은 모든 numeric field (kcal/proteinG/carbsG/fatG) null 허용. items endpoint 가 top-level 재산출 시 field-by-field 정책 필요 (기존 `estimate-nutrition.ts` 정책과 정합):
+    - 모든 items 의 필드가 non-null → `top[field] = sum` (0.1 단위 round).
+    - 어느 item 이라도 필드 null → `top[field] = null` (부분 미측정 propagate).
+    - Zero-summing null 은 undercount 유발이라 금지. 기존 값 유지도 stale 라 금지.
+    - Top-level null 결과이면 backfill 큐에 재진입 (`nutritionAttempts` 리셋 안 함 — items 편집으로 attempts 이력 유지).
 - **주의 (Codex P2 재지적)**: items 는 whole-array JSON write 라 concurrent item edit or backfill 과 race → silent overwrite. 기존 `applyKcalCorrection` 은 `FoodLog.updatedAt` snapshot (client 는 `expectedRevision` 전달) 로 409 conflict 반환. items endpoint 도 동일 conditional-update 계약 필요 (client 가 draft 편집 열 시점 updatedAt 전송 → server updateMany where updatedAt 매칭).
 - **주의 (Codex P2 재재지적, backfill 쪽 race)**: endpoint 만 revision guard 해도 `backfill.ts:442-449` 의 update 는 description/mealType/kcal/macros 스냅샷만 사용해 `updatedAt` 미포함. 사용자 item rename or derived total 변경 없는 편집 시 stale backfill 이 endpoint 성공 후 덮어씀. **backfill update 절에도 `updatedAt` snapshot 매칭 추가** 필요.
 
