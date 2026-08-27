@@ -42,10 +42,18 @@
 
 ### A-4. SpO2 표시 일관성 정리 (#338 후속)
 
+- **Status**: 완료 (릴리즈 v2.27.0, 이슈 #341, PR #343)
+
 - **배경**: #338 사전 리뷰 P0 지적 2건. 이번 스코프에서 후속으로 분리.
 - **스코프 1 (surface 불일치)**: `src/app/page.tsx:88` 대시보드가 `todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2` 로 수면 SpO2 결측 시 **주간 SpO2 로 대체**한다. #338 에서 MCP `_context` 와 system prompt 는 "null 이면 미측정 — 주간값으로 대체 판단 금지" 로 정했으므로, 미측정 야간에 대시보드는 주간값을 · 모닝 리포트는 "측정 없음" 을 보여 같은 날짜에 두 surface 가 어긋난다. 폴백 제거 or 카드 label 을 `SpO2 (주간)` 으로 분기.
 - **스코프 2 (중복 포맷)**: `평균% (최저 N%)` 포맷이 `src/bot/commands/sleep.ts` 와 `src/app/sleep/[date]/sleep-detail-client.tsx` 에 각각 구현됨. `src/lib/format.ts` 로 `fmtSpO2(avg, lowest)` 승격해 공용화 (상세 페이지의 `"측정없음"` 분기는 AI 프롬프트 전용이라 옵션 인자로 분리).
 - **주의**: 봇은 `src/bot/utils/formatter.ts` 를 쓰고 웹은 `src/lib/format.ts` 를 쓴다. 공용화 시 어느 쪽을 단일 소스로 삼을지 먼저 결정.
+
+### A-5. 대시보드 월간 SpO2 트렌드 차트 라벨 (#341 후속)
+
+- **배경**: #341 사전 리뷰 참고 지적. 요약 카드는 `SpO2` / `SpO2 (주간)` 로 출처를 밝히게 됐는데, 같은 화면의 월간 트렌드 차트 (`src/app/dashboard-client.tsx:301-307`) 는 데이터가 100% `DailySummary.avgSpo2` (주간 측정) 인데 제목이 그냥 `SpO2` 다. 같은 화면에서 동일 라벨이 다른 측정 종류를 가리킨다.
+- **스코프**: 트렌드 차트 제목을 `SpO2 (주간)` 으로 변경, 또는 `SleepRecord.avgSpO2` 시리즈로 교체/병기. 후자는 데이터 소스 변경이라 스코프가 커짐 — 먼저 라벨만 정정하는 쪽 권장.
+- **주의**: v2.26.2 이전 기간은 `SleepRecord.avgSpO2` 가 전 기간 null 이었다. 백필 실행 여부에 따라 수면 시리즈로 교체 시 과거 구간이 비어 보일 수 있음.
 
 ---
 
