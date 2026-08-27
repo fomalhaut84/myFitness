@@ -259,7 +259,7 @@ export default async function NutritionPage() {
         {/* Header */}
         <div className="pb-3 flex items-center justify-between">
           <div>
-            <div className="text-[11px] tracking-[0.18em] text-dim uppercase font-[family-name:var(--font-geist-mono)]">M14 · 매크로</div>
+            <div className="text-[11px] tracking-[0.18em] text-dim uppercase font-[family-name:var(--font-geist-mono)]">M14 · 영양</div>
             <h1 className="text-[26px] font-semibold tracking-tight mt-0.5">Nutrition</h1>
           </div>
           <div className="text-right">
