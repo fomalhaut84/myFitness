@@ -15,6 +15,8 @@ interface SleepData {
   sleepStart: string;
   sleepEnd: string;
   avgSpO2: number | null;
+  lowestSpO2: number | null;
+  highestSpO2: number | null;
   avgRespiration: number | null;
   lowestRespiration: number | null;
   highestRespiration: number | null;
@@ -27,6 +29,13 @@ interface SleepData {
 
 function fmtSleep(min: number): string {
   return `${Math.floor(min / 60)}h ${min % 60}m`;
+}
+
+/** AI 평가 프롬프트용. 결측을 "없음%" 같은 어색한 문구로 흘리지 않는다. */
+function fmtSpO2(avg: number | null, lowest: number | null): string {
+  if (avg == null) return "측정없음";
+  const range = lowest != null ? ` (최저 ${lowest.toFixed(0)}%)` : "";
+  return `${avg.toFixed(0)}%${range}`;
 }
 
 function fmtTime(iso: string): string {
@@ -84,7 +93,7 @@ export default function SleepDetailClient({ record }: { record: SleepData }) {
           prompt: `${record.date} 수면을 평가해줘: 총 ${fmtSleep(record.totalSleep)}, 점수 ${record.sleepScore ?? "없음"}, ` +
             `깊은수면 ${record.deepSleep ?? 0}분, REM ${record.remSleep ?? 0}분, ` +
             `HRV ${record.hrvOvernight ? Math.round(record.hrvOvernight) : "없음"}ms, ` +
-            `SpO2 ${record.avgSpO2 ?? "없음"}%, 안정시HR ${record.restingHR ?? "없음"}, ` +
+            `SpO2 ${fmtSpO2(record.avgSpO2, record.lowestSpO2)}, 안정시HR ${record.restingHR ?? "없음"}, ` +
             `배터리충전 ${record.bodyBatteryChange ?? "없음"}. 3줄 이내로 평가해줘.`,
           category: "sleep",
         }),
@@ -205,6 +214,12 @@ export default function SleepDetailClient({ record }: { record: SleepData }) {
         <div className="grid grid-cols-2 md:grid-cols-4 gap-3">
           {record.avgSpO2 != null && (
             <Stat label="SpO2" value={record.avgSpO2.toFixed(0)} unit="%" />
+          )}
+          {record.lowestSpO2 != null && (
+            <Stat label="최저 SpO2" value={record.lowestSpO2.toFixed(0)} unit="%" />
+          )}
+          {record.highestSpO2 != null && (
+            <Stat label="최고 SpO2" value={record.highestSpO2.toFixed(0)} unit="%" />
           )}
           {record.avgRespiration != null && (
             <Stat label="호흡수" value={record.avgRespiration.toFixed(0)} unit="회/분" />
