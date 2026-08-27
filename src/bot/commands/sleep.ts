@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import prisma from "../prisma";
 import { fmtSleepTime, fmtTime } from "../utils/formatter";
+import { fmtSpO2 } from "@/lib/format";
 
 export function registerSleepCommand(bot: Bot) {
   bot.command("sleep", async (ctx) => {
@@ -23,10 +24,7 @@ export function registerSleepCommand(bot: Bot) {
     if (recent.remSleep !== null) lines.push(`🟣 REM: ${fmtSleepTime(recent.remSleep)}`);
     if (recent.lightSleep !== null) lines.push(`⚪ 얕은 수면: ${fmtSleepTime(recent.lightSleep)}`);
     if (recent.avgSpO2 !== null) {
-      // SpO2 는 정수 % 로 표시. 최저값은 야간 저산소 판단의 기준이라 함께 병기.
-      const range =
-        recent.lowestSpO2 !== null ? ` (최저 ${Math.round(recent.lowestSpO2)}%)` : "";
-      lines.push(`🫁 SpO2: ${Math.round(recent.avgSpO2)}%${range}`);
+      lines.push(`🫁 SpO2: ${fmtSpO2(recent.avgSpO2, recent.lowestSpO2)}`);
     }
     if (recent.hrvOvernight !== null) lines.push(`💓 HRV: ${Math.round(recent.hrvOvernight)} ms`);
     if (recent.bodyBatteryChange !== null) lines.push(`🔋 배터리 충전: +${recent.bodyBatteryChange}`);

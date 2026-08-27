@@ -86,6 +86,14 @@ export default async function DashboardPage() {
     sleepScore: todaySleep?.sleepScore ?? null,
     bodyBattery: todaySummary?.bodyBattery ?? null,
     spo2: todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2 ?? null,
+    // #341: 수면 SpO2(야간)와 주간 SpO2(활동 중 산발 측정)는 측정 환경이 달라 값의
+    // 의미가 다르다. 폴백을 유지하되 출처를 숨기지 않는다 — AI 지침("null 이면 미측정,
+    // 주간값으로 대체 판단 금지")과 대시보드가 어긋나지 않도록.
+    spo2Source: todaySleep?.avgSpO2 != null
+      ? ("sleep" as const)
+      : todaySummary?.avgSpo2 != null
+        ? ("daily" as const)
+        : null,
     intakeCalories: todaySummary?.estimatedIntakeCalories ?? null,
     availableCalories: todaySummary?.availableCalories ?? null,
     calorieBalance: todaySummary?.calorieBalance ?? null,
@@ -98,6 +106,11 @@ export default async function DashboardPage() {
     sleepScore: yesterdaySleep?.sleepScore ?? null,
     bodyBattery: yesterdaySummary?.bodyBattery ?? null,
     spo2: yesterdaySleep?.avgSpO2 ?? yesterdaySummary?.avgSpo2 ?? null,
+    spo2Source: yesterdaySleep?.avgSpO2 != null
+      ? ("sleep" as const)
+      : yesterdaySummary?.avgSpo2 != null
+        ? ("daily" as const)
+        : null,
     intakeCalories: yesterdaySummary?.estimatedIntakeCalories ?? null,
     availableCalories: yesterdaySummary?.availableCalories ?? null,
     calorieBalance: yesterdaySummary?.calorieBalance ?? null,

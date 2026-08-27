@@ -12,6 +12,7 @@ interface DaySummary {
   sleepScore: number | null;
   bodyBattery: number | null;
   spo2: number | null;
+  spo2Source: "sleep" | "daily" | null;
   intakeCalories: number | null;
   availableCalories: number | null;
   calorieBalance: number | null;
@@ -224,10 +225,16 @@ export default function DashboardClient({
         />
         {today.spo2 != null && (
           <SummaryCard
-            label="SpO2"
-            value={today.spo2 ? Math.round(today.spo2) : null}
+            // #341: 수면 SpO2 결측 시 주간값으로 폴백하되 label 로 출처를 밝힌다.
+            label={today.spo2Source === "daily" ? "SpO2 (주간)" : "SpO2"}
+            value={Math.round(today.spo2)}
             unit="%"
-            prevValue={yesterday.spo2 ? Math.round(yesterday.spo2) : null}
+            // 출처가 다르면 서로 다른 측정 종류를 비교하게 되므로 delta 를 표시하지 않는다.
+            prevValue={
+              yesterday.spo2 != null && yesterday.spo2Source === today.spo2Source
+                ? Math.round(yesterday.spo2)
+                : null
+            }
             icon={
               <svg width="14" height="14" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
                 <circle cx="10" cy="10" r="7" />

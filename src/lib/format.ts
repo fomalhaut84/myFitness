@@ -66,3 +66,27 @@ export function formatDateTime(isoStr: string): string {
   const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
   return `${date} ${time}`;
 }
+
+/**
+ * SpO2 표시 — 정수 % (도메인 룰: 심박수 bpm 과 동일 취급).
+ *
+ * #341: 봇과 웹이 각자 구현하던 것을 단일 소스로 통합. 최저값은 야간 저산소 판단의
+ * 기준이라 있으면 병기한다.
+ *
+ * @param lowest 있으면 ` (최저 N%)` 병기
+ * @param opts.fallback avg 결측 시 문구 (기본 "-")
+ */
+export function fmtSpO2(
+  avg: number | null | undefined,
+  lowest?: number | null,
+  opts?: { fallback?: string },
+): string {
+  if (avg === null || avg === undefined || !Number.isFinite(avg)) {
+    return opts?.fallback ?? "-";
+  }
+  const range =
+    lowest !== null && lowest !== undefined && Number.isFinite(lowest)
+      ? ` (최저 ${Math.round(lowest)}%)`
+      : "";
+  return `${Math.round(avg)}%${range}`;
+}
