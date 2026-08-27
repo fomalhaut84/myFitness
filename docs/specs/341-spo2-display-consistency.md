@@ -49,6 +49,10 @@ spo2: todaySleep?.avgSpO2 ?? todaySummary?.avgSpo2 ?? null,
 
 **주의**: `prevValue` (어제 대비) 비교 시 today/yesterday 의 source 가 다르면 **서로 다른 측정 종류를 비교**하게 된다. source 불일치면 `prevValue` 를 넘기지 않는다 (delta 표시 생략).
 
+**판정 로직은 `src/lib/spo2-source.ts` 단일 모듈로 추출** (사전 리뷰 P1-2). 서버 컴포넌트 · 클라이언트 · 회귀 테스트가 같은 함수를 import 해야 한쪽만 바뀌어 조용히 갈라지는 것을 막는다. 테스트가 로직을 복제하면 프로덕션이 바뀌어도 실패하지 않아 회귀 방지 효과가 없다.
+
+**0 sentinel 방어 (사전 리뷰 P1-1)**: 기존 코드는 `today.spo2 ? … : null` 의 truthiness 로 0 을 걸렀다. `spo2Source` 도입 시 `!= null` 로 바꾸면 이 가드가 사라진다. `SleepRecord.avgSpO2` 는 ingest (`fetchers/sleep-spo2.ts`) 에서 `(0,100]` 로 걸러지지만 **`DailySummary.avgSpo2` 는 `toFloat` 로 저장되어 0 이 통과**한다 — sentinel 규칙이 적용되지 않는 유일한 경로다. `validSpO2` 로 표시 직전에 한 번 더 막는다.
+
 ### 4.2 포맷 헬퍼 단일화 (F2)
 
 현재 중복:
@@ -74,6 +78,8 @@ export function fmtSpO2(
 | 파일 | 변경 |
 |---|---|
 | `src/lib/format.ts` | `fmtSpO2` 신설 |
+| `src/lib/spo2-source.ts` | 신설 — 출처 판정 · sentinel 방어 · delta 비교 규칙 단일 소스 |
+| `src/components/dashboard/SummaryCard.tsx` | `deltaNote` prop — 값은 있는데 비교 불가한 경우 "데이터 없음" 오표시 방지 |
 | `src/app/page.tsx` | `spo2Source` 산출 |
 | `src/app/dashboard-client.tsx` | label 분기 + source 불일치 시 prevValue 생략 |
 | `src/app/sleep/[date]/sleep-detail-client.tsx` | 로컬 `fmtSpO2` 제거 → 공용 사용 |

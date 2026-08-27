@@ -6,6 +6,13 @@
 // Run: npx tsx scripts/test-spo2-format.ts
 
 import { fmtSpO2 } from "@/lib/format";
+import {
+  comparablePrevSpO2,
+  resolveSpO2Source,
+  resolveSpO2Value,
+  spo2CardLabel,
+  validSpO2,
+} from "@/lib/spo2-source";
 
 let failures = 0;
 
@@ -57,37 +64,57 @@ assert(
   fmtSpO2(94, NaN),
 );
 
-// 대시보드 출처 판정 — src/app/page.tsx 의 spo2Source 산출과 같은 규칙.
-// 로직을 그대로 옮겨 두어 page.tsx 쪽이 바뀌면 이 테스트가 먼저 어긋나도록 한다.
-type Source = "sleep" | "daily" | null;
-function resolveSource(sleepSpO2: number | null, dailySpO2: number | null): Source {
-  return sleepSpO2 != null ? "sleep" : dailySpO2 != null ? "daily" : null;
-}
+console.log("\n== validSpO2: (0,100] 밖은 sentinel ==");
+// DailySummary.avgSpo2 는 ingest 에서 toFloat 로 저장돼 0 이 그대로 들어올 수 있다
+// (SleepRecord.avgSpO2 는 fetchers/sleep-spo2.ts 에서 이미 걸러짐). 표시 직전 방어.
+assert("94 → 94", validSpO2(94) === 94);
+assert("100 → 100 (경계 포함)", validSpO2(100) === 100);
+assert("0 → null (sentinel)", validSpO2(0) === null);
+assert("-1 → null", validSpO2(-1) === null);
+assert("101 → null", validSpO2(101) === null);
+assert("NaN → null", validSpO2(NaN) === null);
+assert("null → null", validSpO2(null) === null);
+assert("undefined → null", validSpO2(undefined) === null);
 
-console.log("\n== SpO2 출처 판정 ==");
-assert("수면값 존재 → sleep", resolveSource(94, 91) === "sleep");
-assert("수면 결측 + 주간 존재 → daily", resolveSource(null, 91) === "daily");
-assert("둘 다 결측 → null", resolveSource(null, null) === null);
+console.log("\n== SpO2 출처 판정 (프로덕션 모듈 직접 검증) ==");
+assert("수면값 존재 → sleep", resolveSpO2Source(94, 91) === "sleep");
+assert("수면 결측 + 주간 존재 → daily", resolveSpO2Source(null, 91) === "daily");
+assert("둘 다 결측 → null", resolveSpO2Source(null, null) === null);
 assert(
-  "수면값 0 은 없는 값이 아니다 (null 체크여야 함)",
-  resolveSource(0, 91) === "sleep",
+  "수면값 0 은 sentinel → 주간으로 폴백",
+  resolveSpO2Source(0, 91) === "daily",
+  String(resolveSpO2Source(0, 91)),
+);
+assert(
+  "주간값도 0 이면 → null (0% 표시 방지)",
+  resolveSpO2Source(null, 0) === null,
+  String(resolveSpO2Source(null, 0)),
 );
 
-console.log("\n== delta 표시 규칙 (출처 불일치 시 생략) ==");
-function shouldShowDelta(todaySrc: Source, yesterdaySrc: Source, yesterdayVal: number | null) {
-  return yesterdayVal != null && yesterdaySrc === todaySrc;
-}
-assert("sleep/sleep → 표시", shouldShowDelta("sleep", "sleep", 92) === true);
-assert("daily/daily → 표시", shouldShowDelta("daily", "daily", 92) === true);
+console.log("\n== 표시 값 ==");
+assert("수면값 우선", resolveSpO2Value(94, 91) === 94);
+assert("수면 결측 → 주간", resolveSpO2Value(null, 91) === 91);
+assert("수면 0 → 주간", resolveSpO2Value(0, 91) === 91);
+assert("둘 다 무효 → null", resolveSpO2Value(0, 0) === null);
+
+console.log("\n== 카드 라벨 ==");
+assert("sleep → 'SpO2'", spo2CardLabel("sleep") === "SpO2");
+assert("daily → 'SpO2 (주간)'", spo2CardLabel("daily") === "SpO2 (주간)");
+assert("null → 'SpO2'", spo2CardLabel(null) === "SpO2");
+
+console.log("\n== delta 비교 규칙 (출처 불일치 시 생략) ==");
+assert("sleep/sleep → 92", comparablePrevSpO2("sleep", "sleep", 92) === 92);
+assert("daily/daily → 92", comparablePrevSpO2("daily", "daily", 92) === 92);
 assert(
-  "sleep/daily → 생략 (측정 종류가 다름)",
-  shouldShowDelta("sleep", "daily", 92) === false,
+  "sleep/daily → null (측정 종류가 다름)",
+  comparablePrevSpO2("sleep", "daily", 92) === null,
 );
+assert("daily/sleep → null", comparablePrevSpO2("daily", "sleep", 92) === null);
+assert("어제 값 없음 → null", comparablePrevSpO2("sleep", "sleep", null) === null);
 assert(
-  "daily/sleep → 생략",
-  shouldShowDelta("daily", "sleep", 92) === false,
+  "오늘 출처가 null 이면 비교 불가",
+  comparablePrevSpO2(null, null, 92) === null,
 );
-assert("어제 값 없음 → 생략", shouldShowDelta("sleep", "sleep", null) === false);
 
 console.log(failures === 0 ? "\n✅ 전체 통과" : `\n❌ 실패 ${failures}건`);
 process.exit(failures === 0 ? 0 : 1);

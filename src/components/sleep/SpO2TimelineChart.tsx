@@ -46,8 +46,9 @@ export default function SpO2TimelineChart({ series }: SpO2TimelineChartProps) {
   }
 
   // SpO2 는 좁은 대역에서 의미가 발생한다. [0,100] 이면 실제 변동이 하단에 눌려
-  // 차트가 거의 직선으로 보인다. 80 미만 관측 시에만 하단을 확장.
-  const yMin = Math.min(80, Math.floor(min) - 2);
+  // 차트가 거의 직선으로 보인다. 80 미만 관측 시에만 하단을 확장하되, 이상치 epoch
+  // 하나로 스케일이 무너지지 않도록 70 에서 멈춘다.
+  const yMin = Math.max(70, Math.min(80, Math.floor(min) - 2));
   const lowestLabel = fmtKST(lowestAt);
 
   const data = series.map((p) => ({ label: fmtKST(p.t), v: p.v }));
