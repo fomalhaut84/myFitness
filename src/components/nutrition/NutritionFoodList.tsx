@@ -28,6 +28,8 @@ interface Props {
   headerLabel?: string;
   /** 빈 리스트 안내 문구. 오늘/과거로 톤 다름. */
   emptyLabel?: string;
+  /** lifestyle 링크에 date 파라미터 전달용. 오늘이면 undefined. */
+  lifestyleDateParam?: string;
 }
 
 const P_COLOR = "#22c55e";
@@ -172,7 +174,12 @@ function FoodCard({ item }: { item: NutritionFoodItem }) {
   );
 }
 
-export default function NutritionFoodList({ items, headerLabel, emptyLabel }: Props) {
+export default function NutritionFoodList({
+  items,
+  headerLabel,
+  emptyLabel,
+  lifestyleDateParam,
+}: Props) {
   const missingCount = items.filter((i) =>
     i.kcal == null || i.proteinG == null || i.carbsG == null || i.fatG == null,
   ).length;
@@ -205,7 +212,12 @@ export default function NutritionFoodList({ items, headerLabel, emptyLabel }: Pr
       )}
       <div className="px-4 py-3 border-t border-border/60 text-[11px] font-[family-name:var(--font-geist-mono)] text-dim flex items-center gap-3">
         <span>봇 · 웹 어느 쪽으로 입력해도 자동 추정</span>
-        <a className="ml-auto text-sub hover:text-bright" href="/lifestyle">/lifestyle 보기 →</a>
+        <a
+          className="ml-auto text-sub hover:text-bright"
+          href={lifestyleDateParam ? `/lifestyle?date=${lifestyleDateParam}` : "/lifestyle"}
+        >
+          {lifestyleDateParam ? `${lifestyleDateParam} 편집 →` : "/lifestyle 보기 →"}
+        </a>
       </div>
     </div>
   );

@@ -16,7 +16,7 @@ import NutritionFoodList, {
 } from "@/components/nutrition/NutritionFoodList";
 import NutritionDateNav from "@/components/nutrition/NutritionDateNav";
 import { sanitizeFoodItemBreakdown } from "@/lib/nutrition/food-items";
-import { MIN_HISTORY_YMD } from "@/lib/date";
+import { parseHistoryYmd } from "@/lib/date";
 
 export const dynamic = "force-dynamic";
 
@@ -37,31 +37,6 @@ function kstDayRange(ymd?: string): { start: Date; end: Date } {
   };
 }
 
-/**
- * #330: URL `?date=YYYY-MM-DD` 파싱. invalid / 미래 / 너무 과거 (2020-01-01 이전) →
- * null 반환 → caller 가 오늘로 fallback. URL 자체는 수정 안 함 (사용자 URL 유지).
- * MAX_HISTORY_DAYS 미만은 400 없이 silent fallback — 봇/링크로 잘못 온 date 도 무해.
- */
-function parseSelectedYmd(raw?: string): string | null {
-  if (!raw) return null;
-  const match = /^(\d{4})-(\d{2})-(\d{2})$/.exec(raw);
-  if (!match) return null;
-  const [, y, m, d] = match;
-  const dt = new Date(`${raw}T00:00:00+09:00`);
-  if (Number.isNaN(dt.getTime())) return null;
-  const formatter = new Intl.DateTimeFormat("en-CA", {
-    timeZone: "Asia/Seoul",
-    year: "numeric",
-    month: "2-digit",
-    day: "2-digit",
-  });
-  if (formatter.format(dt) !== `${y}-${m}-${d}`) return null; // e.g. 2월 30일 방어
-  const today = todayKSTString();
-  if (raw > today) return null; // 미래 date
-  if (raw < MIN_HISTORY_YMD) return null; // 하한 (nav "이전" 버튼과 정합)
-  return raw;
-}
-
 export default async function NutritionPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
 }) {
@@ -71,8 +46,9 @@ export default async function NutritionPage(props: {
   // (선택 날짜 기반 재계산은 후속 이슈).
   const sp = (await props.searchParams) ?? {};
   const rawDate = typeof sp.date === "string" ? sp.date : undefined;
-  const selectedYmd = parseSelectedYmd(rawDate) ?? todayKSTString();
-  const isToday = selectedYmd === todayKSTString();
+  const todayKstYmd = todayKSTString();
+  const selectedYmd = parseHistoryYmd(rawDate, todayKstYmd) ?? todayKstYmd;
+  const isToday = selectedYmd === todayKstYmd;
   const { start: selectedStart, end: selectedEnd } = kstDayRange(selectedYmd);
   const { start: todayStart, end: todayEnd } = kstDayRange();
   // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 필요 → 8일치 fetch.
@@ -321,7 +297,7 @@ export default async function NutritionPage(props: {
           </div>
         </div>
         {/* #330: 날짜 네비게이션 */}
-        <NutritionDateNav selectedYmd={selectedYmd} todayYmd={todayKSTString()} />
+        <NutritionDateNav selectedYmd={selectedYmd} todayYmd={todayKstYmd} />
         {/* Warning + Banner (오늘일 때만) */}
         {isToday && (pendingToday > 0 || terminalToday > 0) && (
           <div className="mb-3">
@@ -360,6 +336,7 @@ export default async function NutritionPage(props: {
                   ? "오늘 기록된 식단이 없습니다."
                   : `${selectedYmd}에 기록된 식단이 없습니다.`
               }
+              lifestyleDateParam={isToday ? undefined : selectedYmd}
             />
           </div>
         </div>
