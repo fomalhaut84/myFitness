@@ -32,13 +32,15 @@ export function startCronJobs() {
       console.log("[cron] Garmin 자동 싱크 시작");
 
       try {
-        // KST 기준 2일 전 ~ 오늘. 오늘 부분 데이터(체중/혈압/걸음 등)도
+        // KST 기준 3일 전 ~ 오늘. 오늘 부분 데이터(체중/혈압/걸음 등)도
         // 자동 갱신 대상에 포함. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
+        // #328: 2 → 3일로 window 확장. Garmin API 가 늦게 sync 되는 데이터 (체중 등)
+        // margin 확보. upsert 라 중복 저장 없음.
         const { daysAgoKST, todayKST } = await import("@/lib/garmin/utils");
         const results = await syncAll({
-          startDate: daysAgoKST(2),
+          startDate: daysAgoKST(3),
           endDate: todayKST(),
-          // 신규 타입은 2일 윈도우 대신 365일 초기 히스토리 로드
+          // 신규 타입은 3일 윈도우 대신 365일 초기 히스토리 로드
           bootstrapNewTypes: true,
         });
         const total = results.reduce((sum, r) => sum + r.synced, 0);
