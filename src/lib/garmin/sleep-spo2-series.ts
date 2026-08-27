@@ -116,3 +116,38 @@ export function buildSpO2ChartSeries(
   }
   return out;
 }
+
+/** SpO2 차트 Y축 설정 — 하한과 눈금이 함께 결정되어야 하므로 한 곳에서 낸다. */
+export interface SpO2AxisConfig {
+  yMin: number;
+  ticks: number[];
+}
+
+/**
+ * Y축 하한과 눈금을 계산한다.
+ *
+ * **하한을 임의로 고정하지 않는다** (#342, Codex P2). 초안은 `Math.max(70, …)` 으로
+ * 하한을 막았지만, Recharts 는 기본 `allowDataOverflow={false}` 라 지정 domain 보다
+ * 데이터가 낮으면 **domain 을 데이터에 맞춰 늘린다** — 하한 지정이 사실상 무효였고,
+ * 코드만 의도를 잘못 주장하고 있었다.
+ *
+ * `allowDataOverflow={true}` 로 잘라내는 선택지는 버렸다. 실측 저점을 그래프에서
+ * 지우면 Stat 카드의 최저값과 어긋나는데, 이는 `readingConfidence` 필터링을 넣지 않은
+ * 이유(§4.4)와 같은 문제다. **낮은 값이 있으면 스케일이 눌리더라도 보여주는 쪽**이 맞다.
+ *
+ * 대신 눈금을 하한에 맞춰 생성해, 확장된 구간이 라벨 없이 남지 않게 한다.
+ */
+export function spo2ChartYAxis(minValue: number): SpO2AxisConfig {
+  // 평상시(83~100)에 실변동이 하단에 눌리지 않도록 80 을 기본 하한으로 두되,
+  // 그보다 낮은 관측이 있으면 그 값을 담는다.
+  const yMin = Math.min(80, Math.floor(minValue) - 2);
+  const span = 100 - yMin;
+  const step = span <= 25 ? 5 : span <= 50 ? 10 : 20;
+
+  const ticks: number[] = [];
+  for (let v = Math.ceil(yMin / step) * step; v <= 100; v += step) ticks.push(v);
+  // 하한 라벨은 첫 눈금과 충분히 떨어져 있을 때만 추가 (겹침 방지).
+  if (ticks.length === 0 || ticks[0] - yMin >= step / 2) ticks.unshift(yMin);
+
+  return { yMin, ticks };
+}
