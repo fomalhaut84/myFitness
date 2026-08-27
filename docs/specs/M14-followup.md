@@ -53,11 +53,12 @@
 ### B-4. Estimator provenance 저장 + Items 별 source 표시
 - **배경**: 현 `FoodLog` 스키마에는 source 필드가 **없음** (사전 리뷰 지적). estimator notes 는 응답으로만 전송되고 저장 안 됨. 개별 item 이 어느 source 에서 왔는지 알 수 없음.
 - **스코프**:
-  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 `source: "mfds" | "ai" | "vision" | "repeat"` 필드 or `FoodLog` 에 `sourcesJson` 별도 컬럼. Prisma migration 필요.
+  1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 **optional** `source: "mfds" | "ai" | "vision" | "repeat" | null` 필드. `null` (legacy fallback) 도 명시적으로 sanitize 통과해야 v2.25.0 이후 저장된 기존 items breakdown 이 UI 에서 사라지지 않음. Prisma schema 는 nullable JSON 이라 별도 migration 없이 shape 확장 가능 (기존 row 자동 호환).
   2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파.
-  3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요. 기존 회귀 테스트 `scripts/test-food-items-sanitize.ts` 에 source 보존 케이스 추가.
-  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록).
-- **주의**: 스키마 · write path · helper · UI 4단 변경. 우선순위 B 유지하되 스코프 큼.
+  3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요 (source 미제공/null 이면 그대로 통과, invalid enum 값이면 null 로 normalize).
+  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록, Repeat: 회색, **null / 미제공: "출처 미상" 회색 뱃지**). legacy row (source null) 도 breakdown 자체는 정상 표시.
+  5. **회귀 테스트**: `scripts/test-food-items-sanitize.ts` 에 source 보존 · null 통과 · invalid normalize 케이스 추가. legacy shape (source 필드 자체 없음) 이 sanitize 통과 검증.
+- **주의**: 스키마 · write path · helper · UI · 테스트 5단 변경. 우선순위 B 유지하되 스코프 큼. legacy row 하위호환 정책 (source optional + null fallback) 이 스코프 확정의 핵심.
 
 ### B-5. MCP `weight-loss` items 노출
 - **배경**: v2.25.0 items 저장했지만 MCP tool 응답에는 총합만 들어감. AI 어드바이저가 세부 조언 불가.
