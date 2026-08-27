@@ -55,6 +55,8 @@ export default async function SleepDetailPage({ params }: PageProps) {
           sleepStart: record.sleepStart.toISOString(),
           sleepEnd: record.sleepEnd.toISOString(),
           avgSpO2: record.avgSpO2,
+          lowestSpO2: record.lowestSpO2,
+          highestSpO2: record.highestSpO2,
           avgRespiration: record.avgRespiration,
           lowestRespiration: record.lowestRespiration,
           highestRespiration: record.highestRespiration,

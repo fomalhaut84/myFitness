@@ -170,6 +170,8 @@ model SleepRecord {
   awakeDuration Int?
   sleepScore    Int?                   // 0-100
   avgSpO2       Float?
+  lowestSpO2    Float?                 // %, 수면 중 최저 (야간 저산소 판단 기준)
+  highestSpO2   Float?                 // %
   // M2: 추가 지표
   avgRespiration    Float?             // breaths/min
   lowestRespiration Float?
