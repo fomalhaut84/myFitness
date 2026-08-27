@@ -55,8 +55,9 @@
 - **스코프**:
   1. **Schema 확장**: `FoodItemBreakdown` (JSON) 에 `source: "mfds" | "ai" | "vision" | "repeat"` 필드 or `FoodLog` 에 `sourcesJson` 별도 컬럼. Prisma migration 필요.
   2. **Write 경로 4곳 propagate**: `POST /api/food` (JSON + photo), `bot/food.ts`, `bot/food-photo.ts`, `backfill.ts` — 각 estimator 결과에 source 태그 붙여 저장. `repeat-lookup` hit 는 원본 source 를 그대로 전파.
-  3. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록).
-- **주의**: 단순 UI 확장이 아니라 스키마 · write path · UI 3단 변경. 우선순위 B 유지하되 스코프 큼.
+  3. **Helper 확장 (Codex P2 재지적)**: `src/lib/nutrition/food-items.ts` 의 `sanitizeFoodItemBreakdown` 과 `scaleItemsForNewKcal` 이 지금은 5 known field (name/kcal/P/C/F) 만 map/reconstruct — 그대로 두면 repeat lookup sanitize · hit.kcal 스케일 · backfill retained kcal 스케일 모두에서 source 필드 loss. 두 helper 도 source passthrough 로 수정 필요. 기존 회귀 테스트 `scripts/test-food-items-sanitize.ts` 에 source 보존 케이스 추가.
+  4. **UI 확장**: `NutritionFoodList` items breakdown 각 row 에 source 배지 (MFDS: 파랑, AI: 노랑, Vision: 초록).
+- **주의**: 스키마 · write path · helper · UI 4단 변경. 우선순위 B 유지하되 스코프 큼.
 
 ### B-5. MCP `weight-loss` items 노출
 - **배경**: v2.25.0 items 저장했지만 MCP tool 응답에는 총합만 들어감. AI 어드바이저가 세부 조언 불가.
