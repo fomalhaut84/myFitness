@@ -308,7 +308,10 @@ export default function DashboardClient({
       </div>
       <div className="grid grid-cols-1 md:grid-cols-2 gap-3 mt-3">
         <TrendLineChart
-          title={`SpO2${avgSpo2 !== null ? ` — 평균 ${avgSpo2}%` : ""}`}
+          // #346: 이 차트 데이터는 100% DailySummary.avgSpo2 (주간 측정) 다.
+          // 위 요약 카드의 'SpO2' 는 보통 수면 측정값이라, 같은 라벨을 쓰면 한 화면에서
+          // 같은 이름이 다른 측정 종류를 가리킨다. 라벨은 spo2CardLabel 단일 소스에서.
+          title={`${spo2CardLabel("daily")}${avgSpo2 !== null ? ` — 평균 ${avgSpo2}%` : ""}`}
           data={monthlySpo2}
           color="#a78bfa"
           unit="%"
