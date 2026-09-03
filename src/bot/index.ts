@@ -12,10 +12,10 @@ import { registerAiCommands, handleAiQuestion } from "./commands/ai";
 import { isFoodInput, handleFoodInput, handleFoodKcalCommand } from "./commands/food";
 import {
   registerFoodEditCallback,
-  handleFoodEditReply,
+  handleFoodEditInput,
 } from "./commands/food-edit-callback";
 import { registerFoodPhotoHandler } from "./commands/food-photo";
-import { isPendingEdit } from "./commands/food-edit-state";
+import { shouldConsumeAsEditInput } from "./commands/food-edit-state";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
@@ -64,22 +64,20 @@ export function getBot(): Bot {
   bot.on("message:text", async (ctx) => {
     const text = ctx.message.text.trim();
 
-    // #292: 편집 프롬프트에 대한 reply 우선 처리 (kcal 숫자 답장).
-    const chatId = ctx.chat?.id;
-    const replyToId = ctx.message.reply_to_message?.message_id;
-    if (
-      typeof chatId === "number" &&
-      typeof replyToId === "number" &&
-      isPendingEdit(chatId, replyToId)
-    ) {
-      const handled = await handleFoodEditReply(ctx);
-      if (handled) return;
-    }
-
     // #283: /food_kcal <id> <kcal> — 이전 로그 kcal 정정 (backward-compat).
+    // #350: 명령은 편집 pending 보다 우선. pending 중에도 명령이 정상 동작해야 한다.
     if (/^\/food_kcal(?:@\S+)?\b/.test(text)) {
       await handleFoodKcalCommand(ctx, text);
       return;
+    }
+
+    // #292: 편집 프롬프트 이후 입력 처리 (kcal 숫자 / 설명 텍스트).
+    // #350: reply_to_message 대신 chat 단위 pending 으로 라우팅 (force_reply 폐기).
+    // 소비 조건은 shouldConsumeAsEditInput 에 있다 (회귀 스크립트가 검증 — 사전 리뷰 P0).
+    const chatId = ctx.chat?.id;
+    if (typeof chatId === "number" && shouldConsumeAsEditInput(chatId, text)) {
+      const handled = await handleFoodEditInput(ctx);
+      if (handled) return;
     }
 
     // 식단 입력 감지

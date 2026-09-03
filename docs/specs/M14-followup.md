@@ -14,11 +14,16 @@
 - **v2.26.1** — Phase 4 hotfix (Garmin naive-TZ 이슈 완전 해결)
 - **v2.26.2** — 수면 SpO2 파싱 키 오타 수정 (#338) · 최저/최고 SpO2 저장
 - **v2.27.0** — 야간 SpO2 그래프 (#342) · SpO2 표시 일관성 (#341)
+- **v2.27.1** — 월간 SpO2 트렌드 차트 라벨 정정 (#346)
 
 ### 인계 (다음 세션에서 이어갈 것)
 
-- **PR #347** (오픈, dev 대상) — 월간 SpO2 트렌드 차트 라벨 정정 (#346). **사용자 머지 대기.** self-review only (UI copy 1줄), 3-check 통과. 머지 후 → 이슈 close + 브랜치 정리 + 릴리즈 판단 (patch, v2.27.1). 단독 릴리즈할지 다음 작업과 묶을지는 사용자 판단
-- 배포 검증 미완: v2.27.0 그래프의 **X축 시각이 KST 인지** 실사용 확인 (Codex 2회차 회귀 지점이었음)
+**SpO2 세션은 완결됨.** 오픈 PR · 미완결 브랜치 없음. main = dev = `v2.27.1`, 배포 성공 확인.
+
+남은 것은 **실사용 확인 1건**뿐:
+
+- v2.27.0 야간 SpO2 그래프의 **X축 시각이 KST 로 표시되는지**. Codex 2회차가 잡은 회귀 지점 (`scale="time"` 축의 d3 `.ticks()` 가 Date 를 반환해 축이 UTC 로 새던 문제) 이라 배포 후 육안 확인이 남았다. 수면 상세 페이지에서 헤더의 `최저 N% · HH:MM` 과 그래프 X축 눈금이 같은 시간대인지 보면 된다. 어긋나면 `formatEpochKST` (`src/lib/format.ts`) 부터 확인
+- 그 외에는 아래 우선순위 A 에서 새로 착수
 
 **중요한 발견 (memory):**
 - Garmin `weight-service` API 의 `entry.date` 는 KST wall-clock 을 UTC 로 표기한 **naive-TZ** ms. 시각 비교 (미래/과거 필터) 에는 `entry.timestampGMT` 필수. `body-composition.ts` 는 v2.26.1 로 해결. 다른 fetcher (특히 `blood-pressure`) 도 같은 이슈 잠재.
