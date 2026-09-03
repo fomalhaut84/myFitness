@@ -1,0 +1,135 @@
+# 식단 편집 프롬프트 force_reply 제거 — chat 단위 pending 전환
+
+- **작성일**: 2026-09-03
+- **타입**: fix
+- **이슈**: #350
+
+## 1. 배경
+
+텔레그램에서 식단 로그의 `[🔢 kcal]` / `[📝 설명]` 버튼을 눌러 수정한 뒤, **답장 입력폼이 사라지지 않고 채팅방을 열 때마다 같은 항목으로 계속 재생성**되는 문제. 입력창의 ✕ 를 눌러도 다음에 채팅방을 열면 다시 나타난다.
+
+### 원인
+
+`force_reply` 는 Telegram **클라이언트 측 상태**다. 프롬프트 메시지를 수신하면 클라이언트가 "이 메시지에 답장 대기중" 상태를 채팅방에 저장하고, 다음 두 경우에만 해제된다.
+
+1. 그 메시지에 실제로 답장을 보냄
+2. 그 메시지가 채팅방에서 사라짐
+
+✕ 탭은 현재 화면에서 답장 바를 내릴 뿐 저장된 상태를 지우지 않아, 채팅방 재진입 시 다시 무장된다. Bot API 에는 이미 보낸 force_reply 를 회수하는 메서드가 없다 (`editMessageReplyMarkup` / `editMessageText` 의 `reply_markup` 은 InlineKeyboardMarkup 만 허용).
+
+서버는 `food-edit-state.ts` 의 5분 TTL 로 in-memory pending 만 만료시키고 클라이언트에는 아무 신호도 보내지 않는다. 따라서 봇 입장에서 "끝난" 편집이어도 클라이언트는 영구히 대기 상태로 남는다.
+
+### 답장 안 된 프롬프트가 쌓이는 경로
+
+| # | 경로 | 위치 |
+|---|---|---|
+| 1 | 프롬프트 발송 후에도 원본 메시지의 `[🔢 kcal]` `[📝 설명]` 버튼이 남아 재탭 가능 → 프롬프트 N개, 답장 1개 | `food-edit-callback.ts:162-190` |
+| 2 | 검증 실패 시 `reissueForRetry` 가 새 force_reply 발송, 이전 프롬프트는 방치 | `food-edit-callback.ts:236-245`, `:322-335` |
+| 3 | 프롬프트만 띄우고 답장 안 함 (5분 TTL 만료) — 서버만 만료, 클라이언트는 영구 잔존 | `food-edit-state.ts` |
+| 4 | 봇 재시작 (PM2 배포) 으로 in-memory Map 소실 — 채팅방의 프롬프트 메시지는 그대로 | 〃 |
+
+`src/` 전체에서 force_reply 발송 지점은 `food-edit-callback.ts` 뿐이며 모두 사용자 콜백 트리거다. cron·리포트·재시작 경로의 재발송은 없음 — 봇이 다시 보내는 것이 아니라 채팅방에 남은 프롬프트 메시지가 계속 입력폼을 재무장시키는 것.
+
+### 기각안: 프롬프트 메시지 삭제
+
+`deleteMessage` 로 프롬프트를 회수하면 해결되지만, 봇이 대화 기록을 지우는 부작용이 원인보다 크다. **기각.**
+
+## 2. 목표
+
+force_reply 를 제거하고 **chat 단위 pending 상태**로 전환해, 클라이언트에 끈적한(sticky) 상태를 애초에 만들지 않는다. 프롬프트 메시지는 일반 메시지로 대화 기록에 그대로 남는다.
+
+## 3. 요구사항
+
+- [ ] F1: 편집 프롬프트를 force_reply 없는 일반 메시지로 발송
+- [ ] F2: pending key 를 `(chatId, promptMessageId)` → `chatId` 로 변경, 라우팅을 `reply_to_message` → 다음 일반 텍스트로 전환
+- [ ] F3: chat 당 pending 1건만 유지 — 버튼 재탭 시 덮어쓰기 (스태킹 불가)
+- [ ] F4: 프롬프트에 `[✕ 취소]` inline 버튼 추가 (현재 중단 수단 부재)
+- [ ] F5: 슬래시 명령(`/`로 시작)은 편집 입력으로 소비하지 않음
+- [ ] F6: grace tombstone 제거 — 만료 시 일반 라우팅으로 통과
+- [ ] F7: 완료/취소 메시지에 `remove_keyboard` 부착 — 기존에 박힌 force_reply 상태 정리 시도
+- [ ] F8: 상태 머신 회귀 검증 스크립트 추가
+
+## 4. 기술 설계
+
+### 4.1 `food-edit-state.ts` — chat 단위 재설계
+
+```
+현재: Map<`${chatId}:${promptMessageId}`, { logId, action, activeUntil }>
+변경: Map<chatId,                        { logId, action, activeUntil }>
+```
+
+API:
+
+| 함수 | 시그니처 | 비고 |
+|---|---|---|
+| `markPendingEdit` | `(chatId, logId, action = "kcal")` | 기존 pending 덮어쓰기. 재시도 시 TTL 갱신 겸용 |
+| `isPendingEdit` | `(chatId) => boolean` | 만료 시 lazy delete 후 false |
+| `peekPendingEdit` | `(chatId) => { logId, action } \| null` | 만료 시 lazy delete 후 null |
+| `deletePendingEdit` | `(chatId)` | 성공/취소 시 소비 |
+| `clearPendingEditFor` | `(chatId, logId) => boolean` | 취소 전용. logId 불일치 시 no-op |
+
+**grace tombstone 제거 근거**: reply-to 라우팅에서는 사용자가 프롬프트에 *명시적으로 답장*했을 때만 tombstone 이 히트해 안전했다. chat 단위 라우팅에서 25분 tombstone 을 유지하면 **만료 후 30분간 그 채팅의 모든 텍스트가 "만료되었습니다" 안내로 먹힌다.** 만료 시 그냥 삭제하고 일반 라우팅으로 통과시킨다. TTL 은 5분 유지, 프롬프트 문구에 시한 명시.
+
+`clearPendingEditFor` 의 logId 대조: 오래된 프롬프트의 `[✕ 취소]` 를 나중에 눌렀을 때 그 사이 시작된 **다른** 편집을 취소하지 않기 위함.
+
+### 4.2 `food-edit-callback.ts`
+
+- `parseCallbackData` 에 `edit-cancel` action 추가 (`food:edit-cancel:<logId>`, 17+25=42byte < 64 안전)
+- 프롬프트 발송: `reply_markup: { force_reply, input_field_placeholder }` → `InlineKeyboard().text("✕ 취소", ...)`
+- `handleFoodEditReply` → **`handleFoodEditInput`** 으로 개명 (더 이상 reply 아님). `ctx.message.reply_to_message` 의존 제거
+- `reissueForRetry`: 새 프롬프트 message_id 재바인딩 로직 삭제 → 일반 메시지 발송 + `markPendingEdit` 으로 TTL 갱신
+- 취소 핸들러: `clearPendingEditFor` → `answerCallbackQuery` → `editMessageReplyMarkup({ reply_markup: undefined })` 로 취소 버튼 제거
+- 완료/취소 메시지에 `reply_markup: { remove_keyboard: true }`
+
+원본 메시지의 `[🔢 kcal] [📝 설명] [🗑️ 삭제]` 키보드는 **유지**한다. chat 단위 pending 은 재탭 시 덮어쓰므로 스태킹이 발생하지 않고, 버튼이 남아있는 편이 UX 상 낫다.
+
+### 4.3 `index.ts` 라우팅 순서
+
+```
+1. /food_kcal 명령        (명령이 pending 보다 우선)
+2. pending 있음 && !text.startsWith("/")  → handleFoodEditInput
+3. isFoodInput            → handleFoodInput
+4. fallback               → handleAiQuestion
+```
+
+F5 의 `/` 가드가 없으면 pending 중 `/today` 입력이 kcal 값으로 소비된다.
+
+### 4.4 트레이드오프
+
+pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 취소]` 버튼, 5분 TTL, 검증 실패 시 재프롬프트 유지. 사용자 1명·단일 chat 이므로 reply-to 로 대상을 구분할 실익이 없고, 긴 식별자 타이핑 회피(#292 의 원 목적)는 chat pending 에서도 동일하게 달성된다.
+
+## 5. 변경 파일
+
+| 파일 | 변경 |
+|---|---|
+| `src/bot/commands/food-edit-state.ts` | chat 단위 재설계, grace 제거, `clearPendingEditFor` 추가 |
+| `src/bot/commands/food-edit-callback.ts` | force_reply 제거, 취소 액션, `handleFoodEditInput` 개명 |
+| `src/bot/index.ts` | 라우팅 조건 변경 + `/` 가드 |
+| `scripts/verify-food-edit-pending.ts` | 신규 — 상태 머신 회귀 검증 |
+| `docs/specs/350-food-edit-force-reply-fix.md` | 본 문서 |
+
+## 6. 테스트 계획
+
+테스트 프레임워크 부재 → workflow.md 8-5 에 따라 재현/검증 스크립트로 대체.
+
+`scripts/verify-food-edit-pending.ts` (`npx tsx`):
+
+- C1: mark → `isPendingEdit` true, `peekPendingEdit` 이 logId/action 반환
+- C2: **버튼 2회 탭** → entry 1건만 유지, 최신 logId 로 덮어쓰기 (스태킹 회귀 방지)
+- C3: TTL 경과 → `isPendingEdit` false, `peekPendingEdit` null, Map 에서 제거 (lazy delete)
+- C4: `clearPendingEditFor` logId 불일치 → pending 유지, 일치 → 삭제
+- C5: 서로 다른 chatId 간 격리
+
+3-check: `npm run lint && npm run typecheck && npm run build`
+
+배포 후 실사용 검증:
+- 수정 완료 후 채팅방 재진입 시 답장 입력폼 미재생성
+- `[✕ 취소]` 동작
+- pending 중 `/today` 가 명령으로 처리됨
+
+## 7. 제외 사항
+
+- 프롬프트 메시지 삭제 (`deleteMessage`) — 대화 기록 훼손으로 기각
+- 이미 클라이언트에 박힌 force_reply 의 확정적 제거 — Bot API 에 회수 수단 없음. F7 의 `remove_keyboard` 는 best-effort 이며, 실패 시 사용자가 해당 프롬프트에 답장하거나 메시지를 직접 삭제해야 함
+- pending 중 무관 텍스트 오소비에 대한 휴리스틱 판별 (형식 추측 기반 분기) — 취약해서 도입하지 않음
+- 다중 사용자/다중 chat 동시 편집 시나리오 — 단일 사용자 전제
