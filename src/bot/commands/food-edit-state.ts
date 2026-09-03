@@ -120,6 +120,30 @@ export function shouldConsumeAsEditInput(chatId: number, text: string): boolean 
   return isPendingEdit(chatId);
 }
 
+/**
+ * #357 (Codex P2, PR #356): 프롬프트 발송과 pending 등록의 순서를 캡슐화.
+ *
+ * `sendPrompt` 를 호출하기 **전에** 기존 pending 을 비운다. 발송이 실패하면 pending 이
+ * 전혀 남지 않는다 (완전 fail-closed).
+ *
+ * 이전 구현은 `markPendingEdit` 을 발송 이후에 두어 유령 pending 은 막았지만, **이미 다른
+ * 로그의 pending 이 걸려 있으면** 발송 실패 시 그 stale entry 가 살아남아 사용자의 다음
+ * 텍스트가 엉뚱한 로그를 수정했다.
+ *
+ * 호출부가 순서를 틀릴 수 없도록 헬퍼로 강제한다 — 분기마다 순서를 지키는 방식은 이번처럼
+ * 한쪽을 빠뜨릴 수 있다.
+ */
+export async function armPendingEdit(
+  chatId: number,
+  logId: string,
+  action: PendingEditAction,
+  sendPrompt: () => Promise<void>,
+): Promise<void> {
+  deletePendingEdit(chatId);
+  await sendPrompt();
+  markPendingEdit(chatId, logId, action);
+}
+
 /** 성공 처리 · 취소 후 entry 명시 삭제. */
 export function deletePendingEdit(chatId: number): void {
   pending.delete(chatId);

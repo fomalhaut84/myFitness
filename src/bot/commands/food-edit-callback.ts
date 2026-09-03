@@ -16,6 +16,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import {
+  armPendingEdit,
   clearPendingEditFor,
   deletePendingEdit,
   markPendingEdit,
@@ -260,25 +261,29 @@ export function registerFoodEditCallback(bot: Bot): void {
     }
     // #350: 일반 메시지 + [✕ 취소] 로 프롬프트 발송. 이 chat 의 다음 텍스트가 편집 입력이 된다.
     // chat 당 pending 1건이라 버튼을 다시 눌러도 덮어쓰기 — 프롬프트 스태킹이 발생하지 않는다.
+    // #357: 발송/등록 순서는 armPendingEdit 이 강제한다 (발송 실패 시 stale pending 잔존 방지).
     const chatId = ctx.chat?.id;
     if (typeof chatId !== "number") return;
 
-    if (action === "edit-desc") {
-      // #309: 설명 정정 프롬프트. 입력 텍스트로 PATCH description → macros/attempts 리셋 →
-      // backfill 재추정 (기존 PATCH /api/food/[id] 로직과 동일 정책).
-      const prompt =
-        `📝 "${descPreview(existing.description)}" 의 새 설명을 텍스트로 입력해주세요 (5분 이내).\n` +
-        `설명 변경 시 kcal/매크로가 자동 재추정됩니다.`;
-      await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
-      markPendingEdit(chatId, logId, "desc");
-    } else {
-      const currentKcal = existing.estimatedKcal;
-      const prompt =
-        `🔢 "${descPreview(existing.description)}" 의 새 kcal 을 숫자로만 입력해주세요 (0~10000, 5분 이내).\n` +
-        (currentKcal !== null ? `현재 값: ${currentKcal} kcal` : "현재 값: 미측정");
-      await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
-      markPendingEdit(chatId, logId, "kcal");
-    }
+    const prompt =
+      action === "edit-desc"
+        ? // #309: 설명 정정 프롬프트. 입력 텍스트로 PATCH description → macros/attempts 리셋 →
+          // backfill 재추정 (기존 PATCH /api/food/[id] 로직과 동일 정책).
+          `📝 "${descPreview(existing.description)}" 의 새 설명을 텍스트로 입력해주세요 (5분 이내).\n` +
+          `설명 변경 시 kcal/매크로가 자동 재추정됩니다.`
+        : `🔢 "${descPreview(existing.description)}" 의 새 kcal 을 숫자로만 입력해주세요 (0~10000, 5분 이내).\n` +
+          (existing.estimatedKcal !== null
+            ? `현재 값: ${existing.estimatedKcal} kcal`
+            : "현재 값: 미측정");
+
+    await armPendingEdit(
+      chatId,
+      logId,
+      action === "edit-desc" ? "desc" : "kcal",
+      async () => {
+        await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
+      },
+    );
   });
 }
 
