@@ -32,7 +32,7 @@
 
 추가 확인:
 - **다음 월요일 03:00 UTC `Security Audit` 스케줄 실행** — 스케줄은 default branch 파일을 쓰므로 v2.27.4 로 비로소 새 파서가 적용됨
-- **다음 `git push` 시 `GH007`** — 전역 git 이메일을 `starryjeju@gmail.com` (계정에 private 등록) 으로 바꿔서, "Block command line pushes that expose my email" 이 켜져 있으면 push 가 거부됨. 뜨면 그 설정을 끄거나 개인 저장소만 noreply 사용
+- **다음 `git push` 시 `GH007`** — 전역 git 이메일을 개인 Gmail 주소 (GitHub 계정에 등록됨) 로 바꿔서, "Block command line pushes that expose my email" 이 켜져 있으면 push 가 거부됨. 뜨면 **그 설정을 끄지 말고** `<id>+<username>@users.noreply.github.com` 으로 전환할 것 — 공개 저장소에서 commit metadata 로 주소가 노출되는 걸 막는 유일한 수단이다.
 
 **로컬 잔여 브랜치 (이전 세션):** `chore/m6-roadmap`, `fix/203-3`, `fix/203-4`, `fix/220-1`, `fix/261-2`. 전부 dev 보다 한참 뒤처져 있음. `fix/261-2` 만 원격 없음. 정리 여부 미결정.
 
@@ -40,7 +40,9 @@
 - **릴리즈 PR 은 merge commit 필수.** v2.27.2(#352)를 squash 한 탓에 main↔dev 공통 조상이 끊겨 다음 릴리즈 PR #356 이 3개 파일에서 충돌했다 (내용은 동일했는데도). main 을 dev 로 back-merge 해 복원. → memory `feedback_release_merge_commit`
 - **`Closes #N` 은 default branch 머지에만 동작.** `dev` 로 가는 PR 은 이슈가 자동으로 닫히지 않으므로 수동 close 필요.
 - **Dependabot 보안 PR 은 `target-branch` 로 못 옮긴다** — 항상 default branch 를 타겟. 게다가 커버리지가 자체 audit 의 부분집합이었다 (#353 이 4건, #355 가 6건). → #359 에서 자동 PR 비활성화, 알림은 유지.
-- **커밋 이메일이 회사 주소로 노출돼 있었다.** 전역 git config 가 `sagan.ahn@kakaocorp.com` 이고 저장소가 public 이라 GitHub 공개 API 가 590 커밋의 이메일을 평문 서빙. OSS 파트너십 스팸의 유입 경로. GitHub 의 이메일 privacy 설정은 **계정에 등록된 주소만** 보호하므로 이 케이스엔 애초에 무력했다. 전역을 `starryjeju@gmail.com` 으로, 회사 저장소 13개는 로컬 override 로 정리. **기존 590 커밋은 그대로 두기로 결정** (이력 재작성 비용 대비 실익 낮음, 포크·스타 0). → memory `project_commit_email_exposure`
+- **커밋 이메일이 회사 주소로 노출돼 있었다.** 전역 git config 가 회사 주소였고 저장소가 public 이라 GitHub 공개 API 가 590 커밋의 이메일을 평문 서빙. OSS 파트너십 스팸의 유입 경로. GitHub 의 이메일 privacy 설정은 **계정에 등록된 주소만** 보호하므로 이 케이스엔 애초에 무력했다. 전역을 개인 Gmail 로, 회사 저장소 13개는 로컬 override 로 정리. **기존 590 커밋은 그대로 두기로 결정** (이력 재작성 비용 대비 실익 낮음, 포크·스타 0). → memory `project_commit_email_exposure`
+    - **미해결**: 개인 Gmail 로 바꿨을 뿐 *노출 자체는 그대로*다. 이 저장소는 public 이라 config 변경 이후 push 한 커밋도 commit metadata 에 주소가 평문으로 실린다 (`/repos/.../commits/<sha>` 로 확인됨). 노출 대상이 회사 → 개인 주소로 바뀐 것뿐. 실질 차단은 `users.noreply.github.com` 전환뿐이며, 착수 여부 미결정.
+    - **문서 규칙**: 이 저장소는 public 이므로 스펙·인계 문서에 실주소를 적지 않는다 (#362 Codex P1).
 
 ---
 
@@ -157,7 +159,7 @@
 
 ### D-4. Security Audit 실행 실패 시 이슈 자동 생성 (?)
 - **배경**: v2.27.4 로 파서는 fail-closed 가 됐지만, audit **실행 실패**는 워크플로우 실패(빨간 X + 알림)로만 드러난다. 취약점 발견 시에만 이슈가 생성된다.
-- **판단 보류 근거**: 이 워크플로우는 2026-08-17~09-03 **7주간 실패 상태로 방치**됐고, 그 사이 이슈(#266)도 이미 생성돼 있었다. 알림 채널을 늘리는 것이 해법이 아니라는 뜻. 실효 있는 대안(텔레그램 알림 연동 등)을 먼저 정할 것.
+- **판단 보류 근거**: 이 워크플로우는 2026-07-27 부터 실패가 시작돼 09-03 수정까지 **약 5.5주간** 방치됐다 (08-10 1회만 성공, 마지막 연속 실패는 08-17~09-03 = 17일 · 스케줄 4회). 그 사이 이슈(#266)도 이미 생성돼 있었다. 알림 채널을 늘리는 것이 해법이 아니라는 뜻. 실효 있는 대안(텔레그램 알림 연동 등)을 먼저 정할 것.
 - **스코프**: 정한다면 `security-audit.yml` 에 `if: failure()` github-script 스텝 추가, 또는 기존 봇 알림 파이프라인 재사용.
 - **출처**: #359 스펙 §7.
 
