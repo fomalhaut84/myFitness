@@ -65,6 +65,31 @@ Dependabot 이 놓친 2건이 하필 **high** 였고, `deepmerge-ts` 는 `@prism
 
 대응은 `overrides` 로 수동이며, 전이 의존성까지 정확히 통제된다 — #355 가 실증했다.
 
+### 4-1. 선결 조건 — audit 실행 실패를 fail-closed 로 (Codex P2, PR #360)
+
+Dependabot 자동 PR 을 끄면 이 워크플로우가 **유일한 탐지 경로**가 된다. 그런데 기존 파서는 audit *실행 실패* 시 fail-**open** 이었다.
+
+```bash
+# 기존 — 죽은 코드
+if [ ! -f audit-result.json ]; then ... exit 1; fi
+HIGH=$(cat audit-result.json | jq -r '.metadata.vulnerabilities.high // 0' 2>/dev/null || echo "0")
+```
+
+`tee` 는 실행이 실패해도 파일을 만들기 때문에 `[ ! -f ]` 분기는 절대 타지 않는다. registry 장애 등으로 `{"error": {...}}` 페이로드가 오면 `// 0` 폴백이 세 카운트를 모두 0 으로 만들어 **워크플로우가 '취약점 없음' 으로 성공하고 이슈도 만들지 않는다.**
+
+존재 여부가 아니라 **내용**을 검증하고, 판정할 수 없으면 실패시키도록 고쳤다.
+
+| 입력 | 기존 | 수정 후 |
+|---|---|---|
+| 정상 · 취약점 0건 | 성공 | 성공 |
+| 정상 · 취약점 N건 | 실패(의도) | 실패(의도) |
+| `{"error": {...}}` (registry 장애) | **성공 (오탐)** | 실패 |
+| 빈 파일 | **성공 (오탐)** | 실패 |
+| JSON 아닌 출력 | **성공 (오탐)** | 실패 |
+| `metadata.vulnerabilities` 누락 | **성공 (오탐)** | 실패 |
+
+검증 순서: 파일 비어있지 않음 → 유효 JSON → `.error` 키 없음 → `.metadata.vulnerabilities` 가 객체 → 세 카운트가 정수. 실패 시 `audit-stderr.log` 와 결과 앞부분을 로그에 남긴다. `Upload audit results` 는 `if: always()` 라 아티팩트는 그대로 보존된다.
+
 ## 5. 대응 절차
 
 1. `Security Audit` 실패 또는 이슈 자동 생성 → 취약점 확인
@@ -83,13 +108,15 @@ Dependabot 이 놓친 2건이 하필 **high** 였고, `deepmerge-ts` 는 `@prism
 |---|---|
 | `automated-security-fixes` | `{"enabled": false, "paused": false}` |
 | `vulnerability-alerts` | `204 No Content` (활성 유지) |
-| PR #353 | close |
+| PR #353 | close (Dependabot 이 v2.27.3 머지 후 "no longer updatable" 로 자동 정리) |
+| audit 파서 fail-closed | 6개 입력 시나리오 검증 — 정상 2건 통과, 실패 4건 exit 1 |
 
 ## 7. 제외 사항
 
 - Dependabot 취약점 **알림** 비활성화 — 알림은 유지한다
 - `.github/dependabot.yml` 추가 — 보안 PR 을 못 막으면서 버전 업데이트 노이즈만 늘린다. 향후 정기 버전 업데이트가 필요해지면 `target-branch: dev` 와 함께 별도 검토
 - 저장소 default branch 변경 — `main` 이 실서비스 브랜치이므로 불가
+- **audit 실행 실패 시 이슈 자동 생성** — 현재는 워크플로우 실패(빨간 X + 알림)로만 가시화된다. 다만 이 워크플로우는 2026-08-17~09-03 7주간 실패 상태였는데도 방치됐고, 그 사이 이슈(#266)도 이미 생성돼 있었다. 즉 알림 채널을 늘리는 것이 해법이 아니므로 별도 이슈로 분리한다
 
 ## 8. 관련
 

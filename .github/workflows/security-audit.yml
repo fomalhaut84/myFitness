@@ -45,42 +45,64 @@ jobs:
           echo "audit_exit_code=$AUDIT_EXIT_CODE" >> $GITHUB_OUTPUT
           echo "Audit exit code: $AUDIT_EXIT_CODE"
 
+      # Codex P2 (PR #360): audit 실행 실패를 fail-closed 로 처리한다.
+      #   기존에는 `[ ! -f audit-result.json ]` 로만 실패를 감지했는데, tee 는 실행이 실패해도
+      #   파일을 만들기 때문에 이 분기가 사실상 죽은 코드였다. registry 장애 등으로 에러
+      #   페이로드가 오면 `.metadata.vulnerabilities.high // 0` 이 전부 0 을 반환해 워크플로우가
+      #   '취약점 없음' 으로 성공하고 이슈도 만들지 않았다.
+      #   #359 로 Dependabot 자동 보안 PR 을 껐으므로 이 워크플로우가 유일한 탐지 경로다.
+      #   존재 여부가 아니라 **내용**을 검증하고, 판정할 수 없으면 실패시킨다.
       - name: Parse audit results
         id: check
         run: |
-          set +e
-
           AUDIT_EXIT_CODE="${{ steps.audit.outputs.audit_exit_code }}"
 
-          if [ ! -f audit-result.json ]; then
-            if [ "$AUDIT_EXIT_CODE" != "0" ]; then
-              echo "::error::npm audit 실행 실패 (exit code: $AUDIT_EXIT_CODE)"
-              exit 1
-            fi
-            echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
-            exit 0
-          fi
+          fail() {
+            echo "::error::$1"
+            [ -s audit-stderr.log ] && { echo "--- npm audit stderr ---"; cat audit-stderr.log; }
+            [ -s audit-result.json ] && { echo "--- audit-result.json (앞부분) ---"; head -c 1000 audit-result.json; echo; }
+            exit 1
+          }
 
-          HIGH=$(cat audit-result.json | jq -r '.metadata.vulnerabilities.high // 0' 2>/dev/null || echo "0")
-          MODERATE=$(cat audit-result.json | jq -r '.metadata.vulnerabilities.moderate // 0' 2>/dev/null || echo "0")
-          CRITICAL=$(cat audit-result.json | jq -r '.metadata.vulnerabilities.critical // 0' 2>/dev/null || echo "0")
+          [ -s audit-result.json ] \
+            || fail "npm audit 결과가 비어 있습니다 (exit code: $AUDIT_EXIT_CODE)"
+
+          jq -e . audit-result.json >/dev/null 2>&1 \
+            || fail "npm audit 출력이 유효한 JSON 이 아닙니다 (exit code: $AUDIT_EXIT_CODE)"
+
+          jq -e 'has("error")' audit-result.json >/dev/null 2>&1 \
+            && fail "npm audit 이 에러를 반환했습니다: $(jq -rc '.error' audit-result.json)"
+
+          # metadata.vulnerabilities 가 없으면 카운트를 0 으로 읽어 '취약점 없음' 으로 오인한다.
+          jq -e '.metadata.vulnerabilities | objects' audit-result.json >/dev/null 2>&1 \
+            || fail "npm audit 결과에 metadata.vulnerabilities 가 없습니다 (exit code: $AUDIT_EXIT_CODE)"
+
+          CRITICAL=$(jq -r '.metadata.vulnerabilities.critical' audit-result.json)
+          HIGH=$(jq -r '.metadata.vulnerabilities.high' audit-result.json)
+          MODERATE=$(jq -r '.metadata.vulnerabilities.moderate' audit-result.json)
+
+          for v in "$CRITICAL" "$HIGH" "$MODERATE"; do
+            case "$v" in
+              ''|*[!0-9]*) fail "취약점 카운트가 정수가 아닙니다: '$v'" ;;
+            esac
+          done
 
           TOTAL=$((CRITICAL + HIGH + MODERATE))
 
-          echo "critical=$CRITICAL" >> $GITHUB_OUTPUT
-          echo "high=$HIGH" >> $GITHUB_OUTPUT
-          echo "moderate=$MODERATE" >> $GITHUB_OUTPUT
-          echo "total=$TOTAL" >> $GITHUB_OUTPUT
+          {
+            echo "critical=$CRITICAL"
+            echo "high=$HIGH"
+            echo "moderate=$MODERATE"
+            echo "total=$TOTAL"
+          } >> $GITHUB_OUTPUT
 
           echo "취약점 요약: Critical=$CRITICAL, High=$HIGH, Moderate=$MODERATE, Total=$TOTAL"
 
-          if [ $TOTAL -gt 0 ]; then
+          if [ "$TOTAL" -gt 0 ]; then
             echo "has_vulnerabilities=true" >> $GITHUB_OUTPUT
           else
             echo "has_vulnerabilities=false" >> $GITHUB_OUTPUT
           fi
-
-          set -e
 
       - name: Create issue on vulnerabilities
         if: steps.check.outputs.has_vulnerabilities == 'true'
