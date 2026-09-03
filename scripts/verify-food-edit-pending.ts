@@ -9,6 +9,7 @@
  */
 
 import {
+  armPendingEdit,
   clearPendingEditFor,
   deletePendingEdit,
   isPendingEdit,
@@ -181,39 +182,86 @@ withClockAdvancedBy(ACTIVE_TTL_MS + 1_000, () => {
   check("만료 후 소비 안 함 (일반 라우팅 통과)", shouldConsumeAsEditInput(CHAT_A, "650") === false);
 });
 
-// C8: 응답 메시지 길이 — Telegram 4096자 한도 (Codex P2 PR #351 회귀)
-//   description 컬럼에 길이 제한이 없어, 이전 설명과 새 설명을 함께 실으면 완료 응답이
-//   한도를 넘어 sendMessage 가 거부됐다. 그 시점엔 DB update 가 이미 커밋된 뒤라
-//   사용자는 복구 안내를 잃고 수정이 실패한 것으로 오인한다.
-console.log("C8: 완료 응답이 Telegram 메시지 한도 이내");
-const HUGE = "가".repeat(10_000);
-check(
-  `descPreview 가 ${DESC_PREVIEW_MAX}자 + 말줄임표로 절단`,
-  descPreview(HUGE).length === DESC_PREVIEW_MAX + 1,
-);
-check("한도 이하 설명은 그대로", descPreview("김치찌개") === "김치찌개");
-check(
-  `경계값 ${DESC_PREVIEW_MAX}자는 절단하지 않음`,
-  descPreview("가".repeat(DESC_PREVIEW_MAX)).length === DESC_PREVIEW_MAX,
-);
+// 비동기 케이스는 main() 안에서 실행한다 — tsx 의 cjs 출력은 top-level await 미지원.
+async function main(): Promise<void> {
+  // C9: armPendingEdit — 프롬프트 발송 실패 시 pending 이 남지 않는다 (Codex P2 PR #356 회귀)
+  //   markPendingEdit 을 발송 이후에 두면 유령 pending 은 막히지만, 이미 다른 로그의 pending 이
+  //   걸려 있을 때 발송이 실패하면 그 stale entry 가 살아남아 다음 텍스트가 엉뚱한 로그를
+  //   수정한다. 발송 전에 먼저 비워 완전 fail-closed 로 만든다.
+  console.log("C9: armPendingEdit 발송/등록 순서");
+  const sendOk = async (): Promise<void> => {};
+  const sendFail = async (): Promise<void> => {
+    throw new Error("Telegram 5xx");
+  };
 
-const worstDesc = buildDescChangeMessage(HUGE, HUGE);
-check(
-  `설명 변경 완료 응답 최악값 ${worstDesc.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
-  worstDesc.length < TELEGRAM_MAX_MESSAGE_LENGTH,
-);
-check("이전 설명이 응답에 포함 (복구 경로 F10)", worstDesc.includes("이전 설명"));
+  reset();
+  await armPendingEdit(CHAT_A, "log-1", "kcal", sendOk);
+  check("발송 성공 → pending 설정", peekPendingEdit(CHAT_A)?.logId === "log-1");
 
-const worstKcal = buildKcalChangeMessage(HUGE, 10_000);
-check(
-  `kcal 완료 응답 최악값 ${worstKcal.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
-  worstKcal.length < TELEGRAM_MAX_MESSAGE_LENGTH,
-);
+  reset();
+  await armPendingEdit(CHAT_A, "log-1", "kcal", sendFail).catch(() => {});
+  check("발송 실패 → pending 없음", isPendingEdit(CHAT_A) === false);
 
-reset();
-if (failed > 0) {
-  console.error(`\n❌ ${failed}건 실패`);
-  process.exit(1);
+  // 핵심 회귀: 선행 pending 이 있는 상태에서 다른 로그 프롬프트 발송이 실패
+  reset();
+  markPendingEdit(CHAT_A, "log-old", "kcal");
+  await armPendingEdit(CHAT_A, "log-new", "desc", sendFail).catch(() => {});
+  check(
+    "선행 pending 있는 채로 발송 실패 → 이전 pending 도 제거 (엉뚱한 로그 수정 방지)",
+    isPendingEdit(CHAT_A) === false,
+  );
+
+  reset();
+  markPendingEdit(CHAT_A, "log-old", "kcal");
+  await armPendingEdit(CHAT_A, "log-new", "desc", sendOk);
+  check("선행 pending 있는 채로 발송 성공 → 새 logId 로 교체", peekPendingEdit(CHAT_A)?.logId === "log-new");
+  check("action 도 교체", peekPendingEdit(CHAT_A)?.action === "desc");
+
+  reset();
+  markPendingEdit(CHAT_A, "log-1", "kcal");
+  for (let i = 0; i < MAX_RETRIES; i += 1) registerRetry(CHAT_A);
+  await armPendingEdit(CHAT_A, "log-1", "kcal", sendOk);
+  check("재무장 시 재시도 카운터 리셋", registerRetry(CHAT_A) === true);
+
+  // C8: 응답 메시지 길이 — Telegram 4096자 한도 (Codex P2 PR #351 회귀)
+  //   description 컬럼에 길이 제한이 없어, 이전 설명과 새 설명을 함께 실으면 완료 응답이
+  //   한도를 넘어 sendMessage 가 거부됐다. 그 시점엔 DB update 가 이미 커밋된 뒤라
+  //   사용자는 복구 안내를 잃고 수정이 실패한 것으로 오인한다.
+  console.log("C8: 완료 응답이 Telegram 메시지 한도 이내");
+  const HUGE = "가".repeat(10_000);
+  check(
+    `descPreview 가 ${DESC_PREVIEW_MAX}자 + 말줄임표로 절단`,
+    descPreview(HUGE).length === DESC_PREVIEW_MAX + 1,
+  );
+  check("한도 이하 설명은 그대로", descPreview("김치찌개") === "김치찌개");
+  check(
+    `경계값 ${DESC_PREVIEW_MAX}자는 절단하지 않음`,
+    descPreview("가".repeat(DESC_PREVIEW_MAX)).length === DESC_PREVIEW_MAX,
+  );
+
+  const worstDesc = buildDescChangeMessage(HUGE, HUGE);
+  check(
+    `설명 변경 완료 응답 최악값 ${worstDesc.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
+    worstDesc.length < TELEGRAM_MAX_MESSAGE_LENGTH,
+  );
+  check("이전 설명이 응답에 포함 (복구 경로 F10)", worstDesc.includes("이전 설명"));
+
+  const worstKcal = buildKcalChangeMessage(HUGE, 10_000);
+  check(
+    `kcal 완료 응답 최악값 ${worstKcal.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
+    worstKcal.length < TELEGRAM_MAX_MESSAGE_LENGTH,
+  );
+
+  reset();
+  if (failed > 0) {
+    console.error(`\n❌ ${failed}건 실패`);
+    process.exit(1);
+  }
+  console.log("\n✅ 전체 통과");
+  process.exit(0);
 }
-console.log("\n✅ 전체 통과");
-process.exit(0);
+
+main().catch((err) => {
+  console.error(err);
+  process.exit(1);
+});
