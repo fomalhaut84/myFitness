@@ -17,6 +17,13 @@ import {
   registerRetry,
   shouldConsumeAsEditInput,
 } from "../src/bot/commands/food-edit-state";
+import {
+  DESC_PREVIEW_MAX,
+  TELEGRAM_MAX_MESSAGE_LENGTH,
+  buildDescChangeMessage,
+  buildKcalChangeMessage,
+  descPreview,
+} from "../src/bot/commands/food-edit-format";
 
 const ACTIVE_TTL_MS = 5 * 60 * 1000;
 const MAX_RETRIES = 3;
@@ -173,6 +180,35 @@ check(
 withClockAdvancedBy(ACTIVE_TTL_MS + 1_000, () => {
   check("만료 후 소비 안 함 (일반 라우팅 통과)", shouldConsumeAsEditInput(CHAT_A, "650") === false);
 });
+
+// C8: 응답 메시지 길이 — Telegram 4096자 한도 (Codex P2 PR #351 회귀)
+//   description 컬럼에 길이 제한이 없어, 이전 설명과 새 설명을 함께 실으면 완료 응답이
+//   한도를 넘어 sendMessage 가 거부됐다. 그 시점엔 DB update 가 이미 커밋된 뒤라
+//   사용자는 복구 안내를 잃고 수정이 실패한 것으로 오인한다.
+console.log("C8: 완료 응답이 Telegram 메시지 한도 이내");
+const HUGE = "가".repeat(10_000);
+check(
+  `descPreview 가 ${DESC_PREVIEW_MAX}자 + 말줄임표로 절단`,
+  descPreview(HUGE).length === DESC_PREVIEW_MAX + 1,
+);
+check("한도 이하 설명은 그대로", descPreview("김치찌개") === "김치찌개");
+check(
+  `경계값 ${DESC_PREVIEW_MAX}자는 절단하지 않음`,
+  descPreview("가".repeat(DESC_PREVIEW_MAX)).length === DESC_PREVIEW_MAX,
+);
+
+const worstDesc = buildDescChangeMessage(HUGE, HUGE);
+check(
+  `설명 변경 완료 응답 최악값 ${worstDesc.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
+  worstDesc.length < TELEGRAM_MAX_MESSAGE_LENGTH,
+);
+check("이전 설명이 응답에 포함 (복구 경로 F10)", worstDesc.includes("이전 설명"));
+
+const worstKcal = buildKcalChangeMessage(HUGE, 10_000);
+check(
+  `kcal 완료 응답 최악값 ${worstKcal.length}자 < ${TELEGRAM_MAX_MESSAGE_LENGTH}`,
+  worstKcal.length < TELEGRAM_MAX_MESSAGE_LENGTH,
+);
 
 reset();
 if (failed > 0) {

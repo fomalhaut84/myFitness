@@ -106,7 +106,16 @@ F5 의 `/` 가드가 없으면 pending 중 미등록 슬래시 명령이 kcal �
 
 만료 후에는 안내 없이 일반 라우팅으로 통과한다. `isFoodInput` 은 `^(아침|조식|점심|중식|저녁|석식|간식|야식)` 접두사만 매칭하므로 `650` 같은 잔여 입력이 식단으로 오탐되지 않고 AI 질문으로 흘러간다 — 수용 가능한 영향.
 
-### 4.4 트레이드오프
+### 4.4 응답 메시지 길이 · 커밋 이후 전송 (Codex P2, PR #351)
+
+`FoodLog.description` 은 스키마에 길이 제한이 없다 (PATCH API 만 500자 제한, 생성·Vision 경로는 무제한). F10 으로 이전 설명까지 함께 실으면서 완료 응답이 Telegram 한도(4096자)를 넘길 수 있게 됐다. 넘기면 `sendMessage` 가 거부되는데, **그 시점엔 DB update 와 `deletePendingEdit` 이 이미 끝난 뒤**라 catch 가 반영된 수정을 "설명 수정 중 오류" 로 오인 보고하고 복구 안내까지 유실된다.
+
+두 가지를 함께 고친다.
+
+1. 메시지에 삽입하는 설명을 `descPreview` 로 120자 절단. 조립 로직을 의존성 없는 `food-edit-format.ts` 로 분리해 회귀 스크립트가 최악값 길이를 검증한다.
+2. **커밋 이후 전송을 try 밖으로 이동** (kcal·desc 양쪽). 전송 실패가 DB 작업 실패로 오인 보고되지 않는다.
+
+### 4.5 트레이드오프
 
 pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 취소]` 버튼, 5분 TTL, 검증 실패 시 재프롬프트 유지. 사용자 1명·단일 chat 이므로 reply-to 로 대상을 구분할 실익이 없고, 긴 식별자 타이핑 회피(#292 의 원 목적)는 chat pending 에서도 동일하게 달성된다.
 
@@ -117,7 +126,8 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 | `src/bot/commands/food-edit-state.ts` | chat 단위 재설계, grace 제거, `clearPendingEditFor` 추가 |
 | `src/bot/commands/food-edit-callback.ts` | force_reply 제거, 취소 액션, `handleFoodEditInput` 개명 |
 | `src/bot/index.ts` | 라우팅 조건 변경 + `/` 가드 |
-| `scripts/verify-food-edit-pending.ts` | 신규 — 상태 머신 · 라우팅 회귀 검증 |
+| `src/bot/commands/food-edit-format.ts` | 신규 — 응답 메시지 조립 (의존성 없는 순수 모듈) |
+| `scripts/verify-food-edit-pending.ts` | 신규 — 상태 머신 · 라우팅 · 메시지 길이 회귀 검증 |
 | `package.json` | `verify:food-edit-pending` 스크립트 추가 |
 | `docs/specs/350-food-edit-force-reply-fix.md` | 본 문서 |
 
@@ -135,6 +145,7 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 - C5: `clearPendingEditFor` logId 불일치 → pending 유지, 일치 → 삭제
 - C6: 서로 다른 chatId 간 격리
 - C7: `shouldConsumeAsEditInput` — pending 없음/만료/슬래시 텍스트/타 chat 에서 false
+- C8: 완료 응답이 Telegram 4096자 한도 이내 (Codex P2 회귀). `descPreview` 절단/경계값, 이전·새 설명을 모두 10,000자로 준 최악값 검증
 
 3-check: `npm run lint && npm run typecheck && npm run build`
 
@@ -150,6 +161,7 @@ grammy `ctx` · Prisma 를 함께 mock 해야 하는 콜백 흐름은 프레임�
 | M4 | `[🔢 kcal]` 대기 중 비숫자 텍스트 4회 | 3회까지 재프롬프트, 4회째 편집 종료 안내 (F9) |
 | M5 | **Codex P2 회귀** — `[🔢 kcal]` 프롬프트 대기 중 웹 API 로 해당 로그 삭제 → 봇의 `[🗑️ 삭제]` 탭 → 아무 텍스트 입력 | `P2025` 경로에서도 pending 이 정리되어, 입력이 편집으로 가로채이지 않고 정상 라우팅 |
 | M6 | `[📝 설명]` 로 설명 변경 | 응답에 이전 설명 표시 (F10 복구 경로) |
+| M7 | 긴 설명(수백 자)의 로그를 `[📝 설명]` 로 변경 | 응답이 미리보기로 잘려 정상 전송, "수정 중 오류" 오보 없음 |
 
 ## 7. 제외 사항
 

@@ -23,6 +23,11 @@ import {
   registerRetry,
 } from "./food-edit-state";
 import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
+import {
+  buildDescChangeMessage,
+  buildKcalChangeMessage,
+  descPreview,
+} from "./food-edit-format";
 
 export const CALLBACK_PREFIX = "food";
 
@@ -61,6 +66,7 @@ function buildCancelKeyboard(logId: string): InlineKeyboard {
  * 아무것도 떠 있지 않으면 no-op.
  */
 const CLEAR_REPLY_MARKUP = { reply_markup: { remove_keyboard: true } } as const;
+
 
 /** kcal 응답에 붙일 inline keyboard. logId 를 callback_data 에 embed.
  *  #309: 설명 정정 버튼 추가 → 3 버튼 (kcal · 설명 · 삭제). */
@@ -261,14 +267,14 @@ export function registerFoodEditCallback(bot: Bot): void {
       // #309: 설명 정정 프롬프트. 입력 텍스트로 PATCH description → macros/attempts 리셋 →
       // backfill 재추정 (기존 PATCH /api/food/[id] 로직과 동일 정책).
       const prompt =
-        `📝 "${existing.description}" 의 새 설명을 텍스트로 입력해주세요 (5분 이내).\n` +
+        `📝 "${descPreview(existing.description)}" 의 새 설명을 텍스트로 입력해주세요 (5분 이내).\n` +
         `설명 변경 시 kcal/매크로가 자동 재추정됩니다.`;
       await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
       markPendingEdit(chatId, logId, "desc");
     } else {
       const currentKcal = existing.estimatedKcal;
       const prompt =
-        `🔢 "${existing.description}" 의 새 kcal 을 숫자로만 입력해주세요 (0~10000, 5분 이내).\n` +
+        `🔢 "${descPreview(existing.description)}" 의 새 kcal 을 숫자로만 입력해주세요 (0~10000, 5분 이내).\n` +
         (currentKcal !== null ? `현재 값: ${currentKcal} kcal` : "현재 값: 미측정");
       await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
       markPendingEdit(chatId, logId, "kcal");
@@ -336,6 +342,8 @@ export async function handleFoodEditInput(ctx: {
     return true;
   }
 
+  // 커밋 이후 전송할 완료 메시지. try 안에서 보내지 않는다 (Codex P2, PR #351).
+  let successMessage: string | null = null;
   try {
     // Codex P2 (PR #300 4회차/8회차): kcal 정정 concurrency-safe helper.
     const correction = await applyKcalCorrection(prisma, logId, kcal);
@@ -372,10 +380,9 @@ export async function handleFoodEditInput(ctx: {
     }
     // 성공 → entry 소비.
     deletePendingEdit(chatId);
-    await ctx.reply(
-      `✏️ "${updated.description}" → ${kcal.toLocaleString("ko-KR")} kcal 로 수정됨`,
-      CLEAR_REPLY_MARKUP,
-    );
+    // Codex P2 (PR #351): 커밋 이후 전송은 try 밖에서. 여기서 던지면 catch 가 이미 반영된
+    // 수정을 '실패' 로 오인 보고한다.
+    successMessage = buildKcalChangeMessage(updated.description, kcal);
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -388,7 +395,10 @@ export async function handleFoodEditInput(ctx: {
     }
     console.error("[food-edit] update 실패:", err);
     await ctx.reply("kcal 수정 중 오류가 발생했습니다.");
-    // update 실패 — entry 유지, 재답장 가능.
+    // update 실패 — entry 유지, 재입력 가능.
+  }
+  if (successMessage) {
+    await ctx.reply(successMessage, CLEAR_REPLY_MARKUP);
   }
   return true;
 }
@@ -425,6 +435,8 @@ async function handleDescReply(
     return true;
   }
 
+  // 커밋 이후 전송할 완료 메시지. try 안에서 보내지 않는다 (Codex P2, PR #351).
+  let successMessage: string | null = null;
   try {
     // 기존 description 과 동일하면 no-op — DB 건드리지 않음.
     const existing = await prisma.foodLog.findUnique({
@@ -439,7 +451,7 @@ async function handleDescReply(
     if (existing.description === trimmed) {
       deletePendingEdit(chatId);
       await reply(
-        `ℹ️ 이미 "${trimmed}" 로 저장되어 있습니다 (변경 없음).`,
+        `ℹ️ 이미 "${descPreview(trimmed)}" 로 저장되어 있습니다 (변경 없음).`,
         CLEAR_REPLY_MARKUP,
       );
       return true;
@@ -481,12 +493,10 @@ async function handleDescReply(
     // 사전 리뷰 P1 (#350): desc 경로는 임의 텍스트가 그대로 description 이 되고 같은 update 로
     // kcal/매크로/items 가 전부 null 로 파기된다 (kcal 경로는 숫자 검증이 있어 비대칭).
     // 오소비 판별 대신 **복구 가능성**을 보장 — 이전 설명을 응답에 남긴다.
-    await reply(
-      `📝 설명 변경 완료: "${trimmed}"\n` +
-        `이전 설명: "${previousDescription}" (잘못 바뀐 경우 [📝 설명] 로 되돌리세요)\n` +
-        `kcal/매크로는 backfill cron 이 곧 재추정합니다.`,
-      CLEAR_REPLY_MARKUP,
-    );
+    // Codex P2 (PR #351): 두 설명을 함께 실으므로 각각 미리보기로 자르고, 전송은 커밋 이후라
+    // try 밖에서 한다 (여기서 던지면 catch 가 반영된 수정을 '실패' 로 오인 보고하고 복구
+    // 안내까지 유실된다).
+    successMessage = buildDescChangeMessage(previousDescription, trimmed);
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -498,7 +508,10 @@ async function handleDescReply(
     }
     console.error("[food-edit-desc] update 실패:", err);
     await reply("설명 수정 중 오류가 발생했습니다.");
-    // entry 유지, 재답장 가능.
+    // entry 유지, 재입력 가능.
+  }
+  if (successMessage) {
+    await reply(successMessage, CLEAR_REPLY_MARKUP);
   }
   return true;
 }
