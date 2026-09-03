@@ -118,7 +118,10 @@ export function registerFoodEditCallback(bot: Bot): void {
     }
 
     if (action === "delete") {
+      const deleteChatId = ctx.chat?.id;
       let deletedDate: Date | null = null;
+      // 로그가 이미 없었던 경우 (웹 API 등 다른 경로로 삭제됨).
+      let alreadyGone = false;
       try {
         const row = await prisma.foodLog.delete({
           where: { id: logId },
@@ -130,21 +133,39 @@ export function registerFoodEditCallback(bot: Bot): void {
           err instanceof Prisma.PrismaClientKnownRequestError &&
           err.code === "P2025"
         ) {
+          alreadyGone = true;
+        } else {
+          console.error("[food-edit] delete 실패:", err);
           try {
-            await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
+            await ctx.answerCallbackQuery({ text: "삭제 중 오류가 발생했습니다." });
           } catch {
             // ignore
           }
-          try {
-            await ctx.editMessageReplyMarkup({ reply_markup: undefined });
-          } catch {
-            // ignore
-          }
+          // 로그 존재 여부가 불확실하므로 pending 은 유지 — 재시도 가능해야 한다.
           return;
         }
-        console.error("[food-edit] delete 실패:", err);
+      }
+
+      // 사전 리뷰 P0 (#350): 편집 프롬프트를 띄운 상태에서 삭제하면 pending 이 남아 이후
+      // 텍스트를 계속 삼킨다. 같은 로그의 pending 만 정리 (다른 편집은 건드리지 않음).
+      // Codex P2 (PR #351): 대상 로그가 사라진 것이 확정된 **두 경로** — 삭제 성공과 P2025
+      // (이미 삭제됨) — 모두에서 정리해야 한다. P2025 가 early return 하던 구조에서는 웹 API
+      // 로 먼저 지운 뒤 봇 삭제 버튼을 누르면 pending 이 최대 5분간 살아남아 텍스트를 가로챘다.
+      // 분기별 cleanup 을 빠뜨릴 수 없도록 단일 지점으로 합쳤다.
+      if (typeof deleteChatId === "number") {
+        clearPendingEditFor(deleteChatId, logId);
+      }
+
+      // deletedDate 를 함께 검사해 이후 recalculateCalorieBalance 호출까지 Date 로 좁힌다
+      // (alreadyGone 일 때만 null 이므로 두 조건은 동치).
+      if (alreadyGone || deletedDate === null) {
         try {
-          await ctx.answerCallbackQuery({ text: "삭제 중 오류가 발생했습니다." });
+          await ctx.answerCallbackQuery({ text: "이미 삭제된 로그입니다." });
+        } catch {
+          // ignore
+        }
+        try {
+          await ctx.editMessageReplyMarkup({ reply_markup: undefined });
         } catch {
           // ignore
         }
@@ -154,12 +175,6 @@ export function registerFoodEditCallback(bot: Bot): void {
       // Codex P2 (#293): delete 성공 즉시 사용자 피드백 (callback ACK + keyboard 제거 + 안내
       // 메시지). recalc 는 이후 별도 try 로 처리 — 실패해도 UI 는 이미 반영됨. 각 API 호출은
       // 독립 try/catch 로 감싸 하나 실패해도 나머지 진행.
-      // 사전 리뷰 P0 (#350): 편집 프롬프트를 띄운 상태에서 삭제하면 pending 이 남아 이후
-      // 텍스트를 계속 삼킨다. 같은 로그의 pending 만 정리 (다른 편집은 건드리지 않음).
-      const deleteChatId = ctx.chat?.id;
-      if (typeof deleteChatId === "number") {
-        clearPendingEditFor(deleteChatId, logId);
-      }
       try {
         await ctx.answerCallbackQuery({ text: "삭제되었습니다." });
       } catch {

@@ -88,7 +88,7 @@ API:
 - `reissueForRetry`: 새 프롬프트 message_id 재바인딩 로직 삭제 → 일반 메시지 발송 + `markPendingEdit` 으로 TTL 갱신
 - 취소 핸들러: `clearPendingEditFor` → `answerCallbackQuery` → `editMessageReplyMarkup({ reply_markup: undefined })` 로 취소 버튼 제거
 - 완료/취소 메시지에 `reply_markup: { remove_keyboard: true }`
-- `delete` 콜백에서 같은 로그의 pending 정리 (사전 리뷰 P0) — 프롬프트를 띄운 채 삭제하면 pending 이 남아 이후 텍스트를 삼킨다
+- `delete` 콜백에서 같은 로그의 pending 정리 (사전 리뷰 P0) — 프롬프트를 띄운 채 삭제하면 pending 이 남아 이후 텍스트를 삼킨다. 대상 로그가 사라진 것이 확정된 **두 경로** (삭제 성공 · `P2025` 이미 삭제됨) 를 단일 cleanup 지점으로 합쳐 분기 누락을 구조적으로 차단 (Codex P2). DB 오류 경로는 로그 존재가 불확실하므로 pending 을 유지해 재시도를 허용
 - **F10**: `handleDescReply` 성공 응답에 이전 설명 노출. desc 경로는 임의 텍스트가 그대로 `description` 이 되고 같은 update 로 kcal/매크로/items 가 전부 null 로 파기되어, kcal 경로(숫자 검증 + `applyKcalCorrection`)와 달리 비대칭적으로 파괴적이다. 오소비 판별 대신 **복구 가능성**을 보장한다
 
 원본 메시지의 `[🔢 kcal] [📝 설명] [🗑️ 삭제]` 키보드는 **유지**한다. chat 단위 pending 은 재탭 시 덮어쓰므로 스태킹이 발생하지 않고, 버튼이 남아있는 편이 UX 상 낫다.
@@ -138,10 +138,18 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 
 3-check: `npm run lint && npm run typecheck && npm run build`
 
-배포 후 실사용 검증:
-- 수정 완료 후 채팅방 재진입 시 답장 입력폼 미재생성
-- `[✕ 취소]` 동작
-- pending 중 `/today` 가 명령으로 처리됨
+### 스크립트로 커버 불가한 시나리오 (배포 후 실사용 검증)
+
+grammy `ctx` · Prisma 를 함께 mock 해야 하는 콜백 흐름은 프레임워크 없이 검증할 수 없어 재현 절차를 명시한다.
+
+| # | 재현 | 기대 |
+|---|---|---|
+| M1 | 식단 수정 완료 → 앱 종료 → 재진입 | 답장 입력폼 미재생성 |
+| M2 | `[🔢 kcal]` → `[✕ 취소]` | pending 종료, 이후 텍스트가 정상 라우팅 |
+| M3 | `[🔢 kcal]` 대기 중 `/today` | 명령으로 처리 (kcal 값으로 소비 안 됨) |
+| M4 | `[🔢 kcal]` 대기 중 비숫자 텍스트 4회 | 3회까지 재프롬프트, 4회째 편집 종료 안내 (F9) |
+| M5 | **Codex P2 회귀** — `[🔢 kcal]` 프롬프트 대기 중 웹 API 로 해당 로그 삭제 → 봇의 `[🗑️ 삭제]` 탭 → 아무 텍스트 입력 | `P2025` 경로에서도 pending 이 정리되어, 입력이 편집으로 가로채이지 않고 정상 라우팅 |
+| M6 | `[📝 설명]` 로 설명 변경 | 응답에 이전 설명 표시 (F10 복구 경로) |
 
 ## 7. 제외 사항
 
