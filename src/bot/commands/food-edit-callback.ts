@@ -1,7 +1,13 @@
 // #292 (M14 Phase 2 #1): FoodLog inline keyboard callback 처리.
-//   food:edit:<logId>      → kcal force_reply 프롬프트 (숫자 답장)
-//   food:edit-desc:<logId> → 설명 force_reply 프롬프트 (텍스트 답장) — #309
-//   food:delete:<logId>    → 즉시 삭제 + 원본 메시지 편집 + 재계산
+//   food:edit:<logId>        → kcal 입력 프롬프트 (숫자)
+//   food:edit-desc:<logId>   → 설명 입력 프롬프트 (텍스트) — #309
+//   food:edit-cancel:<logId> → 편집 대기 취소 — #350
+//   food:delete:<logId>      → 즉시 삭제 + 원본 메시지 편집 + 재계산
+//
+// #350: force_reply 폐기. Telegram 클라이언트가 force_reply 상태를 영구 보관해 답장 안 된
+// 프롬프트가 채팅방을 열 때마다 답장 입력폼을 재무장시켰다 (Bot API 에 회수 수단 없음).
+// 프롬프트를 일반 메시지 + [✕ 취소] inline 버튼으로 보내고, chat 단위 pending 으로 다음
+// 텍스트를 라우팅한다. 상세: docs/specs/350-food-edit-force-reply-fix.md
 
 import type { Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
@@ -9,21 +15,51 @@ import prisma from "../prisma";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
-import { deletePendingEdit, markPendingEdit, peekPendingEdit } from "./food-edit-state";
+import {
+  clearPendingEditFor,
+  deletePendingEdit,
+  markPendingEdit,
+  peekPendingEdit,
+} from "./food-edit-state";
 import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
 
 export const CALLBACK_PREFIX = "food";
 
 /** callback_data 형식 `food:<action>:<logId>` 파싱. cuid 는 25자, prefix 포함 ~40자 < 64byte 안전. */
+type CallbackAction = "edit" | "edit-desc" | "edit-cancel" | "delete";
+
+const CALLBACK_ACTIONS: readonly CallbackAction[] = [
+  "edit",
+  "edit-desc",
+  "edit-cancel",
+  "delete",
+];
+
 function parseCallbackData(
   data: string,
-): { action: "edit" | "edit-desc" | "delete"; logId: string } | null {
+): { action: CallbackAction; logId: string } | null {
   const parts = data.split(":");
   if (parts.length !== 3 || parts[0] !== CALLBACK_PREFIX) return null;
-  const action = parts[1];
-  if (action !== "edit" && action !== "edit-desc" && action !== "delete") return null;
+  const action = parts[1] as CallbackAction;
+  if (!CALLBACK_ACTIONS.includes(action)) return null;
   return { action, logId: parts[2] };
 }
+
+/** #350: 편집 프롬프트에 붙는 취소 버튼. force_reply 대체 — 중단 수단 제공. */
+function buildCancelKeyboard(logId: string): InlineKeyboard {
+  return new InlineKeyboard().text(
+    "✕ 취소",
+    `${CALLBACK_PREFIX}:edit-cancel:${logId}`,
+  );
+}
+
+/**
+ * #350: 편집 흐름의 종료 메시지에 붙이는 markup.
+ * ReplyKeyboardRemove 는 클라이언트의 reply markup 슬롯을 초기화하므로, 이 수정 이전에
+ * 이미 박혀버린 force_reply 상태를 정리할 여지가 있다 (best-effort — 클라이언트 구현 의존).
+ * 아무것도 떠 있지 않으면 no-op.
+ */
+const CLEAR_REPLY_MARKUP = { reply_markup: { remove_keyboard: true } } as const;
 
 /** kcal 응답에 붙일 inline keyboard. logId 를 callback_data 에 embed.
  *  #309: 설명 정정 버튼 추가 → 3 버튼 (kcal · 설명 · 삭제). */
@@ -44,6 +80,32 @@ export function registerFoodEditCallback(bot: Bot): void {
       return;
     }
     const { action, logId } = parsed;
+
+    // #350: 편집 대기 취소. DB 접근 불필요 — pending 만 정리한다.
+    if (action === "edit-cancel") {
+      const cleared = clearPendingEditFor(ctx.chat?.id ?? NaN, logId);
+      try {
+        await ctx.answerCallbackQuery({
+          text: cleared ? "편집을 취소했습니다." : "이미 종료된 요청입니다.",
+        });
+      } catch {
+        // ignore (Telegram callback timeout 등)
+      }
+      // 취소 버튼 제거 — inline keyboard 라 editMessageReplyMarkup 으로 회수 가능.
+      try {
+        await ctx.editMessageReplyMarkup({ reply_markup: undefined });
+      } catch {
+        // ignore
+      }
+      if (cleared) {
+        try {
+          await ctx.reply("✕ 편집을 취소했습니다.", CLEAR_REPLY_MARKUP);
+        } catch {
+          // ignore
+        }
+      }
+      return;
+    }
 
     if (action === "delete") {
       let deletedDate: Date | null = null;
@@ -159,67 +221,52 @@ export function registerFoodEditCallback(bot: Bot): void {
     } catch {
       // ignore
     }
-    // force_reply 로 프롬프트 발송. 답장 메시지의 reply_to_message.message_id 로 pending 조회.
+    // #350: 일반 메시지 + [✕ 취소] 로 프롬프트 발송. 이 chat 의 다음 텍스트가 편집 입력이 된다.
+    // chat 당 pending 1건이라 버튼을 다시 눌러도 덮어쓰기 — 프롬프트 스태킹이 발생하지 않는다.
     const chatId = ctx.chat?.id;
+    if (typeof chatId !== "number") return;
+
     if (action === "edit-desc") {
-      // #309: 설명 정정 프롬프트. 답장 텍스트로 PATCH description → macros/attempts 리셋 →
+      // #309: 설명 정정 프롬프트. 입력 텍스트로 PATCH description → macros/attempts 리셋 →
       // backfill 재추정 (기존 PATCH /api/food/[id] 로직과 동일 정책).
       const prompt =
-        `📝 "${existing.description}" 의 새 설명을 텍스트로 답장해주세요.\n` +
+        `📝 "${existing.description}" 의 새 설명을 텍스트로 입력해주세요 (5분 이내).\n` +
         `설명 변경 시 kcal/매크로가 자동 재추정됩니다.`;
-      const sent = await ctx.reply(prompt, {
-        reply_markup: {
-          force_reply: true,
-          input_field_placeholder: "예: 치킨 샐러드 · 감자튀김",
-        },
-      });
-      if (typeof chatId === "number") {
-        markPendingEdit(chatId, sent.message_id, logId, "desc");
-      }
+      await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
+      markPendingEdit(chatId, logId, "desc");
     } else {
       const currentKcal = existing.estimatedKcal;
       const prompt =
-        `🔢 "${existing.description}" 의 새 kcal 을 숫자로만 답장해주세요 (0~10000).\n` +
+        `🔢 "${existing.description}" 의 새 kcal 을 숫자로만 입력해주세요 (0~10000, 5분 이내).\n` +
         (currentKcal !== null ? `현재 값: ${currentKcal} kcal` : "현재 값: 미측정");
-      const sent = await ctx.reply(prompt, {
-        reply_markup: { force_reply: true, input_field_placeholder: "예: 650" },
-      });
-      if (typeof chatId === "number") {
-        markPendingEdit(chatId, sent.message_id, logId, "kcal");
-      }
+      await ctx.reply(prompt, { reply_markup: buildCancelKeyboard(logId) });
+      markPendingEdit(chatId, logId, "kcal");
     }
   });
 }
 
 /**
- * 사용자가 편집 프롬프트에 답장했을 때 처리. bot/index.ts message:text 핸들러에서
- * reply_to_message 있으면 우선 호출.
+ * 편집 프롬프트 이후 들어온 텍스트 처리. bot/index.ts message:text 핸들러에서 해당 chat 에
+ * pending 이 있을 때 우선 호출.
  * 반환값: true 면 이 텍스트를 처리 완료 (다음 handler 로 넘기지 않음), false 면 pending 아님.
  *
+ * #350: reply_to_message 의존 제거 — chat 단위 pending 으로 라우팅. 만료된 pending 은
+ * peekPendingEdit 이 lazy delete 하고 null 을 반환하므로 false → 일반 라우팅으로 통과한다
+ * (기존 grace tombstone 은 chat 단위에서 무관한 텍스트까지 삼키므로 제거).
+ *
  * Codex P2 (#293): peek → validate → 성공 시에만 delete. 검증 실패 (오타 등) 로 entry 삭제 안 함
- * → 사용자가 재답장 가능. 만료 tombstone 은 delete 처리 (재시도 무의미).
+ * → 사용자가 재입력 가능.
  */
-export async function handleFoodEditReply(ctx: {
+export async function handleFoodEditInput(ctx: {
   chat?: { id?: number };
   reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>;
-  message?: {
-    text?: string;
-    reply_to_message?: { message_id?: number };
-  };
+  message?: { text?: string };
 }): Promise<boolean> {
   const chatId = ctx.chat?.id;
-  const replyToId = ctx.message?.reply_to_message?.message_id;
-  if (typeof chatId !== "number" || typeof replyToId !== "number") return false;
-  const { logId, action, expired } = peekPendingEdit(chatId, replyToId);
-  if (expired) {
-    // 만료 안내 후 tombstone 제거 (재답장 무의미).
-    deletePendingEdit(chatId, replyToId);
-    await ctx.reply(
-      "요청이 만료되었습니다 (5분 초과). 활동 상세에서 다시 편집해주세요.",
-    );
-    return true;
-  }
-  if (!logId || !action) return false;
+  if (typeof chatId !== "number") return false;
+  const entry = peekPendingEdit(chatId);
+  if (!entry) return false;
+  const { logId, action } = entry;
 
   const raw = (ctx.message?.text ?? "").trim();
 
@@ -229,21 +276,16 @@ export async function handleFoodEditReply(ctx: {
   if (action === "desc") {
     const boundReply = (text: string, options?: Record<string, unknown>) =>
       ctx.reply(text, options);
-    return handleDescReply(chatId, replyToId, logId, raw, boundReply);
+    return handleDescReply(chatId, logId, raw, boundReply);
   }
 
   // action === "kcal" (기본).
-  // Codex P2 (#293): 검증 실패 시 새 force_reply 프롬프트 발송 + 원 entry 이전 후 신규 등록.
-  // Telegram force_reply 는 one-shot 이라 사용자 다음 답장은 reply_to 없음 → routing 실패.
-  // 새 프롬프트로 next reply 를 pending 에 다시 연결.
+  // Codex P2 (#293): 검증 실패 시 entry 를 삭제하지 않는다. 오타로 '650a' 를 보냈을 때 entry 가
+  // 사라지면 정정한 '650' 이 AI 질문으로 흘러간다.
+  // #350: 재프롬프트는 markPendingEdit 으로 TTL 만 갱신 — message_id 재바인딩 불필요.
   const reissueForRetry = async (message: string): Promise<void> => {
-    const sent = (await ctx.reply(message, {
-      reply_markup: { force_reply: true, input_field_placeholder: "예: 650" },
-    })) as { message_id?: number };
-    deletePendingEdit(chatId, replyToId);
-    if (typeof sent?.message_id === "number") {
-      markPendingEdit(chatId, sent.message_id, logId);
-    }
+    await ctx.reply(message, { reply_markup: buildCancelKeyboard(logId) });
+    markPendingEdit(chatId, logId, "kcal");
   };
   if (!/^\d+$/.test(raw)) {
     await reissueForRetry("0~10000 사이 정수만 입력해주세요. 예: 650");
@@ -260,7 +302,7 @@ export async function handleFoodEditReply(ctx: {
     const correction = await applyKcalCorrection(prisma, logId, kcal);
     if (!correction.ok) {
       if (correction.reason === "not-found") {
-        deletePendingEdit(chatId, replyToId);
+        deletePendingEdit(chatId);
         await ctx.reply("이미 삭제된 로그입니다.");
       } else {
         await ctx.reply("동시 수정 감지, 잠시 후 다시 시도해주세요.");
@@ -272,8 +314,8 @@ export async function handleFoodEditReply(ctx: {
       select: { date: true, description: true },
     });
     if (!updated) {
-      deletePendingEdit(chatId, replyToId);
-      await ctx.reply("이미 삭제된 로그입니다.");
+      deletePendingEdit(chatId);
+      await ctx.reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       return true;
     }
     try {
@@ -290,9 +332,10 @@ export async function handleFoodEditReply(ctx: {
       }
     }
     // 성공 → entry 소비.
-    deletePendingEdit(chatId, replyToId);
+    deletePendingEdit(chatId);
     await ctx.reply(
       `✏️ "${updated.description}" → ${kcal.toLocaleString("ko-KR")} kcal 로 수정됨`,
+      CLEAR_REPLY_MARKUP,
     );
   } catch (err) {
     if (
@@ -300,8 +343,8 @@ export async function handleFoodEditReply(ctx: {
       err.code === "P2025"
     ) {
       // 로그 자체가 삭제 — entry 도 무효, 삭제.
-      deletePendingEdit(chatId, replyToId);
-      await ctx.reply("이미 삭제된 로그입니다.");
+      deletePendingEdit(chatId);
+      await ctx.reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       return true;
     }
     console.error("[food-edit] update 실패:", err);
@@ -317,23 +360,15 @@ export async function handleFoodEditReply(ctx: {
  */
 async function handleDescReply(
   chatId: number,
-  replyToId: number,
   logId: string,
   raw: string,
   reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>,
 ): Promise<boolean> {
   const trimmed = raw.trim();
+  // #350: 재프롬프트는 TTL 갱신만. entry 는 유지되므로 사용자가 곧바로 재입력할 수 있다.
   const reissueForRetry = async (message: string): Promise<void> => {
-    const sent = (await reply(message, {
-      reply_markup: {
-        force_reply: true,
-        input_field_placeholder: "예: 치킨 샐러드 · 감자튀김",
-      },
-    })) as { message_id?: number };
-    deletePendingEdit(chatId, replyToId);
-    if (typeof sent?.message_id === "number") {
-      markPendingEdit(chatId, sent.message_id, logId, "desc");
-    }
+    await reply(message, { reply_markup: buildCancelKeyboard(logId) });
+    markPendingEdit(chatId, logId, "desc");
   };
   if (trimmed.length === 0) {
     await reissueForRetry("설명은 비워둘 수 없습니다. 텍스트로 답장해주세요.");
@@ -351,13 +386,16 @@ async function handleDescReply(
       select: { description: true, date: true },
     });
     if (!existing) {
-      deletePendingEdit(chatId, replyToId);
-      await reply("이미 삭제된 로그입니다.");
+      deletePendingEdit(chatId);
+      await reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       return true;
     }
     if (existing.description === trimmed) {
-      deletePendingEdit(chatId, replyToId);
-      await reply(`ℹ️ 이미 "${trimmed}" 로 저장되어 있습니다 (변경 없음).`);
+      deletePendingEdit(chatId);
+      await reply(
+        `ℹ️ 이미 "${trimmed}" 로 저장되어 있습니다 (변경 없음).`,
+        CLEAR_REPLY_MARKUP,
+      );
       return true;
     }
 
@@ -391,18 +429,19 @@ async function handleDescReply(
       }
     }
 
-    deletePendingEdit(chatId, replyToId);
+    deletePendingEdit(chatId);
     await reply(
       `📝 설명 변경 완료: "${trimmed}"\n` +
         `kcal/매크로는 backfill cron 이 곧 재추정합니다.`,
+      CLEAR_REPLY_MARKUP,
     );
   } catch (err) {
     if (
       err instanceof Prisma.PrismaClientKnownRequestError &&
       err.code === "P2025"
     ) {
-      deletePendingEdit(chatId, replyToId);
-      await reply("이미 삭제된 로그입니다.");
+      deletePendingEdit(chatId);
+      await reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       return true;
     }
     console.error("[food-edit-desc] update 실패:", err);
