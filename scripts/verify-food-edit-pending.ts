@@ -14,9 +14,12 @@ import {
   isPendingEdit,
   markPendingEdit,
   peekPendingEdit,
+  registerRetry,
+  shouldConsumeAsEditInput,
 } from "../src/bot/commands/food-edit-state";
 
 const ACTIVE_TTL_MS = 5 * 60 * 1000;
+const MAX_RETRIES = 3;
 
 const CHAT_A = 1001;
 const CHAT_B = 2002;
@@ -83,16 +86,50 @@ check(
   isPendingEdit(CHAT_A) === false,
 );
 
-// C4: 재프롬프트가 TTL 을 갱신 (검증 실패 후 재입력 창 확보)
-console.log("C4: 재프롬프트 markPendingEdit 이 TTL 갱신");
+// C4: 재프롬프트는 TTL 을 갱신하되 횟수 상한이 있다 (사전 리뷰 P1 회귀)
+//   상한이 없으면 kcal 프롬프트를 잊고 대화를 이어갈 때 pending 이 영원히 만료되지 않고
+//   chat 의 모든 텍스트를 삼킨다.
+console.log("C4: registerRetry — TTL 갱신 + 횟수 상한");
 reset();
 markPendingEdit(CHAT_A, "log-1", "kcal");
 withClockAdvancedBy(ACTIVE_TTL_MS - 1_000, () => {
-  markPendingEdit(CHAT_A, "log-1", "kcal"); // 검증 실패 → 재프롬프트
+  check("한도 내 재시도는 true", registerRetry(CHAT_A) === true);
 });
 withClockAdvancedBy(ACTIVE_TTL_MS + 1_000, () => {
   check("갱신 덕분에 원 만료 시점 이후에도 유효", isPendingEdit(CHAT_A) === true);
 });
+
+reset();
+markPendingEdit(CHAT_A, "log-1", "kcal");
+for (let i = 1; i <= MAX_RETRIES; i += 1) {
+  check(`재시도 ${i}회차 허용`, registerRetry(CHAT_A) === true);
+}
+check("한도 초과 재시도는 false", registerRetry(CHAT_A) === false);
+check("한도 초과 시 pending 종료", isPendingEdit(CHAT_A) === false);
+
+// 무제한 갱신 회귀: 시간을 계속 흘려도 재시도만으로는 pending 을 영구 유지할 수 없다.
+reset();
+markPendingEdit(CHAT_A, "log-1", "kcal");
+let survived = 0;
+for (let i = 0; i < 100; i += 1) {
+  const ok = withClockAdvancedBy(i * (ACTIVE_TTL_MS - 1_000), () =>
+    registerRetry(CHAT_A),
+  );
+  if (!ok) break;
+  survived += 1;
+}
+check(`재시도로 무한 연장 불가 (${survived}회에서 종료)`, survived === MAX_RETRIES);
+check("무한 연장 시도 후 pending 없음", isPendingEdit(CHAT_A) === false);
+
+check("pending 없을 때 registerRetry false", registerRetry(CHAT_B) === false);
+
+// C4b: 새 편집 시작은 재시도 카운터를 리셋
+console.log("C4b: markPendingEdit 이 재시도 카운터 리셋");
+reset();
+markPendingEdit(CHAT_A, "log-1", "kcal");
+for (let i = 0; i < MAX_RETRIES; i += 1) registerRetry(CHAT_A);
+markPendingEdit(CHAT_A, "log-1", "kcal"); // 버튼 재탭 = 새 편집
+check("리셋 후 다시 재시도 가능", registerRetry(CHAT_A) === true);
 
 // C5: 취소 — logId 일치 시에만 삭제
 console.log("C5: clearPendingEditFor logId 대조");
@@ -113,6 +150,29 @@ check("CHAT_A 는 log-a", peekPendingEdit(CHAT_A)?.logId === "log-a");
 check("CHAT_B 는 log-b", peekPendingEdit(CHAT_B)?.logId === "log-b");
 deletePendingEdit(CHAT_A);
 check("CHAT_A 삭제해도 CHAT_B 유지", isPendingEdit(CHAT_B) === true);
+
+// C7: 라우팅 판단 — bot/index.ts message:text 가 이 텍스트를 편집 입력으로 소비할지
+//   (사전 리뷰 P0: index.ts 인라인 조건이면 검증 불가라 함수로 추출)
+console.log("C7: shouldConsumeAsEditInput 라우팅 규칙");
+reset();
+check("pending 없으면 소비 안 함", shouldConsumeAsEditInput(CHAT_A, "650") === false);
+markPendingEdit(CHAT_A, "log-1", "kcal");
+check("pending 있으면 일반 텍스트 소비", shouldConsumeAsEditInput(CHAT_A, "650") === true);
+check(
+  "슬래시 명령은 소비하지 않음 (/today 오소비 방지)",
+  shouldConsumeAsEditInput(CHAT_A, "/today") === false,
+);
+check(
+  "미등록 슬래시 명령도 소비하지 않음",
+  shouldConsumeAsEditInput(CHAT_A, "/foo bar") === false,
+);
+check(
+  "다른 chat 은 영향 없음",
+  shouldConsumeAsEditInput(CHAT_B, "650") === false,
+);
+withClockAdvancedBy(ACTIVE_TTL_MS + 1_000, () => {
+  check("만료 후 소비 안 함 (일반 라우팅 통과)", shouldConsumeAsEditInput(CHAT_A, "650") === false);
+});
 
 reset();
 if (failed > 0) {

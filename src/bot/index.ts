@@ -15,7 +15,7 @@ import {
   handleFoodEditInput,
 } from "./commands/food-edit-callback";
 import { registerFoodPhotoHandler } from "./commands/food-photo";
-import { isPendingEdit } from "./commands/food-edit-state";
+import { shouldConsumeAsEditInput } from "./commands/food-edit-state";
 import { registerAutoAdjustCallback } from "./notifications/auto-adjust-callback";
 
 // IPv6 라우트가 없는 환경(국내 ISP 등)에서 node-fetch의 IPv6 우선 시도가
@@ -73,14 +73,9 @@ export function getBot(): Bot {
 
     // #292: 편집 프롬프트 이후 입력 처리 (kcal 숫자 / 설명 텍스트).
     // #350: reply_to_message 대신 chat 단위 pending 으로 라우팅 (force_reply 폐기).
-    // 슬래시로 시작하는 텍스트는 편집 입력으로 소비하지 않는다 — pending 중 `/today` 가
-    // kcal 값으로 먹히는 것을 방지.
+    // 소비 조건은 shouldConsumeAsEditInput 에 있다 (회귀 스크립트가 검증 — 사전 리뷰 P0).
     const chatId = ctx.chat?.id;
-    if (
-      typeof chatId === "number" &&
-      !text.startsWith("/") &&
-      isPendingEdit(chatId)
-    ) {
+    if (typeof chatId === "number" && shouldConsumeAsEditInput(chatId, text)) {
       const handled = await handleFoodEditInput(ctx);
       if (handled) return;
     }

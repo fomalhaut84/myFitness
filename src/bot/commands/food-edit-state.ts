@@ -23,6 +23,13 @@
 
 const ACTIVE_TTL_MS = 5 * 60 * 1000;
 
+// 검증 실패 재프롬프트 허용 횟수. 초과 시 pending 을 종료한다.
+//   사전 리뷰 P1 (#350): reissueForRetry 가 markPendingEdit 으로 TTL 을 갱신하는데, chat 단위
+//   라우팅에서는 *아무 텍스트나* 재프롬프트를 유발한다. 상한이 없으면 kcal 프롬프트를 띄워둔
+//   것을 잊고 대화를 이어갈 때 pending 이 영원히 만료되지 않고 모든 텍스트를 삼킨다.
+//   (reply-to 라우팅에서는 사용자가 명시적으로 답장했을 때만 갱신돼 안전했던 전제)
+const MAX_RETRIES = 3;
+
 // #309: action — kcal (기본 · 숫자 입력) 또는 desc (텍스트 입력).
 export type PendingEditAction = "kcal" | "desc";
 
@@ -30,6 +37,8 @@ interface PendingEdit {
   logId: string;
   action: PendingEditAction;
   activeUntil: number;
+  /** 검증 실패로 재프롬프트한 횟수. MAX_RETRIES 초과 시 pending 종료. */
+  retries: number;
 }
 
 const pending = new Map<number, PendingEdit>();
@@ -58,7 +67,28 @@ export function markPendingEdit(
     logId,
     action,
     activeUntil: Date.now() + ACTIVE_TTL_MS,
+    retries: 0,
   });
+}
+
+/**
+ * 검증 실패 → 재프롬프트 직전 호출. 재시도 여력이 있으면 TTL 을 갱신하고 true 를 반환한다.
+ * 한도를 초과하면 pending 을 삭제하고 false — 호출부는 종료 안내를 보내야 한다.
+ * pending 이 이미 없으면 false.
+ */
+export function registerRetry(chatId: number): boolean {
+  const entry = getActive(chatId);
+  if (!entry) return false;
+  if (entry.retries >= MAX_RETRIES) {
+    pending.delete(chatId);
+    return false;
+  }
+  pending.set(chatId, {
+    ...entry,
+    retries: entry.retries + 1,
+    activeUntil: Date.now() + ACTIVE_TTL_MS,
+  });
+  return true;
 }
 
 /** 유효한 pending 존재 여부. 만료된 entry 는 여기서 정리된다. */
@@ -76,6 +106,18 @@ export function peekPendingEdit(
   const entry = getActive(chatId);
   if (!entry) return null;
   return { logId: entry.logId, action: entry.action };
+}
+
+/**
+ * #350: bot/index.ts message:text 라우팅 판단. 이 chat 의 텍스트를 편집 입력으로 소비할지.
+ * 사전 리뷰 P0 (#350): index.ts 인라인 조건이면 회귀 스크립트가 커버할 수 없어 추출.
+ *
+ * 슬래시로 시작하는 텍스트는 소비하지 않는다 — pending 중 미등록 명령(`/foo`)이 kcal 값으로
+ * 먹히는 것을 방지. 등록된 명령은 grammy command 핸들러가 먼저 잡아 여기까지 오지 않는다.
+ */
+export function shouldConsumeAsEditInput(chatId: number, text: string): boolean {
+  if (text.startsWith("/")) return false;
+  return isPendingEdit(chatId);
 }
 
 /** 성공 처리 · 취소 후 entry 명시 삭제. */

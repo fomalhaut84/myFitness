@@ -20,6 +20,7 @@ import {
   deletePendingEdit,
   markPendingEdit,
   peekPendingEdit,
+  registerRetry,
 } from "./food-edit-state";
 import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
 
@@ -83,7 +84,16 @@ export function registerFoodEditCallback(bot: Bot): void {
 
     // #350: 편집 대기 취소. DB 접근 불필요 — pending 만 정리한다.
     if (action === "edit-cancel") {
-      const cleared = clearPendingEditFor(ctx.chat?.id ?? NaN, logId);
+      const cancelChatId = ctx.chat?.id;
+      if (typeof cancelChatId !== "number") {
+        try {
+          await ctx.answerCallbackQuery({ text: "처리할 수 없는 요청입니다." });
+        } catch {
+          // ignore
+        }
+        return;
+      }
+      const cleared = clearPendingEditFor(cancelChatId, logId);
       try {
         await ctx.answerCallbackQuery({
           text: cleared ? "편집을 취소했습니다." : "이미 종료된 요청입니다.",
@@ -144,6 +154,12 @@ export function registerFoodEditCallback(bot: Bot): void {
       // Codex P2 (#293): delete 성공 즉시 사용자 피드백 (callback ACK + keyboard 제거 + 안내
       // 메시지). recalc 는 이후 별도 try 로 처리 — 실패해도 UI 는 이미 반영됨. 각 API 호출은
       // 독립 try/catch 로 감싸 하나 실패해도 나머지 진행.
+      // 사전 리뷰 P0 (#350): 편집 프롬프트를 띄운 상태에서 삭제하면 pending 이 남아 이후
+      // 텍스트를 계속 삼킨다. 같은 로그의 pending 만 정리 (다른 편집은 건드리지 않음).
+      const deleteChatId = ctx.chat?.id;
+      if (typeof deleteChatId === "number") {
+        clearPendingEditFor(deleteChatId, logId);
+      }
       try {
         await ctx.answerCallbackQuery({ text: "삭제되었습니다." });
       } catch {
@@ -282,10 +298,18 @@ export async function handleFoodEditInput(ctx: {
   // action === "kcal" (기본).
   // Codex P2 (#293): 검증 실패 시 entry 를 삭제하지 않는다. 오타로 '650a' 를 보냈을 때 entry 가
   // 사라지면 정정한 '650' 이 AI 질문으로 흘러간다.
-  // #350: 재프롬프트는 markPendingEdit 으로 TTL 만 갱신 — message_id 재바인딩 불필요.
+  // 사전 리뷰 P1 (#350): 재프롬프트는 registerRetry 로 상한을 건다. 무제한 TTL 갱신이면
+  // 프롬프트를 잊고 대화를 이어갈 때 pending 이 영원히 만료되지 않고 모든 텍스트를 삼킨다.
   const reissueForRetry = async (message: string): Promise<void> => {
+    if (!registerRetry(chatId)) {
+      await ctx.reply(
+        `${message}\n\n입력이 여러 번 형식에 맞지 않아 편집을 종료했습니다. ` +
+          `다시 [🔢 kcal] 버튼을 눌러주세요.`,
+        CLEAR_REPLY_MARKUP,
+      );
+      return;
+    }
     await ctx.reply(message, { reply_markup: buildCancelKeyboard(logId) });
-    markPendingEdit(chatId, logId, "kcal");
   };
   if (!/^\d+$/.test(raw)) {
     await reissueForRetry("0~10000 사이 정수만 입력해주세요. 예: 650");
@@ -303,7 +327,7 @@ export async function handleFoodEditInput(ctx: {
     if (!correction.ok) {
       if (correction.reason === "not-found") {
         deletePendingEdit(chatId);
-        await ctx.reply("이미 삭제된 로그입니다.");
+        await ctx.reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       } else {
         await ctx.reply("동시 수정 감지, 잠시 후 다시 시도해주세요.");
       }
@@ -365,10 +389,17 @@ async function handleDescReply(
   reply: (text: string, options?: Record<string, unknown>) => Promise<unknown>,
 ): Promise<boolean> {
   const trimmed = raw.trim();
-  // #350: 재프롬프트는 TTL 갱신만. entry 는 유지되므로 사용자가 곧바로 재입력할 수 있다.
+  // 사전 리뷰 P1 (#350): kcal 경로와 동일하게 재프롬프트 횟수에 상한.
   const reissueForRetry = async (message: string): Promise<void> => {
+    if (!registerRetry(chatId)) {
+      await reply(
+        `${message}\n\n입력이 여러 번 형식에 맞지 않아 편집을 종료했습니다. ` +
+          `다시 [📝 설명] 버튼을 눌러주세요.`,
+        CLEAR_REPLY_MARKUP,
+      );
+      return;
+    }
     await reply(message, { reply_markup: buildCancelKeyboard(logId) });
-    markPendingEdit(chatId, logId, "desc");
   };
   if (trimmed.length === 0) {
     await reissueForRetry("설명은 비워둘 수 없습니다. 텍스트로 답장해주세요.");
@@ -398,6 +429,8 @@ async function handleDescReply(
       );
       return true;
     }
+    // update 이후에는 조회할 수 없으므로 미리 보관 (성공 응답에 복구용으로 노출).
+    const previousDescription = existing.description;
 
     await prisma.foodLog.update({
       where: { id: logId },
@@ -430,8 +463,12 @@ async function handleDescReply(
     }
 
     deletePendingEdit(chatId);
+    // 사전 리뷰 P1 (#350): desc 경로는 임의 텍스트가 그대로 description 이 되고 같은 update 로
+    // kcal/매크로/items 가 전부 null 로 파기된다 (kcal 경로는 숫자 검증이 있어 비대칭).
+    // 오소비 판별 대신 **복구 가능성**을 보장 — 이전 설명을 응답에 남긴다.
     await reply(
       `📝 설명 변경 완료: "${trimmed}"\n` +
+        `이전 설명: "${previousDescription}" (잘못 바뀐 경우 [📝 설명] 로 되돌리세요)\n` +
         `kcal/매크로는 backfill cron 이 곧 재추정합니다.`,
       CLEAR_REPLY_MARKUP,
     );

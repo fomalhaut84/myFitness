@@ -48,6 +48,8 @@ force_reply 를 제거하고 **chat 단위 pending 상태**로 전환해, 클라
 - [ ] F6: grace tombstone 제거 — 만료 시 일반 라우팅으로 통과
 - [ ] F7: 완료/취소 메시지에 `remove_keyboard` 부착 — 기존에 박힌 force_reply 상태 정리 시도
 - [ ] F8: 상태 머신 회귀 검증 스크립트 추가
+- [ ] F9: 검증 실패 재프롬프트 횟수 상한 — pending 무한 지속 차단 (사전 리뷰 P1)
+- [ ] F10: 설명 변경 성공 응답에 이전 설명 노출 — 오소비 복구 경로 (사전 리뷰 P1)
 
 ## 4. 기술 설계
 
@@ -62,7 +64,9 @@ API:
 
 | 함수 | 시그니처 | 비고 |
 |---|---|---|
-| `markPendingEdit` | `(chatId, logId, action = "kcal")` | 기존 pending 덮어쓰기. 재시도 시 TTL 갱신 겸용 |
+| `markPendingEdit` | `(chatId, logId, action = "kcal")` | 기존 pending 덮어쓰기. 재시도 카운터 리셋 |
+| `registerRetry` | `(chatId) => boolean` | 재프롬프트 직전 호출. 여력 있으면 TTL 갱신 후 true, 한도 초과 시 pending 삭제 후 false |
+| `shouldConsumeAsEditInput` | `(chatId, text) => boolean` | `index.ts` 라우팅 판단. 슬래시 텍스트 배제 + pending 확인 |
 | `isPendingEdit` | `(chatId) => boolean` | 만료 시 lazy delete 후 false |
 | `peekPendingEdit` | `(chatId) => { logId, action } \| null` | 만료 시 lazy delete 후 null |
 | `deletePendingEdit` | `(chatId)` | 성공/취소 시 소비 |
@@ -72,6 +76,10 @@ API:
 
 `clearPendingEditFor` 의 logId 대조: 오래된 프롬프트의 `[✕ 취소]` 를 나중에 눌렀을 때 그 사이 시작된 **다른** 편집을 취소하지 않기 위함.
 
+**재프롬프트 상한 (F9, 사전 리뷰 P1)**: 검증 실패 시 `markPendingEdit` 으로 TTL 을 갱신하면 chat 단위 라우팅에서는 *아무 텍스트나* 재프롬프트를 유발하므로 pending 이 영원히 만료되지 않고 chat 의 모든 텍스트를 삼킨다 (reply-to 라우팅에서는 명시적 답장에만 걸려 안전했던 전제). `registerRetry` 로 3회 상한을 두고, 초과 시 pending 을 종료하며 안내한다. `markPendingEdit`(버튼 재탭 = 새 편집) 은 카운터를 리셋한다.
+
+**라우팅 판단 추출 (사전 리뷰 P0)**: 소비 조건을 `index.ts` 인라인에 두면 회귀 스크립트가 커버할 수 없어 `shouldConsumeAsEditInput` 으로 분리했다.
+
 ### 4.2 `food-edit-callback.ts`
 
 - `parseCallbackData` 에 `edit-cancel` action 추가 (`food:edit-cancel:<logId>`, 17+25=42byte < 64 안전)
@@ -80,19 +88,23 @@ API:
 - `reissueForRetry`: 새 프롬프트 message_id 재바인딩 로직 삭제 → 일반 메시지 발송 + `markPendingEdit` 으로 TTL 갱신
 - 취소 핸들러: `clearPendingEditFor` → `answerCallbackQuery` → `editMessageReplyMarkup({ reply_markup: undefined })` 로 취소 버튼 제거
 - 완료/취소 메시지에 `reply_markup: { remove_keyboard: true }`
+- `delete` 콜백에서 같은 로그의 pending 정리 (사전 리뷰 P0) — 프롬프트를 띄운 채 삭제하면 pending 이 남아 이후 텍스트를 삼킨다
+- **F10**: `handleDescReply` 성공 응답에 이전 설명 노출. desc 경로는 임의 텍스트가 그대로 `description` 이 되고 같은 update 로 kcal/매크로/items 가 전부 null 로 파기되어, kcal 경로(숫자 검증 + `applyKcalCorrection`)와 달리 비대칭적으로 파괴적이다. 오소비 판별 대신 **복구 가능성**을 보장한다
 
 원본 메시지의 `[🔢 kcal] [📝 설명] [🗑️ 삭제]` 키보드는 **유지**한다. chat 단위 pending 은 재탭 시 덮어쓰므로 스태킹이 발생하지 않고, 버튼이 남아있는 편이 UX 상 낫다.
 
 ### 4.3 `index.ts` 라우팅 순서
 
 ```
-1. /food_kcal 명령        (명령이 pending 보다 우선)
-2. pending 있음 && !text.startsWith("/")  → handleFoodEditInput
-3. isFoodInput            → handleFoodInput
-4. fallback               → handleAiQuestion
+1. /food_kcal 명령                        (명령이 pending 보다 우선)
+2. shouldConsumeAsEditInput(chatId, text) → handleFoodEditInput
+3. isFoodInput                            → handleFoodInput
+4. fallback                               → handleAiQuestion
 ```
 
-F5 의 `/` 가드가 없으면 pending 중 `/today` 입력이 kcal 값으로 소비된다.
+F5 의 `/` 가드가 없으면 pending 중 미등록 슬래시 명령이 kcal 값으로 소비된다. 등록된 명령(`/today` 등)은 grammy command 핸들러가 먼저 잡아 `message:text` 까지 오지 않는다.
+
+만료 후에는 안내 없이 일반 라우팅으로 통과한다. `isFoodInput` 은 `^(아침|조식|점심|중식|저녁|석식|간식|야식)` 접두사만 매칭하므로 `650` 같은 잔여 입력이 식단으로 오탐되지 않고 AI 질문으로 흘러간다 — 수용 가능한 영향.
 
 ### 4.4 트레이드오프
 
@@ -105,7 +117,8 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 | `src/bot/commands/food-edit-state.ts` | chat 단위 재설계, grace 제거, `clearPendingEditFor` 추가 |
 | `src/bot/commands/food-edit-callback.ts` | force_reply 제거, 취소 액션, `handleFoodEditInput` 개명 |
 | `src/bot/index.ts` | 라우팅 조건 변경 + `/` 가드 |
-| `scripts/verify-food-edit-pending.ts` | 신규 — 상태 머신 회귀 검증 |
+| `scripts/verify-food-edit-pending.ts` | 신규 — 상태 머신 · 라우팅 회귀 검증 |
+| `package.json` | `verify:food-edit-pending` 스크립트 추가 |
 | `docs/specs/350-food-edit-force-reply-fix.md` | 본 문서 |
 
 ## 6. 테스트 계획
@@ -117,8 +130,11 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 - C1: mark → `isPendingEdit` true, `peekPendingEdit` 이 logId/action 반환
 - C2: **버튼 2회 탭** → entry 1건만 유지, 최신 logId 로 덮어쓰기 (스태킹 회귀 방지)
 - C3: TTL 경과 → `isPendingEdit` false, `peekPendingEdit` null, Map 에서 제거 (lazy delete)
-- C4: `clearPendingEditFor` logId 불일치 → pending 유지, 일치 → 삭제
-- C5: 서로 다른 chatId 간 격리
+- C4: `registerRetry` — 한도 내 TTL 갱신, 3회 초과 시 pending 종료. **시간을 계속 흘려도 재시도만으로 pending 이 무한 연장되지 않음** (사전 리뷰 P1 회귀)
+- C4b: `markPendingEdit`(버튼 재탭) 이 재시도 카운터 리셋
+- C5: `clearPendingEditFor` logId 불일치 → pending 유지, 일치 → 삭제
+- C6: 서로 다른 chatId 간 격리
+- C7: `shouldConsumeAsEditInput` — pending 없음/만료/슬래시 텍스트/타 chat 에서 false
 
 3-check: `npm run lint && npm run typecheck && npm run build`
 
@@ -131,5 +147,6 @@ pending 중 무관한 텍스트가 편집 입력으로 먹힌다. 완화: `[✕ 
 
 - 프롬프트 메시지 삭제 (`deleteMessage`) — 대화 기록 훼손으로 기각
 - 이미 클라이언트에 박힌 force_reply 의 확정적 제거 — Bot API 에 회수 수단 없음. F7 의 `remove_keyboard` 는 best-effort 이며, 실패 시 사용자가 해당 프롬프트에 답장하거나 메시지를 직접 삭제해야 함
-- pending 중 무관 텍스트 오소비에 대한 휴리스틱 판별 (형식 추측 기반 분기) — 취약해서 도입하지 않음
+- pending 중 무관 텍스트 오소비에 대한 휴리스틱 판별 (형식 추측 기반 분기) — 취약해서 도입하지 않음. desc 경로는 F10 의 복구 경로로 완화
+- 취소 버튼의 epoch/nonce 대조 (사전 리뷰 P0) — 같은 로그를 편집 완료 후 다시 편집할 때, 스크롤을 올려 예전 프롬프트의 `[✕ 취소]` 를 누르면 진행 중인 새 편집이 취소된다. 실사용 확률이 낮고 결과도 무해한 취소이므로 후속 이슈로 분리
 - 다중 사용자/다중 chat 동시 편집 시나리오 — 단일 사용자 전제
