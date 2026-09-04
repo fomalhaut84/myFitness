@@ -171,8 +171,10 @@ export async function recalculateAllCalorieBalances(
     } catch (err) {
       failed++;
       console.error(
+        // #364: KST 자정 instant 를 UTC 로 찍으면 로그 날짜가 하루 앞으로 밀린다.
+        // 장애 때 실제로 읽는 것은 이 실패 로그다 (cron.ts:70 성공 로그의 쌍둥이).
         "[calorie-balance] 재계산 실패",
-        s.date.toISOString(),
+        ymdKST(s.date),
         err instanceof Error ? err.message : String(err)
       );
     }

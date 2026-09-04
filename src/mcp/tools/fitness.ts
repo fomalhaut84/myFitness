@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -7,11 +8,10 @@ function daysAgo(n: number): Date {
   return d;
 }
 
+// #364: 서버 로컬 TZ getter 는 호스트가 KST 일 때만 맞다. ecosystem.config.js 가 TZ 를
+// 고정하지 않으므로 (세 앱 모두) 호스트 TZ 변경 한 번에 라벨이 하루 밀린다. KST 고정.
 function fmt(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return ymdKST(date);
 }
 
 export async function getActivities(args: { days?: number; type?: string }) {

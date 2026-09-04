@@ -29,6 +29,49 @@ function daysAgo(n: number): Date {
 }
 
 /**
+ * #364: 응답 row mapper. **export 이유는 회귀 검증** — `scripts/verify-mcp-date-labels.ts`
+ * 가 이 함수를 직접 호출해야 라벨 산출이 실제 프로덕션 경로로 검증된다.
+ * (사전 리뷰 P1: ymdKST 헬퍼만 테스트하면 호출부를 되돌려도 스크립트가 통과했다.)
+ *
+ * 날짜 라벨은 반드시 `ymdKST`. `toISOString()` 절단은 UTC 기준이라 KST 자정 instant
+ * (DailySummary.date) 와 KST 00:00~09:00 시각 (아침 러닝) 을 하루 앞으로 민다.
+ */
+export function toBalanceRow(b: {
+  date: Date;
+  estimatedIntakeCalories: number | null;
+  availableCalories: number | null;
+  activeCalories: number | null;
+  calorieBalance: number | null;
+}) {
+  return {
+    date: ymdKST(b.date),
+    intake: b.estimatedIntakeCalories,
+    available: b.availableCalories,
+    active: b.activeCalories,
+    balance: b.calorieBalance,
+  };
+}
+
+/** #364: byIntensity row mapper. export 이유는 위와 동일. */
+export function toActivityRow(a: {
+  name: string;
+  activityType: string;
+  startTime: Date;
+  intensityLabel: string | null;
+  estimatedZone: number | null;
+  routeTag: string | null;
+}) {
+  return {
+    name: a.name,
+    type: a.activityType,
+    date: ymdKST(a.startTime),
+    label: a.intensityLabel,
+    zone: a.estimatedZone,
+    routeTag: a.routeTag,
+  };
+}
+
+/**
  * 최근 7일 체중·칼로리·운동 통합 요약.
  * 감량 진행도 평가, 근손실 위험 판단, 리포트 작성에 사용.
  */
@@ -304,16 +347,7 @@ export async function getWeightLossStatus() {
       daysWithData: withBalance.length,
       consecutiveDeficitDays,
       consecutiveOver750Days: consecutiveOver750,
-      dailyBalances: balancesRaw.map((b) => ({
-        // #364: DailySummary.date 는 KST 자정의 UTC instant (KST 09-03 → 09-02T15:00Z).
-        // toISOString() 절단은 UTC 기준이라 라벨이 하루 앞으로 밀렸다 → macroSummary
-        // (ymdKST 사용) 와 어긋나 AI 가 "어제 식단 없음" 으로 오보. KST 로 통일.
-        date: ymdKST(b.date),
-        intake: b.estimatedIntakeCalories,
-        available: b.availableCalories,
-        active: b.activeCalories,
-        balance: b.calorieBalance,
-      })),
+      dailyBalances: balancesRaw.map(toBalanceRow),
     },
     weightSummary: {
       currentWeight: latestWeight,
@@ -334,16 +368,7 @@ export async function getWeightLossStatus() {
       ),
       highIntensityCount: highIntensityActivities.length,
       highIntensityMinutes,
-      byIntensity: activitiesRaw.map((a) => ({
-        name: a.name,
-        type: a.activityType,
-        // #364: startTime 은 실제 instant. UTC 절단 시 KST 00:00~09:00 운동 (= 아침 러닝)
-        // 이 전날로 라벨링된다.
-        date: ymdKST(a.startTime),
-        label: a.intensityLabel,
-        zone: a.estimatedZone,
-        routeTag: a.routeTag,
-      })),
+      byIntensity: activitiesRaw.map(toActivityRow),
     },
     // #299: 매크로 시계열 + 러너 근손실 위험 verdict.
     macroSummary: {
