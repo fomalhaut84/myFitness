@@ -6,6 +6,7 @@ import {
   type GarminZonesRaw,
 } from "@/lib/fitness/zones";
 import { formatDateLocal } from "@/lib/format";
+import { ymdKST } from "@/lib/garmin/utils";
 
 const FIELD_LABELS: Record<string, string> = {
   maxHR: "최대 심박",
@@ -222,7 +223,9 @@ export async function getMetricHistory(args: {
     period: `최근 ${days}일`,
     summaries,
     changes: changes.map((c) => ({
-      date: formatDateLocal(c.changedAt),
+      // #364: changedAt 은 실제 instant. 서버 로컬 TZ 포맷은 호스트가 KST 일 때만 맞고,
+      // 바로 아래 changedAt (전체 ISO, 오프셋 보존) 과도 어긋난다. KST 로 고정.
+      date: ymdKST(c.changedAt),
       changedAt: c.changedAt.toISOString(),
       field: c.field,
       label: FIELD_LABELS[c.field] ?? c.field,

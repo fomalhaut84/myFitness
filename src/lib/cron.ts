@@ -3,6 +3,7 @@ import { syncAll } from "@/lib/garmin/sync";
 import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
 import { listStaleRecalcDates, ackStaleRecalcClaim } from "@/lib/nutrition/stale-recalc";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
+import { ymdKST } from "@/lib/garmin/utils";
 // #269: weather 자동 enrich 는 syncAll 내부 훅 (report pre-sync 등 모든 caller 공유).
 // #283 후속 (Codex P1): FoodLog kcal null 재추정 — 봇의 첫 AI 호출이 transient 실패한 경우 회복.
 // #283 후속 (Codex P2): recalculateCalorieBalance 가 transient 실패한 date 를 큐에서 이어받아 재시도.
@@ -67,7 +68,9 @@ export function startCronJobs() {
         try {
           const claims = await listStaleRecalcDates();
           for (const c of claims) {
-            const key = c.date.toISOString().slice(0, 10);
+            // #364: c.date 는 KST 자정 instant. UTC 절단은 로그 날짜를 하루 앞으로
+            // 밀어 장애 진단 시 오독을 유발한다.
+            const key = ymdKST(c.date);
             try {
               await recalculateCalorieBalance(c.date, undefined);
               const deleted = await ackStaleRecalcClaim(c);
