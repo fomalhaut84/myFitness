@@ -5,31 +5,44 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-08-27, SpO2 세션 종료 시점)
+## 현재 상태 (2026-09-03, 식단 편집 · 보안 세션 종료 시점)
 
 **최근 릴리즈:**
-- **v2.24.0** — Phase 2 완료 (MFDS 외부 음식 DB · 사진 입력 · 매크로 추적)
-- **v2.25.0** — Phase 3 (주간 목표 Mon~Sun 마감 · 식단 items 세부 breakdown)
-- **v2.26.0** — Phase 4 (체중 sync fix 초기 · 네비 "매크로"→"영양" · 식단 히스토리 조회)
 - **v2.26.1** — Phase 4 hotfix (Garmin naive-TZ 이슈 완전 해결)
 - **v2.26.2** — 수면 SpO2 파싱 키 오타 수정 (#338) · 최저/최고 SpO2 저장
 - **v2.27.0** — 야간 SpO2 그래프 (#342) · SpO2 표시 일관성 (#341)
 - **v2.27.1** — 월간 SpO2 트렌드 차트 라벨 정정 (#346)
+- **v2.27.2** — 식단 편집 force_reply 제거 · chat 단위 pending 전환 (#350)
+- **v2.27.3** — npm audit 취약점 8건 해소 (#354) · 프롬프트 발송 실패 시 pending 잔존 (#357)
+- **v2.27.4** — Security Audit 파서 fail-closed · Dependabot 자동 보안 PR 비활성화 (#359)
 
 ### 인계 (다음 세션에서 이어갈 것)
 
-**SpO2 세션은 완결됨.** 오픈 PR · 미완결 브랜치 없음. main = dev = `v2.27.1`, 배포 성공 확인.
+**오픈 PR · 오픈 이슈 0건.** main = dev = `v2.27.4`, 배포 성공 확인.
 
-남은 것은 **실사용 확인 1건**뿐:
+남은 것은 **실사용 확인 5건**. 전부 배포됐고 코드상 검증은 끝났으나 실기기 확인이 안 됨:
 
-- v2.27.0 야간 SpO2 그래프의 **X축 시각이 KST 로 표시되는지**. Codex 2회차가 잡은 회귀 지점 (`scale="time"` 축의 d3 `.ticks()` 가 Date 를 반환해 축이 UTC 로 새던 문제) 이라 배포 후 육안 확인이 남았다. 수면 상세 페이지에서 헤더의 `최저 N% · HH:MM` 과 그래프 X축 눈금이 같은 시간대인지 보면 된다. 어긋나면 `formatEpochKST` (`src/lib/format.ts`) 부터 확인
-- 그 외에는 아래 우선순위 A 에서 새로 착수
+| # | 확인 | 릴리즈 | 실패 시 |
+|---|---|---|---|
+| 1 | **식단 수정 후 앱 재진입 시 답장 입력폼 미재생성** — 이번 세션의 최초 문제 | v2.27.2 | `food-edit-callback.ts` 에 force_reply 잔존 여부 확인 |
+| 2 | 이미 폰에 박혀 있던 프롬프트 해소 여부 — `remove_keyboard` 는 best-effort (클라이언트 구현 의존). 안 사라지면 그 메시지를 직접 삭제 | v2.27.2 | 정상 (수정 대상 아님) |
+| 3 | `[✕ 취소]` 동작 · pending 중 `/today` 가 명령으로 처리 · 비숫자 4회 입력 시 3회째까지 재프롬프트 후 종료 | v2.27.2~3 | `shouldConsumeAsEditInput` / `registerRetry` |
+| 4 | AI 어드바이저 질문 1건 → MCP 도구 호출 정상 (`fast-uri` 3.1.5→3.1.7 영향) | v2.27.3 | ajv 스키마 검증. 로컬에선 `tools/list` 22개 정상 확인함 |
+| 5 | Garmin 싱크 정상 (`qs` 6.15.2→6.16.0 영향) — 06:00 KST cron 또는 `/sync` | v2.27.3 | `@flow-js/garmin-connect` 쿼리 직렬화 |
 
-**중요한 발견 (memory):**
-- Garmin `weight-service` API 의 `entry.date` 는 KST wall-clock 을 UTC 로 표기한 **naive-TZ** ms. 시각 비교 (미래/과거 필터) 에는 `entry.timestampGMT` 필수. `body-composition.ts` 는 v2.26.1 로 해결. 다른 fetcher (특히 `blood-pressure`) 도 같은 이슈 잠재.
-- Garmin SpO2 필드 casing 이 **엔드포인트마다 다름** (`averageSpO2Value` / `averageSPO2` / `averageSpo2`). 라이브러리 타입에 없어 캐스팅으로 읽으므로 오타가 컴파일에 안 걸리고 조용히 null 이 된다. → memory `project_garmin_spo2_field_casing`
-- 사용자 수면 최저 SpO2 baseline 은 **83~88**. 문헌 절대 임계(90% 미만 주의)를 적용하면 매일 오탐. → memory `project_user_spo2_baseline`
-- **Recharts 기본값 함정 2건** (v2.27.0 Codex P1/P2): `scale="time"` 축의 d3 `.ticks()` 는 도메인이 숫자여도 **Date 를 반환**하고, `allowDataOverflow` 기본 `false` 는 지정 domain 을 **데이터에 맞춰 되늘린다**. 차트 작업 시 옵션 기본 동작을 먼저 확인할 것.
+추가 확인:
+- **다음 월요일 03:00 UTC `Security Audit` 스케줄 실행** — 스케줄은 default branch 파일을 쓰므로 v2.27.4 로 비로소 새 파서가 적용됨
+- **다음 `git push` 시 `GH007`** — 전역 git 이메일을 개인 Gmail 주소 (GitHub 계정에 등록됨) 로 바꿔서, "Block command line pushes that expose my email" 이 켜져 있으면 push 가 거부됨. 뜨면 그 설정을 끈다 — noreply 전환은 하지 않기로 결정했으므로 (개인 주소 노출은 수용, 회사 주소만 차단이 목표).
+
+**로컬 잔여 브랜치 (이전 세션):** `chore/m6-roadmap`, `fix/203-3`, `fix/203-4`, `fix/220-1`, `fix/261-2`. 전부 dev 보다 한참 뒤처져 있음. `fix/261-2` 만 원격 없음. 정리 여부 미결정.
+
+**이번 세션의 발견 (memory 반영됨):**
+- **릴리즈 PR 은 merge commit 필수.** v2.27.2(#352)를 squash 한 탓에 main↔dev 공통 조상이 끊겨 다음 릴리즈 PR #356 이 3개 파일에서 충돌했다 (내용은 동일했는데도). main 을 dev 로 back-merge 해 복원. → memory `feedback_release_merge_commit`
+- **`Closes #N` 은 default branch 머지에만 동작.** `dev` 로 가는 PR 은 이슈가 자동으로 닫히지 않으므로 수동 close 필요.
+- **Dependabot 보안 PR 은 `target-branch` 로 못 옮긴다** — 항상 default branch 를 타겟. 게다가 커버리지가 자체 audit 의 부분집합이었다 (#353 이 4건, #355 가 6건). → #359 에서 자동 PR 비활성화, 알림은 유지.
+- **커밋 이메일이 회사 주소로 노출돼 있었다.** 전역 git config 가 회사 주소였고 저장소가 public 이라 GitHub 공개 API 가 590 커밋의 이메일을 평문 서빙. OSS 파트너십 스팸의 유입 경로. GitHub 의 이메일 privacy 설정은 **계정에 등록된 주소만** 보호하므로 이 케이스엔 애초에 무력했다. 전역을 개인 Gmail 로, 회사 저장소 13개는 로컬 override 로 정리. **기존 590 커밋은 그대로 두기로 결정** (이력 재작성 비용 대비 실익 낮음, 포크·스타 0). → memory `project_commit_email_exposure`
+    - **결론 (2026-09-04 사용자 결정)**: `users.noreply.github.com` 전환은 **하지 않는다**. 이 저장소는 public 이라 config 변경 이후 커밋도 개인 Gmail 이 commit metadata 에 평문으로 실리지만 (`/repos/.../commits/<sha>` 확인됨), 목표는 **회사 주소 비노출**이고 그건 달성됐다. 개인 주소 노출은 수용 범위.
+    - **문서 규칙**: 이 저장소는 public 이므로 스펙·인계 문서에 실주소를 적지 않는다 (#362 Codex P1).
 
 ---
 
@@ -54,6 +67,20 @@
 ### A-3. Bot 명령으로 과거 식단 열람
 - **배경**: `/nutrition?date=X` 는 웹 전용. 텔레그램 봇에서 과거 식단 조회 불가.
 - **스코프**: `/food_show <date>` 또는 `/reports food <date>` 신설. inline keyboard 로 어제/그저께 등 shortcut. cuid 타이핑 요구 금지 (feedback_bot_mobile_ux 정합).
+
+---
+
+### A-6. 식단 편집 취소 버튼에 epoch/nonce 대조
+- **배경**: `clearPendingEditFor` 는 logId 만 대조한다. 같은 로그를 편집 완료한 뒤 다시 편집을 시작하고, 스크롤을 올려 **예전 프롬프트의 `[✕ 취소]`** 를 누르면 진행 중인 새 편집이 취소된다.
+- **스코프**: `food:edit-cancel:<logId>:<nonce>` 로 nonce 를 실어 대조. **아래 4가지를 한 덩어리로 처리해야 동작한다** (#362 Codex 리뷰 3라운드에 걸쳐 보강 — 원래 스코프는 1번만 적혀 있었고, 그대로 하면 모든 취소 버튼이 "알 수 없는 요청입니다" 로 떨어졌다):
+    1. **상태·대조**: `markPendingEdit` 이 nonce 를 저장하고, 취소 콜백만 logId + nonce 를 함께 대조.
+        - **삭제 cleanup 경로를 nonce 대조로 바꾸면 안 된다** (#362 Codex P2 재지적). `clearPendingEditFor` 호출부는 2곳인데 성격이 다르다: `:103` 은 사용자 취소 (nonce 있음 · 대조 필요), `:163` 은 삭제/P2025 cleanup 으로 **logId 밖에 없고 대상 로그가 사라진 게 확정된 경로**다. 후자까지 nonce 를 요구하면 삭제 후 pending 이 살아남아 다음 일반 메시지를 삭제된 로그의 입력으로 삼킨다 — PR #351 Codex P2 로 이미 한 번 고친 회귀다. **두 경로를 분리**할 것: `clearPendingEditFor(chatId, logId, nonce)` (취소 전용) + `clearPendingEditByLogId(chatId, logId)` (삭제 확정 전용, 무조건 정리).
+    2. **파서**: `food-edit-callback.ts:48` 의 `parseCallbackData` 는 `parts.length !== 3` 이면 `null` 을 반환한다. 4-field 를 받도록 arity 를 풀고 (edit-cancel 만 4, 나머지 3 — 또는 `parts.length < 3` + optional 4번째), 반환 타입에 `nonce?: string` 추가. `auto-adjust-callback.ts` 의 동명 함수는 별개라 영향 없음.
+    3. **발행 순서**: `armPendingEdit` (`food-edit-state.ts:136`) 은 `sendPrompt()` → `markPendingEdit` 순서다 (#357 fail-closed). 따라서 `markPendingEdit` 이 nonce 를 만들면 키보드 조립 시점에 값이 없다. **nonce 를 발송 전에 할당해 `sendPrompt` 에 넘기고, 저장은 발송 성공 후에** 하도록 리팩터 — #357 의 "발송 실패 시 pending 미잔존" 성질은 유지할 것.
+    4. **재시도 프롬프트로 nonce 전달**: `buildCancelKeyboard` 호출부 3곳 (`food-edit-callback.ts:284,338,432`) 의 시그니처만 바꾸는 걸로는 부족하다 (#362 Codex P2 재지적). `:284` 는 신규 발행이라 방금 만든 nonce 를 쓰면 되지만, **`:338`·`:432` 는 재시도 경로**라 `peekPendingEdit` 이후에 실행된다. 그런데 `peekPendingEdit` (`food-edit-state.ts:103`) 은 `{ logId, action }` 만 반환한다 → 반환 타입에 `nonce` 를 추가해 **저장된 nonce 를 그대로 재사용**할 것. 새로 만들거나 `undefined` 로 두면 그 재시도 취소 버튼이 pending 과 불일치해 동작하지 않는다.
+    - 64byte 한도: `food:edit-cancel:` 17 + cuid 25 + `:` 1 = 43 → nonce 에 21byte 여유. ms epoch(13) 은 안전하지만 짧은 random nonce 가 더 낫다 (같은 ms 재편집 충돌 회피).
+- **우선순위 근거**: 실사용 확률 낮고 결과도 무해한 취소라 P0 로 분류됐다. 다만 pending 라우팅을 다시 손댈 때 함께 처리하면 저비용.
+- **출처**: #350 사전 리뷰 P0, 스펙 `docs/specs/350-food-edit-force-reply-fix.md` §7.
 
 ---
 
@@ -135,6 +162,12 @@
 ### D-2. body-composition sync 로그 세부화
 - **배경**: v2.26.1 진단 시 pm2 log 은 "synced: N" 만 있어 skip 이유 확인 불가. 재발 시 진단이 어려움.
 - **스코프**: `body-composition.ts` 에 verbose flag or DEBUG env 시 entry 별 (skip/update/create) 로그 출력.
+
+### D-4. Security Audit 실행 실패 시 이슈 자동 생성 (?)
+- **배경**: v2.27.4 로 파서는 fail-closed 가 됐지만, audit **실행 실패**는 워크플로우 실패(빨간 X + 알림)로만 드러난다. 취약점 발견 시에만 이슈가 생성된다.
+- **판단 보류 근거**: 이 워크플로우는 2026-07-27 부터 실패가 시작돼 09-03 수정까지 **약 5.5주간** 방치됐다 (08-10 1회만 성공, 마지막 연속 실패는 08-17~09-03 = 17일 · 스케줄 4회). 그 사이 이슈(#266)도 이미 생성돼 있었다. 알림 채널을 늘리는 것이 해법이 아니라는 뜻. 실효 있는 대안(텔레그램 알림 연동 등)을 먼저 정할 것.
+- **스코프**: 정한다면 `security-audit.yml` 에 `if: failure()` github-script 스텝 추가, 또는 기존 봇 알림 파이프라인 재사용.
+- **출처**: #359 스펙 §7.
 
 ### D-3. Formal test framework 도입 (?)
 - **배경**: 현 프로젝트는 `scripts/test-*.ts` 관례. lint/typecheck/build 는 있지만 unit/integration test runner 없음. 회귀 테스트 발견 시마다 스크립트 신설.
