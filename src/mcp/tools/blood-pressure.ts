@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -7,12 +8,16 @@ function daysAgo(n: number): Date {
   return d;
 }
 
-/** 서버 로컬 기준 YYYY-MM-DD (toISOString은 UTC 변환으로 날짜 어긋남 방지) */
+/**
+ * KST 기준 YYYY-MM-DD.
+ *
+ * #364: 이전 주석은 "서버 로컬 기준이라 toISOString 의 UTC 어긋남을 방지한다" 고 했으나
+ * **전제가 틀렸다** — 로컬 TZ 포맷은 호스트가 KST 일 때만 맞고, 호스트가 UTC 면 KST 자정
+ * instant 인 BloodPressure.date 가 그대로 하루 앞으로 밀린다. ecosystem.config.js 는 TZ 를
+ * 고정하지 않는다. 호스트 TZ 와 무관하게 정확한 ymdKST 로 통일.
+ */
 function fmtDate(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return ymdKST(date);
 }
 
 const BP_CATEGORY_LABELS: Record<string, string> = {
