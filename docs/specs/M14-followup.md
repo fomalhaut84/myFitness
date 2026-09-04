@@ -32,7 +32,7 @@
 
 추가 확인:
 - **다음 월요일 03:00 UTC `Security Audit` 스케줄 실행** — 스케줄은 default branch 파일을 쓰므로 v2.27.4 로 비로소 새 파서가 적용됨
-- **다음 `git push` 시 `GH007`** — 전역 git 이메일을 개인 Gmail 주소 (GitHub 계정에 등록됨) 로 바꿔서, "Block command line pushes that expose my email" 이 켜져 있으면 push 가 거부됨. 뜨면 **그 설정을 끄지 말고** `<id>+<username>@users.noreply.github.com` 으로 전환할 것 — 공개 저장소에서 commit metadata 로 주소가 노출되는 걸 막는 유일한 수단이다.
+- **다음 `git push` 시 `GH007`** — 전역 git 이메일을 개인 Gmail 주소 (GitHub 계정에 등록됨) 로 바꿔서, "Block command line pushes that expose my email" 이 켜져 있으면 push 가 거부됨. 뜨면 그 설정을 끈다 — noreply 전환은 하지 않기로 결정했으므로 (개인 주소 노출은 수용, 회사 주소만 차단이 목표).
 
 **로컬 잔여 브랜치 (이전 세션):** `chore/m6-roadmap`, `fix/203-3`, `fix/203-4`, `fix/220-1`, `fix/261-2`. 전부 dev 보다 한참 뒤처져 있음. `fix/261-2` 만 원격 없음. 정리 여부 미결정.
 
@@ -41,7 +41,7 @@
 - **`Closes #N` 은 default branch 머지에만 동작.** `dev` 로 가는 PR 은 이슈가 자동으로 닫히지 않으므로 수동 close 필요.
 - **Dependabot 보안 PR 은 `target-branch` 로 못 옮긴다** — 항상 default branch 를 타겟. 게다가 커버리지가 자체 audit 의 부분집합이었다 (#353 이 4건, #355 가 6건). → #359 에서 자동 PR 비활성화, 알림은 유지.
 - **커밋 이메일이 회사 주소로 노출돼 있었다.** 전역 git config 가 회사 주소였고 저장소가 public 이라 GitHub 공개 API 가 590 커밋의 이메일을 평문 서빙. OSS 파트너십 스팸의 유입 경로. GitHub 의 이메일 privacy 설정은 **계정에 등록된 주소만** 보호하므로 이 케이스엔 애초에 무력했다. 전역을 개인 Gmail 로, 회사 저장소 13개는 로컬 override 로 정리. **기존 590 커밋은 그대로 두기로 결정** (이력 재작성 비용 대비 실익 낮음, 포크·스타 0). → memory `project_commit_email_exposure`
-    - **미해결**: 개인 Gmail 로 바꿨을 뿐 *노출 자체는 그대로*다. 이 저장소는 public 이라 config 변경 이후 push 한 커밋도 commit metadata 에 주소가 평문으로 실린다 (`/repos/.../commits/<sha>` 로 확인됨). 노출 대상이 회사 → 개인 주소로 바뀐 것뿐. 실질 차단은 `users.noreply.github.com` 전환뿐이며, 착수 여부 미결정.
+    - **결론 (2026-09-04 사용자 결정)**: `users.noreply.github.com` 전환은 **하지 않는다**. 이 저장소는 public 이라 config 변경 이후 커밋도 개인 Gmail 이 commit metadata 에 평문으로 실리지만 (`/repos/.../commits/<sha>` 확인됨), 목표는 **회사 주소 비노출**이고 그건 달성됐다. 개인 주소 노출은 수용 범위.
     - **문서 규칙**: 이 저장소는 public 이므로 스펙·인계 문서에 실주소를 적지 않는다 (#362 Codex P1).
 
 ---
@@ -72,7 +72,12 @@
 
 ### A-6. 식단 편집 취소 버튼에 epoch/nonce 대조
 - **배경**: `clearPendingEditFor` 는 logId 만 대조한다. 같은 로그를 편집 완료한 뒤 다시 편집을 시작하고, 스크롤을 올려 **예전 프롬프트의 `[✕ 취소]`** 를 누르면 진행 중인 새 편집이 취소된다.
-- **스코프**: `markPendingEdit` 이 epoch/nonce 를 부여하고 `callback_data` 에 함께 실어 대조. `food:edit-cancel:<logId>:<epoch>` — cuid 25자 + epoch 로 64byte 한도 재확인 필요.
+- **스코프**: `food:edit-cancel:<logId>:<nonce>` 로 nonce 를 실어 대조. **아래 3가지를 한 덩어리로 처리해야 동작한다** (#362 Codex P2 — 원래 스코프는 1번만 적혀 있었고, 그대로 하면 모든 취소 버튼이 "알 수 없는 요청입니다" 로 떨어졌다):
+    1. **상태·대조**: `markPendingEdit` 이 nonce 를 저장하고 `clearPendingEditFor(chatId, logId, nonce)` 가 logId + nonce 를 함께 대조.
+    2. **파서**: `food-edit-callback.ts:48` 의 `parseCallbackData` 는 `parts.length !== 3` 이면 `null` 을 반환한다. 4-field 를 받도록 arity 를 풀고 (edit-cancel 만 4, 나머지 3 — 또는 `parts.length < 3` + optional 4번째), 반환 타입에 `nonce?: string` 추가. `auto-adjust-callback.ts` 의 동명 함수는 별개라 영향 없음.
+    3. **발행 순서**: `armPendingEdit` (`food-edit-state.ts:136`) 은 `sendPrompt()` → `markPendingEdit` 순서다 (#357 fail-closed). 따라서 `markPendingEdit` 이 nonce 를 만들면 키보드 조립 시점에 값이 없다. **nonce 를 발송 전에 할당해 `sendPrompt` 에 넘기고, 저장은 발송 성공 후에** 하도록 리팩터 — #357 의 "발송 실패 시 pending 미잔존" 성질은 유지할 것.
+    - `buildCancelKeyboard` 호출부 3곳 (`food-edit-callback.ts:284,338,432`) 전부 nonce 를 받도록 시그니처 변경.
+    - 64byte 한도: `food:edit-cancel:` 17 + cuid 25 + `:` 1 = 43 → nonce 에 21byte 여유. ms epoch(13) 은 안전하지만 짧은 random nonce 가 더 낫다 (같은 ms 재편집 충돌 회피).
 - **우선순위 근거**: 실사용 확률 낮고 결과도 무해한 취소라 P0 로 분류됐다. 다만 pending 라우팅을 다시 손댈 때 함께 처리하면 저비용.
 - **출처**: #350 사전 리뷰 P0, 스펙 `docs/specs/350-food-edit-force-reply-fix.md` §7.
 
