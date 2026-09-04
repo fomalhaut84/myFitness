@@ -72,11 +72,12 @@
 
 ### A-6. 식단 편집 취소 버튼에 epoch/nonce 대조
 - **배경**: `clearPendingEditFor` 는 logId 만 대조한다. 같은 로그를 편집 완료한 뒤 다시 편집을 시작하고, 스크롤을 올려 **예전 프롬프트의 `[✕ 취소]`** 를 누르면 진행 중인 새 편집이 취소된다.
-- **스코프**: `food:edit-cancel:<logId>:<nonce>` 로 nonce 를 실어 대조. **아래 3가지를 한 덩어리로 처리해야 동작한다** (#362 Codex P2 — 원래 스코프는 1번만 적혀 있었고, 그대로 하면 모든 취소 버튼이 "알 수 없는 요청입니다" 로 떨어졌다):
-    1. **상태·대조**: `markPendingEdit` 이 nonce 를 저장하고 `clearPendingEditFor(chatId, logId, nonce)` 가 logId + nonce 를 함께 대조.
+- **스코프**: `food:edit-cancel:<logId>:<nonce>` 로 nonce 를 실어 대조. **아래 4가지를 한 덩어리로 처리해야 동작한다** (#362 Codex 리뷰 3라운드에 걸쳐 보강 — 원래 스코프는 1번만 적혀 있었고, 그대로 하면 모든 취소 버튼이 "알 수 없는 요청입니다" 로 떨어졌다):
+    1. **상태·대조**: `markPendingEdit` 이 nonce 를 저장하고, 취소 콜백만 logId + nonce 를 함께 대조.
+        - **삭제 cleanup 경로를 nonce 대조로 바꾸면 안 된다** (#362 Codex P2 재지적). `clearPendingEditFor` 호출부는 2곳인데 성격이 다르다: `:103` 은 사용자 취소 (nonce 있음 · 대조 필요), `:163` 은 삭제/P2025 cleanup 으로 **logId 밖에 없고 대상 로그가 사라진 게 확정된 경로**다. 후자까지 nonce 를 요구하면 삭제 후 pending 이 살아남아 다음 일반 메시지를 삭제된 로그의 입력으로 삼킨다 — PR #351 Codex P2 로 이미 한 번 고친 회귀다. **두 경로를 분리**할 것: `clearPendingEditFor(chatId, logId, nonce)` (취소 전용) + `clearPendingEditByLogId(chatId, logId)` (삭제 확정 전용, 무조건 정리).
     2. **파서**: `food-edit-callback.ts:48` 의 `parseCallbackData` 는 `parts.length !== 3` 이면 `null` 을 반환한다. 4-field 를 받도록 arity 를 풀고 (edit-cancel 만 4, 나머지 3 — 또는 `parts.length < 3` + optional 4번째), 반환 타입에 `nonce?: string` 추가. `auto-adjust-callback.ts` 의 동명 함수는 별개라 영향 없음.
     3. **발행 순서**: `armPendingEdit` (`food-edit-state.ts:136`) 은 `sendPrompt()` → `markPendingEdit` 순서다 (#357 fail-closed). 따라서 `markPendingEdit` 이 nonce 를 만들면 키보드 조립 시점에 값이 없다. **nonce 를 발송 전에 할당해 `sendPrompt` 에 넘기고, 저장은 발송 성공 후에** 하도록 리팩터 — #357 의 "발송 실패 시 pending 미잔존" 성질은 유지할 것.
-    - `buildCancelKeyboard` 호출부 3곳 (`food-edit-callback.ts:284,338,432`) 전부 nonce 를 받도록 시그니처 변경.
+    4. **재시도 프롬프트로 nonce 전달**: `buildCancelKeyboard` 호출부 3곳 (`food-edit-callback.ts:284,338,432`) 의 시그니처만 바꾸는 걸로는 부족하다 (#362 Codex P2 재지적). `:284` 는 신규 발행이라 방금 만든 nonce 를 쓰면 되지만, **`:338`·`:432` 는 재시도 경로**라 `peekPendingEdit` 이후에 실행된다. 그런데 `peekPendingEdit` (`food-edit-state.ts:103`) 은 `{ logId, action }` 만 반환한다 → 반환 타입에 `nonce` 를 추가해 **저장된 nonce 를 그대로 재사용**할 것. 새로 만들거나 `undefined` 로 두면 그 재시도 취소 버튼이 pending 과 불일치해 동작하지 않는다.
     - 64byte 한도: `food:edit-cancel:` 17 + cuid 25 + `:` 1 = 43 → nonce 에 21byte 여유. ms epoch(13) 은 안전하지만 짧은 random nonce 가 더 낫다 (같은 ms 재편집 충돌 회피).
 - **우선순위 근거**: 실사용 확률 낮고 결과도 무해한 취소라 P0 로 분류됐다. 다만 pending 라우팅을 다시 손댈 때 함께 처리하면 저비용.
 - **출처**: #350 사전 리뷰 P0, 스펙 `docs/specs/350-food-edit-force-reply-fix.md` §7.
