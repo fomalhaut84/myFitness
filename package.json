@@ -16,7 +16,8 @@
     "backfill:weather": "tsx scripts/backfill-weather.ts",
     "backfill:running-dynamics": "tsx scripts/backfill-running-dynamics.ts",
     "backfill:food-kcal": "tsx scripts/backfill-food-kcal.ts",
-    "verify:food-edit-pending": "tsx scripts/verify-food-edit-pending.ts"
+    "verify:food-edit-pending": "tsx scripts/verify-food-edit-pending.ts",
+    "verify:mcp-date-labels": "tsx scripts/test-mcp-date-labels.ts"
   },
   "dependencies": {
     "@flow-js/garmin-connect": "^1.6.16",

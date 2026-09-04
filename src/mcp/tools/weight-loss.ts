@@ -305,7 +305,10 @@ export async function getWeightLossStatus() {
       consecutiveDeficitDays,
       consecutiveOver750Days: consecutiveOver750,
       dailyBalances: balancesRaw.map((b) => ({
-        date: b.date.toISOString().slice(0, 10),
+        // #364: DailySummary.date 는 KST 자정의 UTC instant (KST 09-03 → 09-02T15:00Z).
+        // toISOString() 절단은 UTC 기준이라 라벨이 하루 앞으로 밀렸다 → macroSummary
+        // (ymdKST 사용) 와 어긋나 AI 가 "어제 식단 없음" 으로 오보. KST 로 통일.
+        date: ymdKST(b.date),
         intake: b.estimatedIntakeCalories,
         available: b.availableCalories,
         active: b.activeCalories,
@@ -334,7 +337,9 @@ export async function getWeightLossStatus() {
       byIntensity: activitiesRaw.map((a) => ({
         name: a.name,
         type: a.activityType,
-        date: a.startTime.toISOString().slice(0, 10),
+        // #364: startTime 은 실제 instant. UTC 절단 시 KST 00:00~09:00 운동 (= 아침 러닝)
+        // 이 전날로 라벨링된다.
+        date: ymdKST(a.startTime),
         label: a.intensityLabel,
         zone: a.estimatedZone,
         routeTag: a.routeTag,
