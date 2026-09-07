@@ -32,8 +32,7 @@ yarn-error.log*
 .vercel
 
 # claude code
-.claude/
-CLAUDE.md
+.claude/settings.local.json
 .runtime/
 
 # ide
