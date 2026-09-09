@@ -26,12 +26,16 @@ gh api "repos/fomalhaut84/myFitness/pulls/<PR>/comments?per_page=100" \
 
 ## Step 2: Severity 판단
 
-리뷰 body 에서 P2/P1/P0/P3 뱃지 확인:
+리뷰 body 에서 P0/P1/P2/P3 뱃지 확인. **봇은 `P0` 를 최고 심각도로 쓴다** (봇 네이티브 척도):
 
-- **P2 (critical)**: 데이터 손실 / 보안 / 심각 crash → **반드시 반영**
-- **P1 (major)**: 로직 / 엣지케이스 / 성능 → **반드시 반영**
-- **P0 (info)**: 스타일 / 네이밍 → **저비용/명확한 것만 반영**
+- **P0 (최고)**: 데이터 손실 / 보안 / 심각 crash → **반드시 반영**
+- **P1**: 로직 / 엣지케이스 / 성능 → **반드시 반영**
+- **P2 이하**: 스타일 / 네이밍 → 후속 이슈로 트래킹. **저비용/명확한 것만 즉시 반영**
 - **P3 (nit)**: 옵션. 사용자 판단.
+
+> **정정 (pleiades#8 결함 ②).** 이전 판은 `P2 (critical) … P0 (info)` 로 **방향이 반대**였다.
+> 그대로면 봇의 **최고 심각도 P0 를 "저비용만 반영"으로 격하**하게 된다. 봇 지적은 봇 표기 그대로
+> 다루고, 로컬 사전 리뷰의 단어 척도(critical/major/info)와 섞지 않는다 (`workflow.md` 8절).
 
 ## Step 3: Fix 방향 결정
 
@@ -49,7 +53,7 @@ git status --short
 # ... 파일 편집 ...
 git add -A && git commit -m "fix(<scope>): <desc> (#<issue>)
 
-Codex bot P<N> 반영. <원인 요약>.
+Codex bot P<N> 반영 (봇 척도 — P0 가 최고). <원인 요약>.
 
 ## Fix
 - <변경 요약>
@@ -57,13 +61,16 @@ Codex bot P<N> 반영. <원인 요약>.
 ## 회귀 검증 (해당 시)
 - ...
 
-3-check 통과."
+4종 검증 통과."
 git push
 ```
 
-**3-check 필수**: `npm run lint && npm run typecheck` (build 는 리팩터 큰 경우만)
+**4종 검증 필수**: `npm run lint && npm run typecheck && npm run test && npm run build` (`workflow.md` 7단계 — 축약하지 않는다, pleiades#8)
 
 ## Step 5: 재리뷰 요청
+
+봇 **P0/P1 을 실제로 반영한 커밋**에만 요청한다. P2 이하만 반영했거나 문서/스펙만 바꾼 경우엔 요청 금지
+(단 봇 지적 자체가 문서에 대한 것이면 그 수정은 P0/P1 반영이므로 요청한다 — `workflow.md` 8-2).
 
 ```bash
 gh pr comment <PR> --body "@codex review"
@@ -75,6 +82,21 @@ gh pr comment <PR> --body "@codex review"
 Agent(subagent_type: "pr-review-toolkit:code-reviewer", model: "opus",
       prompt: "Review branch <feat/N-1> vs dev. Focus: <focus>.
       Do NOT flag: <pre-emptive coverage list>.")
+```
+
+> **대체는 일반 PR 에만 — 릴리즈 PR 은 대체 불가 (pleiades#8 · fin #492 2회차 P1).** 봇이 안 돌면(쿼터 소진·장애)
+> **일반 PR** 은 8-0 경로대로 — 에이전트 필수 경로는 사전 에이전트 리뷰(critical/major = 0), self-review 경로는 self-review + 4종 검증 — 로 완료하되 PR body 에 `봇: 미실행 (쿼터 소진, YYYY-MM-DD)` 를 명시하고
+> 회복 후 `@codex review`. **핫픽스 PR** 은 8-3 봇 불가 표의 핫픽스 행(사전 리뷰 + 사용자 "봇 없이 머지" 명시 승인). **릴리즈 PR(dev → main)은 봇 회복까지 대기한다** — `봇 P0/P1 = 0` 게이트를 에이전트 리뷰로 우회하지 않는다
+> (`workflow.md` 8-3 · `release-flow` 봇 리뷰 게이트).
+
+## Step 5-1: PR body `## 코드 리뷰 결과` 갱신 (매 라운드 · `workflow.md` 8-6)
+
+PR 생성 시점의 `봇: 리뷰 대기` 를 실제 라운드 요약과 최종 상태로 바꾼다. `gh pr edit --body` 는 **전체 교체**다:
+
+```bash
+gh pr view <PR> --json body -q .body > /tmp/body.md      # 현재 body 를 받아
+# … `## 코드 리뷰 결과` 섹션만 편집 …
+gh pr edit <PR> --body-file /tmp/body.md                 # 전체를 다시 넣는다. Closes/요약이 남았는지 확인
 ```
 
 ## Step 6: 릴리즈 PR 리뷰 특수 처리
@@ -99,14 +121,14 @@ gh pr view <PR> --json state,mergedAt
 
 같은 파일/영역에서 3라운드+ 상충 지적이 반복되면:
 1. 스펙 문서 §Known limitations 에 결정 사항 기록
-2. PR comment 로 "이 P<N> 은 설계 방침상 반영하지 않습니다" 명시
+2. PR comment 로 "이 P<N> 은 설계 방침상 반영하지 않습니다" 명시 — **P2 이하에 한한다.** 봇 P0/P1 은 8-3 대로 0 이 될 때까지 머지하지 않으며, 방침상 미반영으로 두려면 사용자 명시 판단이 필요하다
 3. 별도 이슈로 트래킹 후 마무리
 
 ## 예시 세션 흐름
 
 ```
 User: https://github.com/fomalhaut84/myFitness/pull/226#pullrequestreview-4690548424
-Me:   [Step 1] gh api ... → "2건 P2 지적 확인: (1) 세션 resume 시 stale (2) formatPace 반올림"
+Me:   [Step 1] gh api ... → "2건 P1 지적 확인: (1) 세션 resume 시 stale (2) formatPace 반올림"
       [Step 3] 반영 방향: (1) dynamic context 이동 (2) total 먼저 round
       [Step 4] git add + commit + push
       [Step 5] gh pr comment "@codex review"

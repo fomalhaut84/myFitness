@@ -93,7 +93,7 @@ MCP Server        Garmin Connect
 
 ```
 기획 → 문서화(docs/specs/) → GitHub 이슈 → UI/UX 디자인(frontend-design 스킬)
-→ 구현 계획 → 개발 → 테스트 → 코드 리뷰(P1/P2=0까지) → PR → [사용자 머지] → 이슈 종료
+→ 구현 계획 → 개발 → 테스트 → 코드 리뷰(사전 critical/major=0) → PR → 봇 리뷰(P0/P1=0까지) → [사용자 머지] → 이슈 종료
 ```
 
 - 브랜치: `main`(실서비스) → `dev`(개발) → `feat/<issue>-<n>` / `fix/<issue>-<n>` (dev에서 생성, dev로 PR)

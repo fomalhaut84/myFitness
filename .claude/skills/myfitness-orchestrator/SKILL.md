@@ -36,7 +36,7 @@ myFitness 프로젝트 (Next.js + Prisma + PM2 + MCP + Telegram bot) 개발/운�
 - "새 기능" / "이 기능 추가해줘" / "bug fix 해줘"
 - 이슈 번호 언급하며 착수 요청
 - 스펙 작성 필요
-- 3-check + 사전 리뷰 + PR 오픈
+- 4종 검증 (`lint / typecheck / test / build`) + 사전 리뷰 + PR 오픈
 
 **스킬**: `branch-workflow`, `orphan-check`
 

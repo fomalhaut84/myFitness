@@ -52,6 +52,9 @@ git describe --tags --abbrev=0
 gh pr create --base main --head dev \
   --title "v<X.Y.Z> — <핵심 변경>" \
   --body "$(cat <<'EOF'
+> **⚠️ 머지 방식: "Create a merge commit" 을 사용하세요. squash 금지.**
+> squash 하면 main↔dev 공통 조상이 끊겨 다음 릴리즈 PR 이 충돌합니다.
+
 ## v<X.Y.Z>
 
 <개요 1~2문장>
@@ -65,9 +68,10 @@ gh pr create --base main --head dev \
 - DB migration: 있음/없음
 - pm2 restart 만 필요 / (다른 변경)
 
-## 코드 리뷰
+## 코드 리뷰 결과
 
-<리뷰 사이클 요약, P0/P1/P2 카운트>
+- 리뷰 방식: <에이전트 사전 리뷰 N회 / self-review> + Codex bot
+- 봇: 리뷰 대기   ← 생성 시점엔 결과가 없다. 봇 라운드가 끝나면 `codex-review-loop` Step 5-1 로 이 섹션을 갱신 (헤딩은 `## 코드 리뷰 결과` 고정 — 갱신 단계가 이 문자열을 찾는다)
 
 ## 검증 계획 (배포 후)
 
@@ -86,6 +90,15 @@ Codex bot 자동 리뷰가 릴리즈 PR 에도 붙음. 반영 방식:
 
 - **새 브랜치 (`fix/<issue>-<N>` from dev)** → dev PR → 머지 → 릴리즈 PR 자동 반영
 - 릴리즈 PR 자체에 직접 커밋 X
+
+## Step 5-1: 봇 리뷰 게이트
+
+Codex bot 이 Release PR 에 돈다. **봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다**
+(`workflow.md` 릴리즈 전략 · 8-3). 수정은 dev 로 `fix/<issue>-<n>` PR 을 태워 반영한 뒤 `@codex review`.
+
+**봇이 돌 수 없으면**(쿼터 소진 등) **릴리즈 PR 은 봇 회복까지 대기한다** — 일반 PR 의
+`봇: 미실행 (사유, YYYY-MM-DD)` 대체 표기는 릴리즈에 적용하지 않는다. 릴리즈는 곧장 실서비스로 가고
+핫픽스와 달리 긴급성이 없다.
 
 ## Step 6: 사용자 머지 대기
 
@@ -129,7 +142,7 @@ git commit -m "chore: main(vX.Y.Z) 를 dev 로 back-merge — squash 로 끊긴 
 # 4. 이후 충돌이 사라지는지 확인
 git merge-tree --write-tree origin/main HEAD | grep -i conflict   # 출력 없어야 함
 
-# 5. 3-check 후 dev 로 반영
+# 5. 4종 검증 (lint / typecheck / test / build) 후 dev 로 반영
 git checkout dev && git merge tmp/backmerge-verify --ff-only
 git push origin dev
 ```
@@ -140,9 +153,9 @@ git push origin dev
 ## Step 7: 태그 + Release (사용자 머지 후)
 
 ```bash
-git checkout main && git pull
+git checkout main && git pull      # main 은 사용자 머지로 이미 갱신돼 있다
 git tag v<X.Y.Z>
-git push origin main --tags
+git push origin --tags
 
 gh release create v<X.Y.Z> \
   --title "v<X.Y.Z> — <핵심 변경>" \
@@ -174,6 +187,10 @@ EOF
 )"
 ```
 
+> **정정 (pleiades#8 결함 ①).** 이전 Step 7 은 `git push origin main --tags` 로 **태그와 함께 `main` 브랜치를
+> 직접 push** 했다. `main` 은 Step 6 의 **사용자 머지로 이미 갱신**돼 있으므로 브랜치를 push 할 이유가 없고,
+> `main` 이 보호되면 이 명령 하나 때문에 태그 발행까지 실패한다. 태그만 올린다 — `git push origin --tags`.
+
 ## Step 8: 사용자 알림 대기
 
 Deploy on Release 워크플로우 자동 트리거. 사용자 "배포완료" 알림 후:
@@ -184,14 +201,39 @@ Deploy on Release 워크플로우 자동 트리거. 사용자 "배포완료" 알
 
 ### Hotfix
 
-`main` 에서 브랜치 → main + dev 양쪽 머지:
+`main` 에서 브랜치 → main + dev 양쪽 머지. **게이트는 `workflow.md` 긴급 수정 절과 동일하다** — 실서비스로 직행하는 경로라 리뷰를 줄이지 않는다:
 
 ```bash
 git checkout main && git checkout -b hotfix/<issue>-<n>
-# ... 수정 ...
-gh pr create --base main --head hotfix/<issue>-<n>
-gh pr create --base dev  --head hotfix/<issue>-<n>
+# ... 수정 → 4종 검증 (lint / typecheck / test / build) ...
+# 1. 로컬 사전 리뷰 1회 (pr-review-toolkit:code-reviewer) — critical·major 는 반드시 수정, info 는 후속 이슈. 반복 루프만 생략
+gh pr create --base main --head hotfix/<issue>-<n> --body "$(cat <<'EOF'
+<수정 요약>
+
+Refs #<issue>   ← Closes 금지 — 양쪽 머지 후 수동 종료
+
+## 코드 리뷰 결과
+- 리뷰 방식: 에이전트 사전 리뷰 1회 + Codex bot
+- 사전 1회차: critical=N / major=N / info=N
+- 봇: 리뷰 대기   ← 봇 결과 후 codex-review-loop Step 5-1 로 갱신 (헤딩 고정)
+EOF
+)"
+gh pr create --base dev  --head hotfix/<issue>-<n> --body "$(cat <<'EOF'
+Backport of #<main-PR> (#<issue>)
+
+## 코드 리뷰 결과
+- 봇: 리뷰 대기
+EOF
+)"
+# 2. 봇 리뷰가 여기서 돈다 — 봇 P0·P1 → 반드시 수정 → 4종 검증 재실행 + 8-5 회귀 테스트 → 양쪽 PR 반영 → @codex review
+#    봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다
+# 3. 봇이 안 오면 (쿼터 소진·장애): workflow.md 8-3 봇 불가 표의 핫픽스 행 —
+#    사전 리뷰 결과가 완료 판정 + 사용자가 "봇 없이 머지" 를 명시 승인. PR body 에 `봇: 미실행 (사유, YYYY-MM-DD)`
+# 4. 사용자가 양쪽 머지 → 이슈 종료
 ```
+
+> **정정 (pleiades#8 결함 ③ · PR #372 Codex 2회차 P2).** 이전 절차는 PR 2개 생성에서 끝나 사전 리뷰도 봇 게이트도
+> 없었다 — `workflow.md` 가 hotfix 게이트를 복원해도 **이 실행 경로를 따르면 리뷰 없는 핫픽스가 머지 요청까지 간다.**
 
 ### Deploy 실패
 

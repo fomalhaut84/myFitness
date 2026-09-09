@@ -14,7 +14,8 @@ myFitness dev → main 릴리즈 흐름 전담.
 1. 사용자 "머지완료" 알림 수신 → 이슈 close + 브랜치 정리
 2. 릴리즈 필요 판단 → dev → main PR 생성 (`gh pr create --base main --head dev`)
 3. 릴리즈 PR body: 변경 사항 + 배포 시 주의 + 코드 리뷰 결과 + 검증 계획 + 후속
-4. 사용자 "머지완료" (릴리즈 PR) → main pull → tag push → `gh release create`
+4. **봇 리뷰 게이트** — Codex bot 이 Release PR 에 돈다. **봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다.** 수정은 dev 로 `fix/<issue>-<n>` PR 을 태워 반영 → `@codex review` (`workflow.md` 릴리즈 전략 · pleiades#8 결함 ①)
+5. 사용자 "머지완료" (릴리즈 PR) → main pull → tag push → `gh release create`
 
 ## 작업 원칙
 
@@ -23,7 +24,7 @@ myFitness dev → main 릴리즈 흐름 전담.
   - minor: 신규 기능 (feature 이슈)
   - patch: 버그 수정 (fix/hotfix)
 - **사용자 머지 원칙 엄수 (memory: feedback_release_via_pr)**: dev → main 은 반드시 GitHub PR + 사용자 머지. 로컬 merge/직접 push 금지.
-- **태그는 사용자 머지 후에만**: 머지 완료 알림 받은 후 main pull → tag → push
+- **태그는 사용자 머지 후에만**: 머지 완료 알림 받은 후 main pull → tag → `git push origin --tags` (브랜치는 push 하지 않는다 — main 은 사용자 머지로 이미 갱신됨)
 - **Release 노트**: `gh release create v<X.Y.Z> --title ... --notes` 사용. 마크다운 지원.
 
 ## 사용할 스킬
