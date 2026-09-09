@@ -52,6 +52,9 @@ git describe --tags --abbrev=0
 gh pr create --base main --head dev \
   --title "v<X.Y.Z> — <핵심 변경>" \
   --body "$(cat <<'EOF'
+> **⚠️ 머지 방식: "Create a merge commit" 을 사용하세요. squash 금지.**
+> squash 하면 main↔dev 공통 조상이 끊겨 다음 릴리즈 PR 이 충돌합니다.
+
 ## v<X.Y.Z>
 
 <개요 1~2문장>
@@ -197,14 +200,23 @@ Deploy on Release 워크플로우 자동 트리거. 사용자 "배포완료" 알
 
 ### Hotfix
 
-`main` 에서 브랜치 → main + dev 양쪽 머지:
+`main` 에서 브랜치 → main + dev 양쪽 머지. **게이트는 `workflow.md` 긴급 수정 절과 동일하다** — 실서비스로 직행하는 경로라 리뷰를 줄이지 않는다:
 
 ```bash
 git checkout main && git checkout -b hotfix/<issue>-<n>
-# ... 수정 ...
-gh pr create --base main --head hotfix/<issue>-<n>
-gh pr create --base dev  --head hotfix/<issue>-<n>
+# ... 수정 → 4종 검증 (lint / typecheck / test / build) ...
+# 1. 로컬 사전 리뷰 1회 (pr-review-toolkit:code-reviewer) — critical·major 는 반드시 수정, info 는 후속 이슈. 반복 루프만 생략
+gh pr create --base main --head hotfix/<issue>-<n> --body "… Refs #<issue> …"   # Closes 금지 — 양쪽 머지 후 수동 종료
+gh pr create --base dev  --head hotfix/<issue>-<n> --body "Backport of #<main-PR> (#<issue>)"
+# 2. 봇 리뷰가 여기서 돈다 — 봇 P0·P1 → 반드시 수정 → 4종 검증 재실행 + 8-5 회귀 테스트 → 양쪽 PR 반영 → @codex review
+#    봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다
+# 3. 봇이 안 오면 (쿼터 소진·장애): workflow.md 8-3 봇 불가 표의 핫픽스 행 —
+#    사전 리뷰 결과가 완료 판정 + 사용자가 "봇 없이 머지" 를 명시 승인. PR body 에 `봇: 미실행 (사유, YYYY-MM-DD)`
+# 4. 사용자가 양쪽 머지 → 이슈 종료
 ```
+
+> **정정 (pleiades#8 결함 ③ · PR #372 Codex 2회차 P2).** 이전 절차는 PR 2개 생성에서 끝나 사전 리뷰도 봇 게이트도
+> 없었다 — `workflow.md` 가 hotfix 게이트를 복원해도 **이 실행 경로를 따르면 리뷰 없는 핫픽스가 머지 요청까지 간다.**
 
 ### Deploy 실패
 
