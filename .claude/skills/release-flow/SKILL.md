@@ -68,9 +68,10 @@ gh pr create --base main --head dev \
 - DB migration: 있음/없음
 - pm2 restart 만 필요 / (다른 변경)
 
-## 코드 리뷰
+## 코드 리뷰 결과
 
-<리뷰 사이클 요약 — 사전 critical/major/info · 봇 P0/P1/P2 카운트>
+- 리뷰 방식: <에이전트 사전 리뷰 N회 / self-review> + Codex bot
+- 봇: 리뷰 대기   ← 생성 시점엔 결과가 없다. 봇 라운드가 끝나면 `codex-review-loop` Step 5-1 로 이 섹션을 갱신 (헤딩은 `## 코드 리뷰 결과` 고정 — 갱신 단계가 이 문자열을 찾는다)
 
 ## 검증 계획 (배포 후)
 
@@ -206,8 +207,24 @@ Deploy on Release 워크플로우 자동 트리거. 사용자 "배포완료" 알
 git checkout main && git checkout -b hotfix/<issue>-<n>
 # ... 수정 → 4종 검증 (lint / typecheck / test / build) ...
 # 1. 로컬 사전 리뷰 1회 (pr-review-toolkit:code-reviewer) — critical·major 는 반드시 수정, info 는 후속 이슈. 반복 루프만 생략
-gh pr create --base main --head hotfix/<issue>-<n> --body "… Refs #<issue> …"   # Closes 금지 — 양쪽 머지 후 수동 종료
-gh pr create --base dev  --head hotfix/<issue>-<n> --body "Backport of #<main-PR> (#<issue>)"
+gh pr create --base main --head hotfix/<issue>-<n> --body "$(cat <<'EOF'
+<수정 요약>
+
+Refs #<issue>   ← Closes 금지 — 양쪽 머지 후 수동 종료
+
+## 코드 리뷰 결과
+- 리뷰 방식: 에이전트 사전 리뷰 1회 + Codex bot
+- 사전 1회차: critical=N / major=N / info=N
+- 봇: 리뷰 대기   ← 봇 결과 후 codex-review-loop Step 5-1 로 갱신 (헤딩 고정)
+EOF
+)"
+gh pr create --base dev  --head hotfix/<issue>-<n> --body "$(cat <<'EOF'
+Backport of #<main-PR> (#<issue>)
+
+## 코드 리뷰 결과
+- 봇: 리뷰 대기
+EOF
+)"
 # 2. 봇 리뷰가 여기서 돈다 — 봇 P0·P1 → 반드시 수정 → 4종 검증 재실행 + 8-5 회귀 테스트 → 양쪽 PR 반영 → @codex review
 #    봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다
 # 3. 봇이 안 오면 (쿼터 소진·장애): workflow.md 8-3 봇 불가 표의 핫픽스 행 —
