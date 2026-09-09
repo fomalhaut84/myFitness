@@ -89,6 +89,16 @@ Agent(subagent_type: "pr-review-toolkit:code-reviewer", model: "opus",
 > 회복 후 `@codex review`. **핫픽스 PR** 은 8-3 봇 불가 표의 핫픽스 행(사전 리뷰 + 사용자 "봇 없이 머지" 명시 승인). **릴리즈 PR(dev → main)은 봇 회복까지 대기한다** — `봇 P0/P1 = 0` 게이트를 에이전트 리뷰로 우회하지 않는다
 > (`workflow.md` 8-3 · `release-flow` 봇 리뷰 게이트).
 
+## Step 5-1: PR body `## 코드 리뷰 결과` 갱신 (매 라운드 · `workflow.md` 8-6)
+
+PR 생성 시점의 `봇: 리뷰 대기` 를 실제 라운드 요약과 최종 상태로 바꾼다. `gh pr edit --body` 는 **전체 교체**다:
+
+```bash
+gh pr view <PR> --json body -q .body > /tmp/body.md      # 현재 body 를 받아
+# … `## 코드 리뷰 결과` 섹션만 편집 …
+gh pr edit <PR> --body-file /tmp/body.md                 # 전체를 다시 넣는다. Closes/요약이 남았는지 확인
+```
+
 ## Step 6: 릴리즈 PR 리뷰 특수 처리
 
 **PR 이 dev → main (릴리즈 PR)** 이면:

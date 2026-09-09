@@ -148,10 +148,10 @@ gh pr create --base dev --head <branch> \
 - [x] lint / typecheck / test / build
 
 ## 코드 리뷰 결과
-**리뷰 방식**: pr-review-toolkit code-reviewer 1회 + Codex bot (예정)   ← self-review 경로면 `self-review (변경 성격: <카테고리>) + Codex bot`
+**리뷰 방식**: pr-review-toolkit code-reviewer 1회 + Codex bot (대기)   ← self-review 경로면 `self-review (변경 성격: <카테고리>) + Codex bot`
 - 사전 1회차: critical=N / major=N / info=N → merge-ready
-- 봇 1회차: P0/P1=N · P2=N → (반영 / 후속 이슈)
-- **최종**: `✅ 사전 critical/major = 0/0 · 봇 P0/P1 = 0/0 · info/P2 <실제 건수와 처리>` — 봇이 안 돌면 `봇 P0/P1` 자리에 `봇: 미실행 (사유, YYYY-MM-DD)` (릴리즈 PR 은 봇 회복까지 대기 · 8-3)
+- **봇: 리뷰 대기** ← PR 오픈 시점엔 봇이 아직 안 돌았다. 결과를 미리 적지 않는다 (PR #372 Codex P2)
+- 회귀 테스트: <파일 목록 또는 "해당 없음 (<사유>)">
 
 ## Test plan
 - [x] 4종 검증
@@ -165,6 +165,8 @@ EOF
 ## Step 10: 이후 흐름
 
 - Codex bot 자동 리뷰 → `codex-review-loop` 스킬
+- **봇 결과가 나오면 PR body 의 `## 코드 리뷰 결과` 를 갱신한다** (`workflow.md` 8-6 — 생성 시점의 "봇: 리뷰 대기" 를 실제 라운드·최종 상태로).
+  `gh pr edit --body` 는 **전체 교체**이므로 `gh pr view <PR> --json body -q .body` 로 받아 그 섹션만 바꾼 뒤 `--body-file` 로 넣는다
 - 사용자 머지 → `release-flow` 스킬
 
 ## 브랜치 정책 요약

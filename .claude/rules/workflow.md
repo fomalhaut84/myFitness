@@ -34,15 +34,21 @@ hotfix: main → hotfix/20-crash → main + dev 양쪽 머지
 9절 `Closes` 규칙의 **예외**로 두고, 본문에 이번 릴리즈에 포함된 이슈 목록을 적는다.
 
 ```bash
-# 1. dev → main PR 생성 (Claude) — body 는 `release-flow` Step 3 템플릿으로. 최상단 머지 모드 경고는 필수다
+# 1. dev → main PR 생성 (Claude) — body 는 **`release-flow` Step 4 의 전체 템플릿**(머지 모드 경고 · 개요 · 수정 · 배포 ·
+#    코드 리뷰 · 검증 계획 · 후속)을 그대로 쓴다. 여기 요약본은 필수 항목만 보여준다 — 실제 생성은 그 템플릿으로.
 gh pr create --base main --head dev --title "Release v1.0.0" --body "$(cat <<'EOF'
 > **⚠️ 머지 방식: "Create a merge commit" 을 사용하세요. squash 금지.**
 > squash 하면 main↔dev 공통 조상이 끊겨 다음 릴리즈 PR 이 충돌합니다.
 
 ## 포함 이슈
 - …
+
+## 코드 리뷰            ← 8-6 필수 섹션. 생성 시점엔 봇 결과가 없다
+- 봇: 리뷰 대기
 EOF
 )"
+#    봇 리뷰가 끝나면 body 의 `## 코드 리뷰` 를 갱신한다 (8-6) — `gh pr edit --body` 는 전체 교체이므로
+#    `gh pr view --json body` 로 받아 그 섹션만 바꾼 뒤 `--body-file` 로 다시 넣는다
 
 # 2. 봇 리뷰 게이트 — 8-2·8-3 을 그대로 거친다. 봇 P0/P1 = 0 이 될 때까지 머지하지 않는다.
 #    수정이 필요하면 dev 로 fix/<issue>-<n> PR 을 태워 반영 → @codex review
