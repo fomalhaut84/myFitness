@@ -86,7 +86,7 @@ Agent(subagent_type: "pr-review-toolkit:code-reviewer", model: "opus",
 
 > **대체는 일반 PR 에만 — 릴리즈 PR 은 대체 불가 (pleiades#8 · fin #492 2회차 P1).** 봇이 안 돌면(쿼터 소진·장애)
 > **일반 PR** 은 사전 에이전트 리뷰(critical/major = 0)로 진행하되 PR body 에 `봇: 미실행 (쿼터 소진, YYYY-MM-DD)` 를 명시하고
-> 회복 후 `@codex review`. **릴리즈 PR(dev → main)은 봇 회복까지 대기한다** — `봇 P0/P1 = 0` 게이트를 에이전트 리뷰로 우회하지 않는다
+> 회복 후 `@codex review`. **핫픽스 PR** 은 8-3 봇 불가 표의 핫픽스 행(사전 리뷰 + 사용자 "봇 없이 머지" 명시 승인). **릴리즈 PR(dev → main)은 봇 회복까지 대기한다** — `봇 P0/P1 = 0` 게이트를 에이전트 리뷰로 우회하지 않는다
 > (`workflow.md` 8-3 · `release-flow` 봇 리뷰 게이트).
 
 ## Step 6: 릴리즈 PR 리뷰 특수 처리
