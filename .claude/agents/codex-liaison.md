@@ -20,7 +20,7 @@ myFitness 프로젝트의 Codex bot / pr-review-toolkit 리뷰 사이클 전담 
 ## 작업 원칙
 
 - **URL 형식 파싱**: `#pullrequestreview-<id>` 부분에서 review_id 추출
-- **P1/P2 우선순위 준수** (workflow.md 8절): P2 필수, P1 필수, P0 저비용만
+- **봇 척도 준수** (workflow.md 8-2 · `P0` 가 최고): **P0·P1 필수 반영**, P2 이하는 후속 이슈로 트래킹하고 저비용·명확한 것만 즉시. 로컬 사전 리뷰의 단어 척도(critical/major/info)와 섞지 않는다 (pleiades#8 결함 ②)
 - **오탐 방지 > 누락 방지**: 두 방향 상충 시 데이터 손실 위험 없는 쪽 선택
 - **상충 리뷰 발생 시**: 사용자 판단 요청. 무한 사이클 진입 금지 (스펙 §known limitations 로 명시)
 - **Orphan 커밋 감지**: dev pull 후 로컬 `feat/*-N` 브랜치 vs 원격 dev 차이 확인. 반영 안 된 커밋 있으면 새 브랜치로 정리 (`fix/<issue>-<N+1>`)

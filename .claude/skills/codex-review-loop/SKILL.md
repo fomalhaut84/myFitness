@@ -26,12 +26,16 @@ gh api "repos/fomalhaut84/myFitness/pulls/<PR>/comments?per_page=100" \
 
 ## Step 2: Severity 판단
 
-리뷰 body 에서 P2/P1/P0/P3 뱃지 확인:
+리뷰 body 에서 P0/P1/P2/P3 뱃지 확인. **봇은 `P0` 를 최고 심각도로 쓴다** (봇 네이티브 척도):
 
-- **P2 (critical)**: 데이터 손실 / 보안 / 심각 crash → **반드시 반영**
-- **P1 (major)**: 로직 / 엣지케이스 / 성능 → **반드시 반영**
-- **P0 (info)**: 스타일 / 네이밍 → **저비용/명확한 것만 반영**
+- **P0 (최고)**: 데이터 손실 / 보안 / 심각 crash → **반드시 반영**
+- **P1**: 로직 / 엣지케이스 / 성능 → **반드시 반영**
+- **P2 이하**: 스타일 / 네이밍 → 후속 이슈로 트래킹. **저비용/명확한 것만 즉시 반영**
 - **P3 (nit)**: 옵션. 사용자 판단.
+
+> **정정 (pleiades#8 결함 ②).** 이전 판은 `P2 (critical) … P0 (info)` 로 **방향이 반대**였다.
+> 그대로면 봇의 **최고 심각도 P0 를 "저비용만 반영"으로 격하**하게 된다. 봇 지적은 봇 표기 그대로
+> 다루고, 로컬 사전 리뷰의 단어 척도(critical/major/info)와 섞지 않는다 (`workflow.md` 8절).
 
 ## Step 3: Fix 방향 결정
 
@@ -49,7 +53,7 @@ git status --short
 # ... 파일 편집 ...
 git add -A && git commit -m "fix(<scope>): <desc> (#<issue>)
 
-Codex bot P<N> 반영. <원인 요약>.
+Codex bot P<N> 반영 (봇 척도 — P0 가 최고). <원인 요약>.
 
 ## Fix
 - <변경 요약>
@@ -57,13 +61,16 @@ Codex bot P<N> 반영. <원인 요약>.
 ## 회귀 검증 (해당 시)
 - ...
 
-3-check 통과."
+4종 검증 통과."
 git push
 ```
 
-**3-check 필수**: `npm run lint && npm run typecheck` (build 는 리팩터 큰 경우만)
+**4종 검증 필수**: `npm run lint && npm run typecheck && npm run test && npm run build` (`workflow.md` 7단계 — 축약하지 않는다, pleiades#8)
 
 ## Step 5: 재리뷰 요청
+
+봇 **P0/P1 을 실제로 반영한 커밋**에만 요청한다. P2 이하만 반영했거나 문서/스펙만 바꾼 경우엔 요청 금지
+(단 봇 지적 자체가 문서에 대한 것이면 그 수정은 P0/P1 반영이므로 요청한다 — `workflow.md` 8-2).
 
 ```bash
 gh pr comment <PR> --body "@codex review"
@@ -106,7 +113,7 @@ gh pr view <PR> --json state,mergedAt
 
 ```
 User: https://github.com/fomalhaut84/myFitness/pull/226#pullrequestreview-4690548424
-Me:   [Step 1] gh api ... → "2건 P2 지적 확인: (1) 세션 resume 시 stale (2) formatPace 반올림"
+Me:   [Step 1] gh api ... → "2건 P1 지적 확인: (1) 세션 resume 시 stale (2) formatPace 반올림"
       [Step 3] 반영 방향: (1) dynamic context 이동 (2) total 먼저 round
       [Step 4] git add + commit + push
       [Step 5] gh pr comment "@codex review"

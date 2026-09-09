@@ -1,6 +1,6 @@
 ---
 name: branch-workflow
-description: myFitness workflow.md 10단계 워크플로우를 실행하는 절차. 사용자가 "새 기능", "버그 fix", "이 기능 추가해줘" 요청 시 사용. 이슈 생성 → dev 브랜치 pull → feat/fix 브랜치 → 스펙 문서 → 구현 → 3-check → 사전 리뷰 → PR 오픈까지 전체 자동화.
+description: myFitness workflow.md 10단계 워크플로우를 실행하는 절차. 사용자가 "새 기능", "버그 fix", "이 기능 추가해줘" 요청 시 사용. 이슈 생성 → dev 브랜치 pull → feat/fix 브랜치 → 스펙 문서 → 구현 → 4종 검증 → 사전 리뷰 → PR 오픈까지 전체 자동화.
 ---
 
 # Branch Workflow
@@ -51,7 +51,7 @@ gh issue create --title "[<type>] <제목>" \
 ```
 
 - kind: `feature` / `bug` / `chore`
-- priority: `P0` / `P1` / `P2` (없으면 P1)
+- priority: `P0` / `P1` / `P2` (없으면 P1) — **GitHub 이슈 우선순위 라벨**이다. 코드 리뷰 척도(로컬 critical/major/info · 봇 P0 최고)와는 별개 (workflow.md 8절, pleiades#8)
 
 ## Step 4: 브랜치 생성
 
@@ -70,13 +70,18 @@ git checkout -b <feat|fix>/<issue>-<n>
 - Types: feat / fix / refactor / docs / test / chore / perf / ci
 - UI 는 `docs/designs/` 시안 참조
 
-## Step 6: 3-check
+## Step 6: 4종 검증
 
 ```bash
-npm run lint && npm run typecheck && npm run build
+npm run lint && npm run typecheck && npm run test && npm run build
 ```
 
 전부 통과. 실패 시 수정 후 재실행. 건너뛰기 금지.
+
+> **정정 (pleiades#8 · 3-check).** 이전 Step 6 은 `3-check` 로 `lint / typecheck / build` 만 돌렸다.
+> `workflow.md` 7단계는 처음부터 4종(`lint && typecheck && test && build`)이었고, myFitness 의
+> `npm run test` 는 vitest 가 아니라 **verify 스크립트 2개**다 — 프레임워크가 없다는 것과
+> **실행할 것이 없다는 것은 다르다.** 4종이 정본이다.
 
 ## Step 7: 사전 리뷰
 
@@ -105,23 +110,27 @@ Agent(subagent_type: "pr-review-toolkit:code-reviewer",
 - <이미 pre-emptive 커버한 항목>
 
 ## Severity
-- P0 info | P1 major | P2 critical
+- critical | major | info   (로컬 척도 — workflow.md 8-1. 봇의 P 척도와 섞지 않는다)
 
 ## Output
-각 이슈: severity + file:line + 설명 + fix. final counts.
-없거나 P0 만: 'merge-ready'.")
+각 이슈: severity + file:line + 설명 + fix. final counts: critical/major/info.
+없거나 info 만: 'merge-ready'.")
 ```
 
 **Self-review 가능 대상**:
 - `.github/**` 소규모, `docs/**`, `docs/designs/**` 시안, config 파일 (tailwind 등)
 
-## Step 8: P1/P2 반영
+## Step 8: critical/major 반영
 
-- P2 필수 반영
-- P1 필수 반영
-- P0 저비용/명확한 것만
+- critical 필수 반영
+- major 필수 반영
+- info 저비용/명확한 것만
 
-반영 후 3-check 재통과 → PR 오픈.
+> **정정 (pleiades#8 결함 ②).** 이전 판은 `P0 info | P1 major | P2 critical` 로 로컬 척도를
+> 관례와 반대로 정의했다. 로컬 사전 리뷰는 **단어 척도**(critical/major/info), GitHub Codex bot 은
+> **`P0` 가 최고**인 네이티브 척도다 — 섞어 쓰지 않는다.
+
+반영 후 4종 검증 재통과 → PR 오픈.
 
 ## Step 9: PR 생성
 
@@ -135,15 +144,15 @@ gh pr create --base dev --head <branch> \
 ## 수정
 - ...
 
-## 3-check
-- [x] lint / typecheck / build
+## 검증 (4종)
+- [x] lint / typecheck / test / build
 
 ## 코드 리뷰 결과
 **리뷰 방식**: pr-review-toolkit code-reviewer 1회 + Codex bot (예정)
-- 1회차: P0=N / P1=N / P2=N → merge-ready
+- 1회차: critical=N / major=N / info=N → merge-ready
 
 ## Test plan
-- [x] 3-check
+- [x] 4종 검증
 - [ ] 배포 후 실사용
 
 Closes #<issue>

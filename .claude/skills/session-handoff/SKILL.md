@@ -73,7 +73,7 @@ gh issue list --state open --limit 10
 ```
 ### 인계 (다음 세션에서 이어갈 것)
 - **PR #NNN** ([상태]) — [현재 대기 지점]
-  - 예: "Codex 리뷰 대기중, Round 3 · P2 1건 반영 완료 후 재리뷰 요청"
+  - 예: "Codex 리뷰 대기중, Round 3 · 봇 P1 1건 반영 완료 후 재리뷰 요청"
   - 예: "사용자 머지 대기 (dev 대상)"
 ```
 
@@ -112,7 +112,7 @@ git status --short
 
 - **PR 머지는 사용자 판단** — handoff 스킬이 자동 머지 절대 금지 (릴리즈 정책 유지)
 - **memory 저장은 신중** — 반복 유효한 것만. 세션 임시 상태는 백로그 문서로.
-- **백로그 문서 갱신은 dev PR 로** — 문서만이라 self-review, 3-check 도 문서만 (lint 는 통과할 것)
+- **백로그 문서 갱신은 dev PR 로** — 문서만이라 self-review, 4종 검증(`lint / typecheck / test / build`)도 문서만 (lint 는 통과할 것)
 - 사용자가 "그냥 마무리, 문서 갱신 X" 요청하면 Step 2/3 건너뛰고 Step 6 만 수행
 
 ## 참고

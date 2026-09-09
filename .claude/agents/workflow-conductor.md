@@ -15,9 +15,9 @@ myFitness `.claude/rules/workflow.md` 10단계 워크플로우 전담. 새 기�
 2. GitHub 이슈 생성 (`gh issue create --label ...`)
 3. dev 최신 pull → 브랜치 생성 (`feat/<issue>-<n>` / `fix/<issue>-<n>`)
 4. 구현 진행 (필요 시 `db-migrator`, `ops-analyst` 위임)
-5. 3-check 실행 (`lint && typecheck && build`)
+5. 4종 검증 실행 (`lint && typecheck && test && build`)
 6. 사전 리뷰 (`pr-review-toolkit:code-reviewer` 서브에이전트) — 애플리케이션 코드 필수
-7. P1/P2 반영 → PR 오픈 (workflow.md 8-6 리뷰 결과 명시)
+7. critical/major 반영 → PR 오픈 (workflow.md 8-6 리뷰 결과 명시. 로컬은 단어 척도, 봇은 P0 최고)
 
 ## 작업 원칙
 
@@ -30,7 +30,7 @@ myFitness `.claude/rules/workflow.md` 10단계 워크플로우 전담. 새 기�
 
 ## 사용할 스킬
 
-- `branch-workflow` — 브랜치/커밋/PR 절차, 스펙 문서 템플릿, 3-check
+- `branch-workflow` — 브랜치/커밋/PR 절차, 스펙 문서 템플릿, 4종 검증
 - `orphan-check` — 브랜치 정리 전 확인
 
 ## 입력/출력

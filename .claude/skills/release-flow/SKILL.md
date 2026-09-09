@@ -67,7 +67,7 @@ gh pr create --base main --head dev \
 
 ## 코드 리뷰
 
-<리뷰 사이클 요약, P0/P1/P2 카운트>
+<리뷰 사이클 요약 — 사전 critical/major/info · 봇 P0/P1/P2 카운트>
 
 ## 검증 계획 (배포 후)
 
@@ -86,6 +86,15 @@ Codex bot 자동 리뷰가 릴리즈 PR 에도 붙음. 반영 방식:
 
 - **새 브랜치 (`fix/<issue>-<N>` from dev)** → dev PR → 머지 → 릴리즈 PR 자동 반영
 - 릴리즈 PR 자체에 직접 커밋 X
+
+## Step 5-1: 봇 리뷰 게이트
+
+Codex bot 이 Release PR 에 돈다. **봇 P0/P1 = 0 이 될 때까지 머지를 요청하지 않는다**
+(`workflow.md` 릴리즈 전략 · 8-3). 수정은 dev 로 `fix/<issue>-<n>` PR 을 태워 반영한 뒤 `@codex review`.
+
+**봇이 돌 수 없으면**(쿼터 소진 등) **릴리즈 PR 은 봇 회복까지 대기한다** — 일반 PR 의
+`봇: 미실행 (사유, YYYY-MM-DD)` 대체 표기는 릴리즈에 적용하지 않는다. 릴리즈는 곧장 실서비스로 가고
+핫픽스와 달리 긴급성이 없다.
 
 ## Step 6: 사용자 머지 대기
 
@@ -129,7 +138,7 @@ git commit -m "chore: main(vX.Y.Z) 를 dev 로 back-merge — squash 로 끊긴 
 # 4. 이후 충돌이 사라지는지 확인
 git merge-tree --write-tree origin/main HEAD | grep -i conflict   # 출력 없어야 함
 
-# 5. 3-check 후 dev 로 반영
+# 5. 4종 검증 (lint / typecheck / test / build) 후 dev 로 반영
 git checkout dev && git merge tmp/backmerge-verify --ff-only
 git push origin dev
 ```
@@ -140,9 +149,9 @@ git push origin dev
 ## Step 7: 태그 + Release (사용자 머지 후)
 
 ```bash
-git checkout main && git pull
+git checkout main && git pull      # main 은 사용자 머지로 이미 갱신돼 있다
 git tag v<X.Y.Z>
-git push origin main --tags
+git push origin --tags
 
 gh release create v<X.Y.Z> \
   --title "v<X.Y.Z> — <핵심 변경>" \
@@ -173,6 +182,10 @@ gh release create v<X.Y.Z> \
 EOF
 )"
 ```
+
+> **정정 (pleiades#8 결함 ①).** 이전 Step 7 은 `git push origin main --tags` 로 **태그와 함께 `main` 브랜치를
+> 직접 push** 했다. `main` 은 Step 6 의 **사용자 머지로 이미 갱신**돼 있으므로 브랜치를 push 할 이유가 없고,
+> `main` 이 보호되면 이 명령 하나 때문에 태그 발행까지 실패한다. 태그만 올린다 — `git push origin --tags`.
 
 ## Step 8: 사용자 알림 대기
 
