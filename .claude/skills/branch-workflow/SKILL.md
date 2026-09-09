@@ -148,8 +148,10 @@ gh pr create --base dev --head <branch> \
 - [x] lint / typecheck / test / build
 
 ## 코드 리뷰 결과
-**리뷰 방식**: pr-review-toolkit code-reviewer 1회 + Codex bot (예정)
-- 1회차: critical=N / major=N / info=N → merge-ready
+**리뷰 방식**: pr-review-toolkit code-reviewer 1회 + Codex bot (예정)   ← self-review 경로면 `self-review (변경 성격: <카테고리>) + Codex bot`
+- 사전 1회차: critical=N / major=N / info=N → merge-ready
+- 봇 1회차: P0/P1=N · P2=N → (반영 / 후속 이슈)
+- **최종**: `✅ 사전 critical/major = 0/0 · 봇 P0/P1 = 0/0 · info/P2 <실제 건수와 처리>` — 봇이 안 돌면 `봇 P0/P1` 자리에 `봇: 미실행 (사유, YYYY-MM-DD)` (릴리즈 PR 은 봇 회복까지 대기 · 8-3)
 
 ## Test plan
 - [x] 4종 검증

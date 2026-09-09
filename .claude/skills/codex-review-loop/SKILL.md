@@ -84,6 +84,11 @@ Agent(subagent_type: "pr-review-toolkit:code-reviewer", model: "opus",
       Do NOT flag: <pre-emptive coverage list>.")
 ```
 
+> **대체는 일반 PR 에만 — 릴리즈 PR 은 대체 불가 (pleiades#8 · fin #492 2회차 P1).** 봇이 안 돌면(쿼터 소진·장애)
+> **일반 PR** 은 사전 에이전트 리뷰(critical/major = 0)로 진행하되 PR body 에 `봇: 미실행 (쿼터 소진, YYYY-MM-DD)` 를 명시하고
+> 회복 후 `@codex review`. **릴리즈 PR(dev → main)은 봇 회복까지 대기한다** — `봇 P0/P1 = 0` 게이트를 에이전트 리뷰로 우회하지 않는다
+> (`workflow.md` 8-3 · `release-flow` 봇 리뷰 게이트).
+
 ## Step 6: 릴리즈 PR 리뷰 특수 처리
 
 **PR 이 dev → main (릴리즈 PR)** 이면:
@@ -106,7 +111,7 @@ gh pr view <PR> --json state,mergedAt
 
 같은 파일/영역에서 3라운드+ 상충 지적이 반복되면:
 1. 스펙 문서 §Known limitations 에 결정 사항 기록
-2. PR comment 로 "이 P<N> 은 설계 방침상 반영하지 않습니다" 명시
+2. PR comment 로 "이 P<N> 은 설계 방침상 반영하지 않습니다" 명시 — **P2 이하에 한한다.** 봇 P0/P1 은 8-3 대로 0 이 될 때까지 머지하지 않으며, 방침상 미반영으로 두려면 사용자 명시 판단이 필요하다
 3. 별도 이슈로 트래킹 후 마무리
 
 ## 예시 세션 흐름
