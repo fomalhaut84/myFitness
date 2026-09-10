@@ -239,6 +239,27 @@ Codex bot 리뷰 → P0/P1 있음? → Yes → 수정 → 7단계 검증 재통�
 
 **매 리뷰 결과는 사용자에게 요약 보고.**
 
+#### 8-4. codex-cli MCP (선택 대안)
+
+사전 리뷰의 대안으로 `mcp__codex-cli__codex` MCP 도구 사용 가능 (`codex exec` bash 호출 아님). MCP 연결은 정상이지만 GitHub Codex bot 과 동일한 사용자 codex 쿼터를 공유하므로, **원칙적으로 사용하지 않는다** — bot 이 PR 오픈 시 이미 리뷰하므로 CLI 로 이중 소비할 이유 없음.
+
+만약 쓴다면:
+```
+mcp__codex-cli__codex 호출:
+- prompt: <8-1 프롬프트 그대로>
+- reasoningEffort: "high"
+- fullAuto: true
+- workingDirectory: <repo path>
+- resetSession: true
+- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 - 예: "gpt-4o")
+```
+
+품질은 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백. 에러 메시지가 "model not supported when using Codex with a ChatGPT account" 형태로 나오면 대개 쿼터 초과이므로 사용자에게 확인.
+
+> **정정 (2026-09-10 · pleiades#42).** 8-4 는 codex-cli MCP 를 "선택 대안"으로 권하고 폴백으로 끝났으나,
+> 정본(pleiades workflow.md 9-7 · fin 8-4 · pleiades#8)은 "GitHub Codex bot 과 동일 쿼터를 공유하므로
+> 원칙적으로 쓰지 않는다" 다. 절 순서(8-6 뒤)도 base 부터 있던 선행 결함 — 8-3 뒤로 옮겼다. 되돌리기: 즉시.
+
 #### 8-5. 회귀 방지 테스트 (수정 필수 등급 반영 시)
 
 봇/에이전트가 잡은 **수정 필수 등급을 고칠 때는 그 이슈를 노출하는 회귀 테스트를 함께 추가한다.** 목적: 같은 버그가 리팩터/변경으로 재발하지 않도록 CI 에서 계속 검증.
@@ -265,22 +286,6 @@ PR body 에 **`## 코드 리뷰 결과` 섹션 필수**. 최소 포함:
 - **회귀 테스트**: 추가된 테스트 파일 목록 또는 "해당 없음 (UI 변경)"
 
 이 섹션은 리뷰 사이클 감사·재발 추적·향후 스펙 갱신 근거로 활용.
-
-#### 8-4. codex-cli MCP (선택 대안)
-
-사전 리뷰의 대안으로 `mcp__codex-cli__codex` MCP 도구 사용 가능 (`codex exec` bash 호출 아님).
-
-```
-mcp__codex-cli__codex 호출:
-- prompt: <8-1 프롬프트 그대로>
-- reasoningEffort: "high"
-- fullAuto: true
-- workingDirectory: <repo path>
-- resetSession: true
-- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 - 예: "gpt-4o")
-```
-
-품질 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백.
 
 ### 9. PR 생성
 ```bash
