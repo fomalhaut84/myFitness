@@ -251,13 +251,13 @@ mcp__codex-cli__codex 호출:
 - fullAuto: true
 - workingDirectory: <repo path>
 - resetSession: true
-- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 - 예: "gpt-4o")
+- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 — 예: "gpt-4o")
 ```
 
 품질은 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백. 에러 메시지가 "model not supported when using Codex with a ChatGPT account" 형태로 나오면 대개 쿼터 초과이므로 사용자에게 확인.
 
 > **정정 (2026-09-10 · pleiades#42).** 8-4 는 codex-cli MCP 를 "선택 대안"으로 권하고 폴백으로 끝났으나,
-> 정본(pleiades workflow.md 9-7 · fin 8-4 · pleiades#8)은 "GitHub Codex bot 과 동일 쿼터를 공유하므로
+> 정본(pleiades workflow.md 9-7 · fin 8-4 — myFinance `e228c81` · 2026-07-02)은 "GitHub Codex bot 과 동일 쿼터를 공유하므로
 > 원칙적으로 쓰지 않는다" 다. 절 순서(8-6 뒤)도 base 부터 있던 선행 결함 — 8-3 뒤로 옮겼다. 되돌리기: 즉시.
 
 #### 8-5. 회귀 방지 테스트 (수정 필수 등급 반영 시)
