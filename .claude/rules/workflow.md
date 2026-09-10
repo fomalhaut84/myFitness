@@ -254,7 +254,7 @@ mcp__codex-cli__codex 호출:
 - model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 — 예: "gpt-4o")
 ```
 
-품질은 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백. 에러 메시지가 "model not supported when using Codex with a ChatGPT account" 형태로 나오면 대개 쿼터 초과이므로 사용자에게 확인.
+품질은 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백. 에러가 나면 종류를 가른다 — `"model not supported when using Codex with a ChatGPT account"` 는 **model 미지원**이므로 위 `model` 파라미터를 지원 모델로 지정해 재시도하고, usage limit·rate limit 계열 메시지가 **쿼터 초과**이므로 사용자에게 확인한다(쿼터는 GitHub Codex bot 과 공유된다).
 
 > **정정 (2026-09-10 · pleiades#42).** 8-4 는 codex-cli MCP 를 "선택 대안"으로 권하고 폴백으로 끝났으나,
 > 정본(pleiades workflow.md 9-7 · fin 8-4 — myFinance `e228c81` · 2026-07-02)은 "GitHub Codex bot 과 동일 쿼터를 공유하므로
