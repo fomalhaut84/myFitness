@@ -83,6 +83,10 @@ npm run lint && npm run typecheck && npm run test && npm run build
 > `npm run test` 는 vitest 가 아니라 **verify 스크립트 2개**다 — 프레임워크가 없다는 것과
 > **실행할 것이 없다는 것은 다르다.** 4종이 정본이다.
 
+> **정정 (2026-09-11 · pleiades#58 · 1a-2).** 위 블록의 *"vitest 가 아니라 verify 스크립트 2개"* 는 1a-2 로 소진됐다 —
+> Step 6 의 `npm run test` 는 이제 **`vitest run`(`src/**/__tests__/**/*.test.ts` · 회귀 baseline) + verify 스크립트 2개**를 차례로 돌린다.
+> 명령줄과 4종 세트는 그대로다. 되돌리기: 즉시.
+
 ## Step 7: 사전 리뷰
 
 **필수 대상** (workflow.md 8-1):

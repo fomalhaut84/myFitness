@@ -16,7 +16,9 @@
     "backfill:weather": "tsx scripts/backfill-weather.ts",
     "backfill:running-dynamics": "tsx scripts/backfill-running-dynamics.ts",
     "backfill:food-kcal": "tsx scripts/backfill-food-kcal.ts",
-    "test": "npm run verify:mcp-date-labels && npm run verify:food-edit-pending",
+    "test": "vitest run && npm run verify:mcp-date-labels && npm run verify:food-edit-pending",
+    "test:run": "vitest run",
+    "test:coverage": "vitest run --coverage",
     "verify:food-edit-pending": "tsx scripts/verify-food-edit-pending.ts",
     "verify:mcp-date-labels": "tsx scripts/verify-mcp-date-labels.ts"
   },
@@ -46,6 +48,7 @@
     "@types/node-cron": "^3.0.11",
     "@types/react": "^19.2.14",
     "@types/react-dom": "^19.2.3",
+    "@vitest/coverage-v8": "^4.1.8",
     "dotenv": "^17.4.1",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
@@ -54,7 +57,9 @@
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.1",
     "tsx": "^4.21.0",
-    "typescript": "^5"
+    "typescript": "^5",
+    "vite-tsconfig-paths": "^6.1.1",
+    "vitest": "^4.1.8"
   },
   "overrides": {
     "axios": "^1.16.0",
@@ -63,7 +68,7 @@
     "fast-uri": "^3.1.7",
     "ip-address": "^10.1.1",
     "brace-expansion@5": "^5.0.6",
-    "postcss": "$postcss",
+    "postcss": "^8.5.10",
     "form-data": "^4.0.6",
     "esbuild": "$esbuild",
     "@babel/core": "^7.29.6",
