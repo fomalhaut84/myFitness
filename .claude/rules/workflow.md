@@ -254,14 +254,19 @@ mcp__codex-cli__codex 호출:
 - fullAuto: true
 - workingDirectory: <repo path>
 - resetSession: true
-- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 — 예: "gpt-4o")
+- model 파라미터는 생략 (기본 model 미지원 오류 시 지정 필요 — 지원 모델은 아래 참조)
 ```
+
+**지원 모델 출처:** `${CODEX_HOME:-~/.codex}/models_cache.json`(`CODEX_HOME` 이 설정된 환경이면 그 아래 · myFitness#375 Codex P2) 에서 `"visibility": "list"` 인 `slug` 중에서 고른다(`hide` 항목 `codex-auto-review` 는 자동 리뷰 전용 — 제외). 로컬 파일이라 쿼터 소비 없음. 실측 2026-09-14(codex-cli 0.142.4 · 캐시 `fetched_at` 2026-07-02 — etag 로 갱신되므로 바뀌었을 수 있다): `gpt-5.5` · `gpt-5.4` · `gpt-5.4-mini`. **`gpt-4o` 는 목록에 없다.**
 
 품질은 유사하지만 model/quota 이슈 잦음. 실패 시 pr-review-toolkit 으로 폴백. 에러가 나면 종류를 가른다 — `"model not supported when using Codex with a ChatGPT account"` 는 **model 미지원**이므로 위 `model` 파라미터를 지원 모델로 지정해 재시도하고, usage limit·rate limit 계열 메시지가 **쿼터 초과**이므로 사용자에게 확인한다(쿼터는 GitHub Codex bot 과 공유된다).
 
 > **정정 (2026-09-10 · pleiades#42).** 8-4 는 codex-cli MCP 를 "선택 대안"으로 권하고 폴백으로 끝났으나,
 > 정본(pleiades workflow.md 9-7 · fin 8-4 — myFinance `e228c81` · 2026-07-02)은 "GitHub Codex bot 과 동일 쿼터를 공유하므로
 > 원칙적으로 쓰지 않는다" 다. 절 순서(8-6 뒤)도 base 부터 있던 선행 결함 — 8-3 뒤로 옮겼다. 되돌리기: 즉시.
+
+> **정정 (2026-09-14 · pleiades#62 · myFinance#493 Codex P2).** 이전 예시 `"gpt-4o"` 는 ChatGPT 인증 Codex 가 지원하지 않는 모델이라
+> *"model 미지원이면 지원 모델로 지정해 재시도"* 안내를 따라도 같은 오류가 났다. 하드코딩 예시를 빼고 로컬 모델 캐시(쿼터 소비 없음)를 출처로 바꿨다 — 실측값은 날짜·버전과 함께. 되돌리기: 즉시.
 
 #### 8-5. 회귀 방지 테스트 (수정 필수 등급 반영 시)
 
