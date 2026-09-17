@@ -1,5 +1,18 @@
 import prisma from "../prisma";
 import { ymdKST } from "@/lib/garmin/utils";
+import { aggregateDaily, promoteGranularity } from "./aggregate";
+import { MAX_DAILY_ROWS } from "./constants";
+
+// Codex P2 (PR #379 6회차): days 상한이 3650 으로 풀리며 수년치 일별 혈압이 그대로 실릴 수 있다.
+// 다른 장기 도구와 같은 행 상한 승격을 적용 — 통계/경고는 원본 일별 레코드로 계산하고 records 만 집계.
+const BP_NUMERIC_FIELDS = [
+  "highSystolic",
+  "lowSystolic",
+  "highDiastolic",
+  "lowDiastolic",
+  "avgPulse",
+  "measureCount",
+] as const;
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -151,12 +164,33 @@ export async function getBloodPressure(args: { days?: number }) {
     warnings.push(`${consecutive2}일 연속 2단계 고혈압 — 의료 상담 권장`);
   }
 
+  const { granularity, promoted } = promoteGranularity("daily", displayDays, displayRecords.length);
+  const dailyRows = displayRecords.map((r) => ({
+    date: fmtDate(r.date),
+    systolic: `${r.lowSystolic}-${r.highSystolic}`,
+    diastolic: `${r.lowDiastolic}-${r.highDiastolic}`,
+    pulse: r.avgPulse,
+    measurements: r.measureCount,
+    category: r.category,
+    categoryLabel: r.category ? (BP_CATEGORY_LABELS[r.category] ?? r.category) : null,
+  }));
+  const rows = promoted
+    ? aggregateDaily(displayRecords, granularity, {
+        fields: BP_NUMERIC_FIELDS,
+        minMax: ["highSystolic", "highDiastolic"],
+      })
+    : dailyRows;
+
   const response = {
     _context:
       "혈압 추세 데이터. 수축기 120 미만 + 이완기 80 미만이 정상. " +
       "수면 부족, 높은 스트레스, 운동 부족이 혈압 상승 원인일 수 있음. " +
-      "warnings가 있으면 리포트에 반드시 포함하세요.",
+      "warnings가 있으면 리포트에 반드시 포함하세요." +
+      (promoted
+        ? ` records 가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다 (버킷 평균 · highSystolic/highDiastolic 은 min/max 포함). summary/warnings 는 일별 원본 기준. 특정 시기는 days 를 좁혀 재조회.`
+        : ""),
     period: `최근 ${displayDays}일`,
+    granularity,
     summary: {
       avgSystolic,
       avgDiastolic,
@@ -165,15 +199,7 @@ export async function getBloodPressure(args: { days?: number }) {
       totalRecords: displayRecords.length,
     },
     warnings,
-    records: displayRecords.map((r) => ({
-      date: fmtDate(r.date),
-      systolic: `${r.lowSystolic}-${r.highSystolic}`,
-      diastolic: `${r.lowDiastolic}-${r.highDiastolic}`,
-      pulse: r.avgPulse,
-      measurements: r.measureCount,
-      category: r.category,
-      categoryLabel: r.category ? (BP_CATEGORY_LABELS[r.category] ?? r.category) : null,
-    })),
+    records: rows,
   };
 
   return {

@@ -85,9 +85,11 @@ export async function getDataCoverage() {
             types,
             syncCoverage,
             _context:
-              "types.*.oldest 가 실제 조회 가능 하한. 그 이전은 Garmin 에서 아직 가져오지 않은 구간이지 도구 한도가 아니다. " +
-              "'전체 기록' 질문은 오늘-oldest 를 days 로 넣고, 장기면 granularity(weekly/monthly) 로 먼저 훑은 뒤 필요한 구간만 daily 로 재조회. " +
-              "syncCoverage 는 싱크 엔진의 커버 마커로 실제 레코드보다 좁을 수 있다 — 조회 하한은 types 기준.",
+              "types.*.oldest = DB 에 있는 가장 오래된 기록(측정이 있었던 날). syncCoverage.*.oldestFetched = Garmin 에서 가져온 하한. " +
+              "두 값은 다르다: oldestFetched ≤ 날짜 < oldest 구간은 '가져왔지만 기록이 없는' 기간(예: 체중계 사용 전)이고, " +
+              "oldestFetched 이전만 '아직 가져오지 않은' 구간이다 — 도구 한도가 아니다. 어느 쪽도 365 로 제한되지 않는다. " +
+              "oldestFetched 가 oldest 보다 늦으면 마커가 뒤늦게 도입된 것이니(#220 이전 seed) 하한은 둘 중 이른 쪽으로. " +
+              "'전체 기록' 질문은 오늘-min(oldest, oldestFetched) 를 days 로 넣고, 장기면 granularity(weekly/monthly) 로 먼저 훑은 뒤 필요한 시기만 endDate+days 로 daily 재조회.",
           },
           null,
           2,

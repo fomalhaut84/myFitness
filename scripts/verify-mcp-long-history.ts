@@ -12,6 +12,7 @@
  * 8. Codex 3회차 P2: fallback 타입은 성공 후에만 복원, 시그널은 진행 중 청크를 기다림, 전체 null 지표도 필드 유지
  * 9. Codex 4회차 P2: 선택 타입 중 null 마커가 있으면 --to 는 어제 기준
  * 10. Codex 5회차: P1 타입별 순차 싱크 + 즉시 복원 (옛 lastSyncDate 노출 창 최소화), P2 행 없는 타입도 null 마커
+ * 11. Codex 6회차 P2: get_blood_pressure 도 400행 초과 시 집계 승격, coverage 문구가 기록 하한과 fetch 하한을 구분
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -241,6 +242,11 @@ const missing = registered.filter((t) => !MUTATING.has(t) && !allowed.has(t));
 check(`등록 도구 ${registered.length}개 파싱됨 (get_data_coverage 포함)`, registered.length >= 22 && registered.includes("get_data_coverage"));
 check("read-only 도구 전부 allowlist 에 있음", missing.length === 0, missing);
 check("mutating 도구는 allowlist 에 없음", ![...MUTATING].some((t) => allowed.has(t)));
+// Codex 6회차 P2: days 상한이 풀린 모든 일별 도구는 행 상한 승격을 가져야 한다
+const bpSrc = readFileSync(join(__dirname, "..", "src", "mcp", "tools", "blood-pressure.ts"), "utf8");
+check("get_blood_pressure 도 promoteGranularity 를 적용한다 (소스 확인)", /promoteGranularity\("daily", displayDays, displayRecords\.length\)/.test(bpSrc) && /aggregateDaily\(displayRecords/.test(bpSrc));
+const coverageSrc = readFileSync(join(__dirname, "..", "src", "mcp", "tools", "coverage.ts"), "utf8");
+check("coverage _context 가 기록 하한(oldest)과 fetch 하한(oldestFetched)을 구분한다", /가져왔지만 기록이 없는/.test(coverageSrc) && /min\(oldest, oldestFetched\)/.test(coverageSrc));
 
 // --- 8. Codex 2회차 P1: 과거 시기 daily drill-down 용 endDate 창
 console.log("\n[8] kstWindowEndingAt (endDate)");

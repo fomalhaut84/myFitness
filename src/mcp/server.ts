@@ -478,7 +478,7 @@ server.tool(
       .positive()
       .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 30, 최대 3650)"),
+      .describe("조회 일수 (기본 30, 최대 3650). 일별 400행 초과 시 주/월 집계로 자동 승격"),
   },
   async (args) => getBloodPressure(args)
 );
