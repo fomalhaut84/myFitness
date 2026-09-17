@@ -1,5 +1,18 @@
 import prisma from "../prisma";
-import { ymdKST } from "@/lib/garmin/utils";
+import { ymdKST, todayKSTString } from "@/lib/garmin/utils";
+import {
+  aggregateActivities,
+  aggregateDaily,
+  formatPaceMinKm,
+  resolveGranularity,
+  type Granularity,
+} from "./aggregate";
+
+// #377: 장기 조회 공통 인자. granularity 생략 시 days 기준 자동 (aggregate.ts).
+export interface RangeArgs {
+  days?: number;
+  granularity?: Granularity;
+}
 
 function daysAgo(n: number): Date {
   const d = new Date();
@@ -14,8 +27,43 @@ function fmt(date: Date): string {
   return ymdKST(date);
 }
 
-export async function getActivities(args: { days?: number; type?: string }) {
-  const since = daysAgo(args.days ?? 14);
+/** #377: 모든 기간 조회 도구가 같은 envelope 를 돌려준다 (daily 포함). */
+function envelope(
+  days: number,
+  since: Date,
+  granularity: Granularity,
+  records: readonly unknown[],
+  context?: Record<string, string>,
+) {
+  return {
+    content: [
+      {
+        type: "text" as const,
+        text: JSON.stringify(
+          {
+            granularity,
+            from: fmt(since),
+            to: todayKSTString(),
+            days,
+            count: records.length,
+            records,
+            ...(context ? { _context: context } : {}),
+          },
+          null,
+          2,
+        ),
+      },
+    ],
+  };
+}
+
+const GRANULARITY_NOTE =
+  "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균, count 는 레코드 수. 특정 구간을 자세히 보려면 그 구간만 days 를 좁혀 granularity=daily 로 재조회.";
+
+export async function getActivities(args: RangeArgs & { type?: string }) {
+  const days = args.days ?? 14;
+  const granularity = resolveGranularity(days, args.granularity);
+  const since = daysAgo(days);
   const where = args.type
     ? { startTime: { gte: since }, activityType: { contains: args.type } }
     : { startTime: { gte: since } };
@@ -64,32 +112,34 @@ export async function getActivities(args: { days?: number; type?: string }) {
     },
   });
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          activities.map((a) => ({
-            ...a,
-            // get_activity_splits 호출 시 사용할 ID (cuid 또는 garminId 문자열)
-            garminId: a.garminId.toString(),
-            startTime: a.startTime.toISOString(),
-            distanceKm: a.distance ? (a.distance / 1000).toFixed(2) : null,
-            paceMinKm: a.avgPace
-              ? (() => { const t = Math.round(a.avgPace!); return `${Math.floor(t / 60)}'${(t % 60).toString().padStart(2, "0")}"`; })()
-              : null,
-            durationMin: Math.round(a.duration / 60),
-          })),
-          null,
-          2
-        ),
-      },
-    ],
-  };
+  if (granularity !== "daily") {
+    return envelope(days, since, granularity, aggregateActivities(activities, granularity), {
+      granularity:
+        GRANULARITY_NOTE +
+        " 활동은 버킷 × activityType 별. avgPace 는 거리 가중, avgHR 은 시간 가중.",
+    });
+  }
+
+  return envelope(
+    days,
+    since,
+    granularity,
+    activities.map((a) => ({
+      ...a,
+      // get_activity_splits 호출 시 사용할 ID (cuid 또는 garminId 문자열)
+      garminId: a.garminId.toString(),
+      startTime: a.startTime.toISOString(),
+      distanceKm: a.distance ? (a.distance / 1000).toFixed(2) : null,
+      paceMinKm: a.avgPace ? formatPaceMinKm(a.avgPace) : null,
+      durationMin: Math.round(a.duration / 60),
+    })),
+  );
 }
 
-export async function getSleep(args: { days?: number }) {
-  const since = daysAgo(args.days ?? 14);
+export async function getSleep(args: RangeArgs) {
+  const days = args.days ?? 14;
+  const granularity = resolveGranularity(days, args.granularity);
+  const since = daysAgo(days);
   const records = await prisma.sleepRecord.findMany({
     where: { date: { gte: since } },
     orderBy: { date: "desc" },
@@ -116,39 +166,46 @@ export async function getSleep(args: { days?: number }) {
     },
   });
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            records: records.map((r) => ({
-              ...r,
-              date: fmt(r.date),
-              sleepStart: r.sleepStart.toISOString(),
-              sleepEnd: r.sleepEnd.toISOString(),
-              totalSleepHours: (r.totalSleep / 60).toFixed(1),
-            })),
-            _context: {
-              bodyBatteryChange: "수면 중 충전량. 30+ 양호한 회복, 20-30 보통, 20 미만 회복 부족.",
-              hrvOvernight: "야간 HRV. 절대값보다 7일 추세가 중요. 하락 추세 = 피로 누적, 상승 추세 = 회복 양호.",
-              restingHR: "수면 중 안정시 심박. DailySummary보다 정확. 7일 평균 대비 5bpm+ 상승 시 피로/질병 의심.",
-              avgSpO2: "수면 중 SpO2가 기준값. 95%+ 정상, 90% 미만 주의. null 이면 그날 밤 미측정 (기기 미착용/배터리) — DailySummary 의 주간 SpO2 로 대체 판단하지 말 것.",
-              lowestSpO2: "수면 중 최저 SpO2. avgSpO2 와 임계가 다르다 — 손목 광학 센서 특성상 단발 저점은 80대 중반까지 흔하므로 절대 임계로 경고하지 말 것. 최근 7일 최저값 대비 5%p 이상 하락이 2일 이상 반복될 때만 언급.",
-              highestSpO2: "수면 중 최고 SpO2. 단독 해석 가치는 낮고 lowestSpO2 와의 변동폭 판단에만 사용.",
-              sleepScore: "0-100 점수. 80+ 양호, 60-80 보통, 60 미만 부족.",
-            },
-          },
-          null,
-          2
-        ),
-      },
-    ],
+  const sleepContext = {
+    granularity: GRANULARITY_NOTE,
+    bodyBatteryChange: "수면 중 충전량. 30+ 양호한 회복, 20-30 보통, 20 미만 회복 부족.",
+    hrvOvernight: "야간 HRV. 절대값보다 7일 추세가 중요. 하락 추세 = 피로 누적, 상승 추세 = 회복 양호.",
+    restingHR: "수면 중 안정시 심박. DailySummary보다 정확. 7일 평균 대비 5bpm+ 상승 시 피로/질병 의심.",
+    avgSpO2: "수면 중 SpO2가 기준값. 95%+ 정상, 90% 미만 주의. null 이면 그날 밤 미측정 (기기 미착용/배터리) — DailySummary 의 주간 SpO2 로 대체 판단하지 말 것.",
+    lowestSpO2: "수면 중 최저 SpO2. avgSpO2 와 임계가 다르다 — 손목 광학 센서 특성상 단발 저점은 80대 중반까지 흔하므로 절대 임계로 경고하지 말 것. 최근 7일 최저값 대비 5%p 이상 하락이 2일 이상 반복될 때만 언급.",
+    highestSpO2: "수면 중 최고 SpO2. 단독 해석 가치는 낮고 lowestSpO2 와의 변동폭 판단에만 사용.",
+    sleepScore: "0-100 점수. 80+ 양호, 60-80 보통, 60 미만 부족.",
   };
+
+  if (granularity !== "daily") {
+    return envelope(
+      days,
+      since,
+      granularity,
+      aggregateDaily(records, granularity, { minMax: ["sleepScore", "hrvOvernight"] }),
+      sleepContext,
+    );
+  }
+
+  return envelope(
+    days,
+    since,
+    granularity,
+    records.map((r) => ({
+      ...r,
+      date: fmt(r.date),
+      sleepStart: r.sleepStart.toISOString(),
+      sleepEnd: r.sleepEnd.toISOString(),
+      totalSleepHours: (r.totalSleep / 60).toFixed(1),
+    })),
+    sleepContext,
+  );
 }
 
-export async function getHeartRate(args: { days?: number }) {
-  const since = daysAgo(args.days ?? 30);
+export async function getHeartRate(args: RangeArgs) {
+  const days = args.days ?? 30;
+  const granularity = resolveGranularity(days, args.granularity);
+  const since = daysAgo(days);
   const records = await prisma.heartRateRecord.findMany({
     where: { date: { gte: since } },
     orderBy: { date: "desc" },
@@ -162,22 +219,28 @@ export async function getHeartRate(args: { days?: number }) {
     },
   });
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          records.map((r) => ({ ...r, date: fmt(r.date) })),
-          null,
-          2
-        ),
-      },
-    ],
-  };
+  if (granularity !== "daily") {
+    return envelope(
+      days,
+      since,
+      granularity,
+      aggregateDaily(records, granularity, { minMax: ["restingHR", "hrvStatus"] }),
+      { granularity: GRANULARITY_NOTE },
+    );
+  }
+
+  return envelope(
+    days,
+    since,
+    granularity,
+    records.map((r) => ({ ...r, date: fmt(r.date) })),
+  );
 }
 
-export async function getDailyStats(args: { days?: number }) {
-  const since = daysAgo(args.days ?? 14);
+export async function getDailyStats(args: RangeArgs) {
+  const days = args.days ?? 14;
+  const granularity = resolveGranularity(days, args.granularity);
+  const since = daysAgo(days);
   const records = await prisma.dailySummary.findMany({
     where: { date: { gte: since } },
     orderBy: { date: "desc" },
@@ -204,30 +267,37 @@ export async function getDailyStats(args: { days?: number }) {
     },
   });
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          {
-            records: records.map((r) => ({ ...r, date: fmt(r.date) })),
-            _context: {
-              bodyBattery: "bodyBattery(현재값)는 하루 중 자연 소모 결과이므로 저녁에 낮은 것은 정상. 컨디션 판단은 bodyBatteryHigh(기상 시 충전값) 기준: 70+ 양호, 40-70 보통, 40 미만 피로. 회복 판단은 bodyBatteryCharged(충전량) 기준: 40+ 양호한 회복.",
-              stress: "avgStress는 운동 포함 하루 평균이므로 높을 수 있음. 실제 스트레스 수준은 stressHighDuration(고스트레스 시간)과 stressLowDuration(저스트레스 시간) 비율로 판단. 운동 중 고스트레스는 정상.",
-              restingHR: "DailySummary.restingHR은 주간 활동 영향을 받음. 수면 중 측정값(SleepRecord.restingHR)이 더 정확. 추세가 중요: 7일 평균 대비 5bpm 이상 상승 시 피로/질병 의심.",
-              spo2: "주간 SpO2는 측정 환경에 따라 변동이 큼. 수면 중 SpO2(SleepRecord.avgSpO2)가 기준값. 95%+ 정상, 90% 미만 주의.",
-            },
-          },
-          null,
-          2
-        ),
-      },
-    ],
+  const dailyContext = {
+    granularity: GRANULARITY_NOTE,
+    bodyBattery: "bodyBattery(현재값)는 하루 중 자연 소모 결과이므로 저녁에 낮은 것은 정상. 컨디션 판단은 bodyBatteryHigh(기상 시 충전값) 기준: 70+ 양호, 40-70 보통, 40 미만 피로. 회복 판단은 bodyBatteryCharged(충전량) 기준: 40+ 양호한 회복.",
+    stress: "avgStress는 운동 포함 하루 평균이므로 높을 수 있음. 실제 스트레스 수준은 stressHighDuration(고스트레스 시간)과 stressLowDuration(저스트레스 시간) 비율로 판단. 운동 중 고스트레스는 정상.",
+    restingHR: "DailySummary.restingHR은 주간 활동 영향을 받음. 수면 중 측정값(SleepRecord.restingHR)이 더 정확. 추세가 중요: 7일 평균 대비 5bpm 이상 상승 시 피로/질병 의심.",
+    spo2: "주간 SpO2는 측정 환경에 따라 변동이 큼. 수면 중 SpO2(SleepRecord.avgSpO2)가 기준값. 95%+ 정상, 90% 미만 주의.",
   };
+
+  if (granularity !== "daily") {
+    return envelope(
+      days,
+      since,
+      granularity,
+      aggregateDaily(records, granularity, { minMax: ["restingHR", "bodyBatteryHigh"] }),
+      dailyContext,
+    );
+  }
+
+  return envelope(
+    days,
+    since,
+    granularity,
+    records.map((r) => ({ ...r, date: fmt(r.date) })),
+    dailyContext,
+  );
 }
 
-export async function getBodyComposition(args: { days?: number }) {
-  const since = daysAgo(args.days ?? 90);
+export async function getBodyComposition(args: RangeArgs) {
+  const days = args.days ?? 90;
+  const granularity = resolveGranularity(days, args.granularity);
+  const since = daysAgo(days);
   const records = await prisma.bodyComposition.findMany({
     where: { date: { gte: since } },
     orderBy: { date: "desc" },
@@ -240,18 +310,22 @@ export async function getBodyComposition(args: { days?: number }) {
     },
   });
 
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify(
-          records.map((r) => ({ ...r, date: fmt(r.date) })),
-          null,
-          2
-        ),
-      },
-    ],
-  };
+  if (granularity !== "daily") {
+    return envelope(
+      days,
+      since,
+      granularity,
+      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"] }),
+      { granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용)." },
+    );
+  }
+
+  return envelope(
+    days,
+    since,
+    granularity,
+    records.map((r) => ({ ...r, date: fmt(r.date) })),
+  );
 }
 
 export async function getTrends(args: { period: string }) {

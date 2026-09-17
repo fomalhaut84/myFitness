@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { MAX_QUERY_DAYS, MIN_WINDOW_DAYS } from "./constants";
 import { todayKST, daysAgoKST, todayKSTString, ymdKST } from "../../lib/garmin/utils";
 import { type Bucket, bucketOf, formatPace } from "./running-buckets";
 
@@ -63,7 +64,7 @@ function summarizeBucket(runs: RunRow[]): BucketSummary {
  * - 보조: recentRuns 최근 5건
  */
 export async function getPaceProgression(args: { windowDays?: number } = {}) {
-  const windowDays = Math.min(365, Math.max(30, args.windowDays ?? 90));
+  const windowDays = Math.min(MAX_QUERY_DAYS, Math.max(MIN_WINDOW_DAYS, args.windowDays ?? 90));
   const since = daysAgoKST(windowDays - 1);
   const tomorrow = new Date(todayKST());
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);
