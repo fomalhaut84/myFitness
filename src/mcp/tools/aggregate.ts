@@ -43,6 +43,30 @@ export function promoteGranularity(
   };
 }
 
+const YMD_RE = /^\d{4}-\d{2}-\d{2}$/;
+
+/**
+ * Codex P1 (PR #379 2회차): 과거 특정 시기 drill-down 용 종료일. `days` 는 뒤끝(endDate) 기준
+ * "N일 전부터" — endDate 생략 경로의 `daysAgo(days)` 와 같은 의미. 반환 until 은 exclusive
+ * (endDate 다음 KST 자정). endDate 는 KST 달력 날짜로 해석 (#364 규칙).
+ */
+export function kstWindowEndingAt(
+  days: number,
+  endDate: string,
+): { since: Date; until: Date } {
+  if (!YMD_RE.test(endDate)) {
+    throw new Error(`endDate 는 YYYY-MM-DD 형식이어야 합니다 (받은 값: ${endDate})`);
+  }
+  const endStart = new Date(`${endDate}T00:00:00+09:00`);
+  if (Number.isNaN(endStart.getTime()) || ymdKST(endStart) !== endDate) {
+    throw new Error(`endDate 가 유효한 날짜가 아닙니다: ${endDate}`);
+  }
+  return {
+    since: new Date(endStart.getTime() - days * DAY_MS),
+    until: new Date(endStart.getTime() + DAY_MS),
+  };
+}
+
 /** KST 날짜 문자열 → UTC 자정 Date (요일/주차 산술용. instant 의미 없음). */
 function ymdToUtc(ymd: string): Date {
   const [y, m, d] = ymd.split("-").map(Number);

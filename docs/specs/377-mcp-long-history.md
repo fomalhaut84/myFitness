@@ -66,7 +66,8 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
 ## 3. 요구사항
 
 - [ ] **F1 상한 상수화**: `src/mcp/tools/constants.ts` 에 `MAX_QUERY_DAYS = 3650` (10년). `server.ts` 의 `days`/`windowDays` 스키마 `max(365)` 전부 → `max(MAX_QUERY_DAYS)`. `pace-progression.ts` · `race-prediction.ts` 핸들러 clamp 도 상수 사용. `get_calendar_summary` 의 90 은 유지 (일자별 한 줄 도구라 목적이 다름 — description 에 명시).
-- [ ] **F2 집계 granularity**: `get_activities` · `get_sleep` · `get_heart_rate` · `get_daily_stats` · `get_body_composition` 에 `granularity?: "daily" | "weekly" | "monthly"` 추가.
+- [ ] **F2 집계 granularity**: `get_activities` · `get_sleep` · `get_heart_rate` · `get_daily_stats` · `get_body_composition` 에 `granularity?: "daily" | "weekly" | "monthly"` 와 `endDate?: "YYYY-MM-DD"` 추가.
+  - `endDate` (Codex P1 PR #379 2회차): 과거 특정 시기를 daily 로 재조회할 종료일 (KST, 포함). 창은 `[endDate − days, endDate]` — `days` 의 의미는 endDate 생략 경로의 `daysAgo(days)` 와 동일. 없으면 monthly 로 찾은 과거 시기를 daily 로 좁힐 수 없다 (days 를 줄이면 오늘 기준이라 빠지고, 크게 두면 400행 승격).
   - 생략 시 자동: `days ≤ 120` → daily, `≤ 730` → weekly, 그 외 monthly. 명시하면 그대로 — 단 **daily 결과가 `MAX_DAILY_ROWS = 400` 행을 넘으면 weekly(≤730일)/monthly 로 자동 승격**하고 `_context.promoted` 로 알린다 (사전 리뷰 M2: 명시 daily + days 3650 이면 수천 행이 컨텍스트에 실림. 잘라내기는 과거 구간이 조용히 사라져 오답 유발이라 채택 안 함).
   - 응답을 `{ granularity, from, to, days, count, records: [...], _context? }` 로 감싼다 (daily 도 동일 envelope — AI 가 항상 같은 형태를 본다). 기존 `get_sleep`/`get_daily_stats` 의 `records` 키를 그대로 쓰고, 배열만 돌려주던 도구도 같은 envelope 로 통일. 기존 레코드 필드는 유지.
   - 집계 규칙 (`src/mcp/tools/aggregate.ts`, 순수 함수 · 불변):
@@ -76,7 +77,7 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
     - 활동: 버킷 × activityType 별 `{ count, totalDistanceKm, totalDurationMin, avgPace (거리 가중: 총시간/총거리), avgHR (시간 가중), longestKm, avgVo2maxEstimate }`. `type` 필터는 그대로 적용.
     - 수면/심박/일일: 시각 필드(`sleepStart/End`) 와 문자열 필드는 집계에서 제외.
 - [ ] **F3 `get_data_coverage` 도구 신설**: 인자 없음. dataType 별 `{ oldest, newest, count }` 를 **실제 레코드**(`firstRecordDate` 와 동일 기준) 로 반환 + `SyncMetadata` 커버 범위(`oldestFetchedDate`/`coveredThroughDate`) 병기 + 러닝 활동은 별도 count. 날짜 라벨 KST (#364 규칙). MCP 번들이 `garmin-connect` 를 끌어오지 않도록 `sync.ts` 를 import 하지 않고 prisma aggregate 로 직접 조회.
-- [ ] **F4 시스템 프롬프트**: "전체 기록 / 역대 / 가장 좋았던 때 / N년 전" 류 질문은 ① `get_data_coverage` 로 범위 확인 → ② `days` 를 그 범위로 설정 → ③ 장기면 `granularity` 로 집계 조회 후 필요한 구간만 daily 로 재조회, 순서를 명시. 도구 description 에 상한(`최대 3650`) 과 granularity 자동 규칙을 적는다. "도구 한도" 라는 표현 대신 "보유 범위 밖" 으로 답하도록 지시.
+- [ ] **F4 시스템 프롬프트**: "전체 기록 / 역대 / 가장 좋았던 때 / N년 전" 류 질문은 ① `get_data_coverage` 로 범위 확인 → ② `days` 를 그 범위로 설정 → ③ 장기면 `granularity` 로 집계 조회 후 필요한 시기만 `endDate` + `days` 로 daily 재조회, 순서를 명시. 새 read-only 도구는 `claude-advisor.ts` 의 `--allowedTools` 에도 추가한다 (Codex P1 — `-p` 비대화형이라 없으면 호출 불가. verify [7] 이 불일치를 잡는다). 도구 description 에 상한(`최대 3650`) 과 granularity 자동 규칙을 적는다. "도구 한도" 라는 표현 대신 "보유 범위 밖" 으로 답하도록 지시.
 - [ ] **F5 backfill 스크립트** `scripts/backfill-history.ts` (npm `backfill:history`): `--from=YYYY-MM-DD` 필수, `--to=` 생략 시 현재 `oldestFetchedDate - 1일` (없으면 어제), `--types=` 생략 시 user_profile 제외 전 타입. **최신 → 과거** 순으로 365일 청크 (LT 엔드포인트 366일 제한과 동일 여유 · 기존 초기 싱크 검증 범위) 로 `syncAll({ startDate, endDate, dataTypes })` 호출. 청크 실패 시 1회 재시도 후 다음 청크 진행, 종료 시 실패 청크 목록 출력. 진행 로그에 청크 번호/범위/소요 시간.
 - [ ] **F6 회귀 검증** `scripts/verify-mcp-long-history.ts` (npm test 에 추가): ① `aggregate.ts` fixture 검증 (주 경계 KST · 월 경계 · null 제외 · 거리 가중 페이스) ② `src/mcp/**` 소스 스캔 — `.max(365)` 리터럴 0건, `Math.min(365` 0건 (상수 우회 방지) ③ auto granularity 경계값 (120/121, 730/731) ④ backfill 청크 순서·인접·경계.
 
@@ -133,6 +134,7 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - 과거 → 최신 순으로 돌리면 마지막 청크만 병합돼 `oldestFetchedDate` 가 잘못 남는다. 스크립트가 순서를 강제한다.
 - **`lastSyncDate` 는 backfill 대상이 아니다** (사전 리뷰 C1). `updateSyncMetadata` 는 `lastSyncDate = endDate` 를 무조건 덮어쓰므로 최신→과거 backfill 이 끝나면 가장 오래된 청크의 end(2020년대) 로 남고, weekly-report 의 startDate 없는 `syncAll` 이 `lastSyncDate + 1` 부터 수년치를 재싱크한다 (약 11시간, 실패 시 매주 반복). 스크립트가 실행 전 타입별 스냅샷을 찍고 **매 청크 직후** 복원한다 (그 사이 cron 이 더 늦은 값을 썼으면 유지 — `updateMany where lastSyncDate < restored` 조건부 갱신).
 - `SyncMetadata` 행이 없거나 성공 싱크가 없는(`lastSyncDate` epoch) 타입은 스냅샷 기준이 없으므로 **`to` 를 복원 기준**으로 쓴다 — backfill 뒤 실제 증분 경계가 `to` 다 (Codex P1 PR #379).
+- SIGINT/SIGTERM 은 JS `finally` 를 타지 않으므로 시그널 핸들러가 스냅샷을 복원하고 종료한다 (Codex P2 2회차).
 - 재시도까지 실패한 타입은 **그 청크에서 멈춘다.** 커버 범위에 구멍이 나면 더 오래된 청크는 disjoint 로 마커가 무시돼 나중에 실패 청크만 다시 돌려도 복구되지 않는다. 종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령을 출력한다 (Codex P2 PR #379).
 - `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
 

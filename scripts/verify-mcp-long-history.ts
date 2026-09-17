@@ -8,6 +8,7 @@
  *    (상한을 상수(MAX_QUERY_DAYS)로 우회 없이 되돌리는 회귀를 잡는다)
  * 5. 사전 리뷰 회귀 (8-5): C1 lastSyncDate 복원, M1 --to 기본값은 가장 늦은 마커, M2 daily 행 상한 승격
  * 6. Codex 회귀 (PR #379): P1 행 없는 타입의 스냅샷 fallback, P2 실패 타입은 이후 청크에서 멈춤
+ * 7. Codex 2회차: P1 server.ts 등록 도구 ⊆ claude-advisor allowlist (mutating 제외), P1 endDate 창, P2 시그널 복원
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -17,6 +18,7 @@ import {
   aggregateActivities,
   aggregateDaily,
   bucketKeyKST,
+  kstWindowEndingAt,
   promoteGranularity,
   resolveGranularity,
   weekStartFromKey,
@@ -203,6 +205,32 @@ for (const file of walk(join(__dirname, "..", "src", "mcp"))) {
   });
 }
 check("`.max(365)` / `Math.min(365` 리터럴 0건", offenders.length === 0, offenders);
+
+// --- 7. Codex 2회차 P1: 새 MCP 도구가 어드바이저 allowlist 에 없으면 -p 비대화형에서 호출 불가
+console.log("\n[7] server.ts 등록 도구 ⊆ claude-advisor allowlist");
+const serverSrc = readFileSync(join(__dirname, "..", "src", "mcp", "server.ts"), "utf8");
+const advisorSrc = readFileSync(join(__dirname, "..", "src", "lib", "ai", "claude-advisor.ts"), "utf8");
+const registered = [...serverSrc.matchAll(/server\.tool\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
+const allowed = new Set([...advisorSrc.matchAll(/mcp__myfitness__([a-z_]+)/g)].map((m) => m[1]));
+const MUTATING = new Set(["generate_training_plan"]); // 의도적으로 allowlist 제외 (claude-advisor.ts 주석)
+const missing = registered.filter((t) => !MUTATING.has(t) && !allowed.has(t));
+check(`등록 도구 ${registered.length}개 파싱됨 (get_data_coverage 포함)`, registered.length >= 22 && registered.includes("get_data_coverage"));
+check("read-only 도구 전부 allowlist 에 있음", missing.length === 0, missing);
+check("mutating 도구는 allowlist 에 없음", ![...MUTATING].some((t) => allowed.has(t)));
+
+// --- 8. Codex 2회차 P1: 과거 시기 daily drill-down 용 endDate 창
+console.log("\n[8] kstWindowEndingAt (endDate)");
+const win = kstWindowEndingAt(30, "2025-06-15");
+check("until = endDate 다음 KST 자정 (exclusive)", win.until.toISOString() === "2025-06-15T15:00:00.000Z");
+check("since = endDate - days (daysAgo 와 같은 의미)", ymdKST(win.since) === "2025-05-16");
+check("endDate 당일 23:59 KST 는 창 안", kst("2025-06-15", "23:59:59") < win.until);
+check("endDate 다음날 00:00 KST 는 창 밖", !(kst("2025-06-16") < win.until));
+let threw = false; try { kstWindowEndingAt(30, "2025-02-30"); } catch { threw = true; }
+check("무효 날짜(2025-02-30) 는 throw", threw);
+threw = false; try { kstWindowEndingAt(30, "20250615"); } catch { threw = true; }
+check("형식 불일치는 throw", threw);
+const backfillSrc = readFileSync(join(__dirname, "backfill-history.ts"), "utf8");
+check("스크립트가 SIGINT/SIGTERM 에서 스냅샷을 복원한다 (소스 확인)", /process\.once\(signal/.test(backfillSrc) && /installSignalHandlers\(\)/.test(backfillSrc));
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);

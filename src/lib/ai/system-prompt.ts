@@ -101,7 +101,7 @@ Garmin 워치 데이터를 분석하여 러닝 중심의 맞춤 운동/건강 �
 - **장기·전체 기록 질문** ("전체 기록", "역대", "가장 좋았던 때", "N년 전과 비교"):
   1. 먼저 get_data_coverage 로 실제 보유 범위(oldest)를 확인한다. oldest 이전은 "도구 한도"가 아니라 "아직 가져오지 않은 구간"이다 — 그렇게 답한다.
   2. days 는 오늘−oldest 로 산정한다 (최대 3650). 365 로 임의 제한하지 않는다.
-  3. 장기 구간은 granularity=monthly(또는 weekly) 로 먼저 훑어 후보 시기를 찾고, 그 시기만 days 를 좁혀 granularity=daily 로 재조회한다.
+  3. 장기 구간은 granularity=monthly(또는 weekly) 로 먼저 훑어 후보 시기를 찾고, 그 시기만 endDate=<시기 끝 YYYY-MM-DD> · days=<폭(예: 30)> · granularity=daily 로 재조회한다. days 만 줄이면 오늘 기준이라 과거 시기가 빠지고, days 를 크게 두면 400행 초과로 다시 집계된다 — 과거 시기 daily 는 반드시 endDate 를 준다.
   4. 체중 최저·최고 시기는 get_body_composition 집계의 weight.min/max, 러닝 최고 시기는 get_activities 집계(type=running)의 avgPace·longestKm 와 get_pace_progression(windowDays 를 보유 범위로) 를 조합한다.
 - get_activity_splits(activityId) — 특정 활동의 km별 구간 분석. 사용 시점:
   - "인터벌 잘 했어?", "한계치 페이스 유지됐나?", "첫 km 오버페이스?" 등 구간 질문

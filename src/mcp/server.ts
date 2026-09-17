@@ -326,6 +326,11 @@ server.tool(
       .enum(["daily", "weekly", "monthly"])
       .optional()
       .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
     type: z.string().optional().describe("활동 타입 필터 (running, strength 등)"),
   },
   async (args) => getActivities(args)
@@ -346,6 +351,11 @@ server.tool(
       .enum(["daily", "weekly", "monthly"])
       .optional()
       .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getSleep(args)
 );
@@ -365,6 +375,11 @@ server.tool(
       .enum(["daily", "weekly", "monthly"])
       .optional()
       .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getHeartRate(args)
 );
@@ -384,6 +399,11 @@ server.tool(
       .enum(["daily", "weekly", "monthly"])
       .optional()
       .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getDailyStats(args)
 );
@@ -403,6 +423,11 @@ server.tool(
       .enum(["daily", "weekly", "monthly"])
       .optional()
       .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getBodyComposition(args)
 );

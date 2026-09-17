@@ -15,6 +15,7 @@
  * - 청크 실패 시 1회 재시도. 그래도 실패한 타입은 **그 타입만 이후(더 오래된) 청크에서 멈춘다** —
  *   커버 범위에 구멍이 나면 아래 청크의 마커는 disjoint 로 무시돼 복구 불가 (Codex P2 PR #379).
  *   종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령 출력.
+ * - SIGINT/SIGTERM 시에도 스냅샷을 복원하고 종료한다 — 시그널 종료는 JS finally 를 타지 않는다 (Codex P2 PR #379).
  * - user_profile 은 스냅샷이라 제외.
  * - 일별 엔드포인트(daily_stats/sleep/heart_rate)는 하루 3콜 × 2초 → 약 37분/년.
  */
@@ -86,6 +87,25 @@ async function defaultTo(types: readonly DataType[]): Promise<Date> {
 }
 
 type LastSyncSnapshot = ReadonlyMap<DataType, Date>;
+
+/** 시그널 핸들러가 복원할 현재 스냅샷 (main 이 설정). */
+let activeSnapshot: LastSyncSnapshot | null = null;
+
+/** Codex P2: 시그널 종료는 finally 를 타지 않으므로 여기서 복원 후 종료. */
+function installSignalHandlers(): void {
+  for (const [signal, code] of [["SIGINT", 130], ["SIGTERM", 143]] as const) {
+    process.once(signal, () => {
+      console.warn(`\n${signal} 수신 — lastSyncDate 스냅샷 복원 후 종료합니다`);
+      const restore = activeSnapshot ? restoreLastSync(activeSnapshot) : Promise.resolve();
+      restore
+        .catch((err) => console.error("복원 실패:", err))
+        .finally(async () => {
+          await prisma.$disconnect().catch(() => {});
+          process.exit(code);
+        });
+    });
+  }
+}
 
 /** 행이 없거나 성공 싱크가 없는 타입은 `to` (backfill 후 증분 경계) 를 기준으로 (Codex P1). */
 async function snapshotLastSync(types: readonly DataType[], to: Date): Promise<LastSyncSnapshot> {
@@ -169,6 +189,8 @@ async function main() {
   console.log("로그인 성공");
 
   const snapshot = await snapshotLastSync(types, to);
+  activeSnapshot = snapshot;
+  installSignalHandlers();
   console.log(
     `lastSyncDate 스냅샷 (backfill 후 복원 기준): ${[...snapshot].map(([t, d]) => `${t}=${ymdKST(d)}`).join(", ")}`,
   );

@@ -4,6 +4,7 @@ import {
   aggregateActivities,
   aggregateDaily,
   formatPaceMinKm,
+  kstWindowEndingAt,
   promoteGranularity,
   resolveGranularity,
   type Granularity,
@@ -11,9 +12,11 @@ import {
 import { MAX_DAILY_ROWS } from "./constants";
 
 // #377: 장기 조회 공통 인자. granularity 생략 시 days 기준 자동 (aggregate.ts).
+// endDate (Codex P1 PR #379): 과거 특정 시기를 daily 로 재조회할 때의 종료일 (KST, 포함). 생략 시 오늘.
 export interface RangeArgs {
   days?: number;
   granularity?: Granularity;
+  endDate?: string;
 }
 
 function daysAgo(n: number): Date {
@@ -29,10 +32,25 @@ function fmt(date: Date): string {
   return ymdKST(date);
 }
 
+/** 조회 창. endDate 없으면 기존 daysAgo(days)~오늘, 있으면 [endDate-days, endDate] (KST). */
+function resolveWindow(
+  days: number,
+  endDate?: string,
+): { since: Date; until: Date | null; to: string } {
+  if (!endDate) return { since: daysAgo(days), until: null, to: todayKSTString() };
+  const w = kstWindowEndingAt(days, endDate);
+  return { since: w.since, until: w.until, to: endDate };
+}
+
+function dateFilter(since: Date, until: Date | null) {
+  return until ? { gte: since, lt: until } : { gte: since };
+}
+
 /** #377: 모든 기간 조회 도구가 같은 envelope 를 돌려준다 (daily 포함). */
 function envelope(
   days: number,
-  since: Date,
+  from: string,
+  to: string,
   granularity: Granularity,
   records: readonly unknown[],
   context?: Record<string, string>,
@@ -44,8 +62,8 @@ function envelope(
         text: JSON.stringify(
           {
             granularity,
-            from: fmt(since),
-            to: todayKSTString(),
+            from,
+            to,
             days,
             count: records.length,
             records,
@@ -60,11 +78,11 @@ function envelope(
 }
 
 const GRANULARITY_NOTE =
-  "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균. 최상위 count 는 버킷 수, 각 버킷의 count 는 그 구간의 레코드 수. weekly 의 weekStart 는 ISO 주 월요일(from 은 실제 첫 레코드 날짜). 아래 항목별 임계(7일 평균 대비 5bpm 등)는 daily 값 기준이므로 집계값에는 추세 판단용으로만 적용. 특정 구간을 자세히 보려면 그 구간만 days 를 좁혀 granularity=daily 로 재조회.";
+  "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균. 최상위 count 는 버킷 수, 각 버킷의 count 는 그 구간의 레코드 수. weekly 의 weekStart 는 ISO 주 월요일(from 은 실제 첫 레코드 날짜). 아래 항목별 임계(7일 평균 대비 5bpm 등)는 daily 값 기준이므로 집계값에는 추세 판단용으로만 적용. 특정 구간을 자세히 보려면 endDate=<그 시기 끝> 과 days=<폭> 으로 granularity=daily 재조회 (과거 시기도 endDate 로 정확히 지정 가능).";
 
 /** M2: daily 요청이 행 상한을 넘어 집계로 승격됐을 때 _context 에 붙일 안내. */
 function promotedNote(granularity: Granularity): string {
-  return `daily 요청 결과가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다. 특정 구간은 days 를 좁혀 daily 로 재조회하세요.`;
+  return `daily 요청 결과가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다. 특정 구간은 endDate=<시기 끝> · days=<폭> 으로 daily 재조회하세요.`;
 }
 
 /** 요청 granularity 확정 → 조회 → 행 상한 초과 시 승격. 컨텍스트에 승격 안내 병합. */
@@ -82,10 +100,10 @@ function finalizeGranularity(
 export async function getActivities(args: RangeArgs & { type?: string }) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
-  const since = daysAgo(days);
+  const { since, until, to } = resolveWindow(days, args.endDate);
   const where = args.type
-    ? { startTime: { gte: since }, activityType: { contains: args.type } }
-    : { startTime: { gte: since } };
+    ? { startTime: dateFilter(since, until), activityType: { contains: args.type } }
+    : { startTime: dateFilter(since, until) };
 
   const activities = await prisma.activity.findMany({
     where,
@@ -136,13 +154,10 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
       GRANULARITY_NOTE + " 활동은 버킷 × activityType 별. avgPace 는 거리 가중, avgHR 은 시간 가중.",
   });
   if (granularity !== "daily") {
-    return envelope(days, since, granularity, aggregateActivities(activities, granularity), context);
+    return envelope(days, fmt(since), to, granularity, aggregateActivities(activities, granularity), context);
   }
 
-  return envelope(
-    days,
-    since,
-    granularity,
+  return envelope(days, fmt(since), to, granularity,
     activities.map((a) => ({
       ...a,
       // get_activity_splits 호출 시 사용할 ID (cuid 또는 garminId 문자열)
@@ -158,9 +173,9 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
 export async function getSleep(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
-  const since = daysAgo(days);
+  const { since, until, to } = resolveWindow(days, args.endDate);
   const records = await prisma.sleepRecord.findMany({
-    where: { date: { gte: since } },
+    where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
     select: {
       date: true,
@@ -198,19 +213,13 @@ export async function getSleep(args: RangeArgs) {
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, sleepContext);
   if (granularity !== "daily") {
-    return envelope(
-      days,
-      since,
-      granularity,
+    return envelope(days, fmt(since), to, granularity,
       aggregateDaily(records, granularity, { minMax: ["sleepScore", "hrvOvernight"] }),
       context,
     );
   }
 
-  return envelope(
-    days,
-    since,
-    granularity,
+  return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({
       ...r,
       date: fmt(r.date),
@@ -225,9 +234,9 @@ export async function getSleep(args: RangeArgs) {
 export async function getHeartRate(args: RangeArgs) {
   const days = args.days ?? 30;
   const requested = resolveGranularity(days, args.granularity);
-  const since = daysAgo(days);
+  const { since, until, to } = resolveWindow(days, args.endDate);
   const records = await prisma.heartRateRecord.findMany({
-    where: { date: { gte: since } },
+    where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
     select: {
       date: true,
@@ -243,19 +252,13 @@ export async function getHeartRate(args: RangeArgs) {
     granularity: GRANULARITY_NOTE,
   });
   if (granularity !== "daily") {
-    return envelope(
-      days,
-      since,
-      granularity,
+    return envelope(days, fmt(since), to, granularity,
       aggregateDaily(records, granularity, { minMax: ["restingHR", "hrvStatus"] }),
       context,
     );
   }
 
-  return envelope(
-    days,
-    since,
-    granularity,
+  return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
   );
 }
@@ -263,9 +266,9 @@ export async function getHeartRate(args: RangeArgs) {
 export async function getDailyStats(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
-  const since = daysAgo(days);
+  const { since, until, to } = resolveWindow(days, args.endDate);
   const records = await prisma.dailySummary.findMany({
-    where: { date: { gte: since } },
+    where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
     select: {
       date: true,
@@ -300,19 +303,13 @@ export async function getDailyStats(args: RangeArgs) {
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, dailyContext);
   if (granularity !== "daily") {
-    return envelope(
-      days,
-      since,
-      granularity,
+    return envelope(days, fmt(since), to, granularity,
       aggregateDaily(records, granularity, { minMax: ["restingHR", "bodyBatteryHigh"] }),
       context,
     );
   }
 
-  return envelope(
-    days,
-    since,
-    granularity,
+  return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
     context,
   );
@@ -321,9 +318,9 @@ export async function getDailyStats(args: RangeArgs) {
 export async function getBodyComposition(args: RangeArgs) {
   const days = args.days ?? 90;
   const requested = resolveGranularity(days, args.granularity);
-  const since = daysAgo(days);
+  const { since, until, to } = resolveWindow(days, args.endDate);
   const records = await prisma.bodyComposition.findMany({
-    where: { date: { gte: since } },
+    where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
     select: {
       date: true,
@@ -338,19 +335,13 @@ export async function getBodyComposition(args: RangeArgs) {
     granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용).",
   });
   if (granularity !== "daily") {
-    return envelope(
-      days,
-      since,
-      granularity,
+    return envelope(days, fmt(since), to, granularity,
       aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"] }),
       context,
     );
   }
 
-  return envelope(
-    days,
-    since,
-    granularity,
+  return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
   );
 }
