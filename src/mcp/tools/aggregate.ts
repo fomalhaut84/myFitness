@@ -8,6 +8,7 @@ import { ymdKST } from "@/lib/garmin/utils";
 import {
   AUTO_MONTHLY_THRESHOLD_DAYS,
   AUTO_WEEKLY_THRESHOLD_DAYS,
+  MAX_DAILY_ROWS,
 } from "./constants";
 
 export type Granularity = "daily" | "weekly" | "monthly";
@@ -22,6 +23,24 @@ export function resolveGranularity(
   if (days <= AUTO_WEEKLY_THRESHOLD_DAYS) return "daily";
   if (days <= AUTO_MONTHLY_THRESHOLD_DAYS) return "weekly";
   return "monthly";
+}
+
+/**
+ * M2: daily 결과가 MAX_DAILY_ROWS 를 넘으면 집계로 승격. 명시 daily 도 예외 없음.
+ * 반환 granularity 가 요청과 다르면 promoted=true — 핸들러가 _context 로 알린다.
+ */
+export function promoteGranularity(
+  requested: Granularity,
+  days: number,
+  rowCount: number,
+): { granularity: Granularity; promoted: boolean } {
+  if (requested !== "daily" || rowCount <= MAX_DAILY_ROWS) {
+    return { granularity: requested, promoted: false };
+  }
+  return {
+    granularity: days <= AUTO_MONTHLY_THRESHOLD_DAYS ? "weekly" : "monthly",
+    promoted: true,
+  };
 }
 
 /** KST 날짜 문자열 → UTC 자정 Date (요일/주차 산술용. instant 의미 없음). */
@@ -44,6 +63,17 @@ export function weekStartKST(date: Date): string {
   const dayNum = utc.getUTCDay() || 7; // Mon=1 … Sun=7
   const monday = new Date(utc.getTime() - (dayNum - 1) * DAY_MS);
   return utcToYmd(monday);
+}
+
+/** `YYYY-Www` → 그 ISO 주 월요일 YYYY-MM-DD. (ISO 규칙: 1월 4일이 항상 1주차) */
+export function weekStartFromKey(key: string): string {
+  const [yearStr, weekStr] = key.split("-W");
+  const year = Number(yearStr);
+  const week = Number(weekStr);
+  const jan4 = ymdToUtc(`${year}-01-04`);
+  const jan4Day = jan4.getUTCDay() || 7;
+  const week1Monday = new Date(jan4.getTime() - (jan4Day - 1) * DAY_MS);
+  return utcToYmd(new Date(week1Monday.getTime() + (week - 1) * 7 * DAY_MS));
 }
 
 export function bucketKeyKST(date: Date, g: Granularity): string {
@@ -77,6 +107,8 @@ export interface MinMaxAvg {
 
 export type AggRow = {
   bucket: string;
+  /** weekly 만: ISO 주 월요일 (결측 주엔 from 과 다를 수 있다) */
+  weekStart?: string;
   from: string;
   to: string;
   count: number;
@@ -132,6 +164,7 @@ export function aggregateDaily<T extends { date: Date }>(
       }
       return {
         bucket,
+        ...(g === "weekly" ? { weekStart: weekStartFromKey(bucket) } : {}),
         from: sortedDates[0],
         to: sortedDates[sortedDates.length - 1],
         count: group.dates.length,
@@ -153,6 +186,7 @@ export interface ActivityAggInput {
 
 export interface ActivityAggRow {
   bucket: string;
+  weekStart?: string;
   from: string;
   to: string;
   activityType: string;
@@ -201,6 +235,7 @@ export function aggregateActivities(
       const paceSec = distM > 0 ? distSec / (distM / 1000) : null;
       return {
         bucket,
+        ...(g === "weekly" ? { weekStart: weekStartFromKey(bucket) } : {}),
         from: dates[0],
         to: dates[dates.length - 1],
         activityType,

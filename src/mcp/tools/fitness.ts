@@ -4,9 +4,11 @@ import {
   aggregateActivities,
   aggregateDaily,
   formatPaceMinKm,
+  promoteGranularity,
   resolveGranularity,
   type Granularity,
 } from "./aggregate";
+import { MAX_DAILY_ROWS } from "./constants";
 
 // #377: 장기 조회 공통 인자. granularity 생략 시 days 기준 자동 (aggregate.ts).
 export interface RangeArgs {
@@ -58,11 +60,28 @@ function envelope(
 }
 
 const GRANULARITY_NOTE =
-  "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균, count 는 레코드 수. 특정 구간을 자세히 보려면 그 구간만 days 를 좁혀 granularity=daily 로 재조회.";
+  "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균. 최상위 count 는 버킷 수, 각 버킷의 count 는 그 구간의 레코드 수. weekly 의 weekStart 는 ISO 주 월요일(from 은 실제 첫 레코드 날짜). 아래 항목별 임계(7일 평균 대비 5bpm 등)는 daily 값 기준이므로 집계값에는 추세 판단용으로만 적용. 특정 구간을 자세히 보려면 그 구간만 days 를 좁혀 granularity=daily 로 재조회.";
+
+/** M2: daily 요청이 행 상한을 넘어 집계로 승격됐을 때 _context 에 붙일 안내. */
+function promotedNote(granularity: Granularity): string {
+  return `daily 요청 결과가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다. 특정 구간은 days 를 좁혀 daily 로 재조회하세요.`;
+}
+
+/** 요청 granularity 확정 → 조회 → 행 상한 초과 시 승격. 컨텍스트에 승격 안내 병합. */
+function finalizeGranularity(
+  requested: Granularity,
+  days: number,
+  rowCount: number,
+  context: Record<string, string> | undefined,
+): { granularity: Granularity; context: Record<string, string> | undefined } {
+  const { granularity, promoted } = promoteGranularity(requested, days, rowCount);
+  if (!promoted) return { granularity, context };
+  return { granularity, context: { ...(context ?? {}), promoted: promotedNote(granularity) } };
+}
 
 export async function getActivities(args: RangeArgs & { type?: string }) {
   const days = args.days ?? 14;
-  const granularity = resolveGranularity(days, args.granularity);
+  const requested = resolveGranularity(days, args.granularity);
   const since = daysAgo(days);
   const where = args.type
     ? { startTime: { gte: since }, activityType: { contains: args.type } }
@@ -112,12 +131,12 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
     },
   });
 
+  const { granularity, context } = finalizeGranularity(requested, days, activities.length, {
+    granularity:
+      GRANULARITY_NOTE + " 활동은 버킷 × activityType 별. avgPace 는 거리 가중, avgHR 은 시간 가중.",
+  });
   if (granularity !== "daily") {
-    return envelope(days, since, granularity, aggregateActivities(activities, granularity), {
-      granularity:
-        GRANULARITY_NOTE +
-        " 활동은 버킷 × activityType 별. avgPace 는 거리 가중, avgHR 은 시간 가중.",
-    });
+    return envelope(days, since, granularity, aggregateActivities(activities, granularity), context);
   }
 
   return envelope(
@@ -138,7 +157,7 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
 
 export async function getSleep(args: RangeArgs) {
   const days = args.days ?? 14;
-  const granularity = resolveGranularity(days, args.granularity);
+  const requested = resolveGranularity(days, args.granularity);
   const since = daysAgo(days);
   const records = await prisma.sleepRecord.findMany({
     where: { date: { gte: since } },
@@ -177,13 +196,14 @@ export async function getSleep(args: RangeArgs) {
     sleepScore: "0-100 점수. 80+ 양호, 60-80 보통, 60 미만 부족.",
   };
 
+  const { granularity, context } = finalizeGranularity(requested, days, records.length, sleepContext);
   if (granularity !== "daily") {
     return envelope(
       days,
       since,
       granularity,
       aggregateDaily(records, granularity, { minMax: ["sleepScore", "hrvOvernight"] }),
-      sleepContext,
+      context,
     );
   }
 
@@ -198,13 +218,13 @@ export async function getSleep(args: RangeArgs) {
       sleepEnd: r.sleepEnd.toISOString(),
       totalSleepHours: (r.totalSleep / 60).toFixed(1),
     })),
-    sleepContext,
+    context,
   );
 }
 
 export async function getHeartRate(args: RangeArgs) {
   const days = args.days ?? 30;
-  const granularity = resolveGranularity(days, args.granularity);
+  const requested = resolveGranularity(days, args.granularity);
   const since = daysAgo(days);
   const records = await prisma.heartRateRecord.findMany({
     where: { date: { gte: since } },
@@ -219,13 +239,16 @@ export async function getHeartRate(args: RangeArgs) {
     },
   });
 
+  const { granularity, context } = finalizeGranularity(requested, days, records.length, {
+    granularity: GRANULARITY_NOTE,
+  });
   if (granularity !== "daily") {
     return envelope(
       days,
       since,
       granularity,
       aggregateDaily(records, granularity, { minMax: ["restingHR", "hrvStatus"] }),
-      { granularity: GRANULARITY_NOTE },
+      context,
     );
   }
 
@@ -239,7 +262,7 @@ export async function getHeartRate(args: RangeArgs) {
 
 export async function getDailyStats(args: RangeArgs) {
   const days = args.days ?? 14;
-  const granularity = resolveGranularity(days, args.granularity);
+  const requested = resolveGranularity(days, args.granularity);
   const since = daysAgo(days);
   const records = await prisma.dailySummary.findMany({
     where: { date: { gte: since } },
@@ -275,13 +298,14 @@ export async function getDailyStats(args: RangeArgs) {
     spo2: "주간 SpO2는 측정 환경에 따라 변동이 큼. 수면 중 SpO2(SleepRecord.avgSpO2)가 기준값. 95%+ 정상, 90% 미만 주의.",
   };
 
+  const { granularity, context } = finalizeGranularity(requested, days, records.length, dailyContext);
   if (granularity !== "daily") {
     return envelope(
       days,
       since,
       granularity,
       aggregateDaily(records, granularity, { minMax: ["restingHR", "bodyBatteryHigh"] }),
-      dailyContext,
+      context,
     );
   }
 
@@ -290,13 +314,13 @@ export async function getDailyStats(args: RangeArgs) {
     since,
     granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
-    dailyContext,
+    context,
   );
 }
 
 export async function getBodyComposition(args: RangeArgs) {
   const days = args.days ?? 90;
-  const granularity = resolveGranularity(days, args.granularity);
+  const requested = resolveGranularity(days, args.granularity);
   const since = daysAgo(days);
   const records = await prisma.bodyComposition.findMany({
     where: { date: { gte: since } },
@@ -310,13 +334,16 @@ export async function getBodyComposition(args: RangeArgs) {
     },
   });
 
+  const { granularity, context } = finalizeGranularity(requested, days, records.length, {
+    granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용).",
+  });
   if (granularity !== "daily") {
     return envelope(
       days,
       since,
       granularity,
       aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"] }),
-      { granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용)." },
+      context,
     );
   }
 

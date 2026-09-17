@@ -67,10 +67,10 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
 
 - [ ] **F1 상한 상수화**: `src/mcp/tools/constants.ts` 에 `MAX_QUERY_DAYS = 3650` (10년). `server.ts` 의 `days`/`windowDays` 스키마 `max(365)` 전부 → `max(MAX_QUERY_DAYS)`. `pace-progression.ts` · `race-prediction.ts` 핸들러 clamp 도 상수 사용. `get_calendar_summary` 의 90 은 유지 (일자별 한 줄 도구라 목적이 다름 — description 에 명시).
 - [ ] **F2 집계 granularity**: `get_activities` · `get_sleep` · `get_heart_rate` · `get_daily_stats` · `get_body_composition` 에 `granularity?: "daily" | "weekly" | "monthly"` 추가.
-  - 생략 시 자동: `days ≤ 120` → daily, `≤ 730` → weekly, 그 외 monthly. 명시하면 그대로.
+  - 생략 시 자동: `days ≤ 120` → daily, `≤ 730` → weekly, 그 외 monthly. 명시하면 그대로 — 단 **daily 결과가 `MAX_DAILY_ROWS = 400` 행을 넘으면 weekly(≤730일)/monthly 로 자동 승격**하고 `_context.promoted` 로 알린다 (사전 리뷰 M2: 명시 daily + days 3650 이면 수천 행이 컨텍스트에 실림. 잘라내기는 과거 구간이 조용히 사라져 오답 유발이라 채택 안 함).
   - 응답을 `{ granularity, from, to, days, count, records: [...], _context? }` 로 감싼다 (daily 도 동일 envelope — AI 가 항상 같은 형태를 본다). 기존 `get_sleep`/`get_daily_stats` 의 `records` 키를 그대로 쓰고, 배열만 돌려주던 도구도 같은 envelope 로 통일. 기존 레코드 필드는 유지.
   - 집계 규칙 (`src/mcp/tools/aggregate.ts`, 순수 함수 · 불변):
-    - 버킷 라벨은 **KST** 기준. weekly = ISO 주 (월요일 시작) `YYYY-Www` + `weekStart`, monthly = `YYYY-MM`.
+    - 버킷 라벨은 **KST** 기준. weekly = ISO 주 (월요일 시작) `YYYY-Www` + `weekStart`(그 주 월요일; `from` 은 실제 첫 레코드 날짜), monthly = `YYYY-MM`.
     - 숫자 필드는 null 제외 평균, 소수 1자리. `count` (레코드 수) 포함.
     - 체중: `avg` 외에 `min`/`max` 추가 (컨디션 최고 시기 탐색용).
     - 활동: 버킷 × activityType 별 `{ count, totalDistanceKm, totalDurationMin, avgPace (거리 가중: 총시간/총거리), avgHR (시간 가중), longestKm, avgVo2maxEstimate }`. `type` 필터는 그대로 적용.
@@ -131,6 +131,8 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - 청크를 **최신 → 과거** 순으로 돌린다. 첫 청크 `endDate = oldestFetchedDate - 1` 이 인접 → `oldestFetchedDate` 가 청크 시작으로 당겨지고, 다음 청크가 다시 인접이 된다.
 - 현재 `oldestFetchedDate = 2026-04-21` 이므로 첫 청크는 `2025-04-21 ~ 2026-04-20`. 이 구간은 데이터가 이미 있어 upsert 로 덮어써진다 (**중복 없음**, 1년치 API 재호출 비용 ≈ 40분 감수). 이로써 1-2 의 메타데이터 불일치도 교정된다.
 - 과거 → 최신 순으로 돌리면 마지막 청크만 병합돼 `oldestFetchedDate` 가 잘못 남는다. 스크립트가 순서를 강제한다.
+- **`lastSyncDate` 는 backfill 대상이 아니다** (사전 리뷰 C1). `updateSyncMetadata` 는 `lastSyncDate = endDate` 를 무조건 덮어쓰므로 최신→과거 backfill 이 끝나면 가장 오래된 청크의 end(2020년대) 로 남고, weekly-report 의 startDate 없는 `syncAll` 이 `lastSyncDate + 1` 부터 수년치를 재싱크한다 (약 11시간, 실패 시 매주 반복). 스크립트가 실행 전 타입별 스냅샷을 찍고 **매 청크 직후** 복원한다 (그 사이 cron 이 더 늦은 값을 썼으면 유지 — `updateMany where lastSyncDate < restored` 조건부 갱신).
+- `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
 
 ### 4.6 소요 시간 추정
 

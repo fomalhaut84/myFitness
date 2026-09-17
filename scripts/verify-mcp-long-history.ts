@@ -6,6 +6,7 @@
  * 3. backfill 청크: 최신→과거 순, 365일, 경계 포함, 마지막 청크가 from 에서 끊김
  * 4. 소스 스캔: src/mcp/** 에 `.max(365)` / `Math.min(365` 리터럴 재유입 0건
  *    (상한을 상수(MAX_QUERY_DAYS)로 우회 없이 되돌리는 회귀를 잡는다)
+ * 5. 사전 리뷰 회귀 (8-5): C1 lastSyncDate 복원, M1 --to 기본값은 가장 늦은 마커, M2 daily 행 상한 승격
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -15,15 +16,22 @@ import {
   aggregateActivities,
   aggregateDaily,
   bucketKeyKST,
+  promoteGranularity,
   resolveGranularity,
+  weekStartFromKey,
   weekStartKST,
 } from "../src/mcp/tools/aggregate";
 import {
   AUTO_MONTHLY_THRESHOLD_DAYS,
   AUTO_WEEKLY_THRESHOLD_DAYS,
+  MAX_DAILY_ROWS,
   MAX_QUERY_DAYS,
 } from "../src/mcp/tools/constants";
-import { buildBackfillChunks } from "../src/lib/garmin/backfill-chunks";
+import {
+  buildBackfillChunks,
+  pickBackfillTo,
+  resolveRestoredLastSyncDate,
+} from "../src/lib/garmin/backfill-chunks";
 import { ymdKST } from "../src/lib/garmin/utils";
 
 let failed = 0;
@@ -50,6 +58,9 @@ check("2023-01-01(일) → 2022-W52", bucketKeyKST(kst("2023-01-01"), "weekly") 
 check("2024-12-30(월) → 2025-W01", bucketKeyKST(kst("2024-12-30"), "weekly") === "2025-W01");
 check("weekStartKST 일요일 → 그 주 월요일", weekStartKST(kst("2026-09-20")) === "2026-09-14");
 check("weekStartKST 월요일 → 자기 자신", weekStartKST(kst("2026-09-14")) === "2026-09-14");
+check("weekStartFromKey 2026-W38 → 2026-09-14", weekStartFromKey("2026-W38") === "2026-09-14");
+check("weekStartFromKey 2026-W01 → 2025-12-29 (연도 넘김)", weekStartFromKey("2026-W01") === "2025-12-29");
+check("weekStartFromKey 2022-W52 → 2022-12-26", weekStartFromKey("2022-W52") === "2022-12-26");
 
 // --- 2. aggregateDaily
 console.log("\n[2] aggregateDaily");
@@ -63,6 +74,8 @@ check("주 2개, 최신순", weekly.length === 2 && weekly[0].bucket === "2026-W
 const w38 = weekly[1];
 check("count = 레코드 수", w38.count === 2);
 check("from/to = 버킷 내 실제 날짜", w38.from === "2026-09-14" && w38.to === "2026-09-15");
+check("weekly 행에 weekStart (I1)", w38.weekStart === "2026-09-14" && weekly[0].weekStart === "2026-09-21", weekly.map((w) => w.weekStart));
+check("monthly 행엔 weekStart 없음", !("weekStart" in aggregateDaily(daily, "monthly")[0]));
 check("minMax 필드 {avg,min,max}", JSON.stringify(w38.weight) === JSON.stringify({ avg: 81, min: 80, max: 82 }), w38.weight);
 check("null 은 평균에서 제외", w38.bodyFat === 20, w38.bodyFat);
 check("문자열 필드는 집계 제외", !("note" in w38));
@@ -90,6 +103,7 @@ check("longestKm 10", run.longestKm === 10);
 check("vo2max null 제외 평균", run.avgVo2maxEstimate === 45);
 const st = aw.find((r) => r.activityType === "strength")!;
 check("거리 없는 타입 pace/longest null", st.avgPaceSecKm === null && st.longestKm === null && st.totalDurationMin === 30);
+check("활동 weekly 행에도 weekStart", run.weekStart === "2026-09-14");
 
 // --- 4. resolveGranularity
 console.log("\n[4] resolveGranularity");
@@ -99,6 +113,14 @@ check(`${AUTO_MONTHLY_THRESHOLD_DAYS} weekly`, resolveGranularity(AUTO_MONTHLY_T
 check(`${AUTO_MONTHLY_THRESHOLD_DAYS + 1} monthly`, resolveGranularity(AUTO_MONTHLY_THRESHOLD_DAYS + 1) === "monthly");
 check("명시 granularity 우선", resolveGranularity(3000, "daily") === "daily");
 check("MAX_QUERY_DAYS 는 365 보다 크다 (상한 해제)", MAX_QUERY_DAYS > 365);
+
+// --- 4b. M2: daily 행 상한 승격 (사전 리뷰 major — 명시 daily + 큰 days 로 수천 행이 컨텍스트에 실림)
+console.log("\n[4b] promoteGranularity (M2)");
+check(`daily ${MAX_DAILY_ROWS}행 → 유지`, JSON.stringify(promoteGranularity("daily", 3000, MAX_DAILY_ROWS)) === JSON.stringify({ granularity: "daily", promoted: false }));
+check(`daily ${MAX_DAILY_ROWS + 1}행 · days>730 → monthly 승격`, JSON.stringify(promoteGranularity("daily", 3000, MAX_DAILY_ROWS + 1)) === JSON.stringify({ granularity: "monthly", promoted: true }));
+check(`daily ${MAX_DAILY_ROWS + 1}행 · days≤730 → weekly 승격`, JSON.stringify(promoteGranularity("daily", 600, MAX_DAILY_ROWS + 1)) === JSON.stringify({ granularity: "weekly", promoted: true }));
+check("weekly 요청은 행 수와 무관하게 유지", JSON.stringify(promoteGranularity("weekly", 3000, 5000)) === JSON.stringify({ granularity: "weekly", promoted: false }));
+check("행 0 → 유지", promoteGranularity("daily", 3000, 0).promoted === false);
 
 // --- 5. backfill 청크
 console.log("\n[5] backfill 청크");
@@ -111,6 +133,28 @@ check("청크 수 = ceil(일수/365)", chunks.length === Math.ceil(((kst("2026-0
 check("청크 간 빈틈·중첩 없음", chunks.every((c, i) => i === 0 || c.end.getTime() === chunks[i - 1].start.getTime() - 86400000));
 check("from == to → 하루짜리 청크 1개", buildBackfillChunks(kst("2026-01-01"), kst("2026-01-01")).length === 1);
 check("from > to → 청크 0개", buildBackfillChunks(kst("2026-01-02"), kst("2026-01-01")).length === 0);
+
+// --- 5b. M1: --to 기본값은 oldestFetchedDate 중 가장 **늦은** 값 - 1일
+//   병합 조건 endDate >= oldestFetchedDate-1 이라 가장 이른 값을 쓰면 늦은 타입은 disjoint 로 무시된다.
+console.log("\n[5b] pickBackfillTo (M1)");
+const today = kst("2026-09-17");
+check("가장 늦은 마커 - 1일 (이른 값 아님)", ymdKST(pickBackfillTo([kst("2025-01-01"), kst("2026-04-01")], today)) === "2026-03-31");
+check("null 은 무시", ymdKST(pickBackfillTo([null, kst("2026-04-21"), null], today)) === "2026-04-20");
+check("마커 전무 → 어제", ymdKST(pickBackfillTo([null, null], today)) === "2026-09-16");
+check("빈 배열 → 어제", ymdKST(pickBackfillTo([], today)) === "2026-09-16");
+// 병합 조건 재현: 늦은 마커 기준 to 는 모든 타입에 대해 endDate >= oldest-1 을 만족
+const to = pickBackfillTo([kst("2025-01-01"), kst("2026-04-01")], today);
+check("모든 타입에 대해 첫 청크가 인접/중첩", [kst("2025-01-01"), kst("2026-04-01")].every((o) => to.getTime() >= o.getTime() - 86400000));
+
+// --- 5c. C1: lastSyncDate 는 backfill 대상이 아니다 — 스냅샷보다 뒤로 가지 않는다
+//   syncAll 이 lastSyncDate=endDate 를 무조건 덮어써 최신→과거 backfill 후 2020 년으로 남으면
+//   weekly-report 의 startDate 없는 syncAll 이 lastSyncDate+1 부터 수년치를 재싱크한다.
+console.log("\n[5c] resolveRestoredLastSyncDate (C1)");
+const snap = kst("2026-09-16");
+check("청크가 끌어내린 값(2020) → 스냅샷으로 복원", ymdKST(resolveRestoredLastSyncDate(snap, kst("2020-05-30"))) === "2026-09-16");
+check("그 사이 cron 이 더 늦게 썼으면 유지", ymdKST(resolveRestoredLastSyncDate(snap, kst("2026-09-17"))) === "2026-09-17");
+check("동일하면 그대로", resolveRestoredLastSyncDate(snap, kst("2026-09-16")).getTime() === snap.getTime());
+check("스크립트가 lastSyncDate 를 청크마다 복원한다 (소스 확인)", /restoreLastSync\(snapshot\)/.test(readFileSync(join(__dirname, "backfill-history.ts"), "utf8")));
 
 // --- 6. 소스 스캔
 console.log("\n[6] 소스 스캔 (src/mcp/**)");

@@ -16,3 +16,10 @@ export const AUTO_WEEKLY_THRESHOLD_DAYS = 120;
 
 /** granularity 생략 시 이 일수 이하는 weekly, 초과는 monthly. */
 export const AUTO_MONTHLY_THRESHOLD_DAYS = 730;
+
+/**
+ * daily 응답 행 상한 (사전 리뷰 M2). 명시 granularity=daily 로 days 를 크게 주면 수천 행이 그대로
+ * 어드바이저 컨텍스트에 실린다. 초과 시 weekly/monthly 로 자동 승격하고 _context 로 알린다.
+ * 잘라내기(take) 는 최신순이라 과거 구간이 조용히 사라져 "가장 좋았던 때" 오답을 유발하므로 쓰지 않는다.
+ */
+export const MAX_DAILY_ROWS = 400;
