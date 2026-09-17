@@ -10,6 +10,7 @@
  * 6. Codex 회귀 (PR #379): P1 행 없는 타입의 스냅샷 fallback, P2 실패 타입은 이후 청크에서 멈춤
  * 7. Codex 2회차: P1 server.ts 등록 도구 ⊆ claude-advisor allowlist (mutating 제외), P1 endDate 창, P2 시그널 복원
  * 8. Codex 3회차 P2: fallback 타입은 성공 후에만 복원, 시그널은 진행 중 청크를 기다림, 전체 null 지표도 필드 유지
+ * 9. Codex 4회차 P2: 선택 타입 중 null 마커가 있으면 --to 는 어제 기준
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -156,7 +157,9 @@ check("from > to → 청크 0개", buildBackfillChunks(kst("2026-01-02"), kst("2
 console.log("\n[5b] pickBackfillTo (M1)");
 const today = kst("2026-09-17");
 check("가장 늦은 마커 - 1일 (이른 값 아님)", ymdKST(pickBackfillTo([kst("2025-01-01"), kst("2026-04-01")], today)) === "2026-03-31");
-check("null 은 무시", ymdKST(pickBackfillTo([null, kst("2026-04-21"), null], today)) === "2026-04-20");
+// Codex 4회차 P2: null 마커가 섞이면 옛 마커 기준 초기화 → 이후 cron 증분과 disjoint → 리셋. 어제 기준으로.
+check("null 마커가 섞이면 어제 기준 (옛 마커 무시)", ymdKST(pickBackfillTo([null, kst("2026-04-21"), null], today)) === "2026-09-16");
+check("null 없으면 가장 늦은 마커 - 1일", ymdKST(pickBackfillTo([kst("2026-04-21"), kst("2026-04-21")], today)) === "2026-04-20");
 check("마커 전무 → 어제", ymdKST(pickBackfillTo([null, null], today)) === "2026-09-16");
 check("빈 배열 → 어제", ymdKST(pickBackfillTo([], today)) === "2026-09-16");
 // 병합 조건 재현: 늦은 마커 기준 to 는 모든 타입에 대해 endDate >= oldest-1 을 만족

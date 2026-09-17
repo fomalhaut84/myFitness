@@ -39,16 +39,22 @@ export function buildBackfillChunks(
  * 병합 조건은 `endDate >= oldestFetchedDate − 1일` 이라, 가장 늦은 마커를 기준으로 잡아야
  * 모든 타입에서 첫 청크가 인접/중첩이 된다 (더 이른 마커를 가진 타입은 중첩 → LEAST 로 병합).
  * 가장 이른 값을 쓰면 늦은 타입은 disjoint+old 로 무시돼 마커가 갱신되지 않는다.
- * 마커가 하나도 없으면 fallback(어제) 을 쓴다.
+ *
+ * Codex P2 (PR #379 4회차): 선택 타입 중 **하나라도 마커가 null** (#220 이전 상태 · 행 없음) 이면
+ * 어제를 기준으로 한다. 다른 타입의 옛 마커를 쓰면 null 타입의 커버 범위가 그 옛 `to` 까지만
+ * 초기화되고(rule 1), 이후 cron 증분 범위가 disjoint+recent 로 판정돼 마커가 최근 구간으로 리셋된다
+ * (rule 3) — backfill 로 만든 마커가 버려진다. 어제 기준이면 이후 증분이 항상 인접이라 병합된다.
+ * 마커 있는 타입은 어제~자기 마커 구간을 중복 fetch 하지만 upsert 라 무해하다.
  */
 export function pickBackfillTo(
   oldestFetchedDates: readonly (Date | null)[],
   fallbackToday: Date,
 ): Date {
+  const hasNull = oldestFetchedDates.some((d) => d === null);
   const latest = oldestFetchedDates
     .filter((d): d is Date => d !== null)
     .reduce<Date | null>((acc, d) => (acc === null || d > acc ? d : acc), null);
-  const base = latest ?? fallbackToday;
+  const base = hasNull || latest === null ? fallbackToday : latest;
   return new Date(base.getTime() - DAY_MS);
 }
 

@@ -6,8 +6,10 @@
  * - 청크 365일, **최신 → 과거** 순. #220 의 SyncMetadata 병합 규칙이 "인접/중첩만 병합" 이라
  *   첫 청크의 endDate 를 현재 oldestFetchedDate-1 에 붙여야 oldestFetchedDate 가 과거로 당겨지고
  *   다음 청크가 다시 인접이 된다. 과거→최신 순이면 마지막 청크만 병합돼 마커가 틀린다.
- * - --to 생략 시 선택 타입들의 oldestFetchedDate 중 **가장 늦은 값** - 1일 (없으면 어제).
+ * - --to 생략 시 선택 타입들의 oldestFetchedDate 중 **가장 늦은 값** - 1일.
  *   병합 조건이 endDate >= oldestFetchedDate-1 이라 늦은 마커 기준이어야 전 타입이 인접/중첩 (사전 리뷰 M1).
+ *   선택 타입 중 마커가 null 인 타입이 하나라도 있으면 어제 기준 — 옛 마커로 초기화된 커버 범위는 이후 cron
+ *   증분과 disjoint 라 리셋된다 (Codex P2 4회차).
  * - `lastSyncDate` 는 backfill 대상이 아니다. syncAll 이 lastSyncDate=endDate 로 덮어쓰므로 청크마다
  *   실행 전 스냅샷으로 되돌린다 (더 늦은 값이 이미 있으면 유지). 안 그러면 weekly-report 의
  *   startDate 없는 syncAll 이 lastSyncDate+1 부터 수년치를 다시 싱크한다 (사전 리뷰 C1).
@@ -83,9 +85,15 @@ async function defaultTo(types: readonly DataType[]): Promise<Date> {
     select: { dataType: true, oldestFetchedDate: true },
   });
   const distinct = new Set(metas.map((m) => (m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null")));
-  if (distinct.size > 1) {
+  const markers = metas.map((m) => `${m.dataType}=${m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null"}`).join(", ");
+  const hasNull = metas.length < types.length || metas.some((m) => m.oldestFetchedDate === null);
+  if (hasNull) {
     console.warn(
-      `oldestFetchedDate 가 타입별로 다릅니다 (${metas.map((m) => `${m.dataType}=${m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null"}`).join(", ")}). 가장 늦은 값 기준으로 --to 를 잡습니다 — 이른 타입은 일부 구간이 중복 fetch 됩니다.`,
+      `oldestFetchedDate 가 null 인 타입이 있어 어제 기준으로 --to 를 잡습니다 (${markers || "행 없음"}). 마커 있는 타입은 최근 구간을 중복 fetch 합니다.`,
+    );
+  } else if (distinct.size > 1) {
+    console.warn(
+      `oldestFetchedDate 가 타입별로 다릅니다 (${markers}). 가장 늦은 값 기준으로 --to 를 잡습니다 — 이른 타입은 일부 구간이 중복 fetch 됩니다.`,
     );
   }
   return pickBackfillTo(metas.map((m) => m.oldestFetchedDate), todayKST());

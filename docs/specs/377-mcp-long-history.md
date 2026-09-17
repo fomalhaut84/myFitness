@@ -137,7 +137,7 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - SIGINT/SIGTERM 은 JS `finally` 를 타지 않으므로 시그널 핸들러가 **진행 중 청크를 기다린 뒤**(그 청크의 `finally` 가 복원) 종료한다. 동시에 복원하면 in-flight `updateSyncMetadata` 가 나중에 stale 값을 다시 쓴다 (Codex P2 2·3회차). 두 번째 시그널은 즉시 강제 종료 + `lastSyncDate` 확인 안내.
 - fallback(`to`) 타입은 이번 실행에서 **한 번이라도 성공한 뒤에만** 복원한다. 첫 청크가 두 번 다 실패했는데 `to` 로 올리면 다음 증분 싱크가 `to + 1` 부터 시작해 그 타입의 과거가 조용히 빈다 (Codex P2 3회차).
 - 재시도까지 실패한 타입은 **그 청크에서 멈춘다.** 커버 범위에 구멍이 나면 더 오래된 청크는 disjoint 로 마커가 무시돼 나중에 실패 청크만 다시 돌려도 복구되지 않는다. 종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령을 출력한다 (Codex P2 PR #379).
-- `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
+- `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 단 선택 타입 중 **마커가 null 인 타입이 하나라도 있으면 어제 기준** — 옛 마커로 초기화된 커버 범위는 이후 cron 증분과 disjoint 라 rule 3 으로 리셋돼 backfill 마커가 버려진다 (Codex P2 4회차). 마커 있는 타입의 최근 구간 중복 fetch 는 upsert 라 무해. 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
 
 ### 4.6 소요 시간 추정
 
