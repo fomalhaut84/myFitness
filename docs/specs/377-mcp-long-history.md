@@ -132,6 +132,8 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - 청크를 **최신 → 과거** 순으로 돌린다. 첫 청크 `endDate = oldestFetchedDate - 1` 이 인접 → `oldestFetchedDate` 가 청크 시작으로 당겨지고, 다음 청크가 다시 인접이 된다.
 - 현재 `oldestFetchedDate = 2026-04-21` 이므로 첫 청크는 `2025-04-21 ~ 2026-04-20`. 이 구간은 데이터가 이미 있어 upsert 로 덮어써진다 (**중복 없음**, 1년치 API 재호출 비용 ≈ 40분 감수). 이로써 1-2 의 메타데이터 불일치도 교정된다.
 - 과거 → 최신 순으로 돌리면 마지막 청크만 병합돼 `oldestFetchedDate` 가 잘못 남는다. 스크립트가 순서를 강제한다.
+- 청크 안에서는 **타입 단위로 순차 싱크하고 그 타입을 즉시 복원**한다. 한 `syncAll` 로 여러 타입을 돌리면 먼저 끝난 타입의 옛 `lastSyncDate` 가 나머지 타입이 끝날 때까지(수십 분) 노출되고, 그 창에 weekly-report 의 startDate 없는 `syncAll` 이 끼어들면 수년치 fetch 를 시작한다 (Codex P1 5회차). 타입 단위면 노출 창이 ms 수준.
+- `--to` 기본값 계산 시 행이 없는 타입도 null 마커로 포함한다 (Codex P2 5회차).
 - **`lastSyncDate` 는 backfill 대상이 아니다** (사전 리뷰 C1). `updateSyncMetadata` 는 `lastSyncDate = endDate` 를 무조건 덮어쓰므로 최신→과거 backfill 이 끝나면 가장 오래된 청크의 end(2020년대) 로 남고, weekly-report 의 startDate 없는 `syncAll` 이 `lastSyncDate + 1` 부터 수년치를 재싱크한다 (약 11시간, 실패 시 매주 반복). 스크립트가 실행 전 타입별 스냅샷을 찍고 **매 청크 직후** 복원한다 (그 사이 cron 이 더 늦은 값을 썼으면 유지 — `updateMany where lastSyncDate < restored` 조건부 갱신).
 - `SyncMetadata` 행이 없거나 성공 싱크가 없는(`lastSyncDate` epoch) 타입은 스냅샷 기준이 없으므로 **`to` 를 복원 기준**으로 쓴다 — backfill 뒤 실제 증분 경계가 `to` 다 (Codex P1 PR #379).
 - SIGINT/SIGTERM 은 JS `finally` 를 타지 않으므로 시그널 핸들러가 **진행 중 청크를 기다린 뒤**(그 청크의 `finally` 가 복원) 종료한다. 동시에 복원하면 in-flight `updateSyncMetadata` 가 나중에 stale 값을 다시 쓴다 (Codex P2 2·3회차). 두 번째 시그널은 즉시 강제 종료 + `lastSyncDate` 확인 안내.

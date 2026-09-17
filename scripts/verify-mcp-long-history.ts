@@ -11,6 +11,7 @@
  * 7. Codex 2회차: P1 server.ts 등록 도구 ⊆ claude-advisor allowlist (mutating 제외), P1 endDate 창, P2 시그널 복원
  * 8. Codex 3회차 P2: fallback 타입은 성공 후에만 복원, 시그널은 진행 중 청크를 기다림, 전체 null 지표도 필드 유지
  * 9. Codex 4회차 P2: 선택 타입 중 null 마커가 있으면 --to 는 어제 기준
+ * 10. Codex 5회차: P1 타입별 순차 싱크 + 즉시 복원 (옛 lastSyncDate 노출 창 최소화), P2 행 없는 타입도 null 마커
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -35,6 +36,7 @@ import {
 import {
   buildBackfillChunks,
   buildLastSyncSnapshot,
+  markersForTypes,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
   restorableTypes,
@@ -160,6 +162,13 @@ check("가장 늦은 마커 - 1일 (이른 값 아님)", ymdKST(pickBackfillTo([
 // Codex 4회차 P2: null 마커가 섞이면 옛 마커 기준 초기화 → 이후 cron 증분과 disjoint → 리셋. 어제 기준으로.
 check("null 마커가 섞이면 어제 기준 (옛 마커 무시)", ymdKST(pickBackfillTo([null, kst("2026-04-21"), null], today)) === "2026-09-16");
 check("null 없으면 가장 늦은 마커 - 1일", ymdKST(pickBackfillTo([kst("2026-04-21"), kst("2026-04-21")], today)) === "2026-04-20");
+// Codex 5회차 P2: 행이 없는 타입은 조회 결과에 없어 null 판정에서 빠졌다 → 타입 기준으로 null 채움
+const mk = markersForTypes(["activities", "sleep", "heart_rate"] as const, [
+  { dataType: "activities", oldestFetchedDate: kst("2026-04-21") },
+  { dataType: "sleep", oldestFetchedDate: null },
+]);
+check("행 없는 타입은 null 마커", mk.length === 3 && mk[2] === null && mk[1] === null && ymdKST(mk[0]!) === "2026-04-21");
+check("행 없는 타입이 섞이면 --to 는 어제", ymdKST(pickBackfillTo(mk, today)) === "2026-09-16");
 check("마커 전무 → 어제", ymdKST(pickBackfillTo([null, null], today)) === "2026-09-16");
 check("빈 배열 → 어제", ymdKST(pickBackfillTo([], today)) === "2026-09-16");
 // 병합 조건 재현: 늦은 마커 기준 to 는 모든 타입에 대해 endDate >= oldest-1 을 만족
@@ -263,6 +272,9 @@ check("성공 전: 기존 타입만 복원, fallback 은 제외", JSON.stringify
 check("sleep 성공 후: sleep 도 복원 대상", JSON.stringify(restorableTypes(all, fb, new Set(["sleep"]))) === JSON.stringify(["activities", "sleep"]));
 check("기존 타입은 실패해도 항상 복원 (끌어내린 값 되돌리기)", restorableTypes(all, fb, new Set()).includes("activities"));
 check("스크립트가 성공 타입을 succeeded 에 누적한다 (소스 확인)", /succeeded: new Set\(\[\.\.\.state\.succeeded/.test(backfillSrc));
+// Codex 5회차 P1: 여러 타입을 한 syncAll 로 돌리면 먼저 끝난 타입의 옛 lastSyncDate 가 수십 분 노출된다
+check("청크 안에서 syncAll 은 타입 하나씩 호출한다 (소스 확인)", /dataTypes: \[dataType\]/.test(backfillSrc) && !/dataTypes: \[\.\.\.types\]/.test(backfillSrc));
+check("타입 싱크 직후 그 타입만 즉시 복원한다 (소스 확인)", /finally \{\s*await restoreLastSync\(nextState, \[dataType\]\)/.test(backfillSrc));
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);

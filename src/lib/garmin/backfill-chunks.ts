@@ -127,3 +127,15 @@ export function typesWithoutSuccessfulSync<T extends string>(
   const ok = new Set(rows.filter((r) => r.lastSyncDate.getTime() > 0).map((r) => r.dataType));
   return new Set(types.filter((t) => !ok.has(t)));
 }
+
+/**
+ * Codex P2 (PR #379 5회차): 선택 타입별 oldestFetchedDate. 행이 없는 타입은 null 로 채운다 —
+ * 조회 결과 행만 넘기면 행 없는 타입이 "null 마커" 판정에서 빠져 옛 마커 기준으로 --to 가 잡힌다.
+ */
+export function markersForTypes<T extends string>(
+  types: readonly T[],
+  rows: readonly { dataType: string; oldestFetchedDate: Date | null }[],
+): (Date | null)[] {
+  const byType = new Map(rows.map((r) => [r.dataType, r.oldestFetchedDate] as const));
+  return types.map((t) => byType.get(t) ?? null);
+}

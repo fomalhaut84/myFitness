@@ -14,6 +14,8 @@
  *   실행 전 스냅샷으로 되돌린다 (더 늦은 값이 이미 있으면 유지). 안 그러면 weekly-report 의
  *   startDate 없는 syncAll 이 lastSyncDate+1 부터 수년치를 다시 싱크한다 (사전 리뷰 C1).
  *   SyncMetadata 행이 없는(또는 성공 싱크가 없는) 타입은 `to` 를 복원 기준으로 쓴다 (Codex P1 PR #379).
+ * - 청크 안에서는 **타입 단위로 순차 싱크 + 즉시 복원** (한 syncAll 로 여러 타입을 돌리면 먼저 끝난 타입의
+ *   옛 lastSyncDate 가 수십 분 노출돼 weekly-report 증분 싱크가 끼어들 수 있다 — Codex P1 5회차).
  * - 청크 실패 시 1회 재시도. 그래도 실패한 타입은 **그 타입만 이후(더 오래된) 청크에서 멈춘다** —
  *   커버 범위에 구멍이 나면 아래 청크의 마커는 disjoint 로 무시돼 복구 불가 (Codex P2 PR #379).
  *   종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령 출력.
@@ -32,6 +34,7 @@ import { ymdKST, todayKST } from "../src/lib/garmin/utils";
 import {
   buildBackfillChunks,
   buildLastSyncSnapshot,
+  markersForTypes,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
   restorableTypes,
@@ -84,19 +87,21 @@ async function defaultTo(types: readonly DataType[]): Promise<Date> {
     where: { dataType: { in: [...types] } },
     select: { dataType: true, oldestFetchedDate: true },
   });
-  const distinct = new Set(metas.map((m) => (m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null")));
-  const markers = metas.map((m) => `${m.dataType}=${m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null"}`).join(", ");
-  const hasNull = metas.length < types.length || metas.some((m) => m.oldestFetchedDate === null);
+  // Codex P2 5회차: 행 없는 타입도 null 마커로 포함해야 pickBackfillTo 가 어제 기준을 고른다.
+  const markers = markersForTypes(types, metas);
+  const label = types.map((t, i) => `${t}=${markers[i] ? ymdKST(markers[i]!) : "null"}`).join(", ");
+  const hasNull = markers.some((m) => m === null);
+  const distinct = new Set(markers.map((m) => (m ? ymdKST(m) : "null")));
   if (hasNull) {
     console.warn(
-      `oldestFetchedDate 가 null 인 타입이 있어 어제 기준으로 --to 를 잡습니다 (${markers || "행 없음"}). 마커 있는 타입은 최근 구간을 중복 fetch 합니다.`,
+      `oldestFetchedDate 가 null 인 타입이 있어 어제 기준으로 --to 를 잡습니다 (${label}). 마커 있는 타입은 최근 구간을 중복 fetch 합니다.`,
     );
   } else if (distinct.size > 1) {
     console.warn(
-      `oldestFetchedDate 가 타입별로 다릅니다 (${markers}). 가장 늦은 값 기준으로 --to 를 잡습니다 — 이른 타입은 일부 구간이 중복 fetch 됩니다.`,
+      `oldestFetchedDate 가 타입별로 다릅니다 (${label}). 가장 늦은 값 기준으로 --to 를 잡습니다 — 이른 타입은 일부 구간이 중복 fetch 됩니다.`,
     );
   }
-  return pickBackfillTo(metas.map((m) => m.oldestFetchedDate), todayKST());
+  return pickBackfillTo(markers, todayKST());
 }
 
 type LastSyncSnapshot = ReadonlyMap<DataType, Date>;
@@ -156,8 +161,9 @@ async function snapshotLastSync(types: readonly DataType[], to: Date): Promise<R
  * C1: 청크가 끌어내린 lastSyncDate 를 스냅샷(또는 그 사이 cron 이 쓴 더 늦은 값)으로 복원.
  * fallback 타입은 성공 후에만 (Codex P2 3회차).
  */
-async function restoreLastSync(state: RunState): Promise<void> {
-  const targets = restorableTypes([...state.snapshot.keys()], state.fallbackTypes, state.succeeded);
+async function restoreLastSync(state: RunState, only?: readonly DataType[]): Promise<void> {
+  const candidates = only ?? [...state.snapshot.keys()];
+  const targets = restorableTypes(candidates, state.fallbackTypes, state.succeeded);
   for (const dataType of targets) {
     const before = state.snapshot.get(dataType)!;
     const meta = await prisma.syncMetadata.findUnique({
@@ -180,6 +186,32 @@ function failedTypes(results: readonly SyncResult[]): DataType[] {
 }
 
 /** 청크 실행. 반환: 실패 타입 + 갱신된 succeeded (불변). */
+/**
+ * 한 타입을 청크 범위로 싱크하고 **즉시** 그 타입의 lastSyncDate 를 복원한다.
+ * Codex P1 (PR #379 5회차): 여러 타입을 한 syncAll 로 돌리면 먼저 끝난 타입의 lastSyncDate 가 옛 값인 채
+ * 나머지 타입(수십 분)이 끝날 때까지 남고, 그 창에 weekly-report 의 startDate 없는 syncAll 이 끼어들면
+ * 수년치 fetch 를 시작한다. 타입 단위로 돌리고 바로 복원해 창을 ms 단위로 줄인다.
+ */
+async function syncTypeInChunk(
+  chunk: Chunk,
+  dataType: DataType,
+  state: RunState,
+): Promise<{ synced: number; ok: boolean; state: RunState }> {
+  let nextState = state;
+  let synced = 0;
+  let ok = false;
+  try {
+    const results = await syncAll({ startDate: chunk.start, endDate: chunk.end, dataTypes: [dataType] });
+    synced = results.reduce((s, r) => s + r.synced, 0);
+    ok = failedTypes(results).length === 0;
+    if (ok) nextState = { ...state, succeeded: new Set([...state.succeeded, dataType]) };
+  } finally {
+    await restoreLastSync(nextState, [dataType]);
+  }
+  return { synced, ok, state: nextState };
+}
+
+/** 청크 실행. 타입별 순차 (성공 즉시 복원) + 실패 타입 1회 재시도. 반환: 실패 타입 + 갱신된 succeeded (불변). */
 async function runChunk(
   chunk: Chunk,
   types: readonly DataType[],
@@ -189,25 +221,28 @@ async function runChunk(
   const started = Date.now();
   console.log(`\n${label} 시작 (${types.join(", ")})`);
   let synced = 0;
-  let failed: DataType[] = [...types];
+  let failed: DataType[] = [];
   let nextState = state;
   try {
-    const first = await syncAll({ startDate: chunk.start, endDate: chunk.end, dataTypes: [...types] });
-    synced += first.reduce((s, r) => s + r.synced, 0);
-    failed = failedTypes(first);
+    for (const dataType of types) {
+      const r = await syncTypeInChunk(chunk, dataType, nextState);
+      synced += r.synced;
+      nextState = r.state;
+      if (!r.ok) failed = [...failed, dataType];
+    }
     if (failed.length > 0) {
       console.warn(`${label} 실패 타입 재시도: ${failed.join(", ")}`);
-      const retry = await syncAll({ startDate: chunk.start, endDate: chunk.end, dataTypes: failed });
-      synced += retry.reduce((s, r) => s + r.synced, 0);
-      failed = failedTypes(retry);
+      const stillFailed: DataType[] = [];
+      for (const dataType of failed) {
+        const r = await syncTypeInChunk(chunk, dataType, nextState);
+        synced += r.synced;
+        nextState = r.state;
+        if (!r.ok) stillFailed.push(dataType);
+      }
+      failed = stillFailed;
     }
-    const failedSet = new Set(failed);
-    nextState = {
-      ...state,
-      succeeded: new Set([...state.succeeded, ...types.filter((t) => !failedSet.has(t))]),
-    };
   } finally {
-    // C1: 청크가 성공/실패/중단되든 lastSyncDate 는 뒤로 끌리지 않게 매 청크 복원.
+    // C1: 타입별 복원에 더해 청크 종료(중단 포함) 시 전체 한 번 더 — 이중 안전장치.
     await restoreLastSync(nextState);
   }
   const min = Math.round((Date.now() - started) / 60000);
