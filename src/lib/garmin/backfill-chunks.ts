@@ -98,3 +98,26 @@ export function stopFailedTypes<T extends string>(
   const failedSet = new Set(failed);
   return active.filter((t) => !failedSet.has(t));
 }
+
+/**
+ * Codex P2 (PR #379 3회차): 복원 대상 타입. 스냅샷이 fallback(`to`) 인 타입(행 없음/성공 싱크 없음)은
+ * 이번 실행에서 한 번이라도 성공한 뒤에만 복원한다. 첫 청크가 두 번 다 실패했는데 fallback 으로
+ * 올리면 다음 증분 싱크가 `to + 1` 부터 시작해 그 타입의 과거가 조용히 빈다.
+ * 성공 이력이 있던 타입은 항상 복원 (끌어내린 값을 되돌리는 것이 목적).
+ */
+export function restorableTypes<T extends string>(
+  snapshotTypes: readonly T[],
+  fallbackTypes: ReadonlySet<T>,
+  succeededTypes: ReadonlySet<T>,
+): T[] {
+  return snapshotTypes.filter((t) => !fallbackTypes.has(t) || succeededTypes.has(t));
+}
+
+/** 행이 없거나 성공 싱크가 없는(epoch) 타입 — buildLastSyncSnapshot 이 fallback 을 준 타입과 동일 판정. */
+export function typesWithoutSuccessfulSync<T extends string>(
+  types: readonly T[],
+  rows: readonly { dataType: string; lastSyncDate: Date }[],
+): Set<T> {
+  const ok = new Set(rows.filter((r) => r.lastSyncDate.getTime() > 0).map((r) => r.dataType));
+  return new Set(types.filter((t) => !ok.has(t)));
+}

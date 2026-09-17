@@ -72,7 +72,7 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
   - 응답을 `{ granularity, from, to, days, count, records: [...], _context? }` 로 감싼다 (daily 도 동일 envelope — AI 가 항상 같은 형태를 본다). 기존 `get_sleep`/`get_daily_stats` 의 `records` 키를 그대로 쓰고, 배열만 돌려주던 도구도 같은 envelope 로 통일. 기존 레코드 필드는 유지.
   - 집계 규칙 (`src/mcp/tools/aggregate.ts`, 순수 함수 · 불변):
     - 버킷 라벨은 **KST** 기준. weekly = ISO 주 (월요일 시작) `YYYY-Www` + `weekStart`(그 주 월요일; `from` 은 실제 첫 레코드 날짜), monthly = `YYYY-MM`.
-    - 숫자 필드는 null 제외 평균, 소수 1자리. `count` (레코드 수) 포함.
+    - 숫자 필드는 null 제외 평균, 소수 1자리. `count` (레코드 수) 포함. 집계 대상 필드는 핸들러의 select 키에서 **명시적으로** 넘긴다 — 구간 전체가 null 인 지표(예: SpO2 미측정 기간)도 `null` 로 남아 응답 스키마가 데이터 유무에 따라 흔들리지 않는다 (Codex P2 3회차).
     - 체중: `avg` 외에 `min`/`max` 추가 (컨디션 최고 시기 탐색용).
     - 활동: 버킷 × activityType 별 `{ count, totalDistanceKm, totalDurationMin, avgPace (거리 가중: 총시간/총거리), avgHR (시간 가중), longestKm, avgVo2maxEstimate }`. `type` 필터는 그대로 적용.
     - 수면/심박/일일: 시각 필드(`sleepStart/End`) 와 문자열 필드는 집계에서 제외.
@@ -134,7 +134,8 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - 과거 → 최신 순으로 돌리면 마지막 청크만 병합돼 `oldestFetchedDate` 가 잘못 남는다. 스크립트가 순서를 강제한다.
 - **`lastSyncDate` 는 backfill 대상이 아니다** (사전 리뷰 C1). `updateSyncMetadata` 는 `lastSyncDate = endDate` 를 무조건 덮어쓰므로 최신→과거 backfill 이 끝나면 가장 오래된 청크의 end(2020년대) 로 남고, weekly-report 의 startDate 없는 `syncAll` 이 `lastSyncDate + 1` 부터 수년치를 재싱크한다 (약 11시간, 실패 시 매주 반복). 스크립트가 실행 전 타입별 스냅샷을 찍고 **매 청크 직후** 복원한다 (그 사이 cron 이 더 늦은 값을 썼으면 유지 — `updateMany where lastSyncDate < restored` 조건부 갱신).
 - `SyncMetadata` 행이 없거나 성공 싱크가 없는(`lastSyncDate` epoch) 타입은 스냅샷 기준이 없으므로 **`to` 를 복원 기준**으로 쓴다 — backfill 뒤 실제 증분 경계가 `to` 다 (Codex P1 PR #379).
-- SIGINT/SIGTERM 은 JS `finally` 를 타지 않으므로 시그널 핸들러가 스냅샷을 복원하고 종료한다 (Codex P2 2회차).
+- SIGINT/SIGTERM 은 JS `finally` 를 타지 않으므로 시그널 핸들러가 **진행 중 청크를 기다린 뒤**(그 청크의 `finally` 가 복원) 종료한다. 동시에 복원하면 in-flight `updateSyncMetadata` 가 나중에 stale 값을 다시 쓴다 (Codex P2 2·3회차). 두 번째 시그널은 즉시 강제 종료 + `lastSyncDate` 확인 안내.
+- fallback(`to`) 타입은 이번 실행에서 **한 번이라도 성공한 뒤에만** 복원한다. 첫 청크가 두 번 다 실패했는데 `to` 로 올리면 다음 증분 싱크가 `to + 1` 부터 시작해 그 타입의 과거가 조용히 빈다 (Codex P2 3회차).
 - 재시도까지 실패한 타입은 **그 청크에서 멈춘다.** 커버 범위에 구멍이 나면 더 오래된 청크는 disjoint 로 마커가 무시돼 나중에 실패 청크만 다시 돌려도 복구되지 않는다. 종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령을 출력한다 (Codex P2 PR #379).
 - `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
 

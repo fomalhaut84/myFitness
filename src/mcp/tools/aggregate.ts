@@ -141,18 +141,22 @@ export type AggRow = {
 /**
  * 일별 레코드를 버킷별로 집계. `date` 외 값이 number 인 필드만 평균 (null 제외, 소수 1자리).
  * `minMax` 에 지정한 필드는 `{ avg, min, max }` 로 반환. 문자열/Date 필드는 제외.
+ * `fields` 를 주면 그 목록을 숫자 필드로 쓴다 — 구간 전체가 null 인 지표도 `null` 로 남아 응답 스키마가
+ * 데이터 유무에 따라 흔들리지 않는다 (Codex P2 PR #379 3회차). 생략 시 값 타입으로 자동 탐지.
  * 결과는 bucket 내림차순 (기존 도구의 최신순과 동일).
  */
 export function aggregateDaily<T extends { date: Date }>(
   rows: readonly T[],
   g: Granularity,
-  opts: { minMax?: readonly (keyof T & string)[] } = {},
+  opts: { minMax?: readonly (keyof T & string)[]; fields?: readonly string[] } = {},
 ): AggRow[] {
   const minMaxSet = new Set<string>(opts.minMax ?? []);
-  const numericKeys = new Set<string>();
-  for (const row of rows) {
-    for (const [k, v] of Object.entries(row)) {
-      if (k !== "date" && typeof v === "number") numericKeys.add(k);
+  const numericKeys = new Set<string>(opts.fields ?? []);
+  if (!opts.fields) {
+    for (const row of rows) {
+      for (const [k, v] of Object.entries(row)) {
+        if (k !== "date" && typeof v === "number") numericKeys.add(k);
+      }
     }
   }
 

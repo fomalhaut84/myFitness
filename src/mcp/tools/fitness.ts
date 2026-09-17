@@ -42,6 +42,11 @@ function resolveWindow(
   return { since: w.since, until: w.until, to: endDate };
 }
 
+/** select 키에서 숫자 집계 대상만 (date 와 시각/문자열 필드 제외). 구간 전체 null 인 지표도 null 로 남긴다. */
+function numericFields(select: Record<string, true>, exclude: readonly string[]): string[] {
+  return Object.keys(select).filter((k) => k !== "date" && !exclude.includes(k));
+}
+
 function dateFilter(since: Date, until: Date | null) {
   return until ? { gte: since, lt: until } : { gte: since };
 }
@@ -170,6 +175,28 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
   );
 }
 
+const SLEEP_SELECT = {
+  date: true,
+  totalSleep: true,
+  deepSleep: true,
+  lightSleep: true,
+  remSleep: true,
+  awakeDuration: true,
+  sleepScore: true,
+  sleepStart: true,
+  sleepEnd: true,
+  avgSpO2: true,
+  lowestSpO2: true,
+  highestSpO2: true,
+  avgRespiration: true,
+  lowestRespiration: true,
+  highestRespiration: true,
+  avgSleepStress: true,
+  bodyBatteryChange: true,
+  restingHR: true,
+  hrvOvernight: true,
+} as const;
+
 export async function getSleep(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
@@ -177,27 +204,7 @@ export async function getSleep(args: RangeArgs) {
   const records = await prisma.sleepRecord.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: {
-      date: true,
-      totalSleep: true,
-      deepSleep: true,
-      lightSleep: true,
-      remSleep: true,
-      awakeDuration: true,
-      sleepScore: true,
-      sleepStart: true,
-      sleepEnd: true,
-      avgSpO2: true,
-      lowestSpO2: true,
-      highestSpO2: true,
-      avgRespiration: true,
-      lowestRespiration: true,
-      highestRespiration: true,
-      avgSleepStress: true,
-      bodyBatteryChange: true,
-      restingHR: true,
-      hrvOvernight: true,
-    },
+    select: SLEEP_SELECT,
   });
 
   const sleepContext = {
@@ -214,7 +221,7 @@ export async function getSleep(args: RangeArgs) {
   const { granularity, context } = finalizeGranularity(requested, days, records.length, sleepContext);
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["sleepScore", "hrvOvernight"] }),
+      aggregateDaily(records, granularity, { minMax: ["sleepScore", "hrvOvernight"], fields: numericFields(SLEEP_SELECT, ["sleepStart", "sleepEnd"]) }),
       context,
     );
   }
@@ -231,6 +238,15 @@ export async function getSleep(args: RangeArgs) {
   );
 }
 
+const HEART_RATE_SELECT = {
+  date: true,
+  restingHR: true,
+  avgHR: true,
+  maxHR: true,
+  minHR: true,
+  hrvStatus: true,
+} as const;
+
 export async function getHeartRate(args: RangeArgs) {
   const days = args.days ?? 30;
   const requested = resolveGranularity(days, args.granularity);
@@ -238,14 +254,7 @@ export async function getHeartRate(args: RangeArgs) {
   const records = await prisma.heartRateRecord.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: {
-      date: true,
-      restingHR: true,
-      avgHR: true,
-      maxHR: true,
-      minHR: true,
-      hrvStatus: true,
-    },
+    select: HEART_RATE_SELECT,
   });
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, {
@@ -253,7 +262,7 @@ export async function getHeartRate(args: RangeArgs) {
   });
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["restingHR", "hrvStatus"] }),
+      aggregateDaily(records, granularity, { minMax: ["restingHR", "hrvStatus"], fields: numericFields(HEART_RATE_SELECT, []) }),
       context,
     );
   }
@@ -263,6 +272,28 @@ export async function getHeartRate(args: RangeArgs) {
   );
 }
 
+const DAILY_SELECT = {
+  date: true,
+  steps: true,
+  totalCalories: true,
+  activeCalories: true,
+  restingHR: true,
+  avgStress: true,
+  bodyBattery: true,
+  bodyBatteryHigh: true,
+  bodyBatteryLow: true,
+  bodyBatteryCharged: true,
+  bodyBatteryDrained: true,
+  intensityMin: true,
+  floorsClimbed: true,
+  avgSpo2: true,
+  lowestSpo2: true,
+  avgRespiration: true,
+  stressHighDuration: true,
+  stressMediumDuration: true,
+  stressLowDuration: true,
+} as const;
+
 export async function getDailyStats(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
@@ -270,27 +301,7 @@ export async function getDailyStats(args: RangeArgs) {
   const records = await prisma.dailySummary.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: {
-      date: true,
-      steps: true,
-      totalCalories: true,
-      activeCalories: true,
-      restingHR: true,
-      avgStress: true,
-      bodyBattery: true,
-      bodyBatteryHigh: true,
-      bodyBatteryLow: true,
-      bodyBatteryCharged: true,
-      bodyBatteryDrained: true,
-      intensityMin: true,
-      floorsClimbed: true,
-      avgSpo2: true,
-      lowestSpo2: true,
-      avgRespiration: true,
-      stressHighDuration: true,
-      stressMediumDuration: true,
-      stressLowDuration: true,
-    },
+    select: DAILY_SELECT,
   });
 
   const dailyContext = {
@@ -304,7 +315,7 @@ export async function getDailyStats(args: RangeArgs) {
   const { granularity, context } = finalizeGranularity(requested, days, records.length, dailyContext);
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["restingHR", "bodyBatteryHigh"] }),
+      aggregateDaily(records, granularity, { minMax: ["restingHR", "bodyBatteryHigh"], fields: numericFields(DAILY_SELECT, []) }),
       context,
     );
   }
@@ -315,6 +326,14 @@ export async function getDailyStats(args: RangeArgs) {
   );
 }
 
+const BODY_SELECT = {
+  date: true,
+  weight: true,
+  bmi: true,
+  bodyFat: true,
+  muscleMass: true,
+} as const;
+
 export async function getBodyComposition(args: RangeArgs) {
   const days = args.days ?? 90;
   const requested = resolveGranularity(days, args.granularity);
@@ -322,13 +341,7 @@ export async function getBodyComposition(args: RangeArgs) {
   const records = await prisma.bodyComposition.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: {
-      date: true,
-      weight: true,
-      bmi: true,
-      bodyFat: true,
-      muscleMass: true,
-    },
+    select: BODY_SELECT,
   });
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, {
@@ -336,7 +349,7 @@ export async function getBodyComposition(args: RangeArgs) {
   });
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"] }),
+      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"], fields: numericFields(BODY_SELECT, []) }),
       context,
     );
   }

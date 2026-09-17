@@ -9,6 +9,7 @@
  * 5. 사전 리뷰 회귀 (8-5): C1 lastSyncDate 복원, M1 --to 기본값은 가장 늦은 마커, M2 daily 행 상한 승격
  * 6. Codex 회귀 (PR #379): P1 행 없는 타입의 스냅샷 fallback, P2 실패 타입은 이후 청크에서 멈춤
  * 7. Codex 2회차: P1 server.ts 등록 도구 ⊆ claude-advisor allowlist (mutating 제외), P1 endDate 창, P2 시그널 복원
+ * 8. Codex 3회차 P2: fallback 타입은 성공 후에만 복원, 시그널은 진행 중 청크를 기다림, 전체 null 지표도 필드 유지
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -35,7 +36,9 @@ import {
   buildLastSyncSnapshot,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
+  restorableTypes,
   stopFailedTypes,
+  typesWithoutSuccessfulSync,
 } from "../src/lib/garmin/backfill-chunks";
 import { ymdKST } from "../src/lib/garmin/utils";
 
@@ -88,6 +91,15 @@ check("입력 불변", daily[1].bodyFat === null && daily.length === 3);
 const monthly = aggregateDaily(daily, "monthly");
 check("monthly 단일 버킷 avg 소수 1자리", monthly.length === 1 && monthly[0].weight === 80 && monthly[0].bodyFat === 19.5, monthly[0]);
 check("빈 입력 → 빈 배열", aggregateDaily([], "weekly").length === 0);
+// Codex 3회차 P2: 구간 전체가 null 인 지표는 자동 탐지에서 빠져 응답 스키마가 흔들렸다 → fields 명시 시 null 로 유지
+const allNull = [
+  { date: kst("2026-09-14"), sleepScore: 80, avgSpO2: null },
+  { date: kst("2026-09-15"), sleepScore: 70, avgSpO2: null },
+];
+const withFields = aggregateDaily(allNull, "weekly", { fields: ["sleepScore", "avgSpO2"] });
+check("fields 명시: 전체 null 지표도 키 유지 (null)", "avgSpO2" in withFields[0] && withFields[0].avgSpO2 === null && withFields[0].sleepScore === 75, withFields[0]);
+check("fields 명시: minMax 도 전체 null 이면 {null,null,null}", JSON.stringify(aggregateDaily(allNull, "weekly", { fields: ["avgSpO2"], minMax: ["avgSpO2"] })[0].avgSpO2) === JSON.stringify({ avg: null, min: null, max: null }));
+check("fields 생략(자동 탐지) 은 전체 null 키 생략 — 핸들러는 항상 fields 를 준다", !("avgSpO2" in aggregateDaily(allNull, "weekly")[0]));
 
 // --- 3. aggregateActivities
 console.log("\n[3] aggregateActivities");
@@ -159,7 +171,7 @@ const snap = kst("2026-09-16");
 check("청크가 끌어내린 값(2020) → 스냅샷으로 복원", ymdKST(resolveRestoredLastSyncDate(snap, kst("2020-05-30"))) === "2026-09-16");
 check("그 사이 cron 이 더 늦게 썼으면 유지", ymdKST(resolveRestoredLastSyncDate(snap, kst("2026-09-17"))) === "2026-09-17");
 check("동일하면 그대로", resolveRestoredLastSyncDate(snap, kst("2026-09-16")).getTime() === snap.getTime());
-check("스크립트가 lastSyncDate 를 청크마다 복원한다 (소스 확인)", /restoreLastSync\(snapshot\)/.test(readFileSync(join(__dirname, "backfill-history.ts"), "utf8")));
+check("스크립트가 lastSyncDate 를 청크마다 복원한다 (finally, 소스 확인)", /finally \{[\s\S]*?await restoreLastSync\(nextState\)/.test(readFileSync(join(__dirname, "backfill-history.ts"), "utf8")));
 
 // --- 5d. Codex P1 (PR #379): SyncMetadata 행이 없는 타입은 스냅샷에서 빠져 첫 청크가 만든 행을
 //   이후 청크가 계속 과거로 끌어내렸다. 행 없음/성공 싱크 없음(epoch 0) → `to` 를 기준으로.
@@ -230,7 +242,24 @@ check("무효 날짜(2025-02-30) 는 throw", threw);
 threw = false; try { kstWindowEndingAt(30, "20250615"); } catch { threw = true; }
 check("형식 불일치는 throw", threw);
 const backfillSrc = readFileSync(join(__dirname, "backfill-history.ts"), "utf8");
-check("스크립트가 SIGINT/SIGTERM 에서 스냅샷을 복원한다 (소스 확인)", /process\.once\(signal/.test(backfillSrc) && /installSignalHandlers\(\)/.test(backfillSrc));
+check("스크립트가 SIGINT/SIGTERM 핸들러를 설치한다 (소스 확인)", /process\.on\(signal/.test(backfillSrc) && /installSignalHandlers\(\)/.test(backfillSrc));
+// Codex 3회차 P2: 진행 중 syncAll 과 동시에 복원하면 in-flight updateSyncMetadata 가 나중에 덮어쓴다 → 청크를 기다린 뒤 종료
+check("시그널 핸들러가 진행 중 청크(activeChunk)를 기다린다", /\(activeChunk \?\? Promise\.resolve\(\)\)/.test(backfillSrc) && /activeChunk = running/.test(backfillSrc));
+check("핸들러는 시그널만으로는 복원을 직접 호출하지 않는다 (청크 finally 가 담당)", !/process\.on\(signal[\s\S]*?restoreLastSync\(/.test(backfillSrc.split("async function snapshotLastSync")[0]));
+
+// --- 9. Codex 3회차 P2: fallback(행 없음/성공 싱크 없음) 타입은 이번 실행에서 성공한 뒤에만 복원.
+//   첫 청크가 두 번 다 실패했는데 `to` 로 올리면 다음 증분 싱크가 to+1 부터 시작해 과거가 조용히 빈다.
+console.log("\n[9] restorableTypes / typesWithoutSuccessfulSync (Codex 3회차 P2)");
+const fb = typesWithoutSuccessfulSync(["activities", "sleep", "heart_rate"] as const, [
+  { dataType: "activities", lastSyncDate: kst("2026-09-16") },
+  { dataType: "sleep", lastSyncDate: new Date(0) },
+]);
+check("행 없음 + epoch 행 → fallback 타입", fb.has("sleep") && fb.has("heart_rate") && !fb.has("activities"));
+const all = ["activities", "sleep", "heart_rate"] as const;
+check("성공 전: 기존 타입만 복원, fallback 은 제외", JSON.stringify(restorableTypes(all, fb, new Set())) === JSON.stringify(["activities"]));
+check("sleep 성공 후: sleep 도 복원 대상", JSON.stringify(restorableTypes(all, fb, new Set(["sleep"]))) === JSON.stringify(["activities", "sleep"]));
+check("기존 타입은 실패해도 항상 복원 (끌어내린 값 되돌리기)", restorableTypes(all, fb, new Set()).includes("activities"));
+check("스크립트가 성공 타입을 succeeded 에 누적한다 (소스 확인)", /succeeded: new Set\(\[\.\.\.state\.succeeded/.test(backfillSrc));
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);
