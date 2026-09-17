@@ -53,6 +53,12 @@
 
 ---
 
+### 2026-09-17 세션 — MCP 장기 조회 · Garmin 엔드포인트 감사
+
+- **#377** MCP 장기 조회 (365일 상한 해제 · granularity 집계 · `get_data_coverage` · backfill 스크립트) — 스펙 `docs/specs/377-mcp-long-history.md`. 배포 후 서버에서 `backfill:history --from=2019-06-01` (약 4.5h).
+- **#378** VO2max · 젖산역치 Garmin 이력 싱크 — 스펙 `docs/specs/378-garmin-fitness-metrics-history.md`. #377 뒤 착수.
+- **감사 결과** `docs/specs/garmin-endpoint-audit-20260917.md` — 재검증된 버그 A1~A8 · 도입 후보 D-1~D-9. 다음 이슈 후보: HRV 서비스(A2), 복원력 429/타임아웃/토큰(A6·A7, backfill 전 권장), 활동 싱크 date filter + 컬럼 승격(A4·A8), training readiness/status 일별, race prediction 이력. A1 은 #365 에 추가.
+
 ## 우선순위 A (사용자 요청 or 실사용 지장)
 
 ### A-1. Blood pressure fetcher 도 naive-TZ 이슈 검증

@@ -16,7 +16,9 @@
     "backfill:weather": "tsx scripts/backfill-weather.ts",
     "backfill:running-dynamics": "tsx scripts/backfill-running-dynamics.ts",
     "backfill:food-kcal": "tsx scripts/backfill-food-kcal.ts",
-    "test": "npm run verify:mcp-date-labels && npm run verify:food-edit-pending",
+    "backfill:history": "tsx scripts/backfill-history.ts",
+    "test": "npm run verify:mcp-date-labels && npm run verify:food-edit-pending && npm run verify:mcp-long-history",
+    "verify:mcp-long-history": "tsx scripts/verify-mcp-long-history.ts",
     "verify:food-edit-pending": "tsx scripts/verify-food-edit-pending.ts",
     "verify:mcp-date-labels": "tsx scripts/verify-mcp-date-labels.ts"
   },
@@ -29,7 +31,7 @@
     "grammy": "^1.42.0",
     "isomorphic-dompurify": "^2.30.0",
     "marked": "^17.0.6",
-    "next": "^16.2.6",
+    "next": "^16.3.5",
     "next-themes": "^0.4.6",
     "node-cron": "^4.2.1",
     "pino": "^10.3.1",
@@ -49,7 +51,7 @@
     "dotenv": "^17.4.1",
     "esbuild": "^0.28.1",
     "eslint": "^9.39.4",
-    "eslint-config-next": "^16.2.6",
+    "eslint-config-next": "^16.3.5",
     "postcss": "^8.5.10",
     "prisma": "^6.19.3",
     "tailwindcss": "^3.4.1",
@@ -59,7 +61,7 @@
   "overrides": {
     "axios": "^1.16.0",
     "qs": "^6.16.0",
-    "hono": "^4.12.21",
+    "hono": "^4.13.5",
     "fast-uri": "^3.1.7",
     "ip-address": "^10.1.1",
     "brace-expansion@5": "^5.0.6",
@@ -67,10 +69,11 @@
     "form-data": "^4.0.6",
     "esbuild": "$esbuild",
     "@babel/core": "^7.29.6",
-    "js-yaml": "^4.2.0",
+    "js-yaml": "^4.3.2",
     "browserslist": "^4.28.8",
     "nanoid": "^3.3.18",
     "postcss-selector-parser": "^6.1.4",
-    "deepmerge-ts": "^8.0.2"
+    "deepmerge-ts": "^8.0.2",
+    "sharp": "^0.35.4"
   }
 }
