@@ -272,7 +272,9 @@ async function askAdvisorOnce(
     // 등) 는 스케줄 리포트/일반 채팅에서 의도치 않게 상태를 바꿀 수 있으므로 여기에 포함하지 않음.
     // Plan 생성은 명시적 진입점 (POST /api/training-plan/generate) 에서 처리하고,
     // AI 는 read-only get_active_training_plan 만 사용.
-    "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout,mcp__myfitness__get_personal_goals",
+    // #377 Codex P1: 새 read-only 도구는 여기에도 추가해야 -p 비대화형에서 승인 없이 실행된다.
+    //   verify-mcp-long-history [7] 이 server.ts 등록 도구와 이 목록의 불일치를 잡는다.
+    "mcp__myfitness__get_activities,mcp__myfitness__get_sleep,mcp__myfitness__get_heart_rate,mcp__myfitness__get_daily_stats,mcp__myfitness__get_body_composition,mcp__myfitness__get_trends,mcp__myfitness__get_activity_splits,mcp__myfitness__get_weight_loss_status,mcp__myfitness__get_blood_pressure,mcp__myfitness__get_user_profile,mcp__myfitness__get_metric_history,mcp__myfitness__get_readiness_score,mcp__myfitness__get_training_load_trend,mcp__myfitness__get_pace_progression,mcp__myfitness__get_calendar_summary,mcp__myfitness__get_injury_risk_score,mcp__myfitness__get_race_prediction,mcp__myfitness__get_active_training_plan,mcp__myfitness__recommend_today_workout,mcp__myfitness__get_personal_goals,mcp__myfitness__get_data_coverage",
     // #179: --tools "" 로 built-in 도구를 모두 제거 (MCP 도구는 영향 없음).
     // --allowedTools/--disallowedTools 는 permission prompt 만 제어할 뿐 built-in 도구 목록 자체를
     // 제한하지 않아 Agent/AskUserQuestion/PowerShell/Task 등이 여전히 Claude 컨텍스트에 남는다.
