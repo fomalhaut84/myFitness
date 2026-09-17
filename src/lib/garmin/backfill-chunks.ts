@@ -62,3 +62,39 @@ export function pickBackfillTo(
 export function resolveRestoredLastSyncDate(snapshot: Date, current: Date): Date {
   return current > snapshot ? current : snapshot;
 }
+
+/**
+ * Codex P1 (PR #379): lastSyncDate 스냅샷. 선택 타입에 SyncMetadata 행이 없거나(첫 싱크 전)
+ * lastSyncDate 가 epoch(0) (markError/markSyncing 만 만든 행 — sync.ts 의 "성공 싱크 없음" 판정과 동일)
+ * 이면 복원 기준이 없어 첫 청크가 만든 행을 이후 청크가 계속 과거로 끌어내린다.
+ * 그런 타입은 backfill 의 `to`(= 첫 청크 end, backfill 후 실제 증분 경계) 를 기준으로 삼는다.
+ */
+export function buildLastSyncSnapshot<T extends string>(
+  types: readonly T[],
+  rows: readonly { dataType: string; lastSyncDate: Date }[],
+  fallback: Date,
+): ReadonlyMap<T, Date> {
+  const byType = new Map(rows.map((r) => [r.dataType, r.lastSyncDate] as const));
+  return new Map(
+    types.map((t) => {
+      const existing = byType.get(t);
+      const hasSuccessfulSync = existing !== undefined && existing.getTime() > 0;
+      return [t, hasSuccessfulSync ? existing : fallback] as const;
+    }),
+  );
+}
+
+/**
+ * Codex P2 (PR #379): 재시도까지 실패한 타입은 더 오래된 청크에서 멈춘다.
+ * 실패 청크가 커버 범위에 구멍을 내면 그보다 오래된 청크는 disjoint 라 updateSyncMetadata 가
+ * 마커를 무시한다 — 데이터는 upsert 되지만 oldestFetchedDate 가 안 내려가고, 실패 청크만 재실행해도
+ * 그 아래 청크의 마커는 복구되지 않는다. 멈춘 뒤 `--from=<from> --to=<실패 청크 end>` 로 재개해야
+ * 연속 커버가 복원된다. 새 배열을 돌려준다 (입력 불변).
+ */
+export function stopFailedTypes<T extends string>(
+  active: readonly T[],
+  failed: readonly T[],
+): T[] {
+  const failedSet = new Set(failed);
+  return active.filter((t) => !failedSet.has(t));
+}

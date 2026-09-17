@@ -132,6 +132,8 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 - 현재 `oldestFetchedDate = 2026-04-21` 이므로 첫 청크는 `2025-04-21 ~ 2026-04-20`. 이 구간은 데이터가 이미 있어 upsert 로 덮어써진다 (**중복 없음**, 1년치 API 재호출 비용 ≈ 40분 감수). 이로써 1-2 의 메타데이터 불일치도 교정된다.
 - 과거 → 최신 순으로 돌리면 마지막 청크만 병합돼 `oldestFetchedDate` 가 잘못 남는다. 스크립트가 순서를 강제한다.
 - **`lastSyncDate` 는 backfill 대상이 아니다** (사전 리뷰 C1). `updateSyncMetadata` 는 `lastSyncDate = endDate` 를 무조건 덮어쓰므로 최신→과거 backfill 이 끝나면 가장 오래된 청크의 end(2020년대) 로 남고, weekly-report 의 startDate 없는 `syncAll` 이 `lastSyncDate + 1` 부터 수년치를 재싱크한다 (약 11시간, 실패 시 매주 반복). 스크립트가 실행 전 타입별 스냅샷을 찍고 **매 청크 직후** 복원한다 (그 사이 cron 이 더 늦은 값을 썼으면 유지 — `updateMany where lastSyncDate < restored` 조건부 갱신).
+- `SyncMetadata` 행이 없거나 성공 싱크가 없는(`lastSyncDate` epoch) 타입은 스냅샷 기준이 없으므로 **`to` 를 복원 기준**으로 쓴다 — backfill 뒤 실제 증분 경계가 `to` 다 (Codex P1 PR #379).
+- 재시도까지 실패한 타입은 **그 청크에서 멈춘다.** 커버 범위에 구멍이 나면 더 오래된 청크는 disjoint 로 마커가 무시돼 나중에 실패 청크만 다시 돌려도 복구되지 않는다. 종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령을 출력한다 (Codex P2 PR #379).
 - `--to` 기본값은 선택 타입들의 `oldestFetchedDate` 중 **가장 늦은 값 − 1일** (사전 리뷰 M1). 병합 조건이 `endDate >= oldestFetchedDate − 1` 이라 늦은 마커 기준이어야 모든 타입에서 첫 청크가 인접/중첩이 된다. 이른 마커를 가진 타입은 중첩 → `LEAST` 병합이라 무해.
 
 ### 4.6 소요 시간 추정

@@ -7,6 +7,7 @@
  * 4. 소스 스캔: src/mcp/** 에 `.max(365)` / `Math.min(365` 리터럴 재유입 0건
  *    (상한을 상수(MAX_QUERY_DAYS)로 우회 없이 되돌리는 회귀를 잡는다)
  * 5. 사전 리뷰 회귀 (8-5): C1 lastSyncDate 복원, M1 --to 기본값은 가장 늦은 마커, M2 daily 행 상한 승격
+ * 6. Codex 회귀 (PR #379): P1 행 없는 타입의 스냅샷 fallback, P2 실패 타입은 이후 청크에서 멈춤
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -29,8 +30,10 @@ import {
 } from "../src/mcp/tools/constants";
 import {
   buildBackfillChunks,
+  buildLastSyncSnapshot,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
+  stopFailedTypes,
 } from "../src/lib/garmin/backfill-chunks";
 import { ymdKST } from "../src/lib/garmin/utils";
 
@@ -155,6 +158,32 @@ check("청크가 끌어내린 값(2020) → 스냅샷으로 복원", ymdKST(reso
 check("그 사이 cron 이 더 늦게 썼으면 유지", ymdKST(resolveRestoredLastSyncDate(snap, kst("2026-09-17"))) === "2026-09-17");
 check("동일하면 그대로", resolveRestoredLastSyncDate(snap, kst("2026-09-16")).getTime() === snap.getTime());
 check("스크립트가 lastSyncDate 를 청크마다 복원한다 (소스 확인)", /restoreLastSync\(snapshot\)/.test(readFileSync(join(__dirname, "backfill-history.ts"), "utf8")));
+
+// --- 5d. Codex P1 (PR #379): SyncMetadata 행이 없는 타입은 스냅샷에서 빠져 첫 청크가 만든 행을
+//   이후 청크가 계속 과거로 끌어내렸다. 행 없음/성공 싱크 없음(epoch 0) → `to` 를 기준으로.
+console.log("\n[5d] buildLastSyncSnapshot (Codex P1)");
+const toBoundary = kst("2026-04-20");
+const snapRows = [
+  { dataType: "activities", lastSyncDate: kst("2026-09-16") },
+  { dataType: "sleep", lastSyncDate: new Date(0) }, // markError 만 만든 행
+];
+const snapMap = buildLastSyncSnapshot(["activities", "sleep", "heart_rate"] as const, snapRows, toBoundary);
+check("행 있는 타입은 자기 lastSyncDate", ymdKST(snapMap.get("activities")!) === "2026-09-16");
+check("행 없는 타입 → to 기준", ymdKST(snapMap.get("heart_rate")!) === "2026-04-20");
+check("epoch(0) 행(성공 싱크 없음) → to 기준", ymdKST(snapMap.get("sleep")!) === "2026-04-20");
+check("선택 타입 전부 포함 (누락 0)", snapMap.size === 3);
+// 복원 시나리오: 첫 청크가 만든 행이 이후 청크에 의해 2020 으로 끌려도 to 로 복원
+check("행 없던 타입도 과거로 끌린 값이 to 로 복원", ymdKST(resolveRestoredLastSyncDate(snapMap.get("heart_rate")!, kst("2020-05-30"))) === "2026-04-20");
+
+// --- 5e. Codex P2 (PR #379): 재시도까지 실패한 타입은 더 오래된 청크에서 멈춘다 (마커 복구 불가 방지)
+console.log("\n[5e] stopFailedTypes (Codex P2)");
+const activeBefore = ["daily_stats", "sleep", "heart_rate"] as const;
+const activeAfter = stopFailedTypes(activeBefore, ["sleep"]);
+check("실패 타입 제거", JSON.stringify(activeAfter) === JSON.stringify(["daily_stats", "heart_rate"]));
+check("입력 불변", activeBefore.length === 3);
+check("실패 없음 → 그대로", stopFailedTypes(activeBefore, []).length === 3);
+check("전부 실패 → 빈 배열 (루프 중단)", stopFailedTypes(activeBefore, [...activeBefore]).length === 0);
+check("스크립트가 실패 타입을 active 에서 제거한다 (소스 확인)", /active = stopFailedTypes\(active, failed\)/.test(readFileSync(join(__dirname, "backfill-history.ts"), "utf8")));
 
 // --- 6. 소스 스캔
 console.log("\n[6] 소스 스캔 (src/mcp/**)");

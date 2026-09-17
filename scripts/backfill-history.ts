@@ -11,7 +11,10 @@
  * - `lastSyncDate` 는 backfill 대상이 아니다. syncAll 이 lastSyncDate=endDate 로 덮어쓰므로 청크마다
  *   실행 전 스냅샷으로 되돌린다 (더 늦은 값이 이미 있으면 유지). 안 그러면 weekly-report 의
  *   startDate 없는 syncAll 이 lastSyncDate+1 부터 수년치를 다시 싱크한다 (사전 리뷰 C1).
- * - 청크 실패 시 1회 재시도 후 다음 청크. 종료 시 실패 청크 목록 출력 → --from/--to 로 재실행.
+ *   SyncMetadata 행이 없는(또는 성공 싱크가 없는) 타입은 `to` 를 복원 기준으로 쓴다 (Codex P1 PR #379).
+ * - 청크 실패 시 1회 재시도. 그래도 실패한 타입은 **그 타입만 이후(더 오래된) 청크에서 멈춘다** —
+ *   커버 범위에 구멍이 나면 아래 청크의 마커는 disjoint 로 무시돼 복구 불가 (Codex P2 PR #379).
+ *   종료 시 `--from=<from> --to=<실패 청크 end> --types=<타입>` 재개 명령 출력.
  * - user_profile 은 스냅샷이라 제외.
  * - 일별 엔드포인트(daily_stats/sleep/heart_rate)는 하루 3콜 × 2초 → 약 37분/년.
  */
@@ -22,8 +25,10 @@ import { syncAll, type DataType, type SyncResult } from "../src/lib/garmin/sync"
 import { ymdKST, todayKST } from "../src/lib/garmin/utils";
 import {
   buildBackfillChunks,
+  buildLastSyncSnapshot,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
+  stopFailedTypes,
   type BackfillChunk,
 } from "../src/lib/garmin/backfill-chunks";
 
@@ -82,12 +87,13 @@ async function defaultTo(types: readonly DataType[]): Promise<Date> {
 
 type LastSyncSnapshot = ReadonlyMap<DataType, Date>;
 
-async function snapshotLastSync(types: readonly DataType[]): Promise<LastSyncSnapshot> {
+/** 행이 없거나 성공 싱크가 없는 타입은 `to` (backfill 후 증분 경계) 를 기준으로 (Codex P1). */
+async function snapshotLastSync(types: readonly DataType[], to: Date): Promise<LastSyncSnapshot> {
   const metas = await prisma.syncMetadata.findMany({
     where: { dataType: { in: [...types] } },
     select: { dataType: true, lastSyncDate: true },
   });
-  return new Map(metas.map((m) => [m.dataType as DataType, m.lastSyncDate]));
+  return buildLastSyncSnapshot(types, metas, to);
 }
 
 /** C1: 청크가 끌어내린 lastSyncDate 를 스냅샷(또는 그 사이 cron 이 쓴 더 늦은 값)으로 복원. */
@@ -162,24 +168,35 @@ async function main() {
   await getGarminClient();
   console.log("로그인 성공");
 
-  const snapshot = await snapshotLastSync(types);
+  const snapshot = await snapshotLastSync(types, to);
   console.log(
-    `lastSyncDate 스냅샷 (backfill 후 복원): ${[...snapshot].map(([t, d]) => `${t}=${ymdKST(d)}`).join(", ") || "(없음)"}`,
+    `lastSyncDate 스냅샷 (backfill 후 복원 기준): ${[...snapshot].map(([t, d]) => `${t}=${ymdKST(d)}`).join(", ")}`,
   );
 
-  const failures: { chunk: Chunk; types: DataType[] }[] = [];
+  // Codex P2: 실패한 타입은 그 청크에서 멈춘다. 재개 명령은 from ~ 실패 청크 end 전체.
+  const stopped: { chunk: Chunk; types: DataType[] }[] = [];
+  let active: DataType[] = [...types];
   for (const chunk of chunks) {
-    const failed = await runChunk(chunk, types, snapshot);
-    if (failed.length > 0) failures.push({ chunk, types: failed });
+    if (active.length === 0) {
+      console.log(`[chunk ${chunk.index}] 남은 활성 타입 없음 — 중단`);
+      break;
+    }
+    const failed = await runChunk(chunk, active, snapshot);
+    if (failed.length > 0) {
+      stopped.push({ chunk, types: failed });
+      active = stopFailedTypes(active, failed);
+      console.warn(`[chunk ${chunk.index}] ${failed.join(", ")} 은(는) 여기서 멈춤 (더 오래된 청크 건너뜀)`);
+    }
   }
 
   console.log("\n=== 결과 ===");
-  if (failures.length === 0) {
+  if (stopped.length === 0) {
     console.log("모든 청크 성공");
   } else {
-    for (const f of failures) {
+    console.log("실패한 타입은 실패 청크부터 --from 까지 다시 돌려야 커버 범위가 이어집니다:");
+    for (const f of stopped) {
       console.log(
-        `실패: --from=${ymdKST(f.chunk.start)} --to=${ymdKST(f.chunk.end)} --types=${f.types.join(",")}`,
+        `재개: npm run backfill:history -- --from=${ymdKST(from)} --to=${ymdKST(f.chunk.end)} --types=${f.types.join(",")}`,
       );
     }
   }
@@ -192,7 +209,7 @@ async function main() {
       `${m.dataType}: oldestFetched=${m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null"} coveredThrough=${m.coveredThroughDate ? ymdKST(m.coveredThroughDate) : "null"} lastSyncDate=${ymdKST(m.lastSyncDate)}`,
     );
   }
-  return failures.length === 0 ? 0 : 2;
+  return stopped.length === 0 ? 0 : 2;
 }
 
 main()
