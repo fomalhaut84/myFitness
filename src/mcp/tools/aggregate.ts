@@ -30,8 +30,12 @@ function ymdToUtc(ymd: string): Date {
   return new Date(Date.UTC(y, m - 1, d));
 }
 
+/** 합성 UTC 자정 Date → YYYY-MM-DD. (instant 가 아니라 KST 날짜의 요일 산술용 값이라 UTC getter 가 맞다.) */
 function utcToYmd(d: Date): string {
-  return d.toISOString().slice(0, 10);
+  const y = d.getUTCFullYear();
+  const m = String(d.getUTCMonth() + 1).padStart(2, "0");
+  const day = String(d.getUTCDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
 }
 
 /** ISO 주의 월요일 (KST 날짜 문자열). */

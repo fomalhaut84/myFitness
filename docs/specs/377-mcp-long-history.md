@@ -68,17 +68,17 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
 - [ ] **F1 상한 상수화**: `src/mcp/tools/constants.ts` 에 `MAX_QUERY_DAYS = 3650` (10년). `server.ts` 의 `days`/`windowDays` 스키마 `max(365)` 전부 → `max(MAX_QUERY_DAYS)`. `pace-progression.ts` · `race-prediction.ts` 핸들러 clamp 도 상수 사용. `get_calendar_summary` 의 90 은 유지 (일자별 한 줄 도구라 목적이 다름 — description 에 명시).
 - [ ] **F2 집계 granularity**: `get_activities` · `get_sleep` · `get_heart_rate` · `get_daily_stats` · `get_body_composition` 에 `granularity?: "daily" | "weekly" | "monthly"` 추가.
   - 생략 시 자동: `days ≤ 120` → daily, `≤ 730` → weekly, 그 외 monthly. 명시하면 그대로.
-  - 응답 최상단에 `{ granularity, from, to, rows: [...] }` 로 감싼다 (daily 도 동일 envelope — AI 가 항상 같은 형태를 본다). **현재 daily 응답은 배열 그대로**이므로 envelope 도입은 daily 에도 적용하되, 기존 필드는 그대로 유지.
+  - 응답을 `{ granularity, from, to, days, count, records: [...], _context? }` 로 감싼다 (daily 도 동일 envelope — AI 가 항상 같은 형태를 본다). 기존 `get_sleep`/`get_daily_stats` 의 `records` 키를 그대로 쓰고, 배열만 돌려주던 도구도 같은 envelope 로 통일. 기존 레코드 필드는 유지.
   - 집계 규칙 (`src/mcp/tools/aggregate.ts`, 순수 함수 · 불변):
     - 버킷 라벨은 **KST** 기준. weekly = ISO 주 (월요일 시작) `YYYY-Www` + `weekStart`, monthly = `YYYY-MM`.
     - 숫자 필드는 null 제외 평균, 소수 1자리. `count` (레코드 수) 포함.
     - 체중: `avg` 외에 `min`/`max` 추가 (컨디션 최고 시기 탐색용).
     - 활동: 버킷 × activityType 별 `{ count, totalDistanceKm, totalDurationMin, avgPace (거리 가중: 총시간/총거리), avgHR (시간 가중), longestKm, avgVo2maxEstimate }`. `type` 필터는 그대로 적용.
     - 수면/심박/일일: 시각 필드(`sleepStart/End`) 와 문자열 필드는 집계에서 제외.
-- [ ] **F3 `get_data_coverage` 도구 신설**: 인자 없음. dataType 별 `{ oldest, newest, count }` 를 **실제 레코드**(`firstRecordDate` 와 동일 기준) 로 반환 + `SyncMetadata` 커버 범위(`oldestFetchedDate`/`coveredThroughDate`) 병기 + 러닝 활동은 별도 count. 날짜 라벨 KST (#364 규칙).
+- [ ] **F3 `get_data_coverage` 도구 신설**: 인자 없음. dataType 별 `{ oldest, newest, count }` 를 **실제 레코드**(`firstRecordDate` 와 동일 기준) 로 반환 + `SyncMetadata` 커버 범위(`oldestFetchedDate`/`coveredThroughDate`) 병기 + 러닝 활동은 별도 count. 날짜 라벨 KST (#364 규칙). MCP 번들이 `garmin-connect` 를 끌어오지 않도록 `sync.ts` 를 import 하지 않고 prisma aggregate 로 직접 조회.
 - [ ] **F4 시스템 프롬프트**: "전체 기록 / 역대 / 가장 좋았던 때 / N년 전" 류 질문은 ① `get_data_coverage` 로 범위 확인 → ② `days` 를 그 범위로 설정 → ③ 장기면 `granularity` 로 집계 조회 후 필요한 구간만 daily 로 재조회, 순서를 명시. 도구 description 에 상한(`최대 3650`) 과 granularity 자동 규칙을 적는다. "도구 한도" 라는 표현 대신 "보유 범위 밖" 으로 답하도록 지시.
 - [ ] **F5 backfill 스크립트** `scripts/backfill-history.ts` (npm `backfill:history`): `--from=YYYY-MM-DD` 필수, `--to=` 생략 시 현재 `oldestFetchedDate - 1일` (없으면 어제), `--types=` 생략 시 user_profile 제외 전 타입. **최신 → 과거** 순으로 365일 청크 (LT 엔드포인트 366일 제한과 동일 여유 · 기존 초기 싱크 검증 범위) 로 `syncAll({ startDate, endDate, dataTypes })` 호출. 청크 실패 시 1회 재시도 후 다음 청크 진행, 종료 시 실패 청크 목록 출력. 진행 로그에 청크 번호/범위/소요 시간.
-- [ ] **F6 회귀 검증** `scripts/verify-mcp-long-history.ts` (npm test 에 추가): ① `aggregate.ts` fixture 검증 (주 경계 KST · 월 경계 · null 제외 · 거리 가중 페이스) ② `src/mcp/server.ts` 소스 스캔 — `.max(365)` 리터럴 0건, `Math.min(365` 0건 (상수 우회 방지) ③ auto granularity 경계값 (120/121, 730/731).
+- [ ] **F6 회귀 검증** `scripts/verify-mcp-long-history.ts` (npm test 에 추가): ① `aggregate.ts` fixture 검증 (주 경계 KST · 월 경계 · null 제외 · 거리 가중 페이스) ② `src/mcp/**` 소스 스캔 — `.max(365)` 리터럴 0건, `Math.min(365` 0건 (상수 우회 방지) ③ auto granularity 경계값 (120/121, 730/731) ④ backfill 청크 순서·인접·경계.
 
 ## 4. 기술 설계
 
@@ -95,7 +95,7 @@ AI 가 말한 "VO2max 는 2026-04-27 부터 기록" 은 `get_metric_history` 가
 | `src/lib/ai/system-prompt.ts` | F4 가이드 |
 | `scripts/backfill-history.ts` · `scripts/verify-mcp-long-history.ts` | 신설 |
 | `package.json` | `backfill:history`, `verify:mcp-long-history` (test 체인에 추가) |
-| `src/lib/garmin/sync.ts` | `firstRecordDate` export (coverage 재사용) — 로직 변경 없음 |
+| `src/lib/garmin/backfill-chunks.ts` | 신설 — `buildBackfillChunks` (순수 함수, 최신→과거 365일 청크) |
 
 ### 4.2 집계 함수 시그니처
 
@@ -112,7 +112,8 @@ function aggregateActivities(rows: readonly ActivityRow[], g: Granularity): Acti
 ### 4.3 응답 envelope
 
 ```json
-{ "granularity": "monthly", "from": "2025-04-01", "to": "2026-09-17", "days": 535, "rows": [ { "bucket": "2025-04", "count": 12, "weight": { "avg": 86.4, "min": 85.9, "max": 87.1 } } ] }
+{ "granularity": "monthly", "from": "2025-04-01", "to": "2026-09-17", "days": 535, "count": 18,
+  "records": [ { "bucket": "2025-04", "from": "2025-04-01", "to": "2025-04-29", "count": 12, "weight": { "avg": 86.4, "min": 85.9, "max": 87.1 }, "bmi": 27.1 } ] }
 ```
 
 ### 4.4 `get_data_coverage` 응답
