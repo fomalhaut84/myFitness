@@ -1,28 +1,10 @@
 import prisma from "@/lib/prisma";
-import { formatDateLocal } from "@/lib/format";
-import { todayKST, todayKSTString, ymdKST } from "@/lib/garmin/utils";
+import { daysAgoKST, todayKSTString, ymdKST } from "@/lib/garmin/utils";
+import { kstDayRange, kstInstant, startOfMonthYmd } from "@/lib/history/buckets";
 import { startOfWeekKST, weekStartKST, parseHistoryYmd } from "@/lib/date";
 import LifestyleClient from "./lifestyle-client";
 
 export const dynamic = "force-dynamic";
-
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
-
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function kstDayRangeFor(ymd: string): { start: Date; end: Date } {
-  const [y, m, d] = ymd.split("-").map(Number);
-  const kstMidnightUTC = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
-  return {
-    start: new Date(kstMidnightUTC),
-    end: new Date(kstMidnightUTC + 24 * 60 * 60 * 1000),
-  };
-}
 
 export default async function LifestylePage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -39,9 +21,10 @@ export default async function LifestylePage(props: {
   // "이번 주 진행" 과 동일한 주 경계를 쓰도록 통일.
   const thisWeekStart = startOfWeekKST(now);
   const lastWeekStart = weekStartKST(1, now);
-  const twentyEightDaysAgo = daysAgoLocal(27);
-  const fourteenDaysAgo = daysAgoLocal(14);
-  const monthStart = new Date(now.getFullYear(), now.getMonth(), 1);
+  // #393 (M15-1, #365 페이지 인라인 흡수): 서버 로컬 자정 대신 KST 헬퍼. 서버가 KST 면 무변화.
+  const twentyEightDaysAgo = daysAgoKST(27);
+  const fourteenDaysAgo = daysAgoKST(14);
+  const monthStart = kstInstant(startOfMonthYmd(todayYmd));
 
   // 이번 주 / 지난 주 활동
   const [thisWeekActivities, lastWeekActivities] = await Promise.all([
@@ -82,7 +65,7 @@ export default async function LifestylePage(props: {
     select: { startTime: true },
   });
   const monthlyActiveDates = Array.from(
-    new Set(monthlyActivities.map((a) => formatDateLocal(a.startTime)))
+    new Set(monthlyActivities.map((a) => ymdKST(a.startTime)))
   );
 
   // 꾸준함 (28일)
@@ -91,7 +74,7 @@ export default async function LifestylePage(props: {
     select: { startTime: true },
   });
   const last28ActiveDates = new Set(
-    last28Activities.map((a) => formatDateLocal(a.startTime))
+    last28Activities.map((a) => ymdKST(a.startTime))
   );
 
   // 수면 규칙성 (14일)
@@ -105,9 +88,7 @@ export default async function LifestylePage(props: {
   // 사전 리뷰 P1-2: 서버 로컬 TZ 대신 todayKST() 로 진짜 KST midnight instant 사용
   // (recalculateCalorieBalance 의 KST-day 집계와 정합).
   // #330: `?date=` 파라미터가 오늘 아니면 그 날짜 로그 fetch (편집 UX 도 그 날짜에 적용).
-  const { start: dayStart, end: dayEnd } = isToday
-    ? { start: todayKST(), end: new Date(todayKST().getTime() + 24 * 60 * 60 * 1000) }
-    : kstDayRangeFor(selectedYmd);
+  const { start: dayStart, end: dayEnd } = kstDayRange(selectedYmd);
   const todayFoodLogs = await prisma.foodLog.findMany({
     where: { date: { gte: dayStart, lt: dayEnd } },
     orderBy: { createdAt: "asc" },
@@ -132,7 +113,7 @@ export default async function LifestylePage(props: {
     const endHour = end.getHours() + end.getMinutes() / 60;
 
     return {
-      date: formatDateLocal(r.date),
+      date: ymdKST(r.date),
       sleepStartHour: startHour,
       wakeUpHour: endHour,
     };
@@ -143,8 +124,8 @@ export default async function LifestylePage(props: {
       thisWeek={summarizeWeek(thisWeekActivities, thisWeekStart)}
       lastWeek={summarizeWeek(lastWeekActivities, lastWeekStart)}
       monthlyActiveDates={monthlyActiveDates}
-      year={now.getFullYear()}
-      month={now.getMonth() + 1}
+      year={Number(todayYmd.slice(0, 4))}
+      month={Number(todayYmd.slice(5, 7))}
       consistencyActiveDays={last28ActiveDates.size}
       sleepEntries={sleepEntries}
       selectedYmd={selectedYmd}

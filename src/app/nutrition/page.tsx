@@ -17,25 +17,15 @@ import NutritionFoodList, {
 import NutritionDateNav from "@/components/nutrition/NutritionDateNav";
 import { sanitizeFoodItemBreakdown } from "@/lib/nutrition/food-items";
 import { parseHistoryYmd } from "@/lib/date";
+import { kstDayRange } from "@/lib/history/buckets";
 
 export const dynamic = "force-dynamic";
 
-const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
 // Codex P2 (PR #300): daysWithProtein 이 이 미만이면 표본이 얇아 오해 위험 → risk assessor 에
 // null 로 전달. weight-loss MCP tool 과 동일 정책.
 const MIN_PROTEIN_DAYS_FOR_ASSESSMENT = 4;
 // Codex P2 (PR #300 6회차): 결손 데이터도 동일 gate. 1-2일치로 7일 평균을 대체 못 함.
 const MIN_DEFICIT_DAYS_FOR_ASSESSMENT = 4;
-
-function kstDayRange(ymd?: string): { start: Date; end: Date } {
-  const target = ymd ?? todayKSTString();
-  const [y, m, d] = target.split("-").map(Number);
-  const kstMidnightUTC = Date.UTC(y, m - 1, d) - KST_OFFSET_MS;
-  return {
-    start: new Date(kstMidnightUTC),
-    end: new Date(kstMidnightUTC + 24 * 60 * 60 * 1000),
-  };
-}
 
 export default async function NutritionPage(props: {
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
@@ -50,7 +40,7 @@ export default async function NutritionPage(props: {
   const selectedYmd = parseHistoryYmd(rawDate, todayKstYmd) ?? todayKstYmd;
   const isToday = selectedYmd === todayKstYmd;
   const { start: selectedStart, end: selectedEnd } = kstDayRange(selectedYmd);
-  const { start: todayStart, end: todayEnd } = kstDayRange();
+  const { start: todayStart, end: todayEnd } = kstDayRange(todayKstYmd);
   // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 필요 → 8일치 fetch.
   // trend/donut UI 는 today 포함 7일 (today-6..today) 유지 — 마지막 7일 slice 로 노출.
   const eightDaysAgo = new Date(todayStart);
