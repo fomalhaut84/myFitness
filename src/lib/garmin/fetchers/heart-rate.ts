@@ -13,56 +13,59 @@ export async function syncHeartRate(
   let skippedEmpty = 0;
   const dates = dateRange(startDate, endDate);
 
-  for (const date of dates) {
-    try {
-      const hrData = await withRateLimit(() => client.getHeartRate(date));
-
-      if (!hrData) continue;
-
-      const raw = hrData as unknown as Record<string, unknown>;
-
-      // #383: restingHeartRate 도 heartRateValues 도 없으면 워치 미착용 — stub 저장 안 함 (HRV 조회도 생략).
-      if (isEmptyHeartRate(raw)) {
-        skippedEmpty++;
-        continue;
-      }
-
-      const dayDate = startOfDay(date);
-
-      // getSleepData에서 HRV 정보 가져옴
-      let hrvStatus: number | null = null;
+  try {
+    for (const date of dates) {
       try {
-        const sleepData = await client.getSleepData(date);
-        hrvStatus = sleepData?.avgOvernightHrv ?? null;
-      } catch {
-        // HRV 데이터 없음
+        const hrData = await withRateLimit(() => client.getHeartRate(date));
+
+        if (!hrData) continue;
+
+        const raw = hrData as unknown as Record<string, unknown>;
+
+        // #383: restingHeartRate 도 heartRateValues 도 없으면 워치 미착용 — stub 저장 안 함 (HRV 조회도 생략).
+        if (isEmptyHeartRate(raw)) {
+          skippedEmpty++;
+          continue;
+        }
+
+        const dayDate = startOfDay(date);
+
+        // getSleepData에서 HRV 정보 가져옴
+        let hrvStatus: number | null = null;
+        try {
+          const sleepData = await client.getSleepData(date);
+          hrvStatus = sleepData?.avgOvernightHrv ?? null;
+        } catch {
+          // HRV 데이터 없음
+        }
+
+        const data = {
+          restingHR: toInt(raw.restingHeartRate),
+          avgHR: extractAvgHR(raw),
+          maxHR: toInt(raw.maxHeartRate),
+          minHR: toInt(raw.minHeartRate),
+          hrvStatus,
+          hrvBaseline: null as number | null,
+          rawData: raw as Prisma.InputJsonValue,
+        };
+
+        await prisma.heartRateRecord.upsert({
+          where: { date: dayDate },
+          update: data,
+          create: { date: dayDate, ...data },
+        });
+
+        synced++;
+      } catch (error) {
+        if (isNoDataError(error)) continue;
+        throw error;
       }
-
-      const data = {
-        restingHR: toInt(raw.restingHeartRate),
-        avgHR: extractAvgHR(raw),
-        maxHR: toInt(raw.maxHeartRate),
-        minHR: toInt(raw.minHeartRate),
-        hrvStatus,
-        hrvBaseline: null as number | null,
-        rawData: raw as Prisma.InputJsonValue,
-      };
-
-      await prisma.heartRateRecord.upsert({
-        where: { date: dayDate },
-        update: data,
-        create: { date: dayDate, ...data },
-      });
-
-      synced++;
-    } catch (error) {
-      if (isNoDataError(error)) continue;
-      throw error;
     }
-  }
-
-  if (skippedEmpty > 0) {
-    console.log(`[heart-rate] 빈 날(워치 미착용) ${skippedEmpty}건 skip`);
+  } finally {
+    // 사전 리뷰 info 3: 중간에 throw 돼도 그때까지의 skip 건수는 남긴다 (진단용).
+    if (skippedEmpty > 0) {
+      console.log(`[heart-rate] 빈 날(워치 미착용) ${skippedEmpty}건 skip`);
+    }
   }
 
   return synced;

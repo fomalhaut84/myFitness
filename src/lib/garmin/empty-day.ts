@@ -15,6 +15,10 @@ export const DAILY_SUMMARY_CORE_FIELDS = [
   "bodyBatteryHighestValue",
 ] as const;
 
+/**
+ * null/undefined/0 → "없음". 비수치 문자열("N/A" 등)도 없음으로 본다 — Garmin 은 숫자 필드를 숫자 또는 null 로만
+ * 돌려주므로 그런 값은 데이터가 아니라고 판단한다 (사전 리뷰 info 2: 의도 명시).
+ */
 function isNullOrZero(v: unknown): boolean {
   if (v === null || v === undefined) return true;
   const n = Number(v);
@@ -41,26 +45,59 @@ export function isEmptyHeartRate(raw: Record<string, unknown>): boolean {
   return isNullOrZero(raw.restingHeartRate) && !hasValues;
 }
 
-/**
- * 기존 stub 행 정리용 where (scripts/cleanup-stub-days.ts). fetcher 의 skip 조건을 DB 컬럼으로 옮긴 것.
- * `estimatedIntakeCalories` 가 있는 행(워치는 안 찼지만 식단은 기록한 날)은 보호 — 칼로리 밸런스 이력이라 삭제하지 않는다.
- */
-export function emptyDailySummaryWhere() {
-  const nullOrZero = (field: "steps" | "restingHR" | "totalCalories" | "bodyBatteryHigh") => ({
-    OR: [{ [field]: null }, { [field]: 0 }],
-  });
+/** DailySummary 의 핵심 4개 밖 지표 컬럼 — 삭제 조건은 이것까지 전부 null 이어야 한다. */
+export const DAILY_SUMMARY_OTHER_METRIC_COLUMNS = [
+  "activeCalories",
+  "avgStress",
+  "bodyBattery",
+  "bodyBatteryLow",
+  "intensityMin",
+  "floorsClimbed",
+  "avgSpo2",
+  "lowestSpo2",
+  "avgRespiration",
+  "stressHighDuration",
+  "stressMediumDuration",
+  "stressLowDuration",
+  "bodyBatteryCharged",
+  "bodyBatteryDrained",
+  "estimatedIntakeCalories",
+  "availableCalories",
+  "calorieBalance",
+] as const;
+
+const coreNullOrZero = (field: "steps" | "restingHR" | "totalCalories" | "bodyBatteryHigh") => ({
+  OR: [{ [field]: null }, { [field]: 0 }],
+});
+
+/** fetcher 의 skip 조건을 DB 컬럼으로 옮긴 것 (핵심 4개 null/0). 삭제 조건이 아니라 "핵심 지표 없음" 진단용. */
+export function coreEmptyDailySummaryWhere() {
   return {
     AND: [
-      nullOrZero("steps"),
-      nullOrZero("restingHR"),
-      nullOrZero("totalCalories"),
-      nullOrZero("bodyBatteryHigh"),
-      { estimatedIntakeCalories: null },
+      coreNullOrZero("steps"),
+      coreNullOrZero("restingHR"),
+      coreNullOrZero("totalCalories"),
+      coreNullOrZero("bodyBatteryHigh"),
     ],
   };
 }
 
-/** HeartRateRecord 는 저장 컬럼이 전부 null 인 행만 (avgHR 은 heartRateValues 에서 파생). */
+/**
+ * 기존 stub 행 **삭제** 조건 (scripts/cleanup-stub-days.ts). fetcher 의 skip 조건보다 의도적으로 엄격하다
+ * (사전 리뷰 major 2): skip 은 다음 싱크에 복구되지만 deleteMany 는 되돌릴 수 없으므로, 핵심 4개뿐 아니라
+ * 나머지 지표 컬럼까지 전부 null 인 행만 지운다. `estimatedIntakeCalories`(식단 기록일) · `calorieBalance` 도 포함 —
+ * 워치는 안 찼지만 식단은 기록한 날은 칼로리 밸런스 이력이라 보호된다. 2019-06~2020-06 stub 은 전 컬럼 null 이라 그대로 잡힌다.
+ */
+export function emptyDailySummaryWhere() {
+  return {
+    AND: [
+      ...coreEmptyDailySummaryWhere().AND,
+      ...DAILY_SUMMARY_OTHER_METRIC_COLUMNS.map((col) => ({ [col]: null })),
+    ],
+  };
+}
+
+/** HeartRateRecord 는 저장 컬럼이 전부 null 인 행만 (avgHR 은 heartRateValues 에서 파생, hrvBaseline 은 미래 대비). */
 export function emptyHeartRateWhere() {
   return {
     restingHR: null,
@@ -68,5 +105,6 @@ export function emptyHeartRateWhere() {
     maxHR: null,
     minHR: null,
     hrvStatus: null,
+    hrvBaseline: null,
   };
 }

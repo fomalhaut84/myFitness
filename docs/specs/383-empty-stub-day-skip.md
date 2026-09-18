@@ -24,9 +24,12 @@ Garmin 은 데이터가 없는 날에도 `calendarDate` 가 있는 응답을 돌
 
 - [x] **F1** `syncDailySummaries`: 핵심 지표(`totalSteps` · `restingHeartRate` · `totalKilocalories` · `bodyBatteryHighestValue`)가
   전부 null/0 이면 저장하지 않고 skip (rawData 에도 남기지 않음). `privacyProtected === true` 는 인증 이상으로 분류해 **throw** (A11) —
-  미래 날짜 가드보다 앞에 둔다 (인증 이상은 stub 여부와 무관하게 실패여야 한다).
+  `calendarDate` 가드·미래 날짜 가드보다 앞에 둔다 (마스킹된 응답은 `calendarDate` 도 없을 수 있어 뒤에 두면 조용히 skip — 사전 리뷰 major 1).
+  메시지에 `unauthorized` 를 넣어 `isGarminAuthError` 패턴에 걸리게 한다 (기존 관리자 알림 경로 재사용).
 - [x] **F2** `syncHeartRate`: `restingHeartRate` 와 `heartRateValues` 가 모두 없으면 skip (HRV 용 `getSleepData` 호출도 생략).
-- [x] **F3** `scripts/cleanup-stub-days.ts`: dry-run 기본, `--apply` 로 실행, 삭제 건수·날짜 범위 출력. 두 테이블 삭제는 한 트랜잭션.
+- [x] **F3** `scripts/cleanup-stub-days.ts`: dry-run 기본, `--apply` 로 실행, `--from/--to` 범위, 삭제 건수·날짜 범위 출력. 두 테이블 삭제는 한 트랜잭션.
+  삭제 조건은 skip 조건보다 **엄격** (§3.2).
+- [x] **F5 (사전 리뷰 major 3)** `get_weight_loss_status` 연속 결손 일수를 행 배열이 아니라 **달력 날짜 기준**으로 (§3.3).
 - [x] **F4** `scripts/verify-empty-day-skip.ts` (npm test 체인): 실측 stub fixture 로 판정, where 빌더, 소스 스캔.
 
 판정·where 는 `src/lib/garmin/empty-day.ts` (순수 모듈) 한 곳에 둔다 — fetcher skip 조건과 정리 스크립트 삭제 조건이 같은 정의를 쓴다.
@@ -38,11 +41,15 @@ Garmin 은 데이터가 없는 날에도 `calendarDate` 가 있는 응답을 돌
 걸음만 있는 날(심박 없이 착용), BMR 만 찍힌 날(총칼로리) 은 **저장**한다. 스트레스처럼 핵심 밖 필드만 있는 응답은 관찰된 적 없어
 핵심 4개로 판정한다. `0` 은 null 과 같이 본다 (Garmin 이 0 으로 채우는 변형 대비).
 
-### 3.2 정리 스크립트는 식단 기록일을 보호
+### 3.2 삭제 조건은 skip 조건보다 엄격하다
 
-`DailySummary` 는 M4-2 칼로리 밸런스(`estimatedIntakeCalories`/`calorieBalance`) 의 저장소이기도 하다. 워치는 안 찼지만
-식단을 기록한 날은 stub 처럼 보여도 삭제하지 않는다 (`estimatedIntakeCalories IS NULL` 조건). 2019-06~2020-06 구간엔 식단 기록이
-없으므로 실제 삭제 대상은 동일하다.
+skip 은 다음 싱크에 복구되지만 `deleteMany` 는 되돌릴 수 없다. 그래서 정리 스크립트는 핵심 4개뿐 아니라 **나머지 지표 컬럼과
+칼로리 밸런스 컬럼(`estimatedIntakeCalories` · `availableCalories` · `calorieBalance`)까지 전부 null 인 행만** 지운다
+(`emptyDailySummaryWhere`, 사전 리뷰 major 2). 워치는 안 찼지만 식단을 기록한 날은 밸런스 이력이라 자동으로 보호된다.
+HeartRateRecord 는 `hrvBaseline` 까지 포함해 저장 컬럼 전부 null.
+
+dry-run 은 "핵심 4개는 비었지만 다른 지표가 있는 행"(= 삭제 대상에서 빠진 행)을 따로 세어 경고한다. `--from/--to` 로 범위를
+못박는 것을 권장 — 2019-06~2020-06 stub 은 전 컬럼 null 이라 엄격 조건으로도 그대로 잡힌다.
 
 ### 3.3 알려진 트레이드오프 — 미착용일 + 식단 기록
 
@@ -53,11 +60,16 @@ F1 이후 워치를 안 찬 날엔 `DailySummary` 행이 생기지 않는다. �
 **수용** — 착용하지 않은 날의 밸런스 행을 위해 Garmin stub 을 유지하는 것보다 coverage 정확성이 우선. 필요해지면
 식단 기록 시 DailySummary 행을 만드는 쪽(FoodLog 경로)에서 처리한다 (후속).
 
+**같은 전제를 깨는 지점 하나를 이번에 고쳤다 (사전 리뷰 major 3).** `get_weight_loss_status` 의 연속 결손/750kcal 초과 연속일은
+조회된 **행 배열**을 역순으로 돌며 `calorieBalance === null` 을 "끊김" 으로 썼다 — stub 행이 있어야 성립하는 불변식이라, 미착용일에
+행이 없어지면 구멍을 건너뛰어 streak 이 과대 계산된다 (감량 리스크 경고에 직접 노출). `countConsecutiveBelow` 로 오늘부터 **달력
+날짜**를 역순 순회해 행이 없는 날도 끊기게 했다. 회귀: verify [6].
+
 ## 4. 배포 후 절차 (프로덕션 1회)
 
 ```bash
-npx tsx scripts/cleanup-stub-days.ts            # dry-run: 대상 건수·날짜 범위 확인 (기대: 2019-06-01 ~ 2020-06-xx, 식단 기록 없음)
-npx tsx scripts/cleanup-stub-days.ts --apply    # 삭제 → "정리 후 최초 기록" 이 2020-06 으로 나오는지 확인
+npx tsx scripts/cleanup-stub-days.ts --from=2019-06-01 --to=2020-06-30            # dry-run: 대상 건수·날짜 범위 · "핵심만 빈 행" 경고 0건 확인
+npx tsx scripts/cleanup-stub-days.ts --from=2019-06-01 --to=2020-06-30 --apply    # 삭제 → "정리 후 최초 기록" 이 2020-06 으로 나오는지 확인
 ```
 
 이후 `get_data_coverage` 의 `daily_stats.oldest` / `heart_rate.oldest` 가 2020-06 으로 바뀐다. `SyncMetadata.oldestFetchedDate`
@@ -68,3 +80,10 @@ npx tsx scripts/cleanup-stub-days.ts --apply    # 삭제 → "정리 후 최초 
 - SleepRecord (이미 `sleepStartTimestampGMT` 없으면 skip).
 - backfill 스크립트 변경 없음.
 - A11 의 상위 항목인 토큰 권한/복원력(D-2) 은 별도 이슈.
+
+## 6. 사전 리뷰 반영 (pr-review-toolkit 1회 · critical 0 / major 3 / info 3)
+
+- **major 1** privacy 검사가 `calendarDate` 가드 뒤라 마스킹 응답에서 도달 불가 → 가드 앞으로 + verify 순서 어서션.
+- **major 2** 삭제 조건이 skip 조건과 같아 다른 지표가 있는 행도 지울 수 있었고 범위 인자가 없었음 → 전 지표 컬럼 null 조건 · `--from/--to` · dry-run 경고.
+- **major 3** `get_weight_loss_status` streak 이 stub 행에 의존 → 달력 날짜 기준 `countConsecutiveBelow` + 회귀 테스트.
+- **info 1** privacy 메시지에 `unauthorized` 포함 (인증 실패 알림 경로 재사용). **info 2** `isNullOrZero` 의 비수치 문자열 처리 의도 주석. **info 3** skip 건수 로그를 `finally` 로.
