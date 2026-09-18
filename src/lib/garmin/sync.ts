@@ -2,6 +2,7 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
+import { advanceLastSyncDateWhere } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
 import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { syncActivities } from "./fetchers/activities";
@@ -134,11 +135,11 @@ async function updateSyncMetadata(
   const now = new Date();
 
   // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
+  // #381: update 경로는 lastSyncDate 를 건드리지 않는다 — 아래 조건부 updateMany 가 단조 증가로 전진.
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
       lastSyncAt: now,
-      lastSyncDate: endDate,
       syncCount: { increment: syncCount },
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -151,6 +152,13 @@ async function updateSyncMetadata(
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
     },
+  });
+
+  // #381: lastSyncDate 단조 증가 (sync-metadata.ts). 과거 범위 명시 싱크(backfill 청크 · /api/sync 옛 범위)가
+  // 증분 커서를 뒤로 끌지 못하고, backfill 과 cron 이 경쟁해도 늦은 쪽이 남는다 (atomic 조건부 UPDATE).
+  await prisma.syncMetadata.updateMany({
+    where: advanceLastSyncDateWhere(dataType, endDate),
+    data: { lastSyncDate: endDate },
   });
 
   // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.

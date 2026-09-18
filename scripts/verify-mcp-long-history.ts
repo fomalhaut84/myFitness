@@ -13,6 +13,7 @@
  * 9. Codex 4회차 P2: 선택 타입 중 null 마커가 있으면 --to 는 어제 기준
  * 10. Codex 5회차: P1 타입별 순차 싱크 + 즉시 복원 (옛 lastSyncDate 노출 창 최소화), P2 행 없는 타입도 null 마커
  * 11. Codex 6회차 P2: get_blood_pressure 도 400행 초과 시 집계 승격, coverage 문구가 기록 하한과 fetch 하한을 구분
+ * 12. #381 (릴리즈 PR #380 Codex P2): updateSyncMetadata 의 lastSyncDate 단조 증가 — 과거 청크가 커서를 끌어내리지 못함
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -45,6 +46,10 @@ import {
   typesWithoutSuccessfulSync,
 } from "../src/lib/garmin/backfill-chunks";
 import { ymdKST } from "../src/lib/garmin/utils";
+import {
+  advanceLastSyncDateWhere,
+  resolveNextLastSyncDate,
+} from "../src/lib/garmin/sync-metadata";
 
 let failed = 0;
 function check(label: string, condition: boolean, detail?: unknown): void {
@@ -281,6 +286,24 @@ check("스크립트가 성공 타입을 succeeded 에 누적한다 (소스 확�
 // Codex 5회차 P1: 여러 타입을 한 syncAll 로 돌리면 먼저 끝난 타입의 옛 lastSyncDate 가 수십 분 노출된다
 check("청크 안에서 syncAll 은 타입 하나씩 호출한다 (소스 확인)", /dataTypes: \[dataType\]/.test(backfillSrc) && !/dataTypes: \[\.\.\.types\]/.test(backfillSrc));
 check("타입 싱크 직후 그 타입만 즉시 복원한다 (소스 확인)", /finally \{\s*await restoreLastSync\(nextState, \[dataType\]\)/.test(backfillSrc));
+
+// --- 12. #381 회귀: updateSyncMetadata 가 lastSyncDate 를 무조건 덮어쓰면 backfill 청크가 커서를 수년 뒤로 끌고,
+//     backfill/cron 경쟁 시 cron 전진분이 스냅샷 복원에 지워진다. 단조 증가 predicate + 소스 스캔.
+console.log("\n[12] lastSyncDate 단조 증가 (#381)");
+{
+  const today = kst("2026-09-18");
+  const where = advanceLastSyncDateWhere("sleep", today);
+  check("predicate: dataType + lastSyncDate < endDate", where.dataType === "sleep" && where.lastSyncDate.lt.getTime() === today.getTime(), where);
+  check("과거 청크 end(2020) 는 오늘 커서를 못 끌어내림", resolveNextLastSyncDate(today, kst("2020-05-30")).getTime() === today.getTime());
+  check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today)) === "2026-09-18");
+  check("같으면 그대로", resolveNextLastSyncDate(today, today).getTime() === today.getTime());
+  check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today).getTime() === today.getTime());
+  const syncSrc = readFileSync(join(__dirname, "..", "src", "lib", "garmin", "sync.ts"), "utf8");
+  const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(syncSrc)?.[1] ?? "";
+  check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
+  check("updateSyncMetadata 가 advanceLastSyncDateWhere 로 조건부 전진", /updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, endDate\),\s*data: \{ lastSyncDate: endDate \}/.test(syncSrc));
+}
+
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);
