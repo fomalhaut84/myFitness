@@ -65,6 +65,15 @@ async function getStartDate(dataType: DataType): Promise<Date> {
   });
 
   if (meta?.lastSyncDate) {
+    // Codex P2 (PR #386 3회차): 커서가 미래(예전 /api/sync 미래 endDate)면 lastSyncDate+1 > endDate 로 skip 돼
+    // updateSyncMetadata 의 복구 분기에 닿지 못한다 → 오늘부터 다시 싱크해 그 성공이 커서를 오늘로 끌어내리게 한다.
+    const today = todayKST();
+    if (meta.lastSyncDate.getTime() > today.getTime()) {
+      console.warn(
+        `[${dataType}] lastSyncDate 가 미래 (${formatDate(meta.lastSyncDate)}) — 오늘부터 재싱크해 커서 복구`,
+      );
+      return today;
+    }
     // 마지막 싱크 날짜 다음 날부터
     const next = new Date(meta.lastSyncDate);
     next.setDate(next.getDate() + 1);

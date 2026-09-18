@@ -54,3 +54,5 @@ cron/수동 싱크가 같은 타입의 `lastSyncDate` 를 오늘로 전진시키
 - **2회차 P1** — 경계 거부·clamp 는 **새 쓰기**만 막는다. 예전 `/api/sync` 가 이미 미래로 남긴 행은 `lastSyncDate < cursor` 가 영영 매칭되지 않아
   cron 이 복구하지 못한다 → predicate 에 `OR lastSyncDate > today` 를 넣어 **다음 싱크가 스스로 끌어내린다** (마이그레이션 불필요 · atomic 유지).
   `resolveNextLastSyncDate(current, cursor, today)` 도 같은 규칙. 회귀: verify [12].
+- **3회차 P2** — 커서가 미래인 행은 startDate 없는 `syncAll` 에서 `getStartDate` 가 미래+1 을 돌려 `startDate > endDate` 로 skip 되므로 복구 분기에
+  닿지 않는다 → `getStartDate` 가 미래 커서를 감지하면 **오늘**을 돌려 싱크가 돌고 그 성공이 커서를 오늘로 끌어내린다. P2 → 반영 후 종료. 회귀: verify [12].

@@ -319,6 +319,10 @@ console.log("\n[12] lastSyncDate 단조 증가 (#381)");
   check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
   check("updateSyncMetadata 가 clamp 된 cursor + today 로 advanceLastSyncDateWhere 조건부 전진", /const cursor = clampCursorToToday\(endDate, today\);[\s\S]*?updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, cursor, today\),\s*data: \{ lastSyncDate: cursor \}/.test(fnSrc));
   check("create 경로도 clamp (KST 자정 today)", /lastSyncDate: clampCursorToToday\(endDate, today\)/.test(fnSrc));
+  // Codex P2 3회차: 미래 커서면 getStartDate 가 lastSyncDate+1 을 돌려 startDate > endDate 로 skip → 복구 분기 미도달 → 오늘부터 재싱크
+  const gsStart = syncSrc.indexOf("async function getStartDate");
+  const gsSrc = syncSrc.slice(gsStart, syncSrc.indexOf("async function firstRecordDate"));
+  check("getStartDate: 미래 커서면 오늘을 돌려 싱크가 실제로 돌게 (skip 우회 방지)", gsStart >= 0 && /lastSyncDate\.getTime\(\) > today\.getTime\(\)[\s\S]*?return today;/.test(gsSrc));
 }
 
 if (failed > 0) {
