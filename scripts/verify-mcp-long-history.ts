@@ -48,6 +48,7 @@ import {
 import { ymdKST } from "../src/lib/garmin/utils";
 import {
   advanceLastSyncDateWhere,
+  clampCursorToToday,
   resolveNextLastSyncDate,
 } from "../src/lib/garmin/sync-metadata";
 
@@ -298,6 +299,12 @@ console.log("\n[12] lastSyncDate 단조 증가 (#381)");
   check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today)) === "2026-09-18");
   check("같으면 그대로", resolveNextLastSyncDate(today, today).getTime() === today.getTime());
   check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today).getTime() === today.getTime());
+  // Codex P1 (PR #386): 미래 endDate 가 커서를 미래로 밀면 단조 증가 때문에 되돌릴 수 없다 → 오늘로 clamp + /api/sync 거부
+  check("미래 endDate 는 오늘로 clamp", clampCursorToToday(kst("2027-01-01"), today).getTime() === today.getTime());
+  check("오늘/과거 endDate 는 그대로", clampCursorToToday(today, today).getTime() === today.getTime() && ymdKST(clampCursorToToday(kst("2026-09-10"), today)) === "2026-09-10");
+  check("clamp 된 커서로 전진 판정 → 미래 endDate 로는 오늘 커서를 넘지 못함", resolveNextLastSyncDate(today, clampCursorToToday(kst("2027-01-01"), today)).getTime() === today.getTime());
+  const routeSrc = readFileSync(join(__dirname, "..", "src", "app", "api", "sync", "route.ts"), "utf8");
+  check("/api/sync 가 미래 endDate 를 400 으로 거부", /parsed\.getTime\(\) > todayKST\(\)\.getTime\(\)[\s\S]*?status: 400/.test(routeSrc));
   // 사전 리뷰 info 2: markError/markSyncing 의 upsert 도 같은 모양이라 파일 전체에 앵커링하면 함수 순서가 바뀔 때
   // 무증상 통과가 된다 → updateSyncMetadata 함수 본문으로 범위를 좁힌다.
   const syncSrc = readFileSync(join(__dirname, "..", "src", "lib", "garmin", "sync.ts"), "utf8");
@@ -307,7 +314,8 @@ console.log("\n[12] lastSyncDate 단조 증가 (#381)");
   const fnSrc = syncSrc.slice(fnStart, fnEnd);
   const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(fnSrc)?.[1] ?? "";
   check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
-  check("updateSyncMetadata 가 advanceLastSyncDateWhere 로 조건부 전진", /updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, endDate\),\s*data: \{ lastSyncDate: endDate \}/.test(fnSrc));
+  check("updateSyncMetadata 가 clamp 된 cursor 로 advanceLastSyncDateWhere 조건부 전진", /const cursor = clampCursorToToday\(endDate, todayKST\(\)\);[\s\S]*?updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, cursor\),\s*data: \{ lastSyncDate: cursor \}/.test(fnSrc));
+  check("create 경로도 clamp", /lastSyncDate: clampCursorToToday\(endDate, todayKST\(\)\)/.test(fnSrc));
 }
 
 if (failed > 0) {

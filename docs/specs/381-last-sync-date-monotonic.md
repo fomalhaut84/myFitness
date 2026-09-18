@@ -44,3 +44,10 @@ cron/수동 싱크가 같은 타입의 `lastSyncDate` 를 오늘로 전진시키
 
 - 감사 D-2 (복원력: 429 백오프 · 타임아웃 · 토큰 권한) — 별도 이슈.
 - backfill 스크립트 변경 없음 (주석만).
+
+## 5. Codex 리뷰 반영
+
+- **1회차 P1** — 단조 증가는 미래 endDate 를 되돌릴 수단도 없앤다: `/api/sync` 가 유효한 미래 날짜를 통과시키면 range fetcher(활동 등)는
+  성공하고 커서가 미래로 저장돼, 이후 cron/리포트의 `lastSyncDate + 1` 증분이 그 날짜가 올 때까지 gap-fill 을 건너뛴다.
+  → (a) `/api/sync` 에서 미래 endDate 를 400 으로 거부 (경계 검증), (b) `updateSyncMetadata` 가 커서를 `clampCursorToToday(endDate, todayKST())`
+  로 clamp (create 경로 포함 — 이중 방어). 회귀: verify [12].

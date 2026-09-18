@@ -12,15 +12,24 @@
  * backfill 스크립트의 스냅샷/복원(C1)은 이중 안전으로 유지한다.
  */
 
-/** 조건부 전진 predicate — `updateMany` 가 이 where 로 기존 값보다 늦은 endDate 만 쓴다 (atomic). */
+/**
+ * Codex P1 (PR #386): 단조 증가는 **미래 endDate 를 되돌릴 수단도 없앤다.** `/api/sync` 가 유효한 미래 날짜를 통과시키면
+ * range fetcher 는 성공하고 커서가 미래로 저장돼, 이후 cron/리포트의 `lastSyncDate + 1` 증분이 그 날짜가 올 때까지 gap-fill 을
+ * 건너뛴다. 경계(`/api/sync`)에서 거부하고, 여기서도 커서를 오늘(KST 자정)로 clamp 한다 (이중 방어).
+ */
+export function clampCursorToToday(endDate: Date, todayKstMidnight: Date): Date {
+  return endDate.getTime() > todayKstMidnight.getTime() ? todayKstMidnight : endDate;
+}
+
+/** 조건부 전진 predicate — `updateMany` 가 이 where 로 기존 값보다 늦은 cursor 만 쓴다 (atomic). cursor 는 clamp 된 값. */
 export function advanceLastSyncDateWhere(
   dataType: string,
-  endDate: Date,
+  cursor: Date,
 ): { dataType: string; lastSyncDate: { lt: Date } } {
-  return { dataType, lastSyncDate: { lt: endDate } };
+  return { dataType, lastSyncDate: { lt: cursor } };
 }
 
 /** 같은 규칙의 순수 버전 — 결과값 확인용 (테스트·문서). */
-export function resolveNextLastSyncDate(current: Date, endDate: Date): Date {
-  return endDate.getTime() > current.getTime() ? endDate : current;
+export function resolveNextLastSyncDate(current: Date, cursor: Date): Date {
+  return cursor.getTime() > current.getTime() ? cursor : current;
 }

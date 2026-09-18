@@ -2,7 +2,7 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
-import { advanceLastSyncDateWhere } from "./sync-metadata";
+import { advanceLastSyncDateWhere, clampCursorToToday } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
 import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { syncActivities } from "./fetchers/activities";
@@ -147,7 +147,7 @@ async function updateSyncMetadata(
     create: {
       dataType,
       lastSyncAt: now,
-      lastSyncDate: endDate,
+      lastSyncDate: clampCursorToToday(endDate, todayKST()),
       syncCount,
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -156,9 +156,11 @@ async function updateSyncMetadata(
 
   // #381: lastSyncDate 단조 증가 (sync-metadata.ts). 과거 범위 명시 싱크(backfill 청크 · /api/sync 옛 범위)가
   // 증분 커서를 뒤로 끌지 못하고, backfill 과 cron 이 경쟁해도 늦은 쪽이 남는다 (atomic 조건부 UPDATE).
+  // Codex P1 (PR #386): 미래 endDate 는 오늘로 clamp — 단조 증가라 한 번 미래로 가면 되돌릴 수 없다 (/api/sync 도 거부).
+  const cursor = clampCursorToToday(endDate, todayKST());
   await prisma.syncMetadata.updateMany({
-    where: advanceLastSyncDateWhere(dataType, endDate),
-    data: { lastSyncDate: endDate },
+    where: advanceLastSyncDateWhere(dataType, cursor),
+    data: { lastSyncDate: cursor },
   });
 
   // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.
