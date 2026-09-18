@@ -78,3 +78,10 @@ VO2max 는 연 1회 호출로 365 row. LT 는 연 2회 호출. 7년 backfill 도
 - **M2 (major)** 빈 창 응답에 `lthrDetections` 키 누락 → 응답 스키마가 데이터 유무에 따라 흔들림 (#377 Codex P2 규칙 위반). → 응답 객체를 한 곳에서 조립, 빈 창은 `_context` 만 다름. 회귀: verify [7].
 - **I1** 창 시작이 호스트 로컬 자정(`setHours`) → `daysAgoKST`. **I2** `weekly-report` `NON_PROFILE_TYPES` 에 `fitness_metrics` 추가 (cron 실패 주 gap-fill) + 스캔. **I3** `best.vo2max` 에 plateau `firstDate`/`lastDate`/`daysAtPeak`. **I4** `current` 의 `lthr`/`lthrPace` 최신값·기준일 분리 (`lthrPaceAsOf`). **I5** `after` → `notAfter`. **I6** 집계 `fitnessAge` 정수 반올림. **I7** `_context` 에 count 의미 명시.
 - 재싱크 실측 (2026-09-10~18 창): 기존 `maxmet/lthr/ltSpeed` 키 유지 · 값 동일.
+
+### 7.2 Codex 리뷰 반영 (1회차 · P0 0 / P1 0 / P2 3)
+
+- **P2** 집계 버킷의 LT 가 한 row 로 덮어써져 HR 감지 뒤 속도만 감지된 버킷의 `lthr` 이 null → 지표별로 최신값·감지일 분리 (`lthrDetectedOn` / `lthrPaceDetectedOn`).
+- **P2** VO2max 최고값이 떨어졌다 다시 오르면 첫날~마지막날이 한 plateau 로 묶임 → `groupConsecutiveRuns` 로 연속 구간(`peakRuns`) 분리, 대표는 최근 구간, `occurrences` 노출.
+- **P2** `fitnessAge` 는 결측이 잦아 오래된 값일 수 있는데 기준일이 없음 → `current.fitnessAgeAsOf`.
+- P2 만이라 재리뷰 미요청. 회귀: verify [8].

@@ -24,7 +24,7 @@ import {
   mergeRawData,
   splitDateRange,
 } from "../src/lib/garmin/parse-fitness-metrics";
-import { bestOf, currentOf, toDetections } from "../src/mcp/tools/fitness-metrics";
+import { bestOf, currentOf, groupConsecutiveRuns, toDetections } from "../src/mcp/tools/fitness-metrics";
 import { ymdKST } from "../src/lib/garmin/utils";
 
 let failed = 0;
@@ -155,6 +155,22 @@ check("lthrDetections 는 감지일만 오름차순 (03-10, 03-15, 03-20)", toDe
 const toolSrc = read("src", "mcp", "tools", "fitness-metrics.ts");
 check("M2: 응답 객체는 한 곳에서 조립 (빈 창 분기 return 없음)", (toolSrc.match(/return \{\s*content:/g) ?? []).length === 1 && toolSrc.includes("lthrDetections: toDetections(rows)"));
 check("I1: 창 시작은 KST 자정 (daysAgoKST) — 호스트 로컬 setHours 금지", toolSrc.includes("daysAgoKST(days)") && !toolSrc.includes("setHours("));
+
+// --- 8. Codex 1회차 P2 (PR #385)
+console.log("\n[8] Codex P2 회귀 — 버킷 HR/페이스 독립 · plateau 연속 구간 · fitnessAgeAsOf");
+check("groupConsecutiveRuns: 03-14,03-15 | 03-20 → 2구간", JSON.stringify(groupConsecutiveRuns(["2024-03-14", "2024-03-15", "2024-03-20"])) === JSON.stringify([{ firstDate: "2024-03-14", lastDate: "2024-03-15", days: 2 }, { firstDate: "2024-03-20", lastDate: "2024-03-20", days: 1 }]));
+check("groupConsecutiveRuns: 빈 입력 → []", groupConsecutiveRuns([]).length === 0);
+const twoPeaks = [
+  { date: kst("2024-03-20"), vo2maxRunning: 53, lthr: null, lthrPace: null, fitnessAge: null },
+  { date: kst("2024-03-17"), vo2maxRunning: 51, lthr: null, lthrPace: null, fitnessAge: null },
+  { date: kst("2024-03-15"), vo2maxRunning: 53, lthr: null, lthrPace: null, fitnessAge: 31 },
+  { date: kst("2024-03-14"), vo2maxRunning: 53, lthr: null, lthrPace: null, fitnessAge: null },
+];
+const b2 = bestOf(twoPeaks).vo2max!;
+check("plateau 분리: 최고 53 이 03-14~15 와 03-20 두 구간 → occurrences 2, 대표는 최근 구간(03-20, daysAtPeak 1)", b2.occurrences === 2 && b2.firstDate === "2024-03-20" && b2.lastDate === "2024-03-20" && b2.daysAtPeak === 1 && b2.peakRuns[0].days === 2, b2);
+const c2 = currentOf(twoPeaks)!;
+check("fitnessAgeAsOf: 최신 row(03-20) 가 null 이면 03-15 값과 그 날짜", c2.fitnessAge === 31 && c2.fitnessAgeAsOf === "2024-03-15" && c2.asOf === "2024-03-20", c2);
+check("MCP 도구 집계 버킷이 HR/페이스 감지일을 따로 낸다 (소스)", toolSrc.includes("lthrPaceDetectedOn: d?.lthrPaceDetectedOn") && toolSrc.includes("lthrDetectedOn: d?.lthrDetectedOn") && /lthr: r\.lthr \?\? prev\.lthr/.test(toolSrc));
 
 console.log(failed === 0 ? "\n모두 통과" : `\n실패 ${failed}건`);
 process.exit(failed === 0 ? 0 : 1);

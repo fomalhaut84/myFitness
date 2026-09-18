@@ -524,7 +524,7 @@ server.tool(
     granularity: z
       .enum(["daily", "weekly", "monthly"])
       .optional()
-      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동. 집계 시 vo2maxRunning 은 {avg,min,max}, lthr/lthrPace 는 버킷 마지막 감지값"),
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동. 집계 시 vo2maxRunning 은 {avg,min,max}, lthr/lthrPace 는 각각 버킷 마지막 감지값(감지일 별도)"),
     endDate: z
       .string()
       .regex(/^\d{4}-\d{2}-\d{2}$/)
