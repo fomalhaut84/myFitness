@@ -5,7 +5,34 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-17, MCP 장기 조회 · v2.28.0 세션 종료 시점)
+## 현재 상태 (2026-09-18, fitness metrics 이력 · v2.29.0 세션 종료 시점)
+
+**최근 릴리즈:** **v2.29.0** — VO2max · 젖산역치 이력 싱크 (#378) + lastSyncDate 단조 증가 (#381) + 빈 stub 방지 (#383). main = `v2.29.0`. dev 는 이 인계 문서 커밋만 앞섬 — 런타임 동일. 배포 success (migration `add_fitness_metric_daily` 적용).
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음. 다음 착수 후보 (우선순위 순):**
+
+| # | 내용 | 우선순위 | 비고 |
+|---|---|---|---|
+| #390 | backfill 스크립트 종료 시 weather backfill lock 해제 실패 (fire-and-forget 이 `$disconnect` 뒤에 실행) | P2 | v2.29.0 배포 검증에서 관찰. 데이터 영향 없음, lock TTL 10분 self-heal. `syncAll` 에 weather skip/await 옵션 |
+| #365 | 서버 로컬 TZ 날짜 라벨 잔여 (봇·lifestyle·TZ 고정) | P2 | 감사 A1 코멘트 포함 |
+| #371 · #370 | orphan-check 스킬 오판 · 하네스 절대경로 | — | 하네스 정비 |
+| (미생성) | 감사 도입 후보 D-1 HRV 서비스 싱크 → D-2 복원력(429 백오프·타임아웃·토큰 권한, A6·A7) → D-3/D-4 활동 싱크·컬럼 → D-5 training daily → D-6 race prediction → D-7 splits 캐시 | — | 착수 시 이슈화. D-2 는 #383 의 privacyProtected 토큰 폐기(`evictPersistedToken`)와 맞물림 |
+| (미생성) | 워치 미착용일 + 식단 기록 시 `dailyBalances[].intake` 누락 | P3 | #383 스펙 §3.3 수용 트레이드오프. 필요 시 FoodLog 경로에서 DailySummary 행 생성 |
+
+**이번 세션 결과 (2026-09-18):**
+- **#378 완료 (v2.29.0, PR #385 · #389)** — `FitnessMetricDaily` + `fitness_metrics` dataType + MCP `get_fitness_metric_trend`. 사전 리뷰 major 2/info 7 + Codex 2회(P2 4) + 릴리즈 PR Codex P2 2 (→ #389 로 반영). 프로덕션 backfill 2020-06-01~ 7청크 1분, 2,000행 (2020-06-26~).
+- **#381 완료 (v2.29.0, PR #386)** — `updateSyncMetadata` 단조 증가 + 미래 endDate 거부/clamp/자가 복구. Codex 3회(P1 2 · P2 1) 전부 반영.
+- **#383 완료 (v2.29.0, PR #387)** — 빈 날 skip · privacyProtected → 토큰 폐기+403 · cleanup 스크립트 · `get_weight_loss_status` streak 달력 기준. 사전 리뷰 major 3 + Codex 3회(P2 3). 프로덕션 정리: DailySummary/HeartRateRecord 각 384행 삭제 (2019-06-01~2020-06-18), 최초 기록 2020-06-19.
+- **실사용 검증 ✅** — `/ai` "VO2max 가 가장 높았던 때" → 전체 기간 기준 최고 50.4 (2022-07-02), 월별 맥락, 현재값 기준일 인용.
+- **관찰** — backfill 종료 직후 weather backfill lock 해제 실패 (→ #390). Codex 는 push 마다 자동 재리뷰돼 세 PR 모두 2~3라운드 (P1 은 #386 의 2건만 실결함, 나머지 P2). 릴리즈 PR 에도 P2 가 붙어 dev fix PR(#389)로 반영 — 릴리즈 PR 직접 커밋 없이 처리하는 경로가 실제로 동작함.
+
+**세션 절차 메모:** 리뷰 에이전트를 worktree 격리로 돌릴 때 에이전트가 `git checkout <branch>` 하면 그 브랜치가 main 트리에서 잠긴다 — 에이전트에게 `git checkout --detach origin/<branch>` 를 지시할 것. 리뷰 반영 후 검증 어서션이 옛 코드 형태를 고정한 경우가 두 번 있었다 — 4종 검증 exit code 로 커밋을 게이트하면 잡힌다 (`if [ $rc -eq 0 ]`).
+
+---
+
+## 이전 상태 (2026-09-17, MCP 장기 조회 · v2.28.0 세션 종료 시점)
 
 **최근 릴리즈:** **v2.28.0** — MCP 장기 조회 (#377) + npm audit 4건 (#376). main = `v2.28.0`. dev 는 이 인계 문서 커밋(PR #384)만 앞섬 — 런타임 동일, 다음 릴리즈는 다음 실코드 변경과 묶음. 배포 success.
 
