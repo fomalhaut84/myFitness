@@ -5,13 +5,35 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-18, fitness metrics 이력 · v2.29.0 세션 종료 시점)
+## 현재 상태 (2026-09-18 저녁, M15-1 집계 기반 · v2.30.0 세션 종료 시점)
+
+**최근 릴리즈:** **v2.30.0** — M15-1 집계 기반 (#393, PR #399) + M15 마일스톤 스펙 (PR #398). main = `v2.30.0`, dev 는 이 인계 문서만 앞섬. 배포 success (migration 없음, 패키지 변경: vitest · postcss override). 배포 후 검증 ✅ (부분 합계 회귀 · lifestyle 카운트 · lowerBound 2020-06-17).
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음. 다음 착수: #394 `/history` 브라우저 (M15-2).** UI 라 `frontend-design` 디자인 단계 필수 (`docs/designs/394-history/`). 착수 절차: `branch-workflow` → 스펙 `docs/specs/394-history-browser.md` → 시안 → 승인 → 구현. 마일스톤 결정은 `docs/specs/m15-overview.md` D1~D3 (라우트 `/history/YYYY/MM/DD` · 일 뷰 = 일간 종합 페이지 8 섹션 · 초기 지표 러닝 km·걸음·수면 점수·RHR·체중).
+
+**#394 에 추가된 스코프 (이번 세션 실측 결과):**
+- **summary 메모리 캐시** — 프로덕션 F12: 6년 `granularity=year` 전 지표 웜 **1.09~1.22s** (목표 1s). 400 은 4ms, 소스 1개 155ms, 5소스 1.09s → DB 가 아니라 **Node 측 Prisma 행 역직렬화 (약 11,500행, 단일 스레드)** 가 병목 (서버 Pentium G4600 2C/4T). 키 = 파라미터 + `max(SyncMetadata.lastSyncAt)` + **수동 쓰기 버전** + TTL 10분. `getHistoryLowerBound` 도 캐시. raw query 금지라 DB 집계는 안 함.
+  - **수동 쓰기 무효화 (PR #401 Codex P2):** `POST /api/body-composition` (`route.ts:58` upsert) 은 `SyncMetadata` 를 안 건드리므로 lastSyncAt 키만으론 저장 직후에도 옛 체중이 최대 TTL 동안 남는다. 모듈 레벨 `historyCacheVersion` 을 두고 수동 쓰기 route (body-composition · 향후 칼로리 밸런스 지표를 등록하면 food 경로도) 에서 bump → 키에 포함. 회귀 테스트: 체중 저장 후 summary 가 새 값을 반환.
+  - **F12 는 열린 상태** (393 스펙 · 로드맵 M15-1 미완료 표기). 캐시 적용 후 웜 1s 이내 재측정으로 닫는다.
+- 로드맵 M15-1 체크는 이 인계 PR 에서 처리함.
+- 지표 추가 후보 (사용자 요청: 보이면 제안): 러닝 횟수·VO2max 는 레지스트리에 이미 있어 선택기 노출만, 칼로리 밸런스는 등록 1건.
+
+**이후 순서:** #395 `/trends` → #396 하이라이트 (`Activity.eventType` 컬럼 승격 포함) → #397 심화. 독립: #390 (P2) · #365 잔여 (봇 `toLocaleDateString` · ecosystem TZ · 클라이언트 컴포넌트 · 스캔 확장 — 이슈 코멘트에 처리/잔여 정리됨) · #371 · #370.
+
+**이번 세션 결과 (2026-09-18):**
+- **M15 기획** — 사용자 요청 (연/월/일 브라우저 · 기간 추이 · UI 추천 · 시각화 기획) 검토 → `m15-overview.md` (D1~D8) · 추적 #392 · 하위 #393~#397. 릴리즈 PR #398 Codex P2 1건 (하한 규칙 충돌) 반영.
+- **#393 완료 (v2.30.0, PR #399)** — `src/lib/history/` (버킷·레지스트리 11지표·롤업·조회·하한·summary) · `/api/history/summary` · activities/export `from/to` · 페이지 3개 KST 헬퍼 (#365 페이지 부분 흡수) · **vitest 4 도입** (52건). 사전 리뷰 major 1 (버킷 스팬 vs from/to 조회 → 부분 합계) + info 5 전부 반영. Codex 👍.
+- **환경 발견** — `overrides` 의 `"$postcss"` 참조 때문에 새 패키지 `npm install` 이 `Unable to resolve reference $postcss` 로 실패 (npm 10.8 arborist). 리터럴 `^8.5.10` 로 교체. `$esbuild` 는 남아 있음 → 다음 패키지 추가 시 같은 증상이면 같은 처방. vitest 5 는 Node 22 필요라 4 고정. `vitest.config.mts` (Node 20 CJS 로드).
+
+---
+
+## 이전 상태 (2026-09-18, fitness metrics 이력 · v2.29.0 세션 종료 시점)
 
 **최근 릴리즈:** **v2.29.0** — VO2max · 젖산역치 이력 싱크 (#378) + lastSyncDate 단조 증가 (#381) + 빈 stub 방지 (#383). main = `v2.29.0`. dev 는 이 인계 문서 커밋만 앞섬 — 런타임 동일. 배포 success (migration `add_fitness_metric_daily` 적용).
 
 ### 인계 (다음 세션에서 이어갈 것)
-
-**2026-09-18 갱신: M15 (히스토리 브라우저 + 추이 분석) 착수.** 스펙 `docs/specs/m15-overview.md`, 추적 #392, 하위 #393~#397. 첫 착수는 #393 (집계 기반, #365 흡수). 아래 P2 이슈는 M15 와 독립.
 
 **오픈 PR 없음. 다음 착수 후보 (우선순위 순):**
 
