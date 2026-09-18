@@ -172,5 +172,10 @@ const c2 = currentOf(twoPeaks)!;
 check("fitnessAgeAsOf: 최신 row(03-20) 가 null 이면 03-15 값과 그 날짜", c2.fitnessAge === 31 && c2.fitnessAgeAsOf === "2024-03-15" && c2.asOf === "2024-03-20", c2);
 check("MCP 도구 집계 버킷이 HR/페이스 감지일을 따로 낸다 (소스)", toolSrc.includes("lthrPaceDetectedOn: d?.lthrPaceDetectedOn") && toolSrc.includes("lthrDetectedOn: d?.lthrDetectedOn") && /lthr: r\.lthr \?\? prev\.lthr/.test(toolSrc));
 
+// --- 9. 릴리즈 PR #388 Codex P2: 실패를 삼켜 커서가 전진하면 영구 공백
+console.log("\n[9] 실패 전파 (릴리즈 PR #388 Codex P2)");
+check("fetchRows: 비배열 non-null 응답은 throw (빈 결과 처리 금지)", /!Array\.isArray\(response\)\) \{[\s\S]*?throw new Error\([\s\S]*?배열이 아님/.test(fetcherSrc) && !/배열이 아님[^\n]*0건 처리/.test(fetcherSrc));
+check("행 upsert 실패는 로그 후 rethrow (console.warn 삼킴 금지)", /저장 실패[\s\S]*?throw error;/.test(fetcherSrc) && !/console\.warn\(`\[fitness-metrics\] \$\{row\.date\} 저장 실패/.test(fetcherSrc));
+
 console.log(failed === 0 ? "\n모두 통과" : `\n실패 ${failed}건`);
 process.exit(failed === 0 ? 0 : 1);

@@ -35,9 +35,10 @@ async function fetchRows<T>(
     throw error;
   }
   if (response !== null && response !== undefined && !Array.isArray(response)) {
-    // 경계 검증: 예상 밖 형태(객체/문자열)는 조용히 0건 처리하지 않고 로그로 남긴다.
-    console.warn(
-      `[fitness-metrics] ${label} 응답이 배열이 아님 (${typeof response}) — 0건 처리`,
+    // 릴리즈 PR #388 Codex P2: 예상 밖 형태(에러 envelope · HTML · API 변경)를 빈 결과로 넘기면 커서가 전진해
+    // 영구 공백이 생긴다 (특히 1회성 backfill). 싱크 실패로 던져 기존 재시도 경로가 같은 범위를 다시 돌게 한다.
+    throw new Error(
+      `[fitness-metrics] ${label} 응답이 배열이 아님 (${typeof response}) — 싱크 실패로 처리`,
     );
   }
   return asRowArray<T>(response);
@@ -111,8 +112,11 @@ export async function syncFitnessMetrics(
         });
         synced++;
       } catch (error) {
+        // 릴리즈 PR #388 Codex P2: 저장 실패를 삼키면 syncAll 이 커서·커버 범위를 전진시켜 그 날짜가 영구 누락된다
+        // (증분 싱크는 최근만 다시 본다). 로그 후 전파해 같은 범위를 재시도하게 한다.
         const msg = error instanceof Error ? error.message : String(error);
-        console.warn(`[fitness-metrics] ${row.date} 저장 실패:`, msg);
+        console.error(`[fitness-metrics] ${row.date} 저장 실패 — 싱크 실패로 전파:`, msg);
+        throw error;
       }
     }
   }
