@@ -29,6 +29,27 @@ function daysAgo(n: number): Date {
 }
 
 /**
+ * #383: 오늘(KST)부터 달력 역순으로 `calorieBalance < threshold` 인 연속 일수. 행이 없는 날(워치 미착용 → 행 없음)도
+ * null 과 같이 연속을 끊는다. `maxDays` 창(오늘 포함)까지만 본다. **export 이유는 회귀 검증** (verify-empty-day-skip).
+ */
+export function countConsecutiveBelow(
+  balances: readonly { date: Date; calorieBalance: number | null }[],
+  todayKstMidnight: Date,
+  threshold: number,
+  maxDays: number,
+): number {
+  const byDay = new Map(balances.map((b) => [ymdKST(b.date), b.calorieBalance]));
+  let count = 0;
+  for (let k = 0; k < maxDays; k++) {
+    const day = new Date(todayKstMidnight.getTime() - k * DAY_MS);
+    const bal = byDay.get(ymdKST(day));
+    if (bal === undefined || bal === null || bal >= threshold) break;
+    count++;
+  }
+  return count;
+}
+
+/**
  * #364: 응답 row mapper. **export 이유는 회귀 검증** — `scripts/verify-mcp-date-labels.ts`
  * 가 이 함수를 직접 호출해야 라벨 산출이 실제 프로덕션 경로로 검증된다.
  * (사전 리뷰 P1: ymdKST 헬퍼만 테스트하면 호출부를 되돌려도 스크립트가 통과했다.)
@@ -152,20 +173,11 @@ export async function getWeightLossStatus() {
         )
       : null;
 
-  // 연속 결손/심한 결손 일수 (최근부터 역순).
-  // null(데이터 없는 날)은 연속 끊김으로 처리 — 건너뛰지 않음.
-  let consecutiveDeficitDays = 0;
-  let consecutiveOver750 = 0;
-  for (let i = balancesRaw.length - 1; i >= 0; i--) {
-    const bal = balancesRaw[i].calorieBalance;
-    if (bal === null || bal >= 0) break;
-    consecutiveDeficitDays++;
-  }
-  for (let i = balancesRaw.length - 1; i >= 0; i--) {
-    const bal = balancesRaw[i].calorieBalance;
-    if (bal === null || bal >= -750) break;
-    consecutiveOver750++;
-  }
+  // 연속 결손/심한 결손 일수 (오늘부터 달력 역순).
+  // #383 사전 리뷰 major 3: 이전엔 행 배열을 역순으로 돌아 "null 행 = 끊김" 에 의존했는데, 워치 미착용일에
+  // DailySummary 행이 생기지 않게 되면서 구멍을 건너뛰어 streak 이 과대 계산됐다 → 날짜 기준으로 순회해 행이 없는 날도 끊김.
+  const consecutiveDeficitDays = countConsecutiveBelow(balancesRaw, kstTodayMidnight, 0, 7);
+  const consecutiveOver750 = countConsecutiveBelow(balancesRaw, kstTodayMidnight, -750, 7);
 
   // 체중 변화: 7일 이동평균 기반 (endpoint 노이즈 방지).
   // 14일 데이터에서 7일 이동평균 계산 → 7일 전 평균과 최신 평균 비교.
