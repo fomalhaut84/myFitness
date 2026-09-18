@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance, recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import { dateRange, formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
 import { isEmptyDailySummary, isPrivacyProtected } from "../empty-day";
+import { evictPersistedToken } from "../client";
 
 const DAILY_SUMMARY_URL =
   "https://connectapi.garmin.com/usersummary-service/usersummary/daily";
@@ -35,7 +36,9 @@ export async function syncDailySummaries(
         // 메시지의 "unauthorized" 는 admin-alerts 의 isGarminAuthError 패턴에 걸려 기존 인증 실패 알림 경로를 탄다 (info 1).
         // Codex P2 (PR #387): status 403 을 실어 withReauth 가 캐시 클라이언트를 버리고 재인증 후 1회 재시도하게 한다 —
         // plain Error 면 같은 토큰을 계속 재사용해 매 싱크 같은 날짜에서 멈춘다.
+        // 2회차 P2: 메모리만 비우면 authenticate() 가 같은 .garmin-tokens 를 다시 읽는다 → 영속 토큰을 지워 비밀번호 로그인 유도.
         if (isPrivacyProtected(summary)) {
+          evictPersistedToken();
           throw privacyProtectedError(dateStr);
         }
 

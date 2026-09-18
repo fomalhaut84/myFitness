@@ -89,3 +89,5 @@ npx tsx scripts/cleanup-stub-days.ts --from=2019-06-01 --to=2020-06-30 --apply  
 - **major 3** `get_weight_loss_status` streak 이 stub 행에 의존 → 달력 날짜 기준 `countConsecutiveBelow` + 회귀 테스트.
 - **info 1** privacy 메시지에 `unauthorized` 포함 (인증 실패 알림 경로 재사용). **info 2** `isNullOrZero` 의 비수치 문자열 처리 의도 주석. **info 3** skip 건수 로그를 `finally` 로.
 - **Codex 1회차 P2** privacy 오류가 plain Error 라 `withReauth`(401/403 만 재인증) 를 못 타 캐시 토큰 재사용 → `status: 403` 부여. 회귀: verify [5].
+- **Codex 2회차 P2** `withReauth` 는 메모리만 비우고 `authenticate()` 가 같은 `.garmin-tokens` 파일을 재로드하므로 status 403 만으론 같은 토큰으로 재시도 → throw 전에
+  `evictPersistedToken()` 으로 토큰 파일 삭제해 비밀번호 로그인 유도. P2 만 2라운드 연속 → 종료 (memory `project_codex_auto_rereview`). 회귀: verify [5].
