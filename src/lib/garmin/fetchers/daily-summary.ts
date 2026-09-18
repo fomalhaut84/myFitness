@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { recalculateCalorieBalance, recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import { dateRange, formatDate, startOfDay, todayKSTString, withRateLimit } from "../utils";
+import { isEmptyDailySummary, isPrivacyProtected } from "../empty-day";
 
 const DAILY_SUMMARY_URL =
   "https://connectapi.garmin.com/usersummary-service/usersummary/daily";
@@ -13,6 +14,7 @@ export async function syncDailySummaries(
   endDate: Date
 ): Promise<number> {
   let synced = 0;
+  let skippedEmpty = 0;
   let latestCalorieGoal: number | null = null;
   const dates = dateRange(startDate, endDate);
 
@@ -27,8 +29,21 @@ export async function syncDailySummaries(
 
       if (!summary || !summary.calendarDate) continue;
 
+      // #383 A11: privacyProtected=true 는 데이터 없음이 아니라 토큰/권한 이상 — stub 저장 대신 싱크 실패.
+      if (isPrivacyProtected(summary)) {
+        throw new Error(
+          `Garmin daily summary ${dateStr} 응답 privacyProtected=true — 인증/토큰 권한 이상 (A11)`
+        );
+      }
+
       // Garmin calendarDate가 오늘(KST) 이후면 건너뛰기 (미래 날짜 방지)
       if (String(summary.calendarDate) > todayKSTString()) continue;
+
+      // #383: 워치 미착용 날(핵심 지표 전부 null/0)은 빈 stub 을 만들지 않는다 (rawData 도 남기지 않음).
+      if (isEmptyDailySummary(summary)) {
+        skippedEmpty++;
+        continue;
+      }
 
       const dayDate = startOfDay(date);
       const moderate = toInt(summary.moderateIntensityMinutes);
@@ -91,6 +106,10 @@ export async function syncDailySummaries(
       if (msg.includes("404") || msg.includes("not found")) continue;
       throw error;
     }
+  }
+
+  if (skippedEmpty > 0) {
+    console.log(`[daily-summary] 빈 날(워치 미착용) ${skippedEmpty}건 skip`);
   }
 
   // M4-3: 싱크 완료 후, 최신 날짜의 netCalorieGoal을 UserProfile.targetCalories에 반영.

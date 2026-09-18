@@ -2,6 +2,7 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
+import { isEmptyHeartRate } from "../empty-day";
 
 export async function syncHeartRate(
   client: GarminConnect,
@@ -9,6 +10,7 @@ export async function syncHeartRate(
   endDate: Date
 ): Promise<number> {
   let synced = 0;
+  let skippedEmpty = 0;
   const dates = dateRange(startDate, endDate);
 
   for (const date of dates) {
@@ -18,6 +20,13 @@ export async function syncHeartRate(
       if (!hrData) continue;
 
       const raw = hrData as unknown as Record<string, unknown>;
+
+      // #383: restingHeartRate 도 heartRateValues 도 없으면 워치 미착용 — stub 저장 안 함 (HRV 조회도 생략).
+      if (isEmptyHeartRate(raw)) {
+        skippedEmpty++;
+        continue;
+      }
+
       const dayDate = startOfDay(date);
 
       // getSleepData에서 HRV 정보 가져옴
@@ -50,6 +59,10 @@ export async function syncHeartRate(
       if (isNoDataError(error)) continue;
       throw error;
     }
+  }
+
+  if (skippedEmpty > 0) {
+    console.log(`[heart-rate] 빈 날(워치 미착용) ${skippedEmpty}건 skip`);
   }
 
   return synced;
