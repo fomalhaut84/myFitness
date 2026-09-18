@@ -5,7 +5,37 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-03, 식단 편집 · 보안 세션 종료 시점)
+## 현재 상태 (2026-09-17, MCP 장기 조회 · v2.28.0 세션 종료 시점)
+
+**최근 릴리즈:** **v2.28.0** — MCP 장기 조회 (#377) + npm audit 4건 (#376). main = dev = `v2.28.0`. 배포 success, 오픈 PR 0건.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**다음 착수: #378 VO2max · 러닝 젖산역치 Garmin 이력 싱크** — 스펙 `docs/specs/378-garmin-fitness-metrics-history.md` 작성·이슈 생성 완료. 엔드포인트·시작일·단위는 memory `project_garmin_metric_history_endpoints` 와 #377 스펙 §1-3 에 실측값. 착수 시 `branch-workflow` (feat/378-1), DB 모델 추가라 `prisma-drift-fix` 절차, 사전 에이전트 리뷰 필수. 배포 후 `backfill:history -- --types=fitness_metrics --from=2020-06-01` (호출 21회, 1분).
+
+**이번 세션 결과 (2026-09-17):**
+- **#377 완료 (v2.28.0, PR #379)** — days 상한 3650 · granularity/endDate · 400행 승격 · `get_data_coverage` · 시스템 프롬프트 · `backfill:history`. 사전 리뷰 critical 1/major 2/info 5 + Codex 6회(P1 3 · P2 8) 전부 반영. 릴리즈 PR Codex P2 1건 → #381.
+- **#376 완료 (v2.28.0, PR #382)** — next 16.3.5 · sharp/js-yaml/hono overrides. Security Audit success.
+- **프로덕션 backfill 완료 (2026-09-17, 6청크 4.6h, 실패 0)** — 전 타입 `oldestFetchedDate` 2019-06-01, `lastSyncDate` 유지 확인. 실데이터: 활동 2020-06-19~ (2,332건), 체중 2020-06-16~ (372건). 2020-06 이전은 워치 사용 전 — daily/HR 는 빈 stub 행 (→ #383).
+- **실사용 검증 ✅** — `/ai` "전체 기록에서 컨디션 최고 시기" 질문이 2020-06~ 전체 기준으로 답변 (최고 시기 2023-11~2024-03, 체중·VO2max·페이스 비교). "365일 한도" 표현 사라짐. VO2max·LT 과거 이력만 #378 대기.
+- **외부 Garmin MCP 2종 감사** → `docs/specs/garmin-endpoint-audit-20260917.md` (A1~A11 재검증 버그 · C 누락 데이터 소스 · D-1~D-9 도입 후보).
+
+**오픈 이슈 (우선순위):**
+| # | 내용 | 우선순위 | 비고 |
+|---|---|---|---|
+| #378 | VO2max · 젖산역치 이력 싱크 | **P1 · 다음** | 스펙 완료 |
+| #383 | 빈 DailySummary/HeartRateRecord stub 저장 방지 + 정리 스크립트 | P2 | 감사 A11. backfill 로 2019-06~2020-06 stub 367행 확인 |
+| #381 | backfill 중 동시 싱크 lastSyncDate 경쟁 — `updateSyncMetadata` 단조 증가 | P2 | 릴리즈 PR Codex. 감사 D-2(복원력: 429 백오프·타임아웃·토큰 권한)와 묶어도 됨 |
+| #365 | 서버 로컬 TZ 날짜 라벨 잔여 (봇·lifestyle·TZ 고정) | P2 | 감사 A1 (`getSleepData`/`getHeartRate` 라이브러리 TZ 의존) 코멘트로 추가됨 |
+| #371 · #370 | orphan-check 스킬 오판 · 하네스 절대경로 | — | 하네스 정비 |
+
+**감사 도입 후보 (이슈 미생성, 착수 시 이슈화):** D-1 HRV 서비스 싱크(A2 이중 호출·baseline null 해소) → D-2 복원력 → D-3 활동 싱크 `startDate/endDate/limit` + D-4 컬럼 승격(`eventType`·`movingDuration`·`activityTrainingLoad`·GAP) → D-5 training readiness/status 일별 → D-6 race prediction 이력 → D-7 splits DB 캐시(A5).
+
+**세션 관찰:** Codex bot 이 `@codex review` 없이도 push 마다 자동 재리뷰된 라운드가 있었다 (PR #379 4·5회차, 릴리즈 PR #380). 총 7라운드 중 P1 3건은 실결함이었고 P2 는 마지막 2라운드부터 미세 조정 → memory `project_codex_auto_rereview`.
+
+---
+
+## 이전 상태 (2026-09-03, 식단 편집 · 보안 세션 종료 시점)
 
 **최근 릴리즈:**
 - **v2.26.1** — Phase 4 hotfix (Garmin naive-TZ 이슈 완전 해결)
@@ -52,12 +82,6 @@
     - **문서 규칙**: 이 저장소는 public 이므로 스펙·인계 문서에 실주소를 적지 않는다 (#362 Codex P1).
 
 ---
-
-### 2026-09-17 세션 — MCP 장기 조회 · Garmin 엔드포인트 감사
-
-- **#377** MCP 장기 조회 (365일 상한 해제 · granularity 집계 · `get_data_coverage` · backfill 스크립트) — 스펙 `docs/specs/377-mcp-long-history.md`. 배포 후 서버에서 `backfill:history --from=2019-06-01` (약 4.5h).
-- **#378** VO2max · 젖산역치 Garmin 이력 싱크 — 스펙 `docs/specs/378-garmin-fitness-metrics-history.md`. #377 뒤 착수.
-- **감사 결과** `docs/specs/garmin-endpoint-audit-20260917.md` — 재검증된 버그 A1~A8 · 도입 후보 D-1~D-9. 다음 이슈 후보: HRV 서비스(A2), 복원력 429/타임아웃/토큰(A6·A7, backfill 전 권장), 활동 싱크 date filter + 컬럼 승격(A4·A8), training readiness/status 일별, race prediction 이력. A1 은 #365 에 추가.
 
 ## 우선순위 A (사용자 요청 or 실사용 지장)
 
