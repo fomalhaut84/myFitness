@@ -50,6 +50,13 @@ export async function POST(request: Request) {
           { status: 400 }
         );
       }
+      // Codex P1 (PR #386): 미래 endDate 거부 — #381 단조 증가 이후 커서가 미래로 가면 되돌릴 수 없다.
+      if (parsed.getTime() > todayKST().getTime()) {
+        return NextResponse.json(
+          { error: `endDate 는 오늘(KST) 이후일 수 없습니다: ${body.endDate}` },
+          { status: 400 }
+        );
+      }
       endDate = parsed;
     } else {
       // 수동 싱크: 오늘(KST)까지 (불완전해도 최신 데이터 우선)

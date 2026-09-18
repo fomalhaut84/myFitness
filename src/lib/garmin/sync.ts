@@ -2,6 +2,7 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
+import { advanceLastSyncDateWhere, clampCursorToToday } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
 import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { syncActivities } from "./fetchers/activities";
@@ -64,6 +65,15 @@ async function getStartDate(dataType: DataType): Promise<Date> {
   });
 
   if (meta?.lastSyncDate) {
+    // Codex P2 (PR #386 3회차): 커서가 미래(예전 /api/sync 미래 endDate)면 lastSyncDate+1 > endDate 로 skip 돼
+    // updateSyncMetadata 의 복구 분기에 닿지 못한다 → 오늘부터 다시 싱크해 그 성공이 커서를 오늘로 끌어내리게 한다.
+    const today = todayKST();
+    if (meta.lastSyncDate.getTime() > today.getTime()) {
+      console.warn(
+        `[${dataType}] lastSyncDate 가 미래 (${formatDate(meta.lastSyncDate)}) — 오늘부터 재싱크해 커서 복구`,
+      );
+      return today;
+    }
     // 마지막 싱크 날짜 다음 날부터
     const next = new Date(meta.lastSyncDate);
     next.setDate(next.getDate() + 1);
@@ -132,13 +142,14 @@ async function updateSyncMetadata(
   error?: string
 ): Promise<void> {
   const now = new Date();
+  const today = todayKST();
 
   // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
+  // #381: update 경로는 lastSyncDate 를 건드리지 않는다 — 아래 조건부 updateMany 가 단조 증가로 전진.
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
       lastSyncAt: now,
-      lastSyncDate: endDate,
       syncCount: { increment: syncCount },
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -146,11 +157,21 @@ async function updateSyncMetadata(
     create: {
       dataType,
       lastSyncAt: now,
-      lastSyncDate: endDate,
+      lastSyncDate: clampCursorToToday(endDate, today),
       syncCount,
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
     },
+  });
+
+  // #381: lastSyncDate 단조 증가 (sync-metadata.ts). 과거 범위 명시 싱크(backfill 청크 · /api/sync 옛 범위)가
+  // 증분 커서를 뒤로 끌지 못하고, backfill 과 cron 이 경쟁해도 늦은 쪽이 남는다 (atomic 조건부 UPDATE).
+  // Codex P1 (PR #386): 미래 endDate 는 오늘로 clamp — 단조 증가라 한 번 미래로 가면 되돌릴 수 없다 (/api/sync 도 거부).
+  // 2회차 P1: 이미 미래로 저장된 커서(예전 /api/sync)는 predicate 의 OR 분기가 끌어내려 다음 싱크에서 자가 복구.
+  const cursor = clampCursorToToday(endDate, today);
+  await prisma.syncMetadata.updateMany({
+    where: advanceLastSyncDateWhere(dataType, cursor, today),
+    data: { lastSyncDate: cursor },
   });
 
   // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.
