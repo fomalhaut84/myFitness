@@ -86,3 +86,9 @@ VO2max 는 연 1회 호출로 365 row. LT 는 연 2회 호출. 7년 backfill 도
 - **P2** `fitnessAge` 는 결측이 잦아 오래된 값일 수 있는데 기준일이 없음 → `current.fitnessAgeAsOf`.
 - P2 만이라 재리뷰 미요청. 회귀: verify [8].
 - **2회차 P2** 시스템 프롬프트가 `current.asOf` 를 말하라고 해 오래된 LTHR/fitnessAge 가 최신처럼 보일 수 있음 → 지표별 asOf(vo2maxAsOf/lthrAsOf/lthrPaceAsOf/fitnessAgeAsOf) 를 쓰도록 문구 정정. P2 만 2라운드 연속 → 종료 (memory `project_codex_auto_rereview`).
+
+### 7.3 릴리즈 PR #388 Codex 반영 (P2 2건 · fix/378-2)
+
+- **P2** 행 upsert 실패를 `console.warn` 으로 삼켜 `syncFitnessMetrics` 가 성공을 보고 → 커서·커버 범위가 전진해 그 날짜가 영구 누락 (증분은 최근만 재조회). → 로그 후 rethrow.
+- **P2** 비배열 non-null 응답(에러 envelope · HTML · API 변경)을 빈 결과로 처리 → 같은 이유로 영구 공백. → throw 로 싱크 실패 처리, 기존 재시도 경로가 같은 범위를 다시 돈다.
+- 404 → 빈 배열은 유지 (데이터 없음). 회귀: verify [9].
