@@ -88,7 +88,7 @@ check("HeartRateRecord: 저장 컬럼 전부 null (hrvBaseline 포함)", JSON.st
 console.log("\n[5] 소스 스캔");
 const read = (...p: string[]) => readFileSync(join(__dirname, "..", ...p), "utf8");
 const ds = read("src", "lib", "garmin", "fetchers", "daily-summary.ts");
-check("daily-summary.ts: privacyProtected → throw", /if \(isPrivacyProtected\(summary\)\) \{\s*throw new Error/.test(ds));
+check("daily-summary.ts: privacyProtected → throw", /if \(isPrivacyProtected\(summary\)\) \{\s*throw privacyProtectedError\(/.test(ds));
 check("daily-summary.ts: 빈 날 → continue (upsert 전)", /if \(isEmptyDailySummary\(summary\)\) \{[\s\S]*?continue;/.test(ds) && ds.indexOf("isEmptyDailySummary(summary)") < ds.indexOf("prisma.dailySummary.upsert"));
 check("daily-summary.ts: privacy 검사가 미래 날짜 가드보다 앞 (stub 이든 아니든 인증 이상은 실패)", ds.indexOf("isPrivacyProtected(summary)") < ds.indexOf("todayKSTString()"));
 check("daily-summary.ts: privacy 검사가 calendarDate 가드보다 앞 (major 1: 마스킹 응답은 calendarDate 도 없을 수 있다)", ds.indexOf("isPrivacyProtected(summary)") < ds.indexOf("summary.calendarDate"));
