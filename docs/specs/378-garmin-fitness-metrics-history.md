@@ -71,3 +71,10 @@ VO2max 는 연 1회 호출로 365 row. LT 는 연 2회 호출. 7년 backfill 도
 - 마이그레이션 `20260918013456_add_fitness_metric_daily` — 신규 테이블이라 로컬 `prisma migrate deploy` 로 적용 (drift 없음).
 - **로컬 실측 (2025-09-18 ~ 2026-09-18, 1청크 3회 호출, 19초)**: 306행 (VO2max 매일), LT 감지일 11건 (156→153 bpm · 5'10"→5'27"/km), 같은 날 VO2max·LT 가 한 row 로 병합됨. `rawData` 키 `maxmet`/`lthr`/`ltSpeed` 확인. LT `from`/`until`/`updatedDate` 는 `YYYY-MM-DD` 문자열.
 - 배포 후: cron 첫 실행이 `bootstrapNewTypes` 로 365일 로드 → `npm run backfill:history -- --types=fitness_metrics --from=2020-06-01` (7청크 × 3회 = 21회 호출) → `/ai` 에 "VO2max 가 가장 높았던 때" 질문.
+
+### 7.1 사전 리뷰 반영 (pr-review-toolkit 1회 · critical 0 / major 2 / info 7)
+
+- **M1 (major)** 재싱크 시 `rawData` 통째 교체 → 세 엔드포인트 중 하나가 일시적으로 빈 응답을 주면 그 소스 원본이 영구 소실. → `mergeRawData` 로 **소스 키 단위 병합** (청크의 기존 rawData 를 한 번에 읽어 병합). 회귀: verify [7].
+- **M2 (major)** 빈 창 응답에 `lthrDetections` 키 누락 → 응답 스키마가 데이터 유무에 따라 흔들림 (#377 Codex P2 규칙 위반). → 응답 객체를 한 곳에서 조립, 빈 창은 `_context` 만 다름. 회귀: verify [7].
+- **I1** 창 시작이 호스트 로컬 자정(`setHours`) → `daysAgoKST`. **I2** `weekly-report` `NON_PROFILE_TYPES` 에 `fitness_metrics` 추가 (cron 실패 주 gap-fill) + 스캔. **I3** `best.vo2max` 에 plateau `firstDate`/`lastDate`/`daysAtPeak`. **I4** `current` 의 `lthr`/`lthrPace` 최신값·기준일 분리 (`lthrPaceAsOf`). **I5** `after` → `notAfter`. **I6** 집계 `fitnessAge` 정수 반올림. **I7** `_context` 에 count 의미 명시.
+- 재싱크 실측 (2026-09-10~18 창): 기존 `maxmet/lthr/ltSpeed` 키 유지 · 값 동일.

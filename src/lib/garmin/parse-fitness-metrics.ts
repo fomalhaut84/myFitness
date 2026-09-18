@@ -125,14 +125,14 @@ export function asRowArray<T>(response: unknown): readonly T[] {
 /**
  * 세 엔드포인트 응답을 날짜 키로 병합. 값이 하나도 없는 날짜는 제외. 날짜 오름차순.
  * - maxmet 는 `generic.calendarDate`, LT 는 `from` (aggregation=daily 는 from == until) 을 키로.
- * - `after`(YYYY-MM-DD) 를 주면 그보다 늦은 날짜는 버린다 (미래 날짜 가드 — 호출부가 오늘(KST) 전달).
+ * - `notAfter`(YYYY-MM-DD) 를 주면 그보다 늦은 날짜는 버린다 (미래 날짜 가드 — 호출부가 오늘(KST) 전달).
  * - 같은 날짜가 두 번 오면 뒤 row 가 이긴다 (Garmin 이 중복을 주는 경우는 관찰되지 않았다).
  */
 export function mergeFitnessMetrics(
   maxmet: readonly MaxMetRow[],
   lthr: readonly LactateThresholdRow[],
   ltSpeed: readonly LactateThresholdRow[],
-  options: { after?: string } = {},
+  options: { notAfter?: string } = {},
 ): FitnessMetricParsed[] {
   const byDate = new Map<string, FitnessMetricParsed>();
   const get = (date: string): FitnessMetricParsed =>
@@ -182,7 +182,7 @@ export function mergeFitnessMetrics(
   }
 
   return [...byDate.values()]
-    .filter((r) => !options.after || r.date <= options.after)
+    .filter((r) => !options.notAfter || r.date <= options.notAfter)
     .filter(
       (r) =>
         r.vo2maxRunning !== null ||
@@ -191,4 +191,22 @@ export function mergeFitnessMetrics(
         r.fitnessAge !== null,
     )
     .sort((a, b) => (a.date < b.date ? -1 : a.date > b.date ? 1 : 0));
+}
+
+export type FitnessMetricRawData = FitnessMetricParsed["rawData"];
+
+/**
+ * 재싱크 시 rawData 병합 (사전 리뷰 M1): 컬럼은 `?? undefined` 로 기존 값을 보존하는데 rawData 만 통째로
+ * 교체하면, 세 엔드포인트 중 하나가 일시적으로 빈 응답을 주는 날 그 소스의 원본이 영구 소실된다 (CLAUDE.md
+ * "Garmin 데이터 보존" 위반). 소스 키(maxmet/lthr/ltSpeed) 단위로 — 이번에 받은 키만 덮고 나머지는 유지.
+ */
+export function mergeRawData(
+  existing: unknown,
+  incoming: FitnessMetricRawData,
+): FitnessMetricRawData {
+  const base =
+    existing !== null && typeof existing === "object" && !Array.isArray(existing)
+      ? (existing as FitnessMetricRawData)
+      : {};
+  return { ...base, ...incoming };
 }

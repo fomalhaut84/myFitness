@@ -9,6 +9,7 @@ import {
   asRowArray,
   kstMidnight,
   mergeFitnessMetrics,
+  mergeRawData,
   splitDateRange,
   type LactateThresholdRow,
   type MaxMetRow,
@@ -70,29 +71,42 @@ export async function syncFitnessMetrics(
       "lactateThresholdSpeed",
     );
 
-    const parsed = mergeFitnessMetrics(maxmet, lthr, ltSpeed, { after: today });
+    const parsed = mergeFitnessMetrics(maxmet, lthr, ltSpeed, { notAfter: today });
+    if (parsed.length === 0) continue;
+
+    // 사전 리뷰 M1: 재싱크 시 rawData 를 소스 키 단위로 병합해야 한다 (컬럼은 undefined 로 보존되는데 rawData 만
+    // 통째 교체되면 일시적 빈 응답에 기존 원본이 소실). 청크의 기존 rawData 를 한 번에 읽어 병합.
+    const existingRows = await prisma.fitnessMetricDaily.findMany({
+      where: { date: { in: parsed.map((r) => kstMidnight(r.date)) } },
+      select: { date: true, rawData: true },
+    });
+    const existingRaw = new Map(existingRows.map((r) => [r.date.getTime(), r.rawData]));
 
     for (const row of parsed) {
       try {
+        const date = kstMidnight(row.date);
+        const rawData = mergeRawData(
+          existingRaw.get(date.getTime()),
+          row.rawData,
+        ) as unknown as Prisma.InputJsonValue;
         // 같은 날 VO2max 와 LT 가 겹치면 한 row 에 병합. 재싱크 시 null 필드는 undefined 로 두어
         // 기존 값을 보존한다 (스펙 §4.3).
-        const update = {
-          vo2maxRunning: row.vo2maxRunning ?? undefined,
-          lthr: row.lthr ?? undefined,
-          lthrPace: row.lthrPace ?? undefined,
-          fitnessAge: row.fitnessAge ?? undefined,
-          rawData: row.rawData as unknown as Prisma.InputJsonValue,
-        };
         await prisma.fitnessMetricDaily.upsert({
-          where: { date: kstMidnight(row.date) },
-          update,
+          where: { date },
+          update: {
+            vo2maxRunning: row.vo2maxRunning ?? undefined,
+            lthr: row.lthr ?? undefined,
+            lthrPace: row.lthrPace ?? undefined,
+            fitnessAge: row.fitnessAge ?? undefined,
+            rawData,
+          },
           create: {
-            date: kstMidnight(row.date),
+            date,
             vo2maxRunning: row.vo2maxRunning,
             lthr: row.lthr,
             lthrPace: row.lthrPace,
             fitnessAge: row.fitnessAge,
-            rawData: update.rawData,
+            rawData,
           },
         });
         synced++;
