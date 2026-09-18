@@ -85,3 +85,4 @@ VO2max 는 연 1회 호출로 365 row. LT 는 연 2회 호출. 7년 backfill 도
 - **P2** VO2max 최고값이 떨어졌다 다시 오르면 첫날~마지막날이 한 plateau 로 묶임 → `groupConsecutiveRuns` 로 연속 구간(`peakRuns`) 분리, 대표는 최근 구간, `occurrences` 노출.
 - **P2** `fitnessAge` 는 결측이 잦아 오래된 값일 수 있는데 기준일이 없음 → `current.fitnessAgeAsOf`.
 - P2 만이라 재리뷰 미요청. 회귀: verify [8].
+- **2회차 P2** 시스템 프롬프트가 `current.asOf` 를 말하라고 해 오래된 LTHR/fitnessAge 가 최신처럼 보일 수 있음 → 지표별 asOf(vo2maxAsOf/lthrAsOf/lthrPaceAsOf/fitnessAgeAsOf) 를 쓰도록 문구 정정. P2 만 2라운드 연속 → 종료 (memory `project_codex_auto_rereview`).
