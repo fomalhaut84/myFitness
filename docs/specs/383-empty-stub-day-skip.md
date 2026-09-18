@@ -25,7 +25,8 @@ Garmin 은 데이터가 없는 날에도 `calendarDate` 가 있는 응답을 돌
 - [x] **F1** `syncDailySummaries`: 핵심 지표(`totalSteps` · `restingHeartRate` · `totalKilocalories` · `bodyBatteryHighestValue`)가
   전부 null/0 이면 저장하지 않고 skip (rawData 에도 남기지 않음). `privacyProtected === true` 는 인증 이상으로 분류해 **throw** (A11) —
   `calendarDate` 가드·미래 날짜 가드보다 앞에 둔다 (마스킹된 응답은 `calendarDate` 도 없을 수 있어 뒤에 두면 조용히 skip — 사전 리뷰 major 1).
-  메시지에 `unauthorized` 를 넣어 `isGarminAuthError` 패턴에 걸리게 한다 (기존 관리자 알림 경로 재사용).
+  메시지에 `unauthorized` 를 넣어 `isGarminAuthError` 패턴에 걸리게 하고, 오류에 `status: 403` 을 실어 `withReauth` 가
+  캐시 클라이언트를 버리고 재인증 후 1회 재시도하게 한다 (Codex P2 — plain Error 면 같은 토큰을 계속 재사용).
 - [x] **F2** `syncHeartRate`: `restingHeartRate` 와 `heartRateValues` 가 모두 없으면 skip (HRV 용 `getSleepData` 호출도 생략).
 - [x] **F3** `scripts/cleanup-stub-days.ts`: dry-run 기본, `--apply` 로 실행, `--from/--to` 범위, 삭제 건수·날짜 범위 출력. 두 테이블 삭제는 한 트랜잭션.
   삭제 조건은 skip 조건보다 **엄격** (§3.2).
@@ -87,3 +88,4 @@ npx tsx scripts/cleanup-stub-days.ts --from=2019-06-01 --to=2020-06-30 --apply  
 - **major 2** 삭제 조건이 skip 조건과 같아 다른 지표가 있는 행도 지울 수 있었고 범위 인자가 없었음 → 전 지표 컬럼 null 조건 · `--from/--to` · dry-run 경고.
 - **major 3** `get_weight_loss_status` streak 이 stub 행에 의존 → 달력 날짜 기준 `countConsecutiveBelow` + 회귀 테스트.
 - **info 1** privacy 메시지에 `unauthorized` 포함 (인증 실패 알림 경로 재사용). **info 2** `isNullOrZero` 의 비수치 문자열 처리 의도 주석. **info 3** skip 건수 로그를 `finally` 로.
+- **Codex 1회차 P2** privacy 오류가 plain Error 라 `withReauth`(401/403 만 재인증) 를 못 타 캐시 토큰 재사용 → `status: 403` 부여. 회귀: verify [5].

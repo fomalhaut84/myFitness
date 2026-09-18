@@ -33,10 +33,10 @@ export async function syncDailySummaries(
         // #383 A11: privacyProtected=true 는 데이터 없음이 아니라 토큰/권한 이상 — stub 저장 대신 싱크 실패.
         // calendarDate 가드보다 앞 (사전 리뷰 major 1: 마스킹된 응답은 calendarDate 도 없을 수 있어 뒤에 두면 조용히 skip).
         // 메시지의 "unauthorized" 는 admin-alerts 의 isGarminAuthError 패턴에 걸려 기존 인증 실패 알림 경로를 탄다 (info 1).
+        // Codex P2 (PR #387): status 403 을 실어 withReauth 가 캐시 클라이언트를 버리고 재인증 후 1회 재시도하게 한다 —
+        // plain Error 면 같은 토큰을 계속 재사용해 매 싱크 같은 날짜에서 멈춘다.
         if (isPrivacyProtected(summary)) {
-          throw new Error(
-            `Garmin daily summary ${dateStr} 응답 privacyProtected=true — unauthorized: 인증/토큰 권한 이상 (A11)`
-          );
+          throw privacyProtectedError(dateStr);
         }
 
         if (!summary.calendarDate) continue;
@@ -155,6 +155,16 @@ export async function syncDailySummaries(
   }
 
   return synced;
+}
+
+/** privacyProtected 응답 → 403 상태를 가진 인증 오류 (withReauth 재인증 · isGarminAuthError 알림 둘 다 status 로 판정). */
+function privacyProtectedError(dateStr: string): Error & { status: number } {
+  return Object.assign(
+    new Error(
+      `Garmin daily summary ${dateStr} 응답 privacyProtected=true — unauthorized (403): 인증/토큰 권한 이상 (A11)`
+    ),
+    { status: 403 }
+  );
 }
 
 function toInt(val: unknown): number | null {

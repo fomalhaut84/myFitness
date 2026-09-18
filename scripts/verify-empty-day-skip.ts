@@ -93,6 +93,8 @@ check("daily-summary.ts: 빈 날 → continue (upsert 전)", /if \(isEmptyDailyS
 check("daily-summary.ts: privacy 검사가 미래 날짜 가드보다 앞 (stub 이든 아니든 인증 이상은 실패)", ds.indexOf("isPrivacyProtected(summary)") < ds.indexOf("todayKSTString()"));
 check("daily-summary.ts: privacy 검사가 calendarDate 가드보다 앞 (major 1: 마스킹 응답은 calendarDate 도 없을 수 있다)", ds.indexOf("isPrivacyProtected(summary)") < ds.indexOf("summary.calendarDate"));
 check("daily-summary.ts: privacy 오류 메시지가 인증 실패 알림 패턴(unauthorized)에 걸린다", /privacyProtected=true[^`]*unauthorized/.test(ds));
+// Codex P2 (PR #387): plain Error 는 withReauth(401/403 만 재인증) 를 못 타 캐시 토큰이 계속 재사용된다 → status 403
+check("daily-summary.ts: privacy 오류에 status 403 (withReauth 재인증 경로)", /function privacyProtectedError[\s\S]*?\{ status: 403 \}/.test(ds) && ds.includes("throw privacyProtectedError(dateStr)"));
 const hr = read("src", "lib", "garmin", "fetchers", "heart-rate.ts");
 check("heart-rate.ts: 빈 날 → continue (HRV 조회·upsert 전)", /if \(isEmptyHeartRate\(raw\)\) \{[\s\S]*?continue;/.test(hr) && hr.indexOf("isEmptyHeartRate(raw)") < hr.indexOf("getSleepData"));
 const cleanup = read("scripts", "cleanup-stub-days.ts");
