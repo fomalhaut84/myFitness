@@ -27,7 +27,7 @@ function toRange(
 }
 
 export async function getDataCoverage() {
-  const [activity, running, daily, sleep, hr, body, bp, meta] = await Promise.all([
+  const [activity, running, daily, sleep, hr, body, bp, fm, meta] = await Promise.all([
     prisma.activity.aggregate({
       _min: { startTime: true },
       _max: { startTime: true },
@@ -44,6 +44,7 @@ export async function getDataCoverage() {
     prisma.heartRateRecord.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
     prisma.bodyComposition.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
     prisma.bloodPressure.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
+    prisma.fitnessMetricDaily.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
     prisma.syncMetadata.findMany({
       select: { dataType: true, oldestFetchedDate: true, coveredThroughDate: true, lastSyncAt: true },
     }),
@@ -59,6 +60,8 @@ export async function getDataCoverage() {
     heart_rate: toRange(hr._min.date, hr._max.date, hr._count._all),
     body_composition: toRange(body._min.date, body._max.date, body._count._all),
     blood_pressure: toRange(bp._min.date, bp._max.date, bp._count._all),
+    // #378: VO2max 일별 + 젖산역치 감지일. oldest 는 VO2max 시작(2020-06)이 된다.
+    fitness_metrics: toRange(fm._min.date, fm._max.date, fm._count._all),
   };
 
   const syncCoverage = Object.fromEntries(

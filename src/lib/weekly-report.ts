@@ -77,6 +77,7 @@ async function preSyncForWeekly(
     "activities",
     "blood_pressure",
     "body_composition",
+    "fitness_metrics", // #378: 06:00 cron 실패 주에도 gap-fill 되도록 (사전 리뷰 I2)
   ] as const;
   // #256: Garmin 재인증 실패 감지 → 관리자 alert (bot 있을 때만). 3 단계 syncAll 에 모두 전달.
   const notifyBot = options?.notifyBot;

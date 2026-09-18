@@ -210,6 +210,20 @@ model BodyComposition {
   createdAt  DateTime @default(now())
 }
 
+// #378: Garmin 성과통계 이력 — VO2max 일별(maxmet) + 러닝 젖산역치(HR·속도, Garmin 감지일만).
+// 어느 한 값이라도 있는 날짜만 row. rawData 에 세 엔드포인트 원본을 소스별로 보존
+// (사이클링 VO2max · heatAltitudeAcclimation 은 컬럼 없이 rawData 에만).
+model FitnessMetricDaily {
+  id            String   @id @default(cuid())
+  date          DateTime @unique       // KST 자정 instant (calendarDate / from → T00:00:00+09:00)
+  vo2maxRunning Float?                 // maxmet generic.vo2MaxPreciseValue (없으면 vo2MaxValue)
+  lthr          Int?                   // bpm (lactateThresholdHeartRate)
+  lthrPace      Float?                 // sec/km (lactateThresholdSpeed × 10 = m/s → 1000 / m/s)
+  fitnessAge    Int?                   // 2023 이후 null 인 날이 많음
+  rawData       Json?
+  createdAt     DateTime @default(now())
+}
+
 model BloodPressure {
   id            String   @id @default(cuid())
   date          DateTime @unique
