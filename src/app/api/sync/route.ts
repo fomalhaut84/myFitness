@@ -11,6 +11,7 @@ const VALID_DATA_TYPES: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  "fitness_metrics",
   "user_profile",
 ];
 

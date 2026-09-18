@@ -10,6 +10,7 @@ import { syncSleep } from "./fetchers/sleep";
 import { syncHeartRate } from "./fetchers/heart-rate";
 import { syncBodyComposition } from "./fetchers/body-composition";
 import { syncBloodPressure } from "./fetchers/blood-pressure";
+import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
 import { syncUserProfile } from "./fetchers/user-profile";
 import { runWeatherBackfill } from "@/lib/weather/enrich";
 
@@ -27,6 +28,7 @@ type DataType =
   | "heart_rate"
   | "body_composition"
   | "blood_pressure"
+  | "fitness_metrics"
   | "user_profile";
 
 interface SyncResult {
@@ -45,6 +47,7 @@ const SYNC_FNS: Record<
   heart_rate: syncHeartRate,
   body_composition: syncBodyComposition,
   blood_pressure: syncBloodPressure,
+  fitness_metrics: syncFitnessMetrics,
   user_profile: syncUserProfile,
 };
 
@@ -55,6 +58,8 @@ const SYNC_ORDER: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  // #378: 프로필 스냅샷(user_profile) 앞 — 같은 값을 두 소스가 다르게 들 수 있어 이력이 먼저 갱신되도록.
+  "fitness_metrics",
   "user_profile",
 ];
 
@@ -114,6 +119,11 @@ async function firstRecordDate(dataType: DataType): Promise<Date | null> {
       }),
     blood_pressure: () =>
       prisma.bloodPressure.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    fitness_metrics: () =>
+      prisma.fitnessMetricDaily.findFirst({
         orderBy: { date: "asc" },
         select: { date: true },
       }),

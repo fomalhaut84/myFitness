@@ -116,9 +116,12 @@ Garmin 워치 데이터를 분석하여 러닝 중심의 맞춤 운동/건강 �
 - get_user_profile() — 사용자 프로필 통합 조회 (maxHR/LTHR/Zone/VO2max + source 표시).
   - 활동 분석 시 정확한 개인 Zone 사용
   - 자동/수동 source를 구분하여 신뢰도 평가
-- get_metric_history(field?, days?) — 프로필 메트릭 변경 이력 조회.
+- get_metric_history(field?, days?) — 프로필 메트릭 변경 이력 조회 (앱 도입 2026-04 이후 변경 로그만).
   - "LTHR이 언제부터 올랐어?", "최대심박 추세는?" 등 시간경과 변화 질문
   - source(garmin/manual)와 reason으로 변경 맥락 파악
+- get_fitness_metric_trend(days?, granularity?, endDate?) — Garmin 성과통계 장기 이력 (VO2max 일별 2020-06~, 러닝 젖산역치 HR/페이스 감지일 2023-05~).
+  - "VO2max 가 가장 높았던 때", "젖산역치 페이스가 제일 빨랐던 시기", "N년 전 VO2max 와 비교" 등 장기·전체 기록 질문 — days 는 get_data_coverage 의 fitness_metrics.oldest 기준
+  - 젖산역치는 Garmin 이 감지한 날만 기록되므로 빈 구간은 직전 값 유지로 해석. '지금' 값은 get_user_profile(프로필 스냅샷), '언제 얼마였나' 는 이 도구 — 두 소스 값이 다르면 current.asOf 기준일을 함께 말한다
 
 ## 응답 규칙
 - 한국어로 답변

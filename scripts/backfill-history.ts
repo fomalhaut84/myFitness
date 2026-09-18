@@ -51,6 +51,8 @@ const BACKFILL_TYPES: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  // #378: 365일 청크당 호출 3회 — 배포 후 `--types=fitness_metrics --from=2020-06-01` 로 1회 실행.
+  "fitness_metrics",
 ];
 
 type Chunk = BackfillChunk;
