@@ -1,25 +1,18 @@
 import prisma from "@/lib/prisma";
-import { formatDateLocal } from "@/lib/format";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { weekStartKST } from "@/lib/date";
-import { ymdKST } from "@/lib/garmin/utils";
+import { daysAgoKST, ymdKST } from "@/lib/garmin/utils";
+import { kstInstant, startOfMonthYmd } from "@/lib/history/buckets";
 import ActivitiesClient from "./activities-client";
 
 export const dynamic = "force-dynamic";
 
-function weeksAgo(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n * 7);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
 
 export default async function ActivitiesPage() {
   const now = new Date();
-  // KST 기준 월 시작 (UTC로 저장된 DB와 비교 가능하도록)
-  const kstNow = new Date(now.toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-  const monthStart = new Date(Date.UTC(kstNow.getFullYear(), kstNow.getMonth(), 1) - 9 * 60 * 60 * 1000);
-  const eightWeeksAgo = weeksAgo(8);
+  // #393 (M15-1): KST 월 시작 · 56일 전 자정 — 공용 헬퍼 (서버 로컬 TZ 의존 제거, #365)
+  const monthStart = kstInstant(startOfMonthYmd(ymdKST(now)));
+  const eightWeeksAgo = daysAgoKST(56);
 
   // 최대 심박수/LTHR: UserProfile 실측값 → 나이 기반 fallback
   const userProfile = await prisma.userProfile.findFirst();
@@ -168,7 +161,7 @@ export default async function ActivitiesPage() {
       estimatedMaxHR={estimatedMaxHR}
       userLTHR={userLTHR}
       runningRecords={runningRecords.map((r) => ({
-        date: formatDateLocal(r.startTime),
+        date: ymdKST(r.startTime),
         avgPace: r.avgPace,
         avgHR: r.avgHR,
         maxHR: r.maxHR,
