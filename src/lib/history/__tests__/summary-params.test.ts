@@ -23,6 +23,11 @@ describe("parseSummaryParams — 성공 경로", () => {
     expect(r.ok && r.params.metrics).toEqual(["runningKm", "weight"]);
   });
 
+  it("metrics 가 구분자만이면 생략과 동일 (사전 리뷰 info 4)", () => {
+    const r = parseSummaryParams({ granularity: "month", from: "2024-01-01", to: "2024-01-31", metrics: " , ," }, ctx);
+    expect(r.ok && r.params.metrics).toEqual([...HISTORY_METRIC_IDS]);
+  });
+
   it("from < lowerBound → 클램프 + 플래그 (400 아님: 연 뷰 첫 해 링크)", () => {
     const r = parseSummaryParams({ granularity: "year", from: "2019-01-01", to: "2020-12-31" }, ctx);
     expect(r.ok && r.params.from).toBe("2020-06-16");

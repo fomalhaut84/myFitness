@@ -88,9 +88,9 @@ interface HistoryMetricDef {
 
 - `rollup(points, buckets, def)`: 버킷별로 `ymd` 가 `[startYmd, endYmd)` 인 포인트를 모아 규칙 적용. 입력 불변, 새 배열 반환.
   - `coveredDays` = 값이 있는 날 수. `missingAsZero` 면 값 없는 날은 0 으로 세되 coveredDays 는 **실제 값 있는 날** (러닝 0회 월도 "기록 없음"이 아니라 0 이므로 UI 는 sum 형에서 coveredDays 를 흐림 판정에 쓰지 않는다 — 응답의 `def.missingAsZero` 로 판단).
-  - avg: 소수 `decimals` 자리 반올림. min/max 는 `withMinMax` 만.
+  - 모든 출력값(value · min · max · last)을 `decimals` 로 반올림 (평균선이 밴드 밖으로 나가지 않게 — 사전 리뷰 info 2). min/max 는 `withMinMax` 만.
   - last: 버킷 안 최신 ymd 의 값.
-- `loadDailyPoints(from, to, metricIds)`: 소스별로 **한 번씩만** 조회 (같은 소스의 지표는 select 를 합친다). `where: { date: { gte: fromStart, lt: toEndExclusive } }`. Activity 는 `startTime` 범위 + `activityType` 은 `isRunningType` 을 JS 에서 적용 (`contains: "run"` 필터는 `RUNNING_TYPES` 와 어긋날 수 있어 안 쓴다).
+- `loadDailyPoints(spanFrom, spanTo, metricIds)`: 소스별로 **한 번씩만** 조회 (같은 소스의 지표는 select 를 합친다). **조회 범위는 `from`/`to` 가 아니라 `bucketSpan(buckets)` (첫 버킷 시작 ~ 끝 버킷 마지막 날)** — §4.1 의 "첫/끝 버킷은 달력 전체" 와 맞추기 위해. from/to 로 조회하면 `?from=2024-03-15` 의 `2024-03` 버킷이 15일치 부분 합계가 되면서 `totalDays: 31` 로 나가 저커버리지 달로 오독된다 (사전 리뷰 major 1 · 회귀 `__tests__/summary.test.ts`). 하한 이전·오늘 이후는 행이 없어 무해. `where: { date: { gte: spanStart, lt: spanEndExclusive } }`. Activity 는 `startTime` 범위 + `activityType` 은 `isRunningType` 을 JS 에서 적용 (`contains: "run"` 필터는 `RUNNING_TYPES` 와 어긋날 수 있어 안 쓴다).
 - 규모: 6년 전체 시 Activity 2,332 · Daily 2,300 · Sleep 2,300 · Body 372 · Fitness 2,000 행, 컬럼 3~5개. 캐시 없음 (m15-overview D5).
 
 ### 4.4 API (F6 · F7)
@@ -100,7 +100,7 @@ interface HistoryMetricDef {
 - 검증 (`parseSummaryParams`, 순수):
   - `granularity` ∈ 4종. `from`/`to` 는 `parseHistoryYmd` 규칙 (형식·실존·미래 아님). `from > to` → 400.
   - `from < lowerBound` → **클램프** 후 응답 `clampedFrom: true` (범위 밖을 400 으로 막으면 연 뷰 첫 해 링크가 깨진다). `to > today` → today 로 클램프.
-  - `metrics` 생략 = 전체. 미등록 id → 400.
+  - `metrics` 생략 = 전체 (구분자만 있는 `metrics=,` 도 동일). 미등록 id → 400. 형식·순서 오류는 하한 DB 조회 전에 걸러낸다.
   - `granularity=day` 는 최대 366일 (버킷 폭주 방지) → 초과 400.
 - 응답:
 
@@ -180,3 +180,10 @@ vitest (`src/lib/history/__tests__/`):
 - #365 의 **봇 `toLocaleDateString` · `ecosystem.config.js` TZ 고정 · 클라이언트 컴포넌트 `"use client"` · verify 스캔 범위 확장** — 페이지 인라인 밖이라 #365 에 남긴다. 이 PR 머지 후 #365 본문에 처리된 행을 표시.
 - 메모리 캐시 / materialized rollup — F12 실측이 느릴 때만.
 - UI — #394 · #395.
+
+## 8. 코드 리뷰 결과
+
+- 사전 에이전트 리뷰 1회 (2026-09-18): critical 0 · major 1 · info 5
+  - major 1: 버킷은 달력 전체인데 조회가 from/to → 첫/끝 버킷 부분 합계. **반영** — `bucketSpan` 으로 조회 + `summary.test.ts` 회귀
+  - info 2 (min/max/last 반올림) · 3 (그룹핑 O(n²)) · 4 (`metrics=,`) · 5 (400 전 DB 조회) · 6 (range-params 테스트 · 주 버킷 롤업 · 연 경계 주) → 전부 반영. 테스트 42 → 52건
+- Codex bot: PR 오픈 후

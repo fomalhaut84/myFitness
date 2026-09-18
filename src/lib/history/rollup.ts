@@ -8,6 +8,7 @@
  * - last: 버킷 안 최신 ymd 의 값.
  * - `withLast`: 규칙과 별개로 last 를 병기.
  * - coveredDays: 값이 있는 **날** 수 (같은 날 포인트가 여러 개여도 1일).
+ * - 모든 출력값(value · min · max · last)은 `decimals` 로 반올림 — 평균선이 min/max 밴드 밖으로 나가지 않게.
  */
 import { bucketKeyOf, type HistoryBucket } from "./buckets";
 import type { HistoryMetricDef } from "./metrics";
@@ -30,10 +31,10 @@ function roundTo(n: number, decimals: number): number {
   return Math.round(n * f) / f;
 }
 
-function lastByYmd(points: readonly DailyPoint[]): number | null {
+function lastByYmd(points: readonly DailyPoint[], decimals: number): number | null {
   if (points.length === 0) return null;
   const latest = points.reduce((acc, p) => (p.ymd > acc.ymd ? p : acc));
-  return latest.value;
+  return roundTo(latest.value, decimals);
 }
 
 function aggregateValue(points: readonly DailyPoint[], def: HistoryMetricDef): number | null {
@@ -45,9 +46,9 @@ function aggregateValue(points: readonly DailyPoint[], def: HistoryMetricDef): n
     case "avg":
       return roundTo(values.reduce((s, v) => s + v, 0) / values.length, def.decimals);
     case "max":
-      return Math.max(...values);
+      return roundTo(Math.max(...values), def.decimals);
     case "last":
-      return lastByYmd(points);
+      return lastByYmd(points, def.decimals);
   }
 }
 
@@ -58,10 +59,13 @@ export function rollup(
 ): BucketValue[] {
   if (buckets.length === 0) return [];
   const granularity = buckets[0].granularity;
+  // 로컬 누적기 push — 입력·반환 배열은 그대로 (순수 함수 유지). spread 재생성은 O(n²) (사전 리뷰 info 3).
   const grouped = new Map<string, DailyPoint[]>();
   for (const p of points) {
     const key = bucketKeyOf(p.ymd, granularity);
-    grouped.set(key, [...(grouped.get(key) ?? []), p]);
+    const list = grouped.get(key);
+    if (list) list.push(p);
+    else grouped.set(key, [p]);
   }
 
   return buckets.map((bucket) => {
@@ -72,11 +76,11 @@ export function rollup(
     };
     const withMinMax = def.withMinMax
       ? {
-          min: inBucket.length ? Math.min(...inBucket.map((p) => p.value)) : null,
-          max: inBucket.length ? Math.max(...inBucket.map((p) => p.value)) : null,
+          min: inBucket.length ? roundTo(Math.min(...inBucket.map((p) => p.value)), def.decimals) : null,
+          max: inBucket.length ? roundTo(Math.max(...inBucket.map((p) => p.value)), def.decimals) : null,
         }
       : {};
-    const withLast = def.withLast ? { last: lastByYmd(inBucket) } : {};
+    const withLast = def.withLast ? { last: lastByYmd(inBucket, def.decimals) } : {};
     return { ...result, ...withMinMax, ...withLast };
   });
 }

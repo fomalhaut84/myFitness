@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import {
   addDaysYmd,
   bucketKeyOf,
+  bucketSpan,
   enumerateBuckets,
   isValidYmd,
   kstDayRange,
@@ -115,6 +116,19 @@ describe("enumerateBuckets", () => {
     expect(b.start.toISOString()).toBe("2024-02-29T15:00:00.000Z");
     expect(b.end.toISOString()).toBe("2024-03-31T15:00:00.000Z");
     expect(b.granularity).toBe("month");
+  });
+
+  it("연 경계를 넘는 주: 2024-12-30 주는 하나의 버킷 · 7일", () => {
+    const buckets = enumerateBuckets("2024-12-30", "2025-01-02", "week", today);
+    expect(buckets.map((b) => b.key)).toEqual(["2024-12-30"]);
+    expect(buckets[0].endYmd).toBe("2025-01-06");
+    expect(buckets[0].totalDays).toBe(7);
+  });
+
+  it("bucketSpan 은 첫 버킷 시작 ~ 끝 버킷 마지막 날 (inclusive) — 조회 범위", () => {
+    const buckets = enumerateBuckets("2024-03-15", "2024-05-20", "month", today);
+    expect(bucketSpan(buckets)).toEqual({ fromYmd: "2024-03-01", toYmd: "2024-05-31" });
+    expect(bucketSpan([])).toBeNull();
   });
 
   it("from > to 면 빈 배열", () => {

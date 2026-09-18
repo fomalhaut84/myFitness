@@ -41,13 +41,13 @@ describe("rollup — avg (+min/max, 반올림)", () => {
     expect(out[1]).toEqual({ value: 90, coveredDays: 1, min: 90, max: 90 });
   });
 
-  it("체중 평균 소수 1자리 + last (기간 말 값)", () => {
+  it("체중 평균 소수 1자리 + last (기간 말 값) · min/max/last 도 같은 자리로 반올림 (사전 리뷰 info 2)", () => {
     const points: DailyPoint[] = [
       { ymd: "2024-01-20", value: 71.25 },
       { ymd: "2024-01-05", value: 72.0 }, // 입력 순서 무관 — last 는 최신 ymd
     ];
     const out = rollup(points, months, getHistoryMetric("weight"));
-    expect(out[0]).toEqual({ value: 71.6, coveredDays: 2, min: 71.25, max: 72, last: 71.25 });
+    expect(out[0]).toEqual({ value: 71.6, coveredDays: 2, min: 71.3, max: 72, last: 71.3 });
     expect(out[1]).toEqual({ value: null, coveredDays: 0, min: null, max: null, last: null });
   });
 });
@@ -70,6 +70,19 @@ describe("rollup — max / last", () => {
     ];
     const out = rollup(points, months, getHistoryMetric("ltPace"));
     expect(out[0]).toEqual({ value: 290, coveredDays: 2 });
+  });
+});
+
+describe("rollup — 주 버킷 (bucketKeyOf 와 키 결합)", () => {
+  it("일요일 포인트가 그 주 월요일 키 버킷에 들어간다", () => {
+    const weeks = enumerateBuckets("2024-03-11", "2024-03-24", "week", TODAY);
+    const points: DailyPoint[] = [
+      { ymd: "2024-03-17", value: 10 }, // 일 → 03-11 주
+      { ymd: "2024-03-18", value: 5 }, // 월 → 03-18 주
+    ];
+    const out = rollup(points, weeks, getHistoryMetric("runningKm"));
+    expect(weeks.map((w) => w.key)).toEqual(["2024-03-11", "2024-03-18"]);
+    expect(out.map((v) => v.value)).toEqual([10, 5]);
   });
 });
 

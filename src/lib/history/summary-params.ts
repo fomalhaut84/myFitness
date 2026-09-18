@@ -37,6 +37,7 @@ export type ParseResult = { ok: true; params: SummaryParams } | { ok: false; err
 function parseMetrics(raw: string | null | undefined): { ok: true; ids: HistoryMetricId[] } | { ok: false; error: string } {
   if (!raw || raw.trim() === "") return { ok: true, ids: [...HISTORY_METRIC_IDS] };
   const tokens = raw.split(",").map((t) => t.trim()).filter((t) => t !== "");
+  if (tokens.length === 0) return { ok: true, ids: [...HISTORY_METRIC_IDS] }; // "metrics=," 도 생략과 동일
   const unknown = tokens.filter((t) => !isHistoryMetricId(t));
   if (unknown.length > 0) {
     return { ok: false, error: `미등록 metrics: ${unknown.join(", ")} (허용: ${HISTORY_METRIC_IDS.join(", ")})` };

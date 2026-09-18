@@ -128,6 +128,15 @@ function nextBucketStartYmd(startYmd: string, g: HistoryGranularity): string {
 }
 
 /**
+ * 버킷 목록이 덮는 달력 범위 (inclusive ymd). 조회는 `from`/`to` 가 아니라 이 범위로 해야 첫/끝 버킷이
+ * 부분 합계가 되지 않는다 (#393 사전 리뷰 major 1). 빈 목록이면 null.
+ */
+export function bucketSpan(buckets: readonly HistoryBucket[]): { fromYmd: string; toYmd: string } | null {
+  if (buckets.length === 0) return null;
+  return { fromYmd: buckets[0].startYmd, toYmd: addDaysYmd(buckets[buckets.length - 1].endYmd, -1) };
+}
+
+/**
  * `from` 이 속한 버킷부터 `to` 가 속한 버킷까지 **빈 버킷 포함** 생성. 첫/끝 버킷은 달력 전체
  * (`from`/`to` 로 자르지 않는다 — 월 뷰가 "3월 1일~31일" 을 기대). `todayYmd` 이후 일수는
  * totalDays 에 세지 않는다.
