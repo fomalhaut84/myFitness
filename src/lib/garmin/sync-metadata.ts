@@ -21,15 +21,26 @@ export function clampCursorToToday(endDate: Date, todayKstMidnight: Date): Date 
   return endDate.getTime() > todayKstMidnight.getTime() ? todayKstMidnight : endDate;
 }
 
-/** 조건부 전진 predicate — `updateMany` 가 이 where 로 기존 값보다 늦은 cursor 만 쓴다 (atomic). cursor 는 clamp 된 값. */
+/**
+ * 조건부 전진 predicate — `updateMany` 가 이 where 로 (a) 기존 값보다 늦은 cursor 를 쓰거나 (b) **이미 미래로 저장된 커서를
+ * 끌어내린다** (atomic). cursor 는 clamp 된 값.
+ *
+ * Codex P1 (PR #386 2회차): (b) 가 없으면 예전 `/api/sync` 가 미래 endDate 로 남긴 행을 단조 규칙이 영구 보호해 cron 이
+ * 복구하지 못한다 — 마이그레이션 대신 다음 싱크가 스스로 복구하도록 predicate 에 포함한다.
+ */
 export function advanceLastSyncDateWhere(
   dataType: string,
   cursor: Date,
-): { dataType: string; lastSyncDate: { lt: Date } } {
-  return { dataType, lastSyncDate: { lt: cursor } };
+  todayKstMidnight: Date,
+): { dataType: string; OR: [{ lastSyncDate: { lt: Date } }, { lastSyncDate: { gt: Date } }] } {
+  return {
+    dataType,
+    OR: [{ lastSyncDate: { lt: cursor } }, { lastSyncDate: { gt: todayKstMidnight } }],
+  };
 }
 
-/** 같은 규칙의 순수 버전 — 결과값 확인용 (테스트·문서). */
-export function resolveNextLastSyncDate(current: Date, cursor: Date): Date {
+/** 같은 규칙의 순수 버전 — 결과값 확인용 (테스트·문서). 미래 커서는 cursor 로 복구, 아니면 늦은 쪽. */
+export function resolveNextLastSyncDate(current: Date, cursor: Date, todayKstMidnight: Date): Date {
+  if (current.getTime() > todayKstMidnight.getTime()) return cursor;
   return cursor.getTime() > current.getTime() ? cursor : current;
 }

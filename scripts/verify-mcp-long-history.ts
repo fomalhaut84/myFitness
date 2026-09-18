@@ -293,16 +293,19 @@ check("타입 싱크 직후 그 타입만 즉시 복원한다 (소스 확인)", 
 console.log("\n[12] lastSyncDate 단조 증가 (#381)");
 {
   const today = kst("2026-09-18");
-  const where = advanceLastSyncDateWhere("sleep", today);
-  check("predicate: dataType + lastSyncDate < endDate", where.dataType === "sleep" && where.lastSyncDate.lt.getTime() === today.getTime(), where);
-  check("과거 청크 end(2020) 는 오늘 커서를 못 끌어내림", resolveNextLastSyncDate(today, kst("2020-05-30")).getTime() === today.getTime());
-  check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today)) === "2026-09-18");
-  check("같으면 그대로", resolveNextLastSyncDate(today, today).getTime() === today.getTime());
-  check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today).getTime() === today.getTime());
+  const where = advanceLastSyncDateWhere("sleep", today, today);
+  check("predicate: dataType + (lastSyncDate < cursor OR lastSyncDate > today)", where.dataType === "sleep" && where.OR[0].lastSyncDate.lt.getTime() === today.getTime() && where.OR[1].lastSyncDate.gt.getTime() === today.getTime(), where);
+  check("과거 청크 end(2020) 는 오늘 커서를 못 끌어내림", resolveNextLastSyncDate(today, kst("2020-05-30"), today).getTime() === today.getTime());
+  check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today, today)) === "2026-09-18");
+  check("같으면 그대로", resolveNextLastSyncDate(today, today, today).getTime() === today.getTime());
+  check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today, today).getTime() === today.getTime());
+  // Codex P1 (PR #386 2회차): 예전 /api/sync 가 남긴 미래 커서는 단조 규칙이 영구 보호하면 안 된다 → 다음 싱크가 끌어내림
+  check("이미 미래로 저장된 커서(2027)는 오늘 싱크가 오늘로 복구", resolveNextLastSyncDate(kst("2027-01-01"), today, today).getTime() === today.getTime());
+  check("미래 커서 복구는 과거 청크 싱크에서도 (cursor 로)", ymdKST(resolveNextLastSyncDate(kst("2027-01-01"), kst("2020-05-30"), today)) === "2020-05-30");
   // Codex P1 (PR #386): 미래 endDate 가 커서를 미래로 밀면 단조 증가 때문에 되돌릴 수 없다 → 오늘로 clamp + /api/sync 거부
   check("미래 endDate 는 오늘로 clamp", clampCursorToToday(kst("2027-01-01"), today).getTime() === today.getTime());
   check("오늘/과거 endDate 는 그대로", clampCursorToToday(today, today).getTime() === today.getTime() && ymdKST(clampCursorToToday(kst("2026-09-10"), today)) === "2026-09-10");
-  check("clamp 된 커서로 전진 판정 → 미래 endDate 로는 오늘 커서를 넘지 못함", resolveNextLastSyncDate(today, clampCursorToToday(kst("2027-01-01"), today)).getTime() === today.getTime());
+  check("clamp 된 커서로 전진 판정 → 미래 endDate 로는 오늘 커서를 넘지 못함", resolveNextLastSyncDate(today, clampCursorToToday(kst("2027-01-01"), today), today).getTime() === today.getTime());
   const routeSrc = readFileSync(join(__dirname, "..", "src", "app", "api", "sync", "route.ts"), "utf8");
   check("/api/sync 가 미래 endDate 를 400 으로 거부", /parsed\.getTime\(\) > todayKST\(\)\.getTime\(\)[\s\S]*?status: 400/.test(routeSrc));
   // 사전 리뷰 info 2: markError/markSyncing 의 upsert 도 같은 모양이라 파일 전체에 앵커링하면 함수 순서가 바뀔 때
@@ -314,8 +317,8 @@ console.log("\n[12] lastSyncDate 단조 증가 (#381)");
   const fnSrc = syncSrc.slice(fnStart, fnEnd);
   const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(fnSrc)?.[1] ?? "";
   check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
-  check("updateSyncMetadata 가 clamp 된 cursor 로 advanceLastSyncDateWhere 조건부 전진", /const cursor = clampCursorToToday\(endDate, todayKST\(\)\);[\s\S]*?updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, cursor\),\s*data: \{ lastSyncDate: cursor \}/.test(fnSrc));
-  check("create 경로도 clamp", /lastSyncDate: clampCursorToToday\(endDate, todayKST\(\)\)/.test(fnSrc));
+  check("updateSyncMetadata 가 clamp 된 cursor + today 로 advanceLastSyncDateWhere 조건부 전진", /const cursor = clampCursorToToday\(endDate, today\);[\s\S]*?updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, cursor, today\),\s*data: \{ lastSyncDate: cursor \}/.test(fnSrc));
+  check("create 경로도 clamp (KST 자정 today)", /lastSyncDate: clampCursorToToday\(endDate, today\)/.test(fnSrc));
 }
 
 if (failed > 0) {

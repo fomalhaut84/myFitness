@@ -133,6 +133,7 @@ async function updateSyncMetadata(
   error?: string
 ): Promise<void> {
   const now = new Date();
+  const today = todayKST();
 
   // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
   // #381: update 경로는 lastSyncDate 를 건드리지 않는다 — 아래 조건부 updateMany 가 단조 증가로 전진.
@@ -147,7 +148,7 @@ async function updateSyncMetadata(
     create: {
       dataType,
       lastSyncAt: now,
-      lastSyncDate: clampCursorToToday(endDate, todayKST()),
+      lastSyncDate: clampCursorToToday(endDate, today),
       syncCount,
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -157,9 +158,10 @@ async function updateSyncMetadata(
   // #381: lastSyncDate 단조 증가 (sync-metadata.ts). 과거 범위 명시 싱크(backfill 청크 · /api/sync 옛 범위)가
   // 증분 커서를 뒤로 끌지 못하고, backfill 과 cron 이 경쟁해도 늦은 쪽이 남는다 (atomic 조건부 UPDATE).
   // Codex P1 (PR #386): 미래 endDate 는 오늘로 clamp — 단조 증가라 한 번 미래로 가면 되돌릴 수 없다 (/api/sync 도 거부).
-  const cursor = clampCursorToToday(endDate, todayKST());
+  // 2회차 P1: 이미 미래로 저장된 커서(예전 /api/sync)는 predicate 의 OR 분기가 끌어내려 다음 싱크에서 자가 복구.
+  const cursor = clampCursorToToday(endDate, today);
   await prisma.syncMetadata.updateMany({
-    where: advanceLastSyncDateWhere(dataType, cursor),
+    where: advanceLastSyncDateWhere(dataType, cursor, today),
     data: { lastSyncDate: cursor },
   });
 

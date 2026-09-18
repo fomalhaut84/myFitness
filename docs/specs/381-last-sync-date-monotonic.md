@@ -51,3 +51,6 @@ cron/수동 싱크가 같은 타입의 `lastSyncDate` 를 오늘로 전진시키
   성공하고 커서가 미래로 저장돼, 이후 cron/리포트의 `lastSyncDate + 1` 증분이 그 날짜가 올 때까지 gap-fill 을 건너뛴다.
   → (a) `/api/sync` 에서 미래 endDate 를 400 으로 거부 (경계 검증), (b) `updateSyncMetadata` 가 커서를 `clampCursorToToday(endDate, todayKST())`
   로 clamp (create 경로 포함 — 이중 방어). 회귀: verify [12].
+- **2회차 P1** — 경계 거부·clamp 는 **새 쓰기**만 막는다. 예전 `/api/sync` 가 이미 미래로 남긴 행은 `lastSyncDate < cursor` 가 영영 매칭되지 않아
+  cron 이 복구하지 못한다 → predicate 에 `OR lastSyncDate > today` 를 넣어 **다음 싱크가 스스로 끌어내린다** (마이그레이션 불필요 · atomic 유지).
+  `resolveNextLastSyncDate(current, cursor, today)` 도 같은 규칙. 회귀: verify [12].
