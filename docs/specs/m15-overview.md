@@ -54,7 +54,8 @@
 - 각 레벨에 **이전/다음 + 점프 picker** (연: 연도 탭, 월: `<input type="month">`, 일: `<input type="date">`). `NutritionDateNav` 의 패턴을 레벨 파라미터화해 공용화.
 - 상위 셀 클릭 → 하위 레벨. 브레드크럼 `2024 › 3월 › 15일`.
 - 사이드바에 **"기록"** (`/history`) · **"추이"** (`/trends`) 2개 메뉴 추가. 기존 페이지는 손대지 않는다 (기존 페이지에 기간 선택기를 넣는 방안은 페이지마다 창이 달라 일관성이 안 나오므로 제외).
-- 유효 범위: `MIN_HISTORY_YMD`(2020-01-01) ~ 오늘 KST. 시작 연도는 `SyncMetadata.oldestFetchedDate` 의 최소값. 미래·범위 밖은 `parseHistoryYmd` 와 같은 규칙으로 최신으로 fallback.
+- 유효 범위 하한 = **`max(MIN_HISTORY_YMD, 실제 최초 기록일)`**, 상한 = 오늘 KST. 실제 최초 기록일은 Activity.startTime · DailySummary.date · SleepRecord.date · BodyComposition.date · FitnessMetricDaily.date 의 최소값 (M15-1 의 `getHistoryLowerBound()` 로 한 곳에서 계산, 연도 탭·picker `min`·라우트 검증이 전부 이 값을 쓴다). 미래·범위 밖은 `parseHistoryYmd` 와 같은 규칙으로 최신으로 fallback.
+  - `SyncMetadata.oldestFetchedDate` 는 쓰지 않는다 — 그 값은 backfill 로 **조회한** 범위(2019-06-01)라 데이터가 없는 2019 탭이 노출되고, 그 라우트는 `MIN_HISTORY_YMD`(2020-01-01) 에 걸려 전부 되돌아간다 (PR #398 Codex P2). 실데이터 최초 기록은 2020-06-16 (체중) · 2020-06-19 (활동·일별).
 
 ### D2. 일 뷰 = 일간 종합 페이지 (신설)
 
