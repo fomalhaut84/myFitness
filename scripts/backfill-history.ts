@@ -10,9 +10,11 @@
  *   병합 조건이 endDate >= oldestFetchedDate-1 이라 늦은 마커 기준이어야 전 타입이 인접/중첩 (사전 리뷰 M1).
  *   선택 타입 중 마커가 null 인 타입이 하나라도 있으면 어제 기준 — 옛 마커로 초기화된 커버 범위는 이후 cron
  *   증분과 disjoint 라 리셋된다 (Codex P2 4회차).
- * - `lastSyncDate` 는 backfill 대상이 아니다. syncAll 이 lastSyncDate=endDate 로 덮어쓰므로 청크마다
- *   실행 전 스냅샷으로 되돌린다 (더 늦은 값이 이미 있으면 유지). 안 그러면 weekly-report 의
+ * - `lastSyncDate` 는 backfill 대상이 아니다. #381 이전엔 syncAll 이 lastSyncDate=endDate 로 덮어써서 청크마다
+ *   실행 전 스냅샷으로 되돌렸다 (더 늦은 값이 이미 있으면 유지). 안 그러면 weekly-report 의
  *   startDate 없는 syncAll 이 lastSyncDate+1 부터 수년치를 다시 싱크한다 (사전 리뷰 C1).
+ *   #381 부터 updateSyncMetadata 가 단조 증가라 청크가 커서를 끌어내리지 못한다 — 복원 로직은 이중 안전으로 유지
+ *   (전제: 최신→과거 순 + chunk0 실패 타입 중단. 전제가 깨지면 epoch(0) 타입 커서가 과거에 남는다 — 지우지 말 것).
  *   SyncMetadata 행이 없는(또는 성공 싱크가 없는) 타입은 `to` 를 복원 기준으로 쓴다 (Codex P1 PR #379).
  * - 청크 안에서는 **타입 단위로 순차 싱크 + 즉시 복원** (한 syncAll 로 여러 타입을 돌리면 먼저 끝난 타입의
  *   옛 lastSyncDate 가 수십 분 노출돼 weekly-report 증분 싱크가 끼어들 수 있다 — Codex P1 5회차).
@@ -51,6 +53,8 @@ const BACKFILL_TYPES: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  // #378: 365일 청크당 호출 3회 — 배포 후 `--types=fitness_metrics --from=2020-06-01` 로 1회 실행.
+  "fitness_metrics",
 ];
 
 type Chunk = BackfillChunk;

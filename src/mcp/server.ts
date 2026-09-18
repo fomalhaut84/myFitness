@@ -49,6 +49,7 @@ import {
 import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 import { getPersonalGoals } from "./tools/personal-goals";
 import { getDataCoverage } from "./tools/coverage";
+import { getFitnessMetricTrend } from "./tools/fitness-metrics";
 import { MAX_QUERY_DAYS, MIN_WINDOW_DAYS } from "./tools/constants";
 
 /**
@@ -504,9 +505,33 @@ server.tool(
       .positive()
       .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 90, 최대 3650). 앱 도입(2026-04) 이후 변경 로그만 있음 — Garmin 장기 이력은 별도 도구(#378 예정)"),
+      .describe("조회 일수 (기본 90, 최대 3650). 앱 도입(2026-04) 이후 변경 로그만 있음 — Garmin 장기 이력(VO2max 2020-06~, 젖산역치 2023-05~)은 get_fitness_metric_trend"),
   },
   async (args) => getMetricHistory(args)
+);
+
+server.tool(
+  "get_fitness_metric_trend",
+  "Garmin 성과통계 장기 이력 — VO2max(일별, 2020-06~) · 러닝 젖산역치 HR/페이스(Garmin 감지일만, 2023-05~). current(최신값+기준일) · best(VO2max 최고 / LT 페이스 최저 날짜) · lthrDetections · records(일별 또는 주/월 집계). '컨디션이 제일 좋았던 시기', 'VO2max 가 언제 가장 높았나' 류 질문에 사용. 현재 프로필값은 get_user_profile.",
+  {
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 365, 최대 3650). 전체 기록은 get_data_coverage 의 fitness_metrics.oldest 기준으로 산정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동. 집계 시 vo2maxRunning 은 {avg,min,max}, lthr/lthrPace 는 각각 버킷 마지막 감지값(감지일 별도)"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
+  },
+  async (args) => getFitnessMetricTrend(args)
 );
 
 server.tool(

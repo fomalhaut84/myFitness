@@ -13,6 +13,7 @@
  * 9. Codex 4회차 P2: 선택 타입 중 null 마커가 있으면 --to 는 어제 기준
  * 10. Codex 5회차: P1 타입별 순차 싱크 + 즉시 복원 (옛 lastSyncDate 노출 창 최소화), P2 행 없는 타입도 null 마커
  * 11. Codex 6회차 P2: get_blood_pressure 도 400행 초과 시 집계 승격, coverage 문구가 기록 하한과 fetch 하한을 구분
+ * 12. #381 (릴리즈 PR #380 Codex P2): updateSyncMetadata 의 lastSyncDate 단조 증가 — 과거 청크가 커서를 끌어내리지 못함
  *
  * 실행: npm run verify:mcp-long-history
  */
@@ -45,6 +46,11 @@ import {
   typesWithoutSuccessfulSync,
 } from "../src/lib/garmin/backfill-chunks";
 import { ymdKST } from "../src/lib/garmin/utils";
+import {
+  advanceLastSyncDateWhere,
+  clampCursorToToday,
+  resolveNextLastSyncDate,
+} from "../src/lib/garmin/sync-metadata";
 
 let failed = 0;
 function check(label: string, condition: boolean, detail?: unknown): void {
@@ -281,6 +287,43 @@ check("스크립트가 성공 타입을 succeeded 에 누적한다 (소스 확�
 // Codex 5회차 P1: 여러 타입을 한 syncAll 로 돌리면 먼저 끝난 타입의 옛 lastSyncDate 가 수십 분 노출된다
 check("청크 안에서 syncAll 은 타입 하나씩 호출한다 (소스 확인)", /dataTypes: \[dataType\]/.test(backfillSrc) && !/dataTypes: \[\.\.\.types\]/.test(backfillSrc));
 check("타입 싱크 직후 그 타입만 즉시 복원한다 (소스 확인)", /finally \{\s*await restoreLastSync\(nextState, \[dataType\]\)/.test(backfillSrc));
+
+// --- 12. #381 회귀: updateSyncMetadata 가 lastSyncDate 를 무조건 덮어쓰면 backfill 청크가 커서를 수년 뒤로 끌고,
+//     backfill/cron 경쟁 시 cron 전진분이 스냅샷 복원에 지워진다. 단조 증가 predicate + 소스 스캔.
+console.log("\n[12] lastSyncDate 단조 증가 (#381)");
+{
+  const today = kst("2026-09-18");
+  const where = advanceLastSyncDateWhere("sleep", today, today);
+  check("predicate: dataType + (lastSyncDate < cursor OR lastSyncDate > today)", where.dataType === "sleep" && where.OR[0].lastSyncDate.lt.getTime() === today.getTime() && where.OR[1].lastSyncDate.gt.getTime() === today.getTime(), where);
+  check("과거 청크 end(2020) 는 오늘 커서를 못 끌어내림", resolveNextLastSyncDate(today, kst("2020-05-30"), today).getTime() === today.getTime());
+  check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today, today)) === "2026-09-18");
+  check("같으면 그대로", resolveNextLastSyncDate(today, today, today).getTime() === today.getTime());
+  check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today, today).getTime() === today.getTime());
+  // Codex P1 (PR #386 2회차): 예전 /api/sync 가 남긴 미래 커서는 단조 규칙이 영구 보호하면 안 된다 → 다음 싱크가 끌어내림
+  check("이미 미래로 저장된 커서(2027)는 오늘 싱크가 오늘로 복구", resolveNextLastSyncDate(kst("2027-01-01"), today, today).getTime() === today.getTime());
+  check("미래 커서 복구는 과거 청크 싱크에서도 (cursor 로)", ymdKST(resolveNextLastSyncDate(kst("2027-01-01"), kst("2020-05-30"), today)) === "2020-05-30");
+  // Codex P1 (PR #386): 미래 endDate 가 커서를 미래로 밀면 단조 증가 때문에 되돌릴 수 없다 → 오늘로 clamp + /api/sync 거부
+  check("미래 endDate 는 오늘로 clamp", clampCursorToToday(kst("2027-01-01"), today).getTime() === today.getTime());
+  check("오늘/과거 endDate 는 그대로", clampCursorToToday(today, today).getTime() === today.getTime() && ymdKST(clampCursorToToday(kst("2026-09-10"), today)) === "2026-09-10");
+  check("clamp 된 커서로 전진 판정 → 미래 endDate 로는 오늘 커서를 넘지 못함", resolveNextLastSyncDate(today, clampCursorToToday(kst("2027-01-01"), today), today).getTime() === today.getTime());
+  const routeSrc = readFileSync(join(__dirname, "..", "src", "app", "api", "sync", "route.ts"), "utf8");
+  check("/api/sync 가 미래 endDate 를 400 으로 거부", /parsed\.getTime\(\) > todayKST\(\)\.getTime\(\)[\s\S]*?status: 400/.test(routeSrc));
+  // 사전 리뷰 info 2: markError/markSyncing 의 upsert 도 같은 모양이라 파일 전체에 앵커링하면 함수 순서가 바뀔 때
+  // 무증상 통과가 된다 → updateSyncMetadata 함수 본문으로 범위를 좁힌다.
+  const syncSrc = readFileSync(join(__dirname, "..", "src", "lib", "garmin", "sync.ts"), "utf8");
+  const fnStart = syncSrc.indexOf("async function updateSyncMetadata");
+  const fnEnd = syncSrc.indexOf("async function markError");
+  check("updateSyncMetadata 함수 범위 추출", fnStart >= 0 && fnEnd > fnStart, { fnStart, fnEnd });
+  const fnSrc = syncSrc.slice(fnStart, fnEnd);
+  const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(fnSrc)?.[1] ?? "";
+  check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
+  check("updateSyncMetadata 가 clamp 된 cursor + today 로 advanceLastSyncDateWhere 조건부 전진", /const cursor = clampCursorToToday\(endDate, today\);[\s\S]*?updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, cursor, today\),\s*data: \{ lastSyncDate: cursor \}/.test(fnSrc));
+  check("create 경로도 clamp (KST 자정 today)", /lastSyncDate: clampCursorToToday\(endDate, today\)/.test(fnSrc));
+  // Codex P2 3회차: 미래 커서면 getStartDate 가 lastSyncDate+1 을 돌려 startDate > endDate 로 skip → 복구 분기 미도달 → 오늘부터 재싱크
+  const gsStart = syncSrc.indexOf("async function getStartDate");
+  const gsSrc = syncSrc.slice(gsStart, syncSrc.indexOf("async function firstRecordDate"));
+  check("getStartDate: 미래 커서면 오늘을 돌려 싱크가 실제로 돌게 (skip 우회 방지)", gsStart >= 0 && /lastSyncDate\.getTime\(\) > today\.getTime\(\)[\s\S]*?return today;/.test(gsSrc));
+}
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);

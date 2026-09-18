@@ -11,6 +11,7 @@ const VALID_DATA_TYPES: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  "fitness_metrics",
   "user_profile",
 ];
 
@@ -47,6 +48,13 @@ export async function POST(request: Request) {
       if (!parsed) {
         return NextResponse.json(
           { error: `유효하지 않은 날짜: ${body.endDate} (YYYY-MM-DD 형식)` },
+          { status: 400 }
+        );
+      }
+      // Codex P1 (PR #386): 미래 endDate 거부 — #381 단조 증가 이후 커서가 미래로 가면 되돌릴 수 없다.
+      if (parsed.getTime() > todayKST().getTime()) {
+        return NextResponse.json(
+          { error: `endDate 는 오늘(KST) 이후일 수 없습니다: ${body.endDate}` },
           { status: 400 }
         );
       }
