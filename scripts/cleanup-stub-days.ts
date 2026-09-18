@@ -73,10 +73,12 @@ async function main(): Promise<void> {
   // 핵심 4개는 비었지만 다른 지표/밸런스가 남아 있는 행 = 삭제 조건에서 빠진 행 (진단)
   const partialWhere = { AND: [coreEmptyDailySummaryWhere(), { NOT: emptyDailySummaryWhere() }, range] };
 
-  const [daily, hr, partial, dailyTotal, hrTotal] = await Promise.all([
+  // Codex P2 (PR #387 3회차): 표본은 20건으로 자르되 총건수는 별도 count — 경고가 "정확히 20건" 으로 오도되지 않게.
+  const [daily, hr, partial, partialCount, dailyTotal, hrTotal] = await Promise.all([
     prisma.dailySummary.aggregate({ where: dailyWhere, _count: { _all: true }, _min: { date: true }, _max: { date: true } }),
     prisma.heartRateRecord.aggregate({ where: hrWhere, _count: { _all: true }, _min: { date: true }, _max: { date: true } }),
     prisma.dailySummary.findMany({ where: partialWhere, select: { date: true }, orderBy: { date: "asc" }, take: 20 }),
+    prisma.dailySummary.count({ where: partialWhere }),
     prisma.dailySummary.count({ where: range }),
     prisma.heartRateRecord.count({ where: range }),
   ]);
@@ -85,9 +87,9 @@ async function main(): Promise<void> {
   console.log(`cleanup-stub-days ${apply ? "[apply]" : "[dry-run]"}${rangeLabel}`);
   console.log(`  DailySummary    : 삭제 대상 ${daily._count._all} / ${dailyTotal} · 날짜 ${fmtRange(daily._min.date, daily._max.date)}`);
   console.log(`  HeartRateRecord : 삭제 대상 ${hr._count._all} / ${hrTotal} · 날짜 ${fmtRange(hr._min.date, hr._max.date)}`);
-  if (partial.length > 0) {
+  if (partialCount > 0) {
     console.warn(
-      `  ⚠️ 핵심 지표는 비었지만 다른 지표/밸런스가 있는 DailySummary ${partial.length}건(최대 20건 표시) 은 삭제하지 않습니다: ` +
+      `  ⚠️ 핵심 지표는 비었지만 다른 지표/밸런스가 있는 DailySummary ${partialCount}건은 삭제하지 않습니다 (앞 ${partial.length}건 표시): ` +
         partial.map((r) => ymdKST(r.date)).join(", "),
     );
   }

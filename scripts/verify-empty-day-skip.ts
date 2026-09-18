@@ -106,6 +106,8 @@ check("cleanup: where 빌더 사용 (조건 인라인 금지)", cleanup.includes
 check("cleanup: --apply 없이는 삭제하지 않는다", /if \(!apply\) \{[\s\S]*?return;/.test(cleanup) && cleanup.indexOf("if (!apply)") < cleanup.indexOf("deleteMany"));
 check("cleanup: 두 테이블 삭제는 한 트랜잭션", /\$transaction\(\[\s*prisma\.dailySummary\.deleteMany[\s\S]*?prisma\.heartRateRecord\.deleteMany/.test(cleanup));
 check("cleanup: --from/--to 범위 인자 + 핵심만 빈 행(삭제 제외) 경고", cleanup.includes('"--from"') && cleanup.includes('"--to"') && cleanup.includes("coreEmptyDailySummaryWhere()") && cleanup.includes("NOT: emptyDailySummaryWhere()"));
+// Codex P2 3회차: take: 20 표본 길이를 총건수로 보고하면 20건 초과가 가려진다 → 별도 count
+check("cleanup: 제외 행 총건수는 별도 count (표본 20건과 분리)", /prisma\.dailySummary\.count\(\{ where: partialWhere \}\)/.test(cleanup) && cleanup.includes("${partialCount}건은 삭제하지 않습니다"));
 
 console.log("\n[6] 연속 결손 streak — 행 없는 날은 끊김 (major 3)");
 const today = new Date("2026-09-18T00:00:00+09:00");
