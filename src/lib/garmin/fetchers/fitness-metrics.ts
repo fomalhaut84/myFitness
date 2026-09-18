@@ -34,11 +34,15 @@ async function fetchRows<T>(
     if (msg.includes("404")) return [];
     throw error;
   }
+  // 사전 리뷰 info: 빈 바디("")는 데이터 없음으로 (HTML 로그인 페이지 등 내용 있는 문자열은 아래에서 throw).
+  if (typeof response === "string" && response.trim() === "") return [];
   if (response !== null && response !== undefined && !Array.isArray(response)) {
     // 릴리즈 PR #388 Codex P2: 예상 밖 형태(에러 envelope · HTML · API 변경)를 빈 결과로 넘기면 커서가 전진해
     // 영구 공백이 생긴다 (특히 1회성 backfill). 싱크 실패로 던져 기존 재시도 경로가 같은 범위를 다시 돌게 한다.
+    // 응답 앞부분을 실어 envelope/HTML/API 변경을 로그만으로 가릴 수 있게 (사전 리뷰 info).
+    const preview = JSON.stringify(response)?.slice(0, 200) ?? String(response).slice(0, 200);
     throw new Error(
-      `[fitness-metrics] ${label} 응답이 배열이 아님 (${typeof response}) — 싱크 실패로 처리`,
+      `[fitness-metrics] ${label} 응답이 배열이 아님 (${typeof response}) — 싱크 실패로 처리: ${preview}`,
     );
   }
   return asRowArray<T>(response);
