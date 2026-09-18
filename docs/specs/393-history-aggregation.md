@@ -32,18 +32,18 @@ M15 의 `/history` (#394) · `/trends` (#395) 가 공유할 집계 계층. 지�
 
 ## 3. 요구사항
 
-- [ ] F1 `src/lib/history/buckets.ts` — `HistoryGranularity = "day" | "week" | "month" | "year"`, `kstDayRange(ymd)`, `startOfMonthYmd` / `startOfYearYmd` / `startOfWeekYmd`(월요일), `bucketKeyOf(ymd, g)`, `enumerateBuckets(fromYmd, toYmd, g)` — **달력 기준으로 빈 버킷도 생성**, 각 버킷 `{ key, startYmd, endYmd(exclusive), start, end, totalDays }`
-- [ ] F2 `src/lib/history/metrics.ts` — 지표 레지스트리 (§4.2). 초기 11개. 지표 추가 = 항목 1건
-- [ ] F3 `src/lib/history/rollup.ts` — 순수 함수. 일별 포인트 `{ ymd, value }[]` + 버킷 + 집계 규칙 → `{ value, coveredDays, totalDays, min?, max? }`. 결측 제외, 합계형 `missingAsZero` 는 0
-- [ ] F4 `src/lib/history/load.ts` — Prisma 조회 (rawData 제외 · 필요한 컬럼만) → 일별 포인트. 활동은 KST 일 단위로 먼저 접는다 (km 합계 · 횟수)
-- [ ] F5 `src/lib/history/lower-bound.ts` — `getHistoryLowerBound()` = `max(MIN_HISTORY_YMD, 5개 모델 최초 기록일 최소값)` (PR #398 Codex P2)
-- [ ] F6 `src/lib/history/summary.ts` — `getHistorySummary({ granularity, from, to, metrics })` (F1~F5 조합) + `parseSummaryParams` (순수 검증)
-- [ ] F7 `GET /api/history/summary` — 파라미터 검증 실패 400 `{ error }`, 성공 §4.4 응답. 단위 포함
-- [ ] F8 `/api/activities` `from` / `to` (KST 달력일 inclusive) 추가. 형식 오류·역순 400
-- [ ] F9 `/api/export` `from` / `to` 추가 + 날짜 셀·파일명 `ymdKST` 로 교체
-- [ ] F10 페이지 정리 — nutrition·lifestyle 의 중복 `kstDayRange` → F1, lifestyle `monthStart`/`daysAgoLocal`/`formatDateLocal` Set key → KST 헬퍼, activities `monthStart`/`weeksAgo` → KST 헬퍼. **동작 변화는 "서버 로컬 → KST" 뿐** (서버가 KST 면 무변화)
-- [ ] F11 vitest 도입 (`vitest` devDependency · `vitest.config.ts` · `npm run test` 앞에 `vitest run`) + 회귀 테스트 §6
-- [ ] F12 완료 기준 실측: 6년 전체 `granularity=year` · 전 지표 요청 응답 시간 기록 (목표 1초 이내). **로컬 실측 (2026-09-18, 스텁 DB 활동 5 · 수면 7 · fitness 306행): 40ms.** 6년치는 배포 후 프로덕션에서 기록
+- [x] F1 `src/lib/history/buckets.ts` — `HistoryGranularity = "day" | "week" | "month" | "year"`, `kstDayRange(ymd)`, `startOfMonthYmd` / `startOfYearYmd` / `startOfWeekYmd`(월요일), `bucketKeyOf(ymd, g)`, `enumerateBuckets(fromYmd, toYmd, g)` — **달력 기준으로 빈 버킷도 생성**, 각 버킷 `{ key, startYmd, endYmd(exclusive), start, end, totalDays }`
+- [x] F2 `src/lib/history/metrics.ts` — 지표 레지스트리 (§4.2). 초기 11개. 지표 추가 = 항목 1건
+- [x] F3 `src/lib/history/rollup.ts` — 순수 함수. 일별 포인트 `{ ymd, value }[]` + 버킷 + 집계 규칙 → `{ value, coveredDays, totalDays, min?, max? }`. 결측 제외, 합계형 `missingAsZero` 는 0
+- [x] F4 `src/lib/history/load.ts` — Prisma 조회 (rawData 제외 · 필요한 컬럼만) → 일별 포인트. 활동은 KST 일 단위로 먼저 접는다 (km 합계 · 횟수)
+- [x] F5 `src/lib/history/lower-bound.ts` — `getHistoryLowerBound()` = `max(MIN_HISTORY_YMD, 5개 모델 최초 기록일 최소값)` (PR #398 Codex P2)
+- [x] F6 `src/lib/history/summary.ts` — `getHistorySummary({ granularity, from, to, metrics })` (F1~F5 조합) + `parseSummaryParams` (순수 검증)
+- [x] F7 `GET /api/history/summary` — 파라미터 검증 실패 400 `{ error }`, 성공 §4.4 응답. 단위 포함
+- [x] F8 `/api/activities` `from` / `to` (KST 달력일 inclusive) 추가. 형식 오류·역순 400
+- [x] F9 `/api/export` `from` / `to` 추가 + 날짜 셀·파일명 `ymdKST` 로 교체
+- [x] F10 페이지 정리 — nutrition·lifestyle 의 중복 `kstDayRange` → F1, lifestyle `monthStart`/`daysAgoLocal`/`formatDateLocal` Set key → KST 헬퍼, activities `monthStart`/`weeksAgo` → KST 헬퍼. **동작 변화는 "서버 로컬 → KST" 뿐** (서버가 KST 면 무변화)
+- [x] F11 vitest 도입 (`vitest` devDependency · `vitest.config.ts` · `npm run test` 앞에 `vitest run`) + 회귀 테스트 §6
+- [x] F12 완료 기준 실측: 6년 전체 `granularity=year` · 전 지표 요청 응답 시간 기록 (목표 1초 이내). **로컬 실측 (2026-09-18, 스텁 DB 활동 5 · 수면 7 · fitness 306행): 40ms.** **프로덕션 (v2.30.0 배포 후, Pentium G4600 2C/4T): 콜드 1.48s · 웜 1.09~1.22s — 목표 초과.** 400 4ms · 소스 1개 155ms · 5소스 1.09s → Node 측 Prisma 행 역직렬화(약 11,500행) 병목. **메모리 캐시를 #394 에 포함** (m15-overview D5 조건 충족)
 
 ## 4. 기술 설계
 

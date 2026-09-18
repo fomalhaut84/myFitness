@@ -345,13 +345,13 @@
 > 시작: 2026-09-18. 6년치 Garmin 데이터를 연 → 월 → 일로 탐색하고 지표별 주/월/연 추이를 비교. 읽기 전용 UI + 집계 API.
 > 스펙: `docs/specs/m15-overview.md` · 추적 이슈 #392
 
-## M15-1: 집계 기반 — KST 버킷 · 지표 레지스트리 · history summary API — 우선순위 ★★★
+## M15-1: 집계 기반 — KST 버킷 · 지표 레지스트리 · history summary API — 우선순위 ★★★ ✅
 
-- [ ] `src/lib/history/` 버킷 헬퍼 (`startOfMonthKST` / `startOfYearKST`) + 지표별 집계 정책 레지스트리
-- [ ] `GET /api/history/summary` (granularity · from/to · metrics) — raw query 없이 JS 집계
-- [ ] `/api/activities` · `/api/export` `from/to`
-- [ ] 인라인 월 시작 · 중복 `kstDayRange` 정리 (#365 흡수)
-- 이슈: #393
+- [x] `src/lib/history/` 버킷 헬퍼 (`startOfMonthKST` / `startOfYearKST`) + 지표별 집계 정책 레지스트리
+- [x] `GET /api/history/summary` (granularity · from/to · metrics) — raw query 없이 JS 집계
+- [x] `/api/activities` · `/api/export` `from/to`
+- [x] 인라인 월 시작 · 중복 `kstDayRange` 정리 (#365 흡수)
+- 이슈: #393 · PR #399 · v2.30.0. F12 실측 웜 1.1s → 캐시는 #394
 
 ## M15-2: `/history` 연 · 월 · 일간 종합 — 우선순위 ★★★
 
