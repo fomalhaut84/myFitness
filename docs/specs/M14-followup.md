@@ -14,7 +14,9 @@
 **오픈 PR 없음. 다음 착수: #394 `/history` 브라우저 (M15-2).** UI 라 `frontend-design` 디자인 단계 필수 (`docs/designs/394-history/`). 착수 절차: `branch-workflow` → 스펙 `docs/specs/394-history-browser.md` → 시안 → 승인 → 구현. 마일스톤 결정은 `docs/specs/m15-overview.md` D1~D3 (라우트 `/history/YYYY/MM/DD` · 일 뷰 = 일간 종합 페이지 8 섹션 · 초기 지표 러닝 km·걸음·수면 점수·RHR·체중).
 
 **#394 에 추가된 스코프 (이번 세션 실측 결과):**
-- **summary 메모리 캐시** — 프로덕션 F12: 6년 `granularity=year` 전 지표 웜 **1.09~1.22s** (목표 1s). 400 은 4ms, 소스 1개 155ms, 5소스 1.09s → DB 가 아니라 **Node 측 Prisma 행 역직렬화 (약 11,500행, 단일 스레드)** 가 병목 (서버 Pentium G4600 2C/4T). 키 = 파라미터 + `max(SyncMetadata.lastSyncAt)` + TTL 10분. `getHistoryLowerBound` 도 캐시. raw query 금지라 DB 집계는 안 함.
+- **summary 메모리 캐시** — 프로덕션 F12: 6년 `granularity=year` 전 지표 웜 **1.09~1.22s** (목표 1s). 400 은 4ms, 소스 1개 155ms, 5소스 1.09s → DB 가 아니라 **Node 측 Prisma 행 역직렬화 (약 11,500행, 단일 스레드)** 가 병목 (서버 Pentium G4600 2C/4T). 키 = 파라미터 + `max(SyncMetadata.lastSyncAt)` + **수동 쓰기 버전** + TTL 10분. `getHistoryLowerBound` 도 캐시. raw query 금지라 DB 집계는 안 함.
+  - **수동 쓰기 무효화 (PR #401 Codex P2):** `POST /api/body-composition` (`route.ts:58` upsert) 은 `SyncMetadata` 를 안 건드리므로 lastSyncAt 키만으론 저장 직후에도 옛 체중이 최대 TTL 동안 남는다. 모듈 레벨 `historyCacheVersion` 을 두고 수동 쓰기 route (body-composition · 향후 칼로리 밸런스 지표를 등록하면 food 경로도) 에서 bump → 키에 포함. 회귀 테스트: 체중 저장 후 summary 가 새 값을 반환.
+  - **F12 는 열린 상태** (393 스펙 · 로드맵 M15-1 미완료 표기). 캐시 적용 후 웜 1s 이내 재측정으로 닫는다.
 - 로드맵 M15-1 체크는 이 인계 PR 에서 처리함.
 - 지표 추가 후보 (사용자 요청: 보이면 제안): 러닝 횟수·VO2max 는 레지스트리에 이미 있어 선택기 노출만, 칼로리 밸런스는 등록 1건.
 
