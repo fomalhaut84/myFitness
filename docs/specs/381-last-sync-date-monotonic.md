@@ -22,9 +22,9 @@ cron/수동 싱크가 같은 타입의 `lastSyncDate` 를 오늘로 전진시키
 
 - [x] `src/lib/garmin/sync-metadata.ts` (순수) — `advanceLastSyncDateWhere(dataType, endDate)` = `{ dataType, lastSyncDate: { lt: endDate } }`, `resolveNextLastSyncDate(current, endDate)`.
 - [x] `src/lib/garmin/sync.ts` `updateSyncMetadata` — upsert 의 `update` 에서 `lastSyncDate` 제거, 이어서 `updateMany({ where: advanceLastSyncDateWhere(...), data: { lastSyncDate: endDate } })` 로 **기존 값보다 늦을 때만** 갱신 (atomic 조건부 UPDATE — `oldestFetchedDate`/`coveredThroughDate` 의 CASE 와 같은 방식). `create` 는 그대로 `endDate`.
-- [x] backfill 스크립트의 스냅샷/복원(C1) 은 **이중 안전으로 유지** (주석에 #381 이후 위상 명시).
+- [x] backfill 스크립트의 스냅샷/복원(C1) 은 **이중 안전으로 유지** (주석에 #381 이후 위상 명시). "이중 안전" 은 **(a) 청크가 최신→과거 순이라 chunk0.end == `to` == fallback 스냅샷 기준, (b) chunk0 실패 타입은 `stopFailedTypes` 로 중단** 이라는 두 전제 위에서만 성립한다 — 둘 중 하나라도 바꾸면 epoch(0) 타입의 커서가 과거 청크 end 로 올라간 채 남아 C1 사고가 재현되므로 복원 로직을 "중복" 으로 보고 지우지 말 것 (사전 리뷰 info 4).
 - [x] 문서: #377 스펙 §4.5 · `backfill-history.ts` 헤더 · `backfill-chunks.ts` 주석.
-- [x] 회귀 검증: `scripts/verify-mcp-long-history.ts` [5d] — predicate 가 `lt`, 순수 규칙, 그리고 `sync.ts` 소스 스캔(upsert `update` 블록에 `lastSyncDate` 재유입 0건 · `advanceLastSyncDateWhere` 사용).
+- [x] 회귀 검증: `scripts/verify-mcp-long-history.ts` [12] — predicate 가 `lt`, 순수 규칙, 그리고 `sync.ts` 소스 스캔(upsert `update` 블록에 `lastSyncDate` 재유입 0건 · `advanceLastSyncDateWhere` 사용).
 
 ## 3. 뒤로 가야 하는 시나리오 검토
 

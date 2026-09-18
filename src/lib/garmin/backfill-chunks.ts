@@ -64,7 +64,9 @@ export function pickBackfillTo(
  * 끝나면 lastSyncDate 가 가장 오래된 청크의 end 로 남았다. weekly-report 는 startDate 없이
  * `syncAll` 을 불러 `lastSyncDate + 1` 부터 증분 싱크하므로 수년치 싱크가 폭주한다.
  * 청크마다 스냅샷과 현재값 중 늦은 쪽으로 되돌린다 (cron 이 끼어들어 더 늦은 값을 썼으면 그대로 둠).
- * #381 부터는 `updateSyncMetadata` 자체가 단조 증가(sync-metadata.ts)라 이 복원은 **이중 안전**이다.
+ * #381 부터는 `updateSyncMetadata` 자체가 단조 증가(sync-metadata.ts)라 이 복원은 **이중 안전**이다 —
+ * 단, chunk0.end == `to`(최신→과거 순) 이고 chunk0 실패 타입이 `stopFailedTypes` 로 중단되는 한에서다. 그 전제가
+ * 깨지면 epoch(0) 타입의 커서가 과거 청크 end 로 올라간 채 남으므로 이 복원을 "중복" 으로 지우지 말 것.
  */
 export function resolveRestoredLastSyncDate(snapshot: Date, current: Date): Date {
   return current > snapshot ? current : snapshot;

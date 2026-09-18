@@ -298,12 +298,17 @@ console.log("\n[12] lastSyncDate 단조 증가 (#381)");
   check("더 늦은 endDate 는 전진", ymdKST(resolveNextLastSyncDate(kst("2026-09-17"), today)) === "2026-09-18");
   check("같으면 그대로", resolveNextLastSyncDate(today, today).getTime() === today.getTime());
   check("epoch(markError/markSyncing 행) → 첫 성공 endDate 로 전진", resolveNextLastSyncDate(new Date(0), today).getTime() === today.getTime());
+  // 사전 리뷰 info 2: markError/markSyncing 의 upsert 도 같은 모양이라 파일 전체에 앵커링하면 함수 순서가 바뀔 때
+  // 무증상 통과가 된다 → updateSyncMetadata 함수 본문으로 범위를 좁힌다.
   const syncSrc = readFileSync(join(__dirname, "..", "src", "lib", "garmin", "sync.ts"), "utf8");
-  const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(syncSrc)?.[1] ?? "";
+  const fnStart = syncSrc.indexOf("async function updateSyncMetadata");
+  const fnEnd = syncSrc.indexOf("async function markError");
+  check("updateSyncMetadata 함수 범위 추출", fnStart >= 0 && fnEnd > fnStart, { fnStart, fnEnd });
+  const fnSrc = syncSrc.slice(fnStart, fnEnd);
+  const upsertUpdate = /syncMetadata\.upsert\(\{\s*where: \{ dataType \},\s*update: \{([\s\S]*?)\},\s*create:/.exec(fnSrc)?.[1] ?? "";
   check("updateSyncMetadata upsert update 블록에 lastSyncDate 없음 (무조건 덮어쓰기 재유입 방지)", upsertUpdate.length > 0 && !upsertUpdate.includes("lastSyncDate"), upsertUpdate.trim().slice(0, 120));
-  check("updateSyncMetadata 가 advanceLastSyncDateWhere 로 조건부 전진", /updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, endDate\),\s*data: \{ lastSyncDate: endDate \}/.test(syncSrc));
+  check("updateSyncMetadata 가 advanceLastSyncDateWhere 로 조건부 전진", /updateMany\(\{\s*where: advanceLastSyncDateWhere\(dataType, endDate\),\s*data: \{ lastSyncDate: endDate \}/.test(fnSrc));
 }
-
 
 if (failed > 0) {
   console.error(`\n❌ ${failed}건 실패`);
