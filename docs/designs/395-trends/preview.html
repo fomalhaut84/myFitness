@@ -1,0 +1,223 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>추이 — /trends 시안 (#395)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --bg-raised:#111; --card:#161616; --card-hover:#1c1c1c; --surface:#1e1e1e; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --m:#22c55e; --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 "Geist",system-ui,sans-serif; }
+  a { color:inherit; text-decoration:none; } button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--m); outline-offset:2px; border-radius:4px; }
+  .page { max-width:1040px; margin:0 auto; padding:24px 16px 80px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:20px; }
+  h1 { font-size:26px; font-weight:600; color:var(--bright); letter-spacing:-0.02em; }
+
+  /* 뷰 탭 — 밑줄. 지표 pill 과 위계가 다르다: 탭은 "무엇을 묻는가", pill 은 "무엇에 대해" */
+  .views { display:flex; gap:22px; border-bottom:1px solid var(--border); margin:14px 0 18px; overflow-x:auto; scrollbar-width:none; }
+  .views a { padding:8px 0 10px; font-size:14px; color:var(--sub); white-space:nowrap; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .views a:hover { color:var(--bright); } .views a.on { color:var(--bright); border-color:var(--m); }
+  .views a small { display:block; font-size:11px; color:var(--dim); font-weight:400; }
+
+  .metrics { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:14px; }
+  .metrics a { display:flex; align-items:center; gap:7px; font-size:13px; padding:6px 12px; border:1px solid var(--border); border-radius:999px; white-space:nowrap; }
+  .metrics a i { width:8px; height:8px; border-radius:50%; background:var(--c); opacity:.55; }
+  .metrics a:hover { border-color:var(--border-hover); }
+  .metrics a.on { color:var(--bright); border-color:var(--c); background:color-mix(in srgb,var(--c) 10%,transparent); } .metrics a.on i { opacity:1; }
+  .metrics .gap { width:1px; background:var(--border); margin:4px; flex:none; }
+
+  .seg-row { display:flex; gap:12px; flex-wrap:wrap; margin-bottom:18px; }
+  .seg { display:flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg a { padding:5px 12px; font-size:13px; color:var(--sub); border-left:1px solid var(--border); } .seg a:first-child { border-left:0; }
+  .seg a:hover { color:var(--bright); } .seg a.on { background:var(--surface); color:var(--bright); }
+
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 18px 12px; }
+  .panel h2 { font-size:13px; font-weight:500; color:var(--text); margin-bottom:2px; }
+  .panel .lede { font-size:12px; color:var(--sub); margin-bottom:12px; }
+  svg { display:block; width:100%; height:auto; overflow:visible; }
+  svg text { font:10px var(--mono); fill:var(--dim); }
+  .grid-line { stroke:#1f1f1f; } .year-line { stroke:#2a2a2a; stroke-dasharray:2 3; }
+
+  .summary { display:grid; grid-template-columns:repeat(3,1fr); margin-top:14px; border:1px solid var(--border); border-radius:12px; background:var(--card); }
+  .summary div { padding:12px 14px; border-left:1px solid var(--border); min-width:0; } .summary div:first-child { border-left:0; }
+  .summary dt { font-size:11px; color:var(--sub); } .summary dd { font:500 17px var(--mono); color:var(--bright); white-space:nowrap; }
+  .summary dd small { font:400 11px var(--mono); color:var(--sub); margin-left:3px; } .summary dd span { display:block; font:400 11px "Geist",sans-serif; color:var(--sub); }
+
+  .legend { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; }
+  .legend button { display:flex; align-items:center; gap:6px; font:500 12px var(--mono); padding:4px 9px; border:1px solid var(--border); border-radius:999px; color:var(--text); }
+  .legend button i { width:14px; height:2px; background:var(--c); } .legend button.off { opacity:.35; }
+  .keys { display:flex; gap:14px; flex-wrap:wrap; font-size:11px; color:var(--sub); margin-top:10px; }
+  .keys span { display:flex; align-items:center; gap:5px; }
+
+  /* 비교 */
+  .periods { display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-bottom:14px; }
+  .period { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:12px 14px; }
+  .period b { display:inline-block; width:20px; height:20px; border-radius:6px; text-align:center; font:600 12px/20px var(--mono); color:var(--bg); margin-right:8px; }
+  .period .inputs { display:flex; align-items:center; gap:6px; margin-top:8px; flex-wrap:wrap; }
+  .period input { font:13px var(--mono); color:var(--text); background:transparent; border:1px solid var(--border); border-radius:8px; padding:5px 8px; color-scheme:dark; min-width:0; }
+  .period .len { font-size:12px; color:var(--sub); }
+  table { width:100%; border-collapse:collapse; } th, td { padding:10px 14px; text-align:right; border-top:1px solid var(--border); white-space:nowrap; }
+  thead th { border-top:0; font-size:12px; font-weight:500; color:var(--sub); } th:first-child, td:first-child { text-align:left; }
+  tbody th { font-size:13px; font-weight:400; color:var(--text); } td { font:500 15px var(--mono); color:var(--bright); }
+  td small { font:400 11px var(--mono); color:var(--sub); margin-left:3px; } td .per { display:block; font:400 11px var(--mono); color:var(--sub); }
+  td.diff { color:var(--text); } tr.sel th { color:var(--bright); font-weight:500; } tr.sel { background:color-mix(in srgb,var(--m) 7%,transparent); }
+  tbody th .u { display:none; font-size:11px; color:var(--dim); margin-left:4px; }
+  td.none { font:400 13px "Geist",sans-serif; color:var(--dim); }
+  .tablewrap { background:var(--card); border:1px solid var(--border); border-radius:12px; overflow-x:auto; }
+
+  @media (max-width:560px) { h1 { font-size:22px; } .panel { padding:14px 10px 10px; } .summary { grid-template-columns:1fr; } .summary div { border-left:0; border-top:1px solid var(--border); } .summary div:first-child { border-top:0; }
+    .periods { grid-template-columns:1fr; } th, td { padding:9px 8px; } td { font-size:13px; } td small { display:none; } tbody th { white-space:normal; font-size:12px; } tbody th .u { display:inline; } td { font-size:12.5px; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 #395 — 데이터는 가짜(시드 난수)입니다. 하한 2020-06-16, 오늘 2026-09-21 로 고정. 뷰 탭 · 지표 · 단위 · 기간을 눌러 보세요. YoY 범례는 연도 토글입니다.</p>
+  <div id="app"></div>
+</div>
+<script>
+const TODAY="2026-09-21", LOWER="2020-06-16";
+const METRICS=[
+ {id:"runningKm",label:"러닝 거리",unit:"km",dec:2,agg:"sum",zero:true,c:"#22c55e",main:1},
+ {id:"steps",label:"걸음",unit:"보",dec:0,agg:"sum",c:"#fbbf24",main:1},
+ {id:"sleepScore",label:"수면 점수",unit:"점",dec:0,agg:"avg",band:1,c:"#a78bfa",main:1},
+ {id:"restingHR",label:"안정시 심박",unit:"bpm",dec:0,agg:"avg",band:1,c:"#f87171",main:1},
+ {id:"weight",label:"체중",unit:"kg",dec:1,agg:"avg",band:1,sparse:1,c:"#2dd4bf",main:1},
+ {id:"runningCount",label:"러닝 횟수",unit:"회",dec:0,agg:"sum",zero:true,c:"#86efac"},
+ {id:"vo2max",label:"VO2max",unit:"",dec:1,agg:"max",c:"#fb923c"},
+ {id:"hrv",label:"야간 HRV",unit:"ms",dec:1,agg:"avg",c:"#c084fc",from:"2026-04-20"},
+];
+const M=Object.fromEntries(METRICS.map(m=>[m.id,m]));
+const pad=n=>String(n).padStart(2,"0");
+function rnd(k){let h=2166136261;for(const c of k){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}h^=h>>>13;h=Math.imul(h,0x5bd1e995);return((h^(h>>>15))>>>0)/4294967296;}
+const dim=(y,m)=>new Date(Date.UTC(y,m,0)).getUTCDate();
+function dayVal(id,s){ if(s<LOWER||s>TODAY) return undefined; const m=M[id]; if(m.from&&s<m.from) return null;
+  const r=k=>rnd(s+id+k), y=+s.slice(0,4), mo=+s.slice(5,7), season=Math.cos((mo-4)/12*2*Math.PI), peak=(y===2023&&mo>=10)||(y===2024&&mo<=4)?1:0;
+  switch(id){
+    case "runningKm": return r("a")<0.40+peak*0.18 ? 4+r("b")*r("c")*(22+peak*8) : 0;
+    case "runningCount": return dayVal("runningKm",s)>0?1:0;
+    case "steps": return r("a")<(y===2021&&mo===8?0.7:0.04)?null:Math.round(5000+r("b")*9000+(dayVal("runningKm",s)||0)*1100);
+    case "sleepScore": return r("a")<(y===2022&&mo===2?0.75:0.06)?null:62+r("b")*30-(season>0.5?3:0);
+    case "restingHR": return r("a")<0.04?null:51-season*2+r("b")*5-peak*3-(y-2020)*0.3;
+    case "weight": return r("a")<0.8?null:72.8-season*0.9-peak*1.6-(y-2020)*0.2+r("b")*1.2;
+    case "vo2max": return r("a")<0.3?null:45+(y-2020)*0.5+peak*3+season+r("b")*1.5;
+    case "hrv": return r("a")<0.03?null:50+r("b")*16;
+  }}
+function daysBetween(a,b){const out=[];let d=new Date(a+"T00:00:00Z");const e=new Date(b+"T00:00:00Z");for(;d<=e;d=new Date(d.getTime()+864e5))out.push(d.toISOString().slice(0,10));return out;}
+function aggregate(id,days){const m=M[id];const vals=days.map(s=>dayVal(id,s));const inRange=vals.filter(v=>v!==undefined);const nums=inRange.filter(v=>v!==null&&!(m.zero&&v===0));
+  const total=inRange.length, covered=nums.length; if(m.zero) return {value:nums.reduce((a,b)=>a+b,0),covered,total};
+  if(!nums.length) return {value:null,covered:0,total};
+  const v=m.agg==="sum"?nums.reduce((a,b)=>a+b,0):m.agg==="max"?Math.max(...nums):nums.reduce((a,b)=>a+b,0)/nums.length;
+  return {value:v,covered,total,min:Math.min(...nums),max:Math.max(...nums),last:nums[nums.length-1]};}
+function fmt(id,v){ if(v==null) return null; const m=M[id]; return v.toLocaleString("ko-KR",{minimumFractionDigits:m.dec,maximumFractionDigits:m.dec}); }
+function axisFmt(id,v){ return Math.abs(v)>=10000?(v/1000).toFixed(0)+"k":(M[id].dec>1?v.toFixed(0):v.toFixed(M[id].dec?1:0)); }
+
+function buckets(unit,from,to){ const out=[]; const [fy,fm]=[+from.slice(0,4),+from.slice(5,7)];
+  if(unit==="year"){ for(let y=fy;y<=+to.slice(0,4);y++) out.push({key:`${y}`,label:`${y}`,start:`${y}-01-01`,end:`${y}-12-31`,yearStart:true}); }
+  else if(unit==="month"){ let y=fy,m=fm; while(`${y}-${pad(m)}`<=to.slice(0,7)){ out.push({key:`${y}-${pad(m)}`,label:m===1?`${y}`:`${m}월`,start:`${y}-${pad(m)}-01`,end:`${y}-${pad(m)}-${pad(dim(y,m))}`,yearStart:m===1}); m++; if(m>12){m=1;y++;} } }
+  else { let d=new Date(from+"T00:00:00Z"); d=new Date(d.getTime()-((d.getUTCDay()||7)-1)*864e5); let prevY=null;
+    while(d.toISOString().slice(0,10)<=to){ const s=d.toISOString().slice(0,10), e=new Date(d.getTime()+6*864e5).toISOString().slice(0,10), y=s.slice(0,4);
+      out.push({key:s,label:`${+s.slice(5,7)}/${+s.slice(8,10)}`,start:s,end:e,yearStart:prevY!==null&&y!==prevY}); prevY=y; d=new Date(d.getTime()+7*864e5);} }
+  return out; }
+function lowCov(m,a){ return !m.zero&&!m.sparse&&a.total>0&&a.covered/a.total<0.5; }
+
+function route(){ const q=new URLSearchParams(location.hash.slice(1)); const g=(k,ok,d)=>ok.includes(q.get(k))?q.get(k):d;
+  return {view:g("view",["series","yoy","season","compare"],"series"),metric:M[q.get("metric")]?q.get("metric"):"runningKm",unit:g("unit",["week","month","year"],"month"),range:g("range",["1y","3y","all"],"3y"),
+    a:q.get("a")||"2023-11..2024-03",b:q.get("b")||"2026-05..2026-09"}; }
+function href(r,patch){ const n={...r,...patch}, q=new URLSearchParams();
+  if(n.view!=="series")q.set("view",n.view); if(n.metric!=="runningKm")q.set("metric",n.metric); if(n.unit!=="month")q.set("unit",n.unit); if(n.range!=="3y")q.set("range",n.range);
+  if(n.view==="compare"){q.set("a",n.a);q.set("b",n.b);} return "#"+q.toString(); }
+
+function controls(r){ const m=M[r.metric];
+  const tab=(v,t,s)=>`<a class="${r.view===v?"on":""}" href="${href(r,{view:v})}">${t}<small>${s}</small></a>`;
+  const pill=x=>`<a class="${x.id===r.metric?"on":""}" style="--c:${x.c}" href="${href(r,{metric:x.id})}"><i></i>${x.label}</a>`;
+  const seg=(k,opts)=>`<div class="seg" role="group">${opts.map(([v,t])=>`<a class="${r[k]===v?"on":""}" href="${href(r,{[k]:v})}">${t}</a>`).join("")}</div>`;
+  return `<h1>추이</h1><nav class="views">${tab("series","시계열","길게 보기")}${tab("yoy","전년 동기","연도끼리 겹치기")}${tab("season","계절성","몇 월에 어떤가")}${tab("compare","기간 비교","두 구간 나란히")}</nav>
+   <nav class="metrics" aria-label="지표">${METRICS.filter(x=>x.main).map(pill).join("")}<span class="gap"></span>${METRICS.filter(x=>!x.main).map(pill).join("")}</nav>
+   <div class="seg-row">${r.view==="series"?seg("unit",[["week","주"],["month","월"],["year","연"]])+seg("range",[["1y","1년"],["3y","3년"],["all","전체"]]):""}</div>`; }
+
+/* 공용 SVG 스케일 */
+function frame(W,H,lo,hi,id){ const L=38,R=8,T=10,B=24; const y=v=>T+(H-T-B)*(1-(v-lo)/((hi-lo)||1)); const ticks=[0,1,2,3].map(i=>lo+(hi-lo)*i/3);
+  return {L,R,T,B,y,grid:ticks.map(t=>`<line class="grid-line" x1="${L}" x2="${W-R}" y1="${y(t)}" y2="${y(t)}"/><text x="${L-6}" y="${y(t)+3}" text-anchor="end">${axisFmt(id,t)}</text>`).join("")}; }
+function bounds(m,vals,mins,maxs){ const all=[...vals,...(mins||[]),...(maxs||[])].filter(v=>v!=null); if(!all.length) return [0,1]; const hi=Math.max(...all), lo=m.agg==="sum"?0:Math.min(...all); const p=(hi-lo)*0.08||1; return [m.agg==="sum"?0:lo-p,hi+p]; }
+
+function seriesView(r){ const m=M[r.metric]; const from=r.range==="all"?LOWER:(()=>{const y=+TODAY.slice(0,4)-(r.range==="1y"?1:3);const s=`${y}-${TODAY.slice(5,7)}-01`;return s<LOWER?LOWER:s;})();
+  const bs=buckets(r.unit,from,TODAY).map(b=>({...b,a:aggregate(r.metric,daysBetween(b.start<LOWER?LOWER:b.start,b.end>TODAY?TODAY:b.end)),partial:b.start<LOWER||b.end>TODAY}));
+  const W=1000,H=300,[lo,hi]=bounds(m,bs.map(b=>b.a.value),m.band?bs.map(b=>b.a.min):null,m.band?bs.map(b=>b.a.max):null), f=frame(W,H,lo,hi,r.metric);
+  const step=(W-f.L-f.R)/bs.length, x=i=>f.L+step*(i+0.5); let body="";
+  bs.forEach((b,i)=>{ if(b.yearStart) body+=`<line class="year-line" x1="${x(i)-step/2}" x2="${x(i)-step/2}" y1="${f.T}" y2="${H-f.B}"/>`; });
+  if(m.agg==="sum"){ bs.forEach((b,i)=>{ if(b.a.value==null) return; const low=lowCov(m,b.a); const yy=f.y(b.a.value), w=Math.max(1.5,step*0.72);
+      body+=`<rect x="${x(i)-w/2}" y="${yy}" width="${w}" height="${Math.max(0,H-f.B-yy)}" rx="${Math.min(2,w/3)}" fill="${m.c}" opacity="${low?0.28:b.partial?0.5:0.85}"${b.partial&&!low?` stroke="${m.c}" stroke-dasharray="3 2" fill-opacity="0.35"`:""}><title>${b.key} · ${fmt(r.metric,b.a.value)}${m.unit} · ${b.a.covered}/${b.a.total}일</title></rect>`; }); }
+  else { if(m.band){ let seg=[]; const flush=()=>{ if(seg.length>1) body+=`<path d="M${seg.map(p=>`${p[0]},${p[1]}`).join("L")}L${seg.slice().reverse().map(p=>`${p[0]},${p[2]}`).join("L")}Z" fill="${m.c}" opacity="0.13"/>`; seg=[]; };
+      bs.forEach((b,i)=>{ if(b.a.value==null) flush(); else seg.push([x(i),f.y(b.a.max),f.y(b.a.min)]); }); flush(); }
+    let path="",pen=false; bs.forEach((b,i)=>{ if(b.a.value==null){pen=false;return;} path+=`${pen?"L":"M"}${x(i)},${f.y(b.a.value)}`; pen=true; });
+    body+=`<path d="${path}" fill="none" stroke="${m.c}" stroke-width="2" stroke-linejoin="round"/>`;
+    bs.forEach((b,i)=>{ if(b.a.value==null) return; const low=lowCov(m,b.a); if(low||bs.length<=40) body+=`<circle cx="${x(i)}" cy="${f.y(b.a.value)}" r="${low?3.5:2.2}" fill="${low?"#161616":m.c}" stroke="${m.c}" stroke-width="1.5"><title>${b.key} · ${fmt(r.metric,b.a.value)}${m.unit} · ${b.a.covered}/${b.a.total}일</title></circle>`; }); }
+  // 라벨: 연 경계는 연도만 (밝게). 버킷이 많으면 연도만, 적으면 연 경계와 겹치지 않는 간격 라벨을 추가
+  const maxLabels=innerWidth<560?6:14, every=Math.ceil(bs.length/maxLabels), dense=bs.length>maxLabels*2; let labels="";
+  bs.forEach((b,i)=>{ const nearYear=bs.slice(Math.max(0,i-Math.floor(every/2)),i+Math.ceil(every/2)+1).some(z=>z.yearStart);
+    if(b.yearStart&&r.unit!=="year") labels+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle" style="fill:#a3a3a3">${b.key.slice(0,4)}</text>`;
+    else if(r.unit==="year"||(!dense&&i%every===0&&!nearYear)) labels+=`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${b.label}</text>`; });
+  const ok=bs.filter(b=>b.a.value!=null&&!lowCov(m,b.a)&&!(b.partial&&m.agg==="sum")), best=ok.reduce((p,c)=>!p||c.a.value>p.a.value?c:p,null), worst=ok.reduce((p,c)=>!p||c.a.value<p.a.value?c:p,null);
+  const whole=aggregate(r.metric,daysBetween(from,TODAY)), unitName={week:"주",month:"월",year:"연"}[r.unit];
+  const dd=(t,b)=>`<div><dt>${t}</dt>${b?`<dd>${fmt(r.metric,b.a.value)}<small>${m.unit}</small><span>${b.key}</span></dd>`:`<dd><span>기록 없음</span></dd>`}</div>`;
+  return `<section class="panel"><h2>${m.label} <span style="color:var(--sub);font-weight:400">${unitName} 단위${m.unit?` (${m.unit})`:""}</span></h2>
+    <p class="lede">${m.agg==="sum"?"막대 = 기간 합계":m.agg==="max"?"선 = 기간 최고":"선 = 기간 평균"+(m.band?", 띠 = 최저~최고":"")}</p>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} ${unitName} 단위 시계열">${f.grid}${body}${labels}</svg>
+    <div class="keys">${m.zero||m.sparse?"":`<span><svg width="14" height="12" style="width:14px">${m.agg==="sum"?`<rect x="3" y="1" width="8" height="10" fill="${m.c}" opacity=".28"/>`:`<circle cx="7" cy="6" r="3.5" fill="#161616" stroke="${m.c}" stroke-width="1.5"/>`}</svg>기록이 절반 미만인 ${unitName}</span>`}${m.agg==="sum"?`<span><svg width="14" height="12" style="width:14px"><rect x="3" y="1" width="8" height="10" fill="${m.c}" fill-opacity=".35" stroke="${m.c}" stroke-dasharray="3 2"/></svg>아직 끝나지 않은 ${unitName}</span>`:""}<span>선이 끊긴 곳 = 기록 없음</span></div></section>
+    <dl class="summary"><div><dt>기간 전체 ${m.agg==="sum"?"합계":m.agg==="max"?"최고":"평균"}</dt><dd>${fmt(r.metric,whole.value)??"—"}<small>${m.unit}</small><span>${from.slice(0,7)} ~ ${TODAY.slice(0,7)}</span></dd></div>${dd(`가장 높은 ${unitName}`,best)}${dd(`가장 낮은 ${unitName}`,worst)}</dl>`; }
+
+let hidden=new Set();
+function pivot(id){ const years=[2020,2021,2022,2023,2024,2025,2026]; return years.map(y=>({y,vals:Array.from({length:12},(_,i)=>{const s=`${y}-${pad(i+1)}-01`,e=`${y}-${pad(i+1)}-${pad(dim(y,i+1))}`; if(e<LOWER||s>TODAY) return null; const a=aggregate(id,daysBetween(s<LOWER?LOWER:s,e>TODAY?TODAY:e)); return {...a,partial:s<LOWER||e>TODAY};})})); }
+function yoyView(r){ const m=M[r.metric], rows=pivot(r.metric), W=1000,H=320; const vis=rows.filter(o=>!hidden.has(o.y));
+  const [lo,hi]=bounds(m,vis.flatMap(o=>o.vals.map(v=>v&&v.value))), f=frame(W,H,lo,hi,r.metric), x=i=>f.L+(W-f.L-f.R)*(i+0.5)/12;
+  const shade=y=>y===2026?m.c:["#3a3a3a","#4a4a4a","#5c5c5c","#737373","#8f8f8f","#b0b0b0"][y-2020]; let body="";
+  vis.forEach(o=>{ const cur=o.y===2026; let d="",pen=false,dash="";
+    o.vals.forEach((v,i)=>{ if(!v||v.value==null||lowCov(m,v)){pen=false;return;} const pt=`${x(i)},${f.y(v.value)}`; if(v.partial&&m.agg==="sum"){ if(pen) dash+=`M${x(i-1)},${f.y(o.vals[i-1].value)}L${pt}`; pen=false; body+=`<circle cx="${x(i)}" cy="${f.y(v.value)}" r="3.5" fill="#161616" stroke="${shade(o.y)}" stroke-width="1.5"><title>${o.y}-${pad(i+1)} 진행 중 · ${fmt(r.metric,v.value)}${m.unit}</title></circle>`; return; } d+=`${pen?"L":"M"}${pt}`; pen=true; });
+    body+=`<path d="${d}" fill="none" stroke="${shade(o.y)}" stroke-width="${cur?2.6:1.4}" stroke-linejoin="round"/>`+(dash?`<path d="${dash}" fill="none" stroke="${shade(o.y)}" stroke-width="${cur?2:1.2}" stroke-dasharray="4 3"/>`:"");
+    if(cur) o.vals.forEach((v,i)=>{ if(v&&v.value!=null&&!(v.partial&&m.agg==="sum")) body+=`<circle cx="${x(i)}" cy="${f.y(v.value)}" r="3" fill="${m.c}"/>`; }); });
+  const labels=Array.from({length:12},(_,i)=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${i+1}월</text>`).join("");
+  return `<section class="panel"><h2>${m.label} <span style="color:var(--sub);font-weight:400">월별, 연도끼리 겹쳐 보기${m.unit?` (${m.unit})`:""}</span></h2><p class="lede">올해는 굵은 색 선, 지난 해는 최근일수록 밝은 회색</p>
+    <svg viewBox="0 0 ${W} ${H}" role="img" aria-label="${m.label} 전년 동기 비교">${f.grid}${body}${labels}</svg>
+    <div class="legend" role="group" aria-label="연도 표시">${rows.map(o=>`<button class="${hidden.has(o.y)?"off":""}" style="--c:${shade(o.y)}" aria-pressed="${!hidden.has(o.y)}" onclick="hidden.has(${o.y})?hidden.delete(${o.y}):hidden.add(${o.y});render()"><i></i>${o.y}</button>`).join("")}</div>
+    ${m.agg==="sum"?`<div class="keys"><span>점선 · 속 빈 점 = 아직 끝나지 않은 달 (부분 합계)</span></div>`:""}</section>`; }
+
+function seasonView(r){ const m=M[r.metric], rows=pivot(r.metric), W=1000,H=300;
+  const months=Array.from({length:12},(_,i)=>{ const pts=rows.map(o=>({y:o.y,v:o.vals[i]})).filter(p=>p.v&&p.v.value!=null&&!(m.agg==="sum"&&p.v.partial)&&!lowCov(m,p.v));
+    const value=!pts.length?null:m.agg==="max"?Math.max(...pts.map(p=>p.v.value)):m.agg==="sum"?pts.reduce((a,p)=>a+p.v.value,0)/pts.length:pts.reduce((a,p)=>a+p.v.value*p.v.covered,0)/pts.reduce((a,p)=>a+p.v.covered,0); return {value,pts}; });
+  const [lo,hi]=bounds(m,months.flatMap(o=>[o.value,...o.pts.map(p=>p.v.value)])), f=frame(W,H,lo,hi,r.metric), step=(W-f.L-f.R)/12, x=i=>f.L+step*(i+0.5); let body="";
+  months.forEach((o,i)=>{ if(o.value==null) return; const yy=f.y(o.value);
+    body+=m.agg==="sum"?`<rect x="${x(i)-step*0.3}" y="${yy}" width="${step*0.6}" height="${H-f.B-yy}" rx="3" fill="${m.c}" opacity=".8"><title>${i+1}월 · ${fmt(r.metric,o.value)}${m.unit}</title></rect>`:`<line x1="${x(i)-step*0.3}" x2="${x(i)+step*0.3}" y1="${yy}" y2="${yy}" stroke="${m.c}" stroke-width="3" stroke-linecap="round"><title>${i+1}월 · ${fmt(r.metric,o.value)}${m.unit}</title></line>`;
+    o.pts.forEach(p=>{ body+=`<circle cx="${x(i)+(p.y-2023)*step*0.07}" cy="${f.y(p.v.value)}" r="2.6" fill="${p.y===2026?m.c:"#8f8f8f"}" opacity="${p.y===2026?1:0.55}"><title>${p.y}-${pad(i+1)} · ${fmt(r.metric,p.v.value)}${m.unit}</title></circle>`; });
+    body+=`<text x="${x(i)}" y="${H+8}" text-anchor="middle" style="fill:#3f3f3f">${o.pts.length}개 해</text>`; });
+  const labels=Array.from({length:12},(_,i)=>`<text x="${x(i)}" y="${H-6}" text-anchor="middle">${i+1}월</text>`).join("");
+  const ok=months.map((o,i)=>({...o,i})).filter(o=>o.value!=null), hiM=ok.reduce((p,c)=>!p||c.value>p.value?c:p,null), loM=ok.reduce((p,c)=>!p||c.value<p.value?c:p,null);
+  return `<section class="panel" style="padding-bottom:26px"><h2>${m.label} <span style="color:var(--sub);font-weight:400">몇 월에 어떤가${m.unit?` (${m.unit})`:""}</span></h2>
+    <p class="lede">${m.agg==="sum"?"막대 = 끝난 달들의 월 합계 평균":m.agg==="max"?"굵은 선 = 그 달의 역대 최고":"굵은 선 = 그 달의 평균 (기록 일수 가중)"}, 점 = 해마다의 값 (색 점이 올해)</p>
+    <svg viewBox="0 0 ${W} ${H+14}" role="img" aria-label="${m.label} 계절성">${f.grid}${body}${labels}</svg></section>
+    <dl class="summary"><div><dt>가장 높은 달</dt><dd>${hiM?`${hiM.i+1}월`:"—"}<span>${hiM?fmt(r.metric,hiM.value)+m.unit:""}</span></dd></div><div><dt>가장 낮은 달</dt><dd>${loM?`${loM.i+1}월`:"—"}<span>${loM?fmt(r.metric,loM.value)+m.unit:""}</span></dd></div><div><dt>높낮이 차</dt><dd>${hiM&&loM?fmt(r.metric,hiM.value-loM.value):"—"}<small>${m.unit}</small></dd></div></dl>`; }
+
+function parsePeriod(s){ const [a,b]=s.split(".."); const e=`${b}-${pad(dim(+b.slice(0,4),+b.slice(5,7)))}`; const months=(+b.slice(0,4)-+a.slice(0,4))*12+(+b.slice(5,7)-+a.slice(5,7))+1; return {from:a,to:b,days:daysBetween(`${a}-01`<LOWER?LOWER:`${a}-01`,e>TODAY?TODAY:e),months}; }
+function compareView(r){ const A=parsePeriod(r.a),B=parsePeriod(r.b); const pace=p=>{const km=aggregate("runningKm",p.days).value; return km?318+rnd(p.from)*30-(p.from.startsWith("2023")?22:0):null;};
+  const rows=[["runningKm","총 거리"],["runningCount","러닝"],["pace","평균 페이스"],["vo2max","최고 VO2max"],["restingHR","평균 안정시 심박"],["sleepScore","평균 수면 점수"],["weight","기간 말 체중"]];
+  if(!rows.some(x=>x[0]===r.metric)) rows.push([r.metric,M[r.metric].label]);
+  const val=(id,p)=>{ if(id==="pace") return pace(p); const a=aggregate(id,p.days); return id==="weight"?a.last??null:a.value; };
+  const show=(id,v)=>v==null?null:id==="pace"?`${Math.floor(v/60)}'${pad(Math.round(v%60))}"`:fmt(id,v), unit=id=>id==="pace"?"/km":M[id].unit;
+  const cell=(id,p)=>{ const v=val(id,p); if(v==null) return `<td class="none">기록 없음</td>`; const per=id!=="pace"&&M[id].agg==="sum"&&A.months!==B.months?`<span class="per">월 ${fmt(id,v/p.months)}${unit(id)}</span>`:""; return `<td>${show(id,v)}<small>${unit(id)}</small>${per}</td>`; };
+  const diff=id=>{ const a=val(id,A),b=val(id,B); if(a==null||b==null) return `<td class="none">—</td>`; const d=b-a, s=d>0?"+":d<0?"−":""; const t=id==="pace"?`${Math.round(Math.abs(d))}초`:fmt(id,Math.abs(d)); return `<td class="diff">${s}${t}</td>`; };
+  const box=(k,p,c,which)=>`<div class="period"><b style="background:${c}">${k}</b><span style="color:var(--bright)">${p.from.replace("-",".")} ~ ${p.to.replace("-",".")}</span> <span class="len">${p.months}개월</span>
+    <div class="inputs"><input type="month" aria-label="구간 ${k} 시작" value="${p.from}" min="${LOWER.slice(0,7)}" max="${TODAY.slice(0,7)}" onchange="setPeriod('${which}',this.value,null)"><span class="len">부터</span><input type="month" aria-label="구간 ${k} 끝" value="${p.to}" min="${LOWER.slice(0,7)}" max="${TODAY.slice(0,7)}" onchange="setPeriod('${which}',null,this.value)"><span class="len">까지</span></div></div>`;
+  return `<div class="periods">${box("A",A,"#a3a3a3","a")}${box("B",B,M[r.metric].c,"b")}</div>
+   <div class="tablewrap"><table><thead><tr><th></th><th>A</th><th>B</th><th>B − A</th></tr></thead><tbody>${rows.map(([id,t])=>`<tr class="${id===r.metric?"sel":""}"><th scope="row">${t}<span class="u">${unit(id)}</span></th>${cell(id,A)}${cell(id,B)}${diff(id)}</tr>`).join("")}</tbody></table></div>
+   <div class="keys"><span>차이에는 좋고 나쁨 색을 넣지 않습니다. 거리는 높을수록, 심박·페이스는 낮을수록 좋아서 방향이 지표마다 다릅니다.</span>${A.months!==B.months?`<span>구간 길이가 달라 합계 지표는 월평균을 함께 표시합니다.</span>`:""}</div>`; }
+function setPeriod(which,from,to){ const r=route(); const [a,b]=r[which].split(".."); const n=[from||a,to||b]; if(n[0]>n[1]) return; location.hash=href(r,{[which]:n.join("..")}).slice(1); }
+
+function render(){ const r=route(); document.documentElement.style.setProperty("--m",M[r.metric].c);
+  document.getElementById("app").innerHTML=controls(r)+({series:seriesView,yoy:yoyView,season:seasonView,compare:compareView})[r.view](r); }
+addEventListener("hashchange",render); addEventListener("resize",render); render();
+</script>
+</body>
+</html>
