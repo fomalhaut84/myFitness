@@ -66,7 +66,7 @@
 - [ ] F18 `src/lib/history/cache.ts` — summary 메모리 캐시 (§4.5). 키 = 정규화 파라미터 + `max(SyncMetadata.lastSyncAt)` + `historyCacheVersion` + today. TTL 10분 · 최대 엔트리 수 제한. `getHistoryLowerBound` 도 같은 키 체계로 캐시
 - [ ] F19 수동 쓰기 무효화: `bumpHistoryCacheVersion()` 을 `POST /api/body-composition` · `POST /api/food` · `PATCH|DELETE /api/food/[id]` 성공 경로에서 호출
 - [ ] F20 회귀 테스트 (PR #401 Codex P2): 체중 수동 저장 (version bump) 직후 summary 가 새 값을 반환 / 같은 키 재호출은 loader 를 다시 부르지 않음 / TTL 경과 후 재조회 / lastSyncAt 변경 시 재조회
-- [ ] F21 **프로덕션 재측정**: 6년 `granularity=year` 전 지표 웜 1s 이내 → `393-history-aggregation.md` F12 체크 · `docs/roadmap.md` M15-1 완료 표기. 배포 후 작업이라 PR 의 Test plan 에 남긴다
+- [x] F21 **프로덕션 재측정** — **프로덕션 재측정 (v2.31.0, 2026-09-21, 서버 내부 `127.0.0.1:4200` · 전 지표 14개): 콜드 1.65s → 웜 0.090s · 0.003s · 0.003s** (이전 웜 1.09~1.22s).: 6년 `granularity=year` 전 지표 웜 1s 이내 → `393-history-aggregation.md` F12 체크 · `docs/roadmap.md` M15-1 완료 표기. 배포 후 작업이라 PR 의 Test plan 에 남긴다
 
 **공통**
 - [ ] F22 한국어 UI · 다크 테마 · 모바일 반응형 · 수치 단위 규칙 (km 2자리 · bpm 정수 · kg 1자리 · 페이스 min:sec/km · kcal 정수)
