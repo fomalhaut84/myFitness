@@ -23,9 +23,10 @@ interface TrendLineChartProps {
   domain?: [number | "auto", number | "auto"];
 }
 
+/** `YYYY-MM-DD` → `M/D`. 문자열에서 직접 자른다 — `new Date(str + "T00:00:00")` 는 브라우저 로컬 TZ 파싱이다 (#365 · #395). */
 function formatDay(dateStr: string): string {
-  const d = new Date(dateStr + "T00:00:00");
-  return `${d.getMonth() + 1}/${d.getDate()}`;
+  const [, month, day] = dateStr.slice(0, 10).split("-");
+  return `${Number(month)}/${Number(day)}`;
 }
 
 export default function TrendLineChart({

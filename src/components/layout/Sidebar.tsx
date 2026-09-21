@@ -124,6 +124,16 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    label: "추이",
+    href: "/trends",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v14h14" />
+        <path d="M6 13l3.5-4 3 2.5L17 6" />
+      </svg>
+    ),
+  },
+  {
     label: "리포트",
     href: "/reports",
     icon: (
