@@ -6,6 +6,7 @@
  * 하한 쪽. 월·일은 2자리 zero-pad 가 정규형 (`/history/2024/3` → `/history/2024/03`) 이라 공유 링크가 하나로 수렴한다.
  */
 import { isValidYmd } from "./buckets";
+import { DEFAULT_HISTORY_METRIC_ID, type HistoryMetricId } from "./metrics";
 import { formatYm } from "./month-cells";
 
 export const HISTORY_ROOT = "/history";
@@ -32,6 +33,11 @@ export function historyMonthPath(ym: string): string {
 
 export function historyDayPath(ymd: string): string {
   return `${HISTORY_ROOT}/${ymd.replaceAll("-", "/")}`;
+}
+
+/** `?metric=` 쿼리. 기본 지표는 생략해 URL 을 하나로 수렴시킨다. 레벨 이동 시에도 붙여 선택을 유지한다. */
+export function historyMetricQuery(id: HistoryMetricId): string {
+  return id === DEFAULT_HISTORY_METRIC_ID ? "" : `?metric=${id}`;
 }
 
 function clamp(value: string, min: string, max: string): string {
