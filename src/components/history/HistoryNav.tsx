@@ -132,7 +132,10 @@ export default function HistoryNav({ route, today, lowerBound, metric }: History
             <input
               type="month"
               aria-label="월 이동"
-              value={route.ym}
+              // uncontrolled + key: controlled 로 두면 형식이 완성되기 전 키 입력마다 React 가 값을 되돌려
+              // 텍스트 폴백 브라우저에서 타이핑이 불가능하다 (사전 리뷰 major 1). 라우트가 바뀌면 key 로 재생성.
+              key={route.ym}
+              defaultValue={route.ym}
               min={lowerBound.slice(0, 7)}
               max={today.slice(0, 7)}
               onChange={(e) => {
@@ -147,7 +150,8 @@ export default function HistoryNav({ route, today, lowerBound, metric }: History
             <input
               type="date"
               aria-label="날짜 이동"
-              value={route.ymd}
+              key={route.ymd}
+              defaultValue={route.ymd}
               min={lowerBound}
               max={today}
               onChange={(e) => {

@@ -82,16 +82,18 @@ export function createHistoryCache(
   };
 }
 
-/** metrics 순서 무관. today 포함 — 자정을 넘기면 totalDays · 버킷 목록이 달라진다. */
-export function summaryCacheKey(params: SummaryParams, today: string): string {
+/**
+ * metrics 순서 무관. today 포함 — 자정을 넘기면 totalDays · 버킷 목록이 달라진다. lowerBound 는 응답에 echo 되는 값이라 포함.
+ * clampedFrom/To 는 넣지 않는다 — 같은 (from, to) 의 데이터는 같고, 호출자가 자기 플래그로 덮어쓴다 (`cache.ts`).
+ */
+export function summaryCacheKey(params: SummaryParams, ctx: { today: string; lowerBound: string }): string {
   return JSON.stringify([
     "summary",
     params.granularity,
     params.from,
     params.to,
-    params.clampedFrom,
-    params.clampedTo,
     [...params.metrics].sort(),
-    today,
+    ctx.today,
+    ctx.lowerBound,
   ]);
 }

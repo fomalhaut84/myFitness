@@ -84,22 +84,29 @@ describe("createHistoryCache", () => {
 
 describe("summaryCacheKey", () => {
   const base = { granularity: "year", from: "2020-06-16", to: "2026-09-21", clampedFrom: false, clampedTo: false } as const;
+  const ctx = { today: "2026-09-21", lowerBound: "2020-06-16" };
 
   it("metrics 순서와 무관하게 같은 키", () => {
-    expect(summaryCacheKey({ ...base, metrics: ["weight", "runningKm"] }, "2026-09-21")).toBe(
-      summaryCacheKey({ ...base, metrics: ["runningKm", "weight"] }, "2026-09-21"),
+    expect(summaryCacheKey({ ...base, metrics: ["weight", "runningKm"] }, ctx)).toBe(
+      summaryCacheKey({ ...base, metrics: ["runningKm", "weight"] }, ctx),
     );
   });
 
   it("today 가 바뀌면 다른 키 (자정 넘김 — totalDays 가 달라진다)", () => {
-    expect(summaryCacheKey({ ...base, metrics: ["weight"] }, "2026-09-21")).not.toBe(
-      summaryCacheKey({ ...base, metrics: ["weight"] }, "2026-09-22"),
+    expect(summaryCacheKey({ ...base, metrics: ["weight"] }, ctx)).not.toBe(
+      summaryCacheKey({ ...base, metrics: ["weight"] }, { ...ctx, today: "2026-09-22" }),
+    );
+  });
+
+  it("clamped 플래그는 키에 영향 없음 (같은 데이터 — 페이지와 API 가 엔트리를 공유)", () => {
+    expect(summaryCacheKey({ ...base, clampedFrom: true, metrics: ["weight"] }, ctx)).toBe(
+      summaryCacheKey({ ...base, metrics: ["weight"] }, ctx),
     );
   });
 
   it("granularity · 범위가 다르면 다른 키", () => {
-    const k = summaryCacheKey({ ...base, metrics: ["weight"] }, "2026-09-21");
-    expect(summaryCacheKey({ ...base, granularity: "month", metrics: ["weight"] }, "2026-09-21")).not.toBe(k);
-    expect(summaryCacheKey({ ...base, from: "2021-01-01", metrics: ["weight"] }, "2026-09-21")).not.toBe(k);
+    const k = summaryCacheKey({ ...base, metrics: ["weight"] }, ctx);
+    expect(summaryCacheKey({ ...base, granularity: "month", metrics: ["weight"] }, ctx)).not.toBe(k);
+    expect(summaryCacheKey({ ...base, from: "2021-01-01", metrics: ["weight"] }, ctx)).not.toBe(k);
   });
 });

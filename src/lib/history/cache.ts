@@ -13,9 +13,22 @@ import type { SummaryParams } from "./summary-params";
 
 const globalForCache = globalThis as unknown as { historyCache: HistoryCache | undefined };
 
-async function getSyncStamp(): Promise<string> {
-  const agg = await prisma.syncMetadata.aggregate({ _max: { lastSyncAt: true } });
-  return agg._max.lastSyncAt?.toISOString() ?? "never";
+/** 연 뷰 1회 렌더가 캐시를 4번 조회한다 — stamp 를 짧게 재사용해 웜 렌더의 DB 왕복을 1회로 (사전 리뷰 info 3). */
+const SYNC_STAMP_REUSE_MS = 5_000;
+let stampMemo: { value: Promise<string>; at: number } | null = null;
+
+function getSyncStamp(): Promise<string> {
+  const now = Date.now();
+  if (stampMemo && now - stampMemo.at < SYNC_STAMP_REUSE_MS) return stampMemo.value;
+  const value = prisma.syncMetadata
+    .aggregate({ _max: { lastSyncAt: true } })
+    .then((agg) => agg._max.lastSyncAt?.toISOString() ?? "never");
+  const memo = { value, at: now };
+  stampMemo = memo;
+  value.catch(() => {
+    if (stampMemo === memo) stampMemo = null;
+  });
+  return value;
 }
 
 function cache(): HistoryCache {
@@ -34,9 +47,11 @@ export function getCachedLowerBound(): Promise<string> {
   return cache().get("lowerBound", getHistoryLowerBound);
 }
 
-export function getCachedHistorySummary(
+export async function getCachedHistorySummary(
   params: SummaryParams,
   ctx: { lowerBound: string; today: string },
 ): Promise<HistorySummary> {
-  return cache().get(summaryCacheKey(params, ctx.today), () => getHistorySummary(params, ctx));
+  const cached = await cache().get(summaryCacheKey(params, ctx), () => getHistorySummary(params, ctx));
+  // 캐시 값은 공유 객체 — 변형하지 않고 호출자별 echo 필드만 얹은 새 객체를 돌려준다
+  return { ...cached, clampedFrom: params.clampedFrom, clampedTo: params.clampedTo };
 }

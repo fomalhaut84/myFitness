@@ -5,7 +5,7 @@
  * KPI 는 그 기간을 **한 버킷** 으로 롤업한 summary 에서 만든다. 월 버킷을 다시 평균 내면 평균의 평균이 된다.
  */
 import { getCachedHistorySummary } from "./cache";
-import type { HistoryGranularity } from "./buckets";
+import { diffDaysYmd, type HistoryGranularity } from "./buckets";
 import { buildIntensityScale, type IntensityLevel } from "./intensity";
 import { buildHistoryKpis, HISTORY_KPI_METRIC_IDS, type HistoryKpi } from "./kpi";
 import {
@@ -100,6 +100,16 @@ function dayValueMap(dayBuckets: readonly SummaryBucket[], id: HistoryMetricId):
   return new Map(dayBuckets.map((b) => [b.key, b.values[id]?.value ?? null]));
 }
 
+/**
+ * 커버리지 분모. 버킷은 달력 전체 (#393) 라 하한이 걸친 달은 `totalDays` 에 조회 불가능한 날이 섞인다 —
+ * 하한 이전 일수를 뺀다 (오늘 이후는 버킷이 이미 제외). 사전 리뷰 info 4.
+ */
+function coverableDays(bucket: SummaryBucket | undefined, ym: string, ctx: HistoryViewContext): number {
+  if (!bucket) return daysInYm(ym);
+  const beforeLowerBound = bucket.start < ctx.lowerBound ? diffDaysYmd(bucket.start, ctx.lowerBound) : 0;
+  return Math.max(0, bucket.totalDays - beforeLowerBound);
+}
+
 export interface HistoryYearView {
   metric: HistoryMetricDef;
   months: HistoryMonthSummary[];
@@ -131,7 +141,7 @@ export async function loadHistoryYearView(year: number, metricId: HistoryMetricI
       live,
       value: bucket?.values[metricId]?.value ?? null,
       coveredDays: bucket?.values[metricId]?.coveredDays ?? 0,
-      totalDays: bucket?.totalDays ?? daysInYm(ym),
+      totalDays: coverableDays(bucket, ym, ctx),
       leadingBlanks: monthCells(ym).leadingBlanks,
       cells: toCells(ym, values, def, scale, ctx),
     };

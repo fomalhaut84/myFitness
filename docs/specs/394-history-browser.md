@@ -215,5 +215,18 @@ vitest (`src/lib/history/__tests__/`):
 
 ## 8. 코드 리뷰 결과
 
-- 사전 에이전트 리뷰: 구현 후 (8-0: `src/**` 로직 + API route 수정 → 필수)
+- 사전 에이전트 리뷰 1회 (2026-09-21): critical 0 · major 2 · info 4 → 전부 반영
+  - major 1: `HistoryNav` month/date 입력이 controlled 라 `type="month"` 텍스트 폴백 브라우저 (데스크톱 Safari/Firefox) 에서 타이핑 불가 → uncontrolled (`defaultValue` + `key`). UI 상호작용이라 회귀 테스트 대신 이 문구로 고정 (8-5 예외)
+  - major 2: `DayStrip` 바닥값 `min * 0.97` 이 음수 (`calorieBalance`) 에서 최솟값 위로 올라가 막대 평탄화 → `strip-scale.ts` 로 추출, 범위 기준 오프셋. 회귀 `__tests__/strip-scale.test.ts`
+  - info 1: 캐시 키에 `lowerBound` 추가 · `clampedFrom/To` 는 키에서 빼고 호출자 값으로 덮어써 페이지·API 가 엔트리 공유
+  - info 2: cron 의 kcal backfill · stale recalc 는 `lastSyncAt` 갱신 **뒤** 에 쓴다 → cron `finally` 에서 버전 bump
+  - info 3: sync stamp 5초 재사용 (웜 연 뷰 렌더의 DB 왕복 4 → 1)
+  - info 4: 하한이 걸친 달의 커버리지 분모에서 하한 이전 일수 제외
 - Codex bot: PR 오픈 후
+
+## 9. 시안 · 스펙 대비 구현 차이
+
+- 일별 스트립 (F9): Recharts 대신 서버 렌더 링크 막대 — 그리드가 값을 이미 보여 주고, 막대가 곧 일 뷰 링크다 (클라이언트 JS 없음).
+- 평균 페이스 표기는 앱 기존 `formatPace` (`5'46"`) — 시안의 `5:46` 아님.
+- 셀 축약: 1만 이상만 `17.8k`, 그 미만은 `7,712`.
+- 무효화 대상에 `PATCH /api/profile` (targetCalories → 전체 칼로리 밸런스 재계산) 과 cron 후속 쓰기 추가 (F19 는 체중·식단만 적었다).

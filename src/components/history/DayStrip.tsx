@@ -4,6 +4,7 @@ import Link from "next/link";
 import { formatHistoryValue } from "@/lib/history/format";
 import type { HistoryMetricDef } from "@/lib/history/metrics";
 import { historyDayPath, historyMetricQuery } from "@/lib/history/route-params";
+import { buildStripScale } from "@/lib/history/strip-scale";
 import type { HistoryDayCell } from "@/lib/history/view";
 import { metricColor } from "./metric-colors";
 
@@ -12,15 +13,9 @@ interface DayStripProps {
   metric: HistoryMetricDef;
 }
 
-/** 평균형은 0 기준이면 전부 같은 높이가 된다 — 최솟값 조금 아래를 바닥으로 */
-const FLOOR_RATIO = 0.97;
-const MIN_BAR_PERCENT = 4;
-
 export default function DayStrip({ cells, metric }: DayStripProps) {
   const values = cells.flatMap((c) => (c.state === "value" && c.value !== null ? [c.value] : []));
-  const max = values.length ? Math.max(...values) : 0;
-  const floor = metric.aggregate === "sum" || values.length === 0 ? 0 : Math.min(...values) * FLOOR_RATIO;
-  const span = max - floor;
+  const toPercent = buildStripScale(values, metric.aggregate === "sum");
   const color = metricColor(metric.id);
 
   return (
@@ -31,7 +26,7 @@ export default function DayStrip({ cells, metric }: DayStripProps) {
       <div className="flex h-[72px] items-end gap-0.5 border-b border-border">
         {cells.map((cell) => {
           if (cell.state === "value" && cell.value !== null) {
-            const percent = span > 0 ? Math.max(MIN_BAR_PERCENT, ((cell.value - floor) / span) * 100) : 50;
+            const percent = toPercent(cell.value);
             const label = `${cell.day}일 ${formatHistoryValue(metric, cell.value)}${metric.unit}`;
             return (
               <Link
