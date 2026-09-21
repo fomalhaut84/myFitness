@@ -41,11 +41,11 @@ function roundTo(n: number, decimals: number): number {
 }
 
 /**
- * 체중은 원래 드물게 재는 값 (6년 372건) 이라 "절반 미만" 규칙을 적용하면 전부 흐려진다 → `body` 소스는 제외.
- * 활동 지표는 0 이 진짜 0 이라 커버리지 개념이 없다. 두 번째 예외가 생기면 레지스트리 필드로 승격.
+ * 활동 지표는 0 이 진짜 0 이라 커버리지 개념이 없고, `sparse` 지표 (체중 · 젖산역치 페이스) 는 기록 일수가 적은 것이
+ * 정상이다 — 규칙을 적용하면 전부 흐려지고 YoY · 계절성 · 최고/최저에서 빠진다 (PR #407 Codex P2).
  */
 export function isLowCoverage(def: HistoryMetricDef, coveredDays: number, totalDays: number): boolean {
-  if (def.missingAsZero || def.source === "body") return false;
+  if (def.missingAsZero || def.sparse) return false;
   if (totalDays <= 0 || coveredDays <= 0) return false;
   return coveredDays / totalDays < LOW_COVERAGE_RATIO;
 }
@@ -55,11 +55,14 @@ export function isLowCoverage(def: HistoryMetricDef, coveredDays: number, totalD
  * - `current`: 오늘이 속한 버킷 (아직 끝나지 않음)
  * - `clipped`: 기록 시작일 (하한) 이 걸린 첫 버킷
  * 둘 다 해당하면 (데이터가 한 버킷 미만) `current`.
+ *
+ * `current` 는 "오늘이 속한 버킷" 이다 — 오늘이 버킷의 **마지막 날** 이어도 하루가 끝나지 않았으니 미완결이다
+ * (9월 30일의 9월 합계는 아직 부분 합계 — PR #407 Codex P2). `end` 는 exclusive.
  */
 export type PartialReason = "current" | "clipped";
 
 export function partialReason(bucket: Pick<SummaryBucket, "start" | "end">, ctx: TrendsDataContext): PartialReason | null {
-  if (bucket.end > addDaysYmd(ctx.today, 1)) return "current";
+  if (bucket.start <= ctx.today && ctx.today < bucket.end) return "current";
   if (bucket.start < ctx.lowerBound) return "clipped";
   return null;
 }

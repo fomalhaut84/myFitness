@@ -36,6 +36,11 @@ export type HistoryMetricDef = HistoryMetricSource & {
   withMinMax: boolean;
   /** 규칙과 별개로 기간 말 값(last)을 병기 (체중 · VO2max) */
   withLast: boolean;
+  /**
+   * #395: 원래 드물게 측정되는 값 (체중 — 6년 372건 · 젖산역치 페이스 — Garmin 감지일에만). 버킷의 기록 일수가 적은 것이
+   * 정상이라 `/trends` 의 "기록 절반 미만" 흐림 · 제외 규칙을 적용하지 않는다.
+   */
+  sparse: boolean;
   /** #394: 표시 형식. "pace" 는 값이 sec/km — `formatPace` (`5'21"`) 로 그린다. API 응답의 `unit` · 값은 그대로 초. */
   format: "number" | "pace";
   /** #394: `/history` 지표 선택기 노출 여부. false 는 KPI 계산 전용 (러닝 시간 합 → 평균 페이스). */
@@ -60,7 +65,7 @@ export const HISTORY_METRIC_IDS = [
 ] as const;
 export type HistoryMetricId = (typeof HISTORY_METRIC_IDS)[number];
 
-const base = { missingAsZero: false, withMinMax: false, withLast: false, selectable: true, format: "number" } as const;
+const base = { missingAsZero: false, withMinMax: false, withLast: false, selectable: true, format: "number", sparse: false } as const;
 
 export const HISTORY_METRICS: readonly HistoryMetricDef[] = [
   { ...base, id: "runningKm", label: "러닝 거리", unit: "km", decimals: 2, source: "activity", kind: "km", aggregate: "sum", missingAsZero: true },
@@ -72,9 +77,9 @@ export const HISTORY_METRICS: readonly HistoryMetricDef[] = [
   { ...base, id: "restingHR", label: "안정시 심박", unit: "bpm", decimals: 0, source: "daily", field: "restingHR", aggregate: "avg", withMinMax: true },
   { ...base, id: "hrv", label: "야간 HRV", unit: "ms", decimals: 1, source: "sleep", field: "hrvOvernight", aggregate: "avg" },
   { ...base, id: "stress", label: "평균 스트레스", unit: "", decimals: 0, source: "daily", field: "avgStress", aggregate: "avg" },
-  { ...base, id: "weight", label: "체중", unit: "kg", decimals: 1, source: "body", field: "weight", aggregate: "avg", withMinMax: true, withLast: true },
+  { ...base, id: "weight", label: "체중", unit: "kg", decimals: 1, source: "body", field: "weight", aggregate: "avg", withMinMax: true, withLast: true, sparse: true },
   { ...base, id: "vo2max", label: "VO2max", unit: "", decimals: 1, source: "fitness", field: "vo2maxRunning", aggregate: "max", withLast: true },
-  { ...base, id: "ltPace", label: "젖산역치 페이스", unit: "sec/km", decimals: 0, source: "fitness", field: "lthrPace", aggregate: "last", format: "pace" },
+  { ...base, id: "ltPace", label: "젖산역치 페이스", unit: "sec/km", decimals: 0, source: "fitness", field: "lthrPace", aggregate: "last", format: "pace", sparse: true },
   { ...base, id: "calorieBalance", label: "칼로리 밸런스", unit: "kcal", decimals: 0, source: "daily", field: "calorieBalance", aggregate: "avg" },
   // #394: 식단 캘린더 (M14 백로그 B-2) 를 월 그리드 지표로 흡수. FoodLog 는 2026~ 라 그 이전은 전부 결측.
   { ...base, id: "intakeKcal", label: "섭취 칼로리", unit: "kcal", decimals: 0, source: "daily", field: "estimatedIntakeCalories", aggregate: "avg" },

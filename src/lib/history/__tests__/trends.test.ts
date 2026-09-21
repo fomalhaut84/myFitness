@@ -31,9 +31,21 @@ describe("isLowCoverage", () => {
     expect(isLowCoverage(sleep, 15, 30)).toBe(false);
   });
 
-  it("활동 지표 (0 이 진짜 0) 와 체중 (원래 드문 측정) 은 대상이 아니다", () => {
+  it("활동 지표 (0 이 진짜 0) 와 sparse 지표 (체중 · 젖산역치 페이스) 는 대상이 아니다", () => {
     expect(isLowCoverage(km, 2, 30)).toBe(false);
     expect(isLowCoverage(weight, 3, 30)).toBe(false);
+    expect(isLowCoverage(getHistoryMetric("ltPace"), 1, 30)).toBe(false);
+  });
+
+  // 회귀: PR #407 Codex P2 — 젖산역치 페이스는 Garmin 감지일에만 기록돼 월 1~2일이 정상. 저커버리지로 걸러지면
+  // YoY · 계절성이 통째로 비고 최고/최저 판독값도 빈다.
+  it("감지일에만 기록되는 ltPace 도 YoY · 계절성 · 최고/최저에 남는다", () => {
+    const lt = getHistoryMetric("ltPace");
+    const buckets = [month("2025-05", "ltPace", 330, 1), month("2026-05", "ltPace", 321, 2)];
+    const pivot = pivotByYear(buckets, lt, ctx);
+    expect(buildYoyRows(pivot, lt)[4]).toMatchObject({ y2025: 330, y2026: 321 });
+    expect(seasonality(pivot, lt)[4]).toMatchObject({ value: 326, years: 2 });
+    expect(summarizeSeries(toTrendPoints(buckets, lt, "month", ctx), lt).best?.key).toBe("2025-05");
   });
 
   it("기록 0일은 결측이지 저커버리지가 아니다", () => {
@@ -55,8 +67,16 @@ describe("toTrendPoints", () => {
     expect(points.map((p) => p.partial)).toEqual(["clipped", null, null, "current"]);
   });
 
-  it("partialReason: 버킷 끝이 오늘이면 완결, 둘 다 해당하면 current, 주 버킷", () => {
-    expect(partialReason({ start: "2026-09-01", end: "2026-09-22" }, ctx)).toBeNull();
+  // 회귀: PR #407 Codex P2 — 오늘이 버킷의 마지막 날이면 exclusive end === 내일이라 `end > 내일` 검사를 빠져나가
+  // 9월 30일의 9월 부분 합계가 완결 월로 취급됐다.
+  it("partialReason: 오늘이 버킷의 마지막 날이어도 current, 어제 끝난 버킷은 완결", () => {
+    const lastDay = { today: "2026-09-30", lowerBound: "2020-06-16" };
+    expect(partialReason({ start: "2026-09-01", end: "2026-10-01" }, lastDay)).toBe("current");
+    expect(partialReason({ start: "2026-08-01", end: "2026-09-01" }, lastDay)).toBeNull();
+    expect(partialReason({ start: "2026-01-01", end: "2027-01-01" }, { ...lastDay, today: "2026-12-31" })).toBe("current");
+  });
+
+  it("partialReason: 둘 다 해당하면 current, 주 버킷", () => {
     expect(partialReason({ start: "2026-09-21", end: "2026-09-28" }, ctx)).toBe("current"); // 오늘(월)이 속한 주
     expect(partialReason({ start: "2020-06-15", end: "2020-06-22" }, ctx)).toBe("clipped"); // 하한(화)이 속한 주
     expect(partialReason({ start: "2026-09-01", end: "2026-10-01" }, { today: "2026-09-21", lowerBound: "2026-09-10" })).toBe("current");
