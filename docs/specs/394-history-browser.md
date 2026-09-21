@@ -210,7 +210,7 @@ vitest (`src/lib/history/__tests__/`):
 - `NutritionDateNav` 를 `HistoryNav` 로 교체 · `shiftYmd` 중복 제거 · lifestyle 을 `MonthGrid` 로 이전 — 회귀 위험 대비 이득이 없어 후속 후보 (#392 에 메모).
 - `body-composition` route 의 `parseLocalDate` (서버 로컬) — #365.
 - 워치 미착용일 `intakeKcal` 누락 (FoodLog 경로에서 DailySummary 행 생성) — 인계 문서 P3 미생성 항목.
-- 봇 프로세스 식단 기록의 즉시 캐시 무효화 (프로세스 간 신호) — TTL 10분 수용 (§4.6).
+- 봇 프로세스 식단 기록 · 봇 발 싱크 재계산의 즉시 캐시 무효화 (프로세스 간 신호) — TTL 10분 수용 (§4.6), 후속 #403.
 - 편집 기능 — 전부 읽기 전용. DB 집계 (raw query) · materialized rollup — 금지/불필요.
 
 ## 8. 코드 리뷰 결과
@@ -225,6 +225,7 @@ vitest (`src/lib/history/__tests__/`):
 - Codex bot 1회차 (PR #402, 2026-09-21): P0/P1 0 · P2 1 → 반영. `PATCH /api/profile` 의 `recalculateAllCalorieBalances()` 는 백그라운드라 응답 시점 bump 가 재계산 **중간** 값을 새 버전으로 캐시 → 정착 시점 (`.finally`) bump 로 이동
 - Codex bot 2회차 (자동 재리뷰): P0/P1 0 · P2 1 → 반영. 거리 없는 (0 · null) 러닝의 `duration` 이 평균 페이스 분자에만 들어가 KPI 가 느려짐 → 거리 있는 러닝만 합산 (`activityPoints` 순수 함수로 추출). 회귀 `__tests__/load-activity.test.ts`
 - Codex bot 3회차 (자동 재리뷰): P0/P1 0 · P2 2 → 반영. (1) daily-summary fetcher 의 백그라운드 `recalculateAllCalorieBalances()` 도 1회차와 같은 부분 재계산 캐시 문제 → bump 를 **함수 자체의 완료 시점** 으로 옮겨 모든 호출자를 한 곳에서 덮음 (프로필 route 의 `.finally` 제거) (2) 선택 가능해진 `ltPace` 가 `321 sec/km` 로 표시 → 레지스트리 `format: "pace"` + `historyDisplayUnit`, 회귀 `kpi.test.ts`
+- Codex bot 4회차 (자동 재리뷰): P0/P1 0 · P2 1 → **미반영, 후속 #403**. 봇 프로세스가 부른 `syncAll` 의 백그라운드 전체 재계산은 완료 bump 가 봇 메모리만 올린다 (프로세스 간 무효화). §4.6 의 봇 식단 기록과 같은 뿌리 — DB 에 보이는 신호가 필요해 이 PR 범위 밖. `targetCalories` 최초 세팅 1회성 경로 · 영향은 연·월 뷰 칼로리 지표 최대 10분
 - **종료 판단**: P2 만 3라운드 연속 (memory `project_codex_auto_rereview`). 이후 자동 재리뷰가 P2 이하만 내면 후속 이슈로 트래킹하고 이 PR 에서는 반영하지 않는다
 
 ## 9. 시안 · 스펙 대비 구현 차이
