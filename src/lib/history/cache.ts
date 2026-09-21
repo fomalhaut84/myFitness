@@ -8,6 +8,8 @@
 import prisma from "@/lib/prisma";
 import { createHistoryCache, summaryCacheKey, type HistoryCache } from "./cache-core";
 import { getHistoryLowerBound } from "./lower-bound";
+import type { HistoryMetricId } from "./metrics";
+import { getHistoryRangeTotals, type HistoryRangeTotals } from "./range-totals";
 import { getHistorySummary, type HistorySummary } from "./summary";
 import type { SummaryParams } from "./summary-params";
 
@@ -54,4 +56,17 @@ export async function getCachedHistorySummary(
   const cached = await cache().get(summaryCacheKey(params, ctx), () => getHistorySummary(params, ctx));
   // 캐시 값은 공유 객체 — 변형하지 않고 호출자별 echo 필드만 얹은 새 객체를 돌려준다
   return { ...cached, clampedFrom: params.clampedFrom, clampedTo: params.clampedTo };
+}
+
+/**
+ * #395: 임의 구간 한 덩어리 롤업 (`/trends` 기간 비교 · 기간 전체 판독값).
+ * 결과는 (from, to, 지표, DB) 에만 의존하고 DB 변동은 stamp · version 이 덮는다. **호출자가 `to` 를 오늘 이하로 클램프** 해서
+ * 넘긴다는 전제 — 미래가 낀 구간을 넘기면 자정 이후에도 같은 키로 옛 값이 나온다.
+ */
+export function getCachedRangeTotals(
+  range: { from: string; to: string },
+  metricIds: readonly HistoryMetricId[],
+): Promise<HistoryRangeTotals> {
+  const key = JSON.stringify(["rangeTotals", range.from, range.to, [...metricIds].sort()]);
+  return cache().get(key, () => getHistoryRangeTotals(range, metricIds));
 }

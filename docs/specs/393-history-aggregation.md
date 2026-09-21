@@ -43,7 +43,7 @@ M15 의 `/history` (#394) · `/trends` (#395) 가 공유할 집계 계층. 지�
 - [x] F9 `/api/export` `from` / `to` 추가 + 날짜 셀·파일명 `ymdKST` 로 교체
 - [x] F10 페이지 정리 — nutrition·lifestyle 의 중복 `kstDayRange` → F1, lifestyle `monthStart`/`daysAgoLocal`/`formatDateLocal` Set key → KST 헬퍼, activities `monthStart`/`weeksAgo` → KST 헬퍼. **동작 변화는 "서버 로컬 → KST" 뿐** (서버가 KST 면 무변화)
 - [x] F11 vitest 도입 (`vitest` devDependency · `vitest.config.ts` · `npm run test` 앞에 `vitest run`) + 회귀 테스트 §6
-- [ ] F12 **(미달 · #394 로 이월)** 완료 기준 실측: 6년 전체 `granularity=year` · 전 지표 요청 응답 시간 기록 (목표 1초 이내). **로컬 실측 (2026-09-18, 스텁 DB 활동 5 · 수면 7 · fitness 306행): 40ms.** **프로덕션 (v2.30.0 배포 후, Pentium G4600 2C/4T): 콜드 1.48s · 웜 1.09~1.22s — 목표 초과.** 400 4ms · 소스 1개 155ms · 5소스 1.09s → Node 측 Prisma 행 역직렬화(약 11,500행) 병목. **메모리 캐시를 #394 에 포함** (m15-overview D5 조건 충족). **F12 는 #394 에서 캐시 적용 후 웜 1s 이내를 재측정해야 닫힌다** (PR #401 Codex P2 — 완료 기준을 미달 상태로 체크하지 않는다)
+- [x] F12 **(v2.30.0 미달 → #394 캐시로 v2.31.0 에서 충족)** 완료 기준 실측: 6년 전체 `granularity=year` · 전 지표 요청 응답 시간 기록 (목표 1초 이내). **로컬 실측 (2026-09-18, 스텁 DB 활동 5 · 수면 7 · fitness 306행): 40ms.** **프로덕션 (v2.30.0 배포 후, Pentium G4600 2C/4T): 콜드 1.48s · 웜 1.09~1.22s — 목표 초과.** 400 4ms · 소스 1개 155ms · 5소스 1.09s → Node 측 Prisma 행 역직렬화(약 11,500행) 병목. **메모리 캐시를 #394 에 포함** (m15-overview D5 조건 충족). **F12 는 #394 에서 캐시 적용 후 웜 1s 이내를 재측정해야 닫힌다** (PR #401 Codex P2 — 완료 기준을 미달 상태로 체크하지 않는다). **프로덕션 재측정 (v2.31.0, 2026-09-21, 서버 내부 `127.0.0.1:4200` · 전 지표 14개): 콜드 1.65s → 웜 0.090s · 0.003s · 0.003s** (이전 웜 1.09~1.22s). 콜드는 캐시 미스라 여전히 1s 를 넘지만 (전 지표 14개로 늘어 1.48s → 1.65s) 기준은 웜이고, TTL 10분 · 싱크/수동 쓰기 때만 미스
 
 ## 4. 기술 설계
 

@@ -12,4 +12,8 @@ export * from "./month-cells";
 export * from "./route-params";
 export * from "./format";
 export * from "./kpi";
-export { bumpHistoryCacheVersion, getCachedHistorySummary, getCachedLowerBound } from "./cache";
+export { bumpHistoryCacheVersion, getCachedHistorySummary, getCachedLowerBound, getCachedRangeTotals } from "./cache";
+// #395 (M15-3)
+export * from "./range-totals";
+export * from "./trends-params";
+export * from "./trends";
