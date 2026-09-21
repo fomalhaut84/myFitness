@@ -4,6 +4,7 @@
  * 상태는 전부 URL 쿼리에 있다 — 링크 하나로 같은 화면이 재현된다. 잘못된 값은 redirect 없이 **기본값으로 fallback**
  * (쿼리는 정규화하지 않는다). 기본값은 href 에서 생략해 URL 을 짧게 유지한다.
  */
+import { bucketStartYmd } from "./buckets";
 import { DEFAULT_HISTORY_METRIC_ID, getHistoryMetric, isHistoryMetricId, type HistoryMetricId } from "./metrics";
 import { addMonthsYm, daysInYm, isValidYm } from "./month-cells";
 
@@ -118,11 +119,22 @@ export function parseTrendsQuery(raw: RawQuery, ctx: TrendsContext): TrendsQuery
   };
 }
 
-/** 시계열 기간 → ymd 구간. `1y` = 이번 달 포함 12개 달. 하한으로 클램프. */
-export function resolveTrendsRange(range: TrendsRange, ctx: TrendsContext): { from: string; to: string } {
-  if (range === "all") return { from: ctx.lowerBound, to: ctx.today };
-  const fromYm = addMonthsYm(ctx.today.slice(0, 7), -(RANGE_MONTHS[range] - 1));
-  const from = `${fromYm}-01`;
+/** 연 단위에서는 기간 선택이 의미가 없다 (6년 = 막대 7개) — 항상 전체. 컨트롤도 숨긴다. */
+export function effectiveTrendsRange(range: TrendsRange, unit: TrendsUnit): TrendsRange {
+  return unit === "year" ? "all" : range;
+}
+
+/**
+ * 시계열 기간 → ymd 구간. `1y` = 이번 달 포함 12개 달. 하한으로 클램프.
+ *
+ * `from` 은 **단위의 버킷 시작으로 스냅** 한다. summary 는 첫 버킷을 달력 전체로 조회하므로 (#393), 스냅하지 않으면
+ * 막대는 기간 밖 데이터를 포함하는데 "기간 전체" 판독값은 포함하지 않아 서로 어긋난다 (사전 리뷰 major 1).
+ */
+export function resolveTrendsRange(range: TrendsRange, unit: TrendsUnit, ctx: TrendsContext): { from: string; to: string } {
+  const effective = effectiveTrendsRange(range, unit);
+  if (effective === "all") return { from: ctx.lowerBound, to: ctx.today };
+  const fromYm = addMonthsYm(ctx.today.slice(0, 7), -(RANGE_MONTHS[effective] - 1));
+  const from = bucketStartYmd(`${fromYm}-01`, unit);
   return { from: from < ctx.lowerBound ? ctx.lowerBound : from, to: ctx.today };
 }
 

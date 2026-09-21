@@ -27,10 +27,14 @@ export default function ComparePeriodForm({ query, ctx, color }: ComparePeriodFo
   const minYm = ctx.lowerBound.slice(0, 7);
   const maxYm = ctx.today.slice(0, 7);
 
-  function update(which: "a" | "b", patch: Partial<MonthRange>) {
-    const next = { ...query[which], ...patch };
-    if (!isValidYm(next.fromYm) || !isValidYm(next.toYm)) return;
-    if (next.fromYm > next.toYm || next.fromYm < minYm || next.toYm > maxYm) return;
+  /** 유효하면 이동. 완성됐지만 쓸 수 없는 값 (역순 · 범위 밖) 은 입력을 원래 값으로 되돌린다 — 화면과 입력이 어긋나지 않게. */
+  function update(which: "a" | "b", field: keyof MonthRange, input: HTMLInputElement) {
+    if (!isValidYm(input.value)) return; // 텍스트 폴백 브라우저에서 입력 중
+    const next = { ...query[which], [field]: input.value };
+    if (next.fromYm > next.toYm || next.fromYm < minYm || next.toYm > maxYm) {
+      input.value = query[which][field];
+      return;
+    }
     router.push(buildTrendsHref(query, { [which]: next }, ctx), { scroll: false });
   }
 
@@ -65,7 +69,7 @@ export default function ComparePeriodForm({ query, ctx, color }: ComparePeriodFo
               defaultValue={range.fromYm}
               min={minYm}
               max={maxYm}
-              onChange={(e) => update(which, { fromYm: e.target.value })}
+              onChange={(e) => update(which, "fromYm", e.target)}
               className={INPUT_CLASS}
             />
             <span aria-hidden className="text-[12px] text-sub">~</span>
@@ -76,7 +80,7 @@ export default function ComparePeriodForm({ query, ctx, color }: ComparePeriodFo
               defaultValue={range.toYm}
               min={minYm}
               max={maxYm}
-              onChange={(e) => update(which, { toYm: e.target.value })}
+              onChange={(e) => update(which, "toYm", e.target)}
               className={INPUT_CLASS}
             />
           </div>

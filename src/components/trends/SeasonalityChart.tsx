@@ -75,7 +75,10 @@ export default function SeasonalityChart({ months, metric, color, currentYear }:
           <Bar
             dataKey="value"
             isAnimationActive={false}
-            shape={({ x, y, width, height }: { x?: number; y?: number; width?: number; height?: number }) => {
+            // Recharts 는 custom shape 가 있으면 값 없는 막대를 걸러내지 않고, 축 스케일은 null 을 0 으로 읽는다 →
+            // 결측 달에 "값 0" 위치로 가로선이 그려진다 (사전 리뷰 major 2). 값부터 확인한다.
+            shape={({ x, y, width, height, payload }: { x?: number; y?: number; width?: number; height?: number; payload?: Row }) => {
+              if (typeof payload?.value !== "number") return <g />;
               if (x === undefined || y === undefined || width === undefined || height === undefined) return <g />;
               const inset = width * 0.2;
               return isSum ? (

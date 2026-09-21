@@ -1,7 +1,9 @@
 // #395 (M15-3): /trends 쿼리 파싱 · 기간 해석 · href.
 import { describe, expect, it } from "vitest";
+import { enumerateBuckets } from "../buckets";
 import {
   buildTrendsHref,
+  effectiveTrendsRange,
   defaultCompareRanges,
   monthRangeLength,
   monthRangeToYmd,
@@ -36,14 +38,34 @@ describe("parseTrendsQuery", () => {
 });
 
 describe("resolveTrendsRange", () => {
-  it("1y = 이번 달 포함 12개 달, 3y = 36개 달", () => {
-    expect(resolveTrendsRange("1y", ctx)).toEqual({ from: "2025-10-01", to: "2026-09-21" });
-    expect(resolveTrendsRange("3y", ctx)).toEqual({ from: "2023-10-01", to: "2026-09-21" });
+  it("월 단위: 1y = 이번 달 포함 12개 달, 3y = 36개 달", () => {
+    expect(resolveTrendsRange("1y", "month", ctx)).toEqual({ from: "2025-10-01", to: "2026-09-21" });
+    expect(resolveTrendsRange("3y", "month", ctx)).toEqual({ from: "2023-10-01", to: "2026-09-21" });
   });
 
   it("all · 하한 클램프", () => {
-    expect(resolveTrendsRange("all", ctx)).toEqual({ from: "2020-06-16", to: "2026-09-21" });
-    expect(resolveTrendsRange("3y", { today: "2021-02-10", lowerBound: "2020-06-16" }).from).toBe("2020-06-16");
+    expect(resolveTrendsRange("all", "month", ctx)).toEqual({ from: "2020-06-16", to: "2026-09-21" });
+    expect(resolveTrendsRange("3y", "month", { today: "2021-02-10", lowerBound: "2020-06-16" }).from).toBe("2020-06-16");
+  });
+
+  // 회귀: #395 사전 리뷰 major 1 — summary 는 첫 버킷을 달력 전체로 조회한다. from 이 버킷 시작이 아니면 막대는 기간 밖
+  // 데이터를 포함하는데 "기간 전체" 판독값은 포함하지 않아 같은 화면에서 어긋난다.
+  it("from 은 단위의 버킷 시작 — 막대가 덮는 범위와 판독값 범위가 같다", () => {
+    for (const unit of ["week", "month", "year"] as const) {
+      for (const range of ["1y", "3y", "all"] as const) {
+        const { from, to } = resolveTrendsRange(range, unit, ctx);
+        const first = enumerateBuckets(from, to, unit, ctx.today)[0];
+        // 첫 버킷이 from 보다 앞에서 시작하는 경우는 하한 클램프뿐 (그 앞에는 데이터가 없다)
+        expect(first.startYmd === from || from === ctx.lowerBound).toBe(true);
+      }
+    }
+    expect(resolveTrendsRange("1y", "week", ctx).from).toBe("2025-09-29"); // 2025-10-01 이 속한 주의 월요일
+  });
+
+  it("연 단위는 기간과 무관하게 전체", () => {
+    expect(effectiveTrendsRange("1y", "year")).toBe("all");
+    expect(effectiveTrendsRange("1y", "week")).toBe("1y");
+    expect(resolveTrendsRange("1y", "year", ctx)).toEqual({ from: "2020-06-16", to: "2026-09-21" });
   });
 });
 

@@ -5,7 +5,7 @@
 // X 축은 카테고리 (버킷 키). 버킷이 빈 것까지 연속으로 오므로 등간격 = 실제 시간 간격이라 `scale="time"` 이 필요 없다.
 // Y domain 은 데이터를 따르게 둔다 (`allowDataOverflow` 기본값 유지 — 클리핑은 데이터를 숨기는 것).
 import { Area, Bar, Cell, ComposedChart, CartesianGrid, Line, ReferenceLine, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { TrendPoint } from "@/lib/history/trends";
+import { PARTIAL_LABELS, type TrendPoint } from "@/lib/history/trends";
 import {
   CHART_AXIS_TICK,
   CHART_GRID_STROKE,
@@ -34,11 +34,10 @@ const BAR_OPACITY = { normal: 0.85, partial: 0.35, low: 0.28 } as const;
 
 function pickTicks(points: readonly TrendPoint[]): string[] {
   const every = Math.max(1, Math.ceil(points.length / MAX_X_LABELS));
-  const dense = points.length > MAX_X_LABELS * 2;
   const half = Math.floor(every / 2);
   return points.flatMap((p, i) => {
     if (p.yearStart) return [p.key];
-    if (dense || i % every !== 0) return [];
+    if (i % every !== 0) return [];
     const nearYear = points.slice(Math.max(0, i - half), i + half + 1).some((q) => q.yearStart);
     return nearYear ? [] : [p.key];
   });
@@ -103,7 +102,7 @@ export default function TrendSeriesChart({ points, metric, color, showBand, unit
                       {p.coveredDays}/{p.totalDays}일 기록{p.lowCoverage ? " (절반 미만)" : ""}
                     </div>
                   )}
-                  {p.partial && isBar && <div>아직 끝나지 않은 {unitLabel}</div>}
+                  {p.partial && isBar && <div>{PARTIAL_LABELS[p.partial]} (부분 합계)</div>}
                 </div>
               );
             }}

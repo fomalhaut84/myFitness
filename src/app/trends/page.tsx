@@ -76,7 +76,7 @@ function pointReadout(label: string, point: TrendPoint | null, def: HistoryMetri
 }
 
 async function SeriesView({ query, ctx, def, color }: ViewProps) {
-  const range = resolveTrendsRange(query.range, ctx);
+  const range = resolveTrendsRange(query.range, query.unit, ctx);
   const [summary, whole] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id])]);
   const points = toTrendPoints(summary.buckets, def, query.unit, ctx);
   const { best, worst } = summarizeSeries(points, def);
@@ -97,7 +97,7 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
         <Keys
           items={[
             ...(hasLowCoverage ? [`${isSum ? "흐린 막대" : "속 빈 점"} = 기록이 절반 미만인 ${unitLabel}`] : []),
-            ...(isSum ? [`점선 막대 = 아직 끝나지 않은 ${unitLabel}`] : ["선이 끊긴 곳 = 기록 없음"]),
+            ...(isSum ? [`점선 막대 = 다 채워지지 않은 ${unitLabel} (진행 중이거나 기록 시작일이 걸림)`] : ["선이 끊긴 곳 = 기록 없음"]),
           ]}
         />
       </Panel>
@@ -137,7 +137,7 @@ async function YoyView({ ctx, def, color }: ViewProps) {
       ) : (
         <EmptyChart message="겹쳐 볼 달이 아직 없습니다. 기록이 절반 넘게 있는 달부터 그립니다." />
       )}
-      <Keys items={def.aggregate === "sum" ? ["점선과 속 빈 점 = 아직 끝나지 않은 달 (부분 합계)"] : ["선이 끊긴 곳 = 기록이 없거나 절반 미만인 달"]} />
+      <Keys items={def.aggregate === "sum" ? ["점선과 속 빈 점 = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림)"] : ["선이 끊긴 곳 = 기록이 없거나 절반 미만인 달"]} />
     </Panel>
   );
 }
@@ -198,7 +198,11 @@ async function CompareView({ query, ctx, def, color }: ViewProps) {
   ]);
   const monthsA = monthRangeLength(query.a);
   const monthsB = monthRangeLength(query.b);
-  const rows = buildCompareRows({ values: a.values, months: monthsA }, { values: b.values, months: monthsB }, def.id);
+  const rows = buildCompareRows(
+    { values: a.values, months: monthsA, totalDays: a.totalDays },
+    { values: b.values, months: monthsB, totalDays: b.totalDays },
+    def.id,
+  );
   return (
     <>
       <ComparePeriodForm query={query} ctx={ctx} color={color} />

@@ -2,7 +2,16 @@
 import { describe, expect, it } from "vitest";
 import { getHistoryMetric } from "../metrics";
 import type { SummaryBucket } from "../summary";
-import { formatBucketLabel, isLowCoverage, pivotByYear, seasonality, summarizeSeries, toTrendPoints } from "../trends";
+import {
+  buildYoyRows,
+  formatBucketLabel,
+  isLowCoverage,
+  partialReason,
+  pivotByYear,
+  seasonality,
+  summarizeSeries,
+  toTrendPoints,
+} from "../trends";
 
 const ctx = { today: "2026-09-21", lowerBound: "2020-06-16" };
 const km = getHistoryMetric("runningKm");
@@ -41,8 +50,21 @@ describe("toTrendPoints", () => {
   ];
   const points = toTrendPoints(buckets, km, "month", ctx);
 
-  it("미완결 = 하한이 걸친 첫 달 · 이번 달", () => {
-    expect(points.map((p) => p.partial)).toEqual([true, false, false, true]);
+  // 회귀: #395 사전 리뷰 major 3 — 6년 전 달 (기록 시작일이 걸린 첫 달) 이 "아직 끝나지 않은 월" 로 표시됐다.
+  it("미완결 사유를 구분한다: 기록 시작일이 걸린 첫 달 = clipped, 이번 달 = current", () => {
+    expect(points.map((p) => p.partial)).toEqual(["clipped", null, null, "current"]);
+  });
+
+  it("partialReason: 버킷 끝이 오늘이면 완결, 둘 다 해당하면 current, 주 버킷", () => {
+    expect(partialReason({ start: "2026-09-01", end: "2026-09-22" }, ctx)).toBeNull();
+    expect(partialReason({ start: "2026-09-21", end: "2026-09-28" }, ctx)).toBe("current"); // 오늘(월)이 속한 주
+    expect(partialReason({ start: "2020-06-15", end: "2020-06-22" }, ctx)).toBe("clipped"); // 하한(화)이 속한 주
+    expect(partialReason({ start: "2026-09-01", end: "2026-10-01" }, { today: "2026-09-21", lowerBound: "2026-09-10" })).toBe("current");
+  });
+
+  it("주 버킷의 /history 링크는 주의 가운데 날이 속한 달", () => {
+    const week: SummaryBucket = { key: "2026-08-31", start: "2026-08-31", end: "2026-09-07", totalDays: 7, values: { runningKm: { value: 30, coveredDays: 3 } } };
+    expect(toTrendPoints([week], km, "week", ctx)[0].href).toBe("/history/2026/09");
   });
 
   it("연 경계 · 라벨 · /history 링크", () => {
@@ -85,8 +107,45 @@ describe("pivotByYear", () => {
     expect(pivot.years).toEqual([2025, 2026]);
     expect(pivot.cells[2025][11]?.value).toBe(120);
     expect(pivot.cells[2025][0]).toBeNull();
-    expect(pivot.cells[2026][8]?.partial).toBe(true);
+    expect(pivot.cells[2026][8]?.partial).toBe("current");
     expect(pivot.cells[2026][9]).toBeNull();
+  });
+});
+
+describe("buildYoyRows", () => {
+  // 회귀: #395 사전 리뷰 major 3 — 점선이 "직전 완결 달 → 미완결 달" 로만 이어져, 기록 시작일이 걸린 첫 달은
+  // 어디에도 연결되지 않은 점 하나로 떠 있었다.
+  it("합계형: 미완결 달은 점선 계열에만, 앞뒤 완결 달과 이어진다 (끝 · 처음 양쪽)", () => {
+    const pivot = pivotByYear(
+      [
+        month("2020-06", "runningKm", 40, 5, 15),
+        month("2020-07", "runningKm", 110, 12),
+        month("2020-08", "runningKm", 120, 13),
+        month("2026-08", "runningKm", 140, 14),
+        month("2026-09", "runningKm", 60, 8, 21),
+      ],
+      km,
+      ctx,
+    );
+    const rows = buildYoyRows(pivot, km);
+    // 처음: 6월(clipped) 은 점선만, 7월은 실선이면서 점선의 끝점
+    expect([rows[5].y2020, rows[5].p2020]).toEqual([null, 40]);
+    expect([rows[6].y2020, rows[6].p2020]).toEqual([110, 110]);
+    expect([rows[7].y2020, rows[7].p2020]).toEqual([120, null]);
+    // 끝: 8월은 실선 + 점선 시작점, 9월(current) 은 점선만
+    expect([rows[7].y2026, rows[7].p2026]).toEqual([140, 140]);
+    expect([rows[8].y2026, rows[8].p2026]).toEqual([null, 60]);
+  });
+
+  it("평균형은 미완결이어도 실선 (부분 합계 문제가 없다) · 저커버리지는 양쪽 다 null", () => {
+    const pivot = pivotByYear(
+      [month("2026-08", "sleepScore", 78, 28), month("2026-09", "sleepScore", 80, 20, 21), month("2026-07", "sleepScore", 50, 3)],
+      sleep,
+      ctx,
+    );
+    const rows = buildYoyRows(pivot, sleep);
+    expect([rows[8].y2026, rows[8].p2026]).toEqual([80, null]);
+    expect([rows[6].y2026, rows[6].p2026]).toEqual([null, null]);
   });
 });
 
@@ -115,6 +174,16 @@ describe("seasonality", () => {
   it("max: 그 달의 역대 최고", () => {
     const pivot = pivotByYear([month("2024-05", "vo2max", 49.8, 20), month("2025-05", "vo2max", 51.2, 20)], vo2, ctx);
     expect(seasonality(pivot, vo2)[4].value).toBe(51.2);
+  });
+
+  // 회귀: #395 사전 리뷰 major 2 — 차트는 value 가 number 일 때만 표식을 그린다 (Recharts 는 null 을 0 위치로 그린다).
+  // 음수 도메인 지표 (칼로리 밸런스) 에서도 결측 달은 null 로 남아야 한다.
+  it("결측 달은 0 이 아니라 null — 음수 지표에서도", () => {
+    const balance = getHistoryMetric("calorieBalance");
+    const months = seasonality(pivotByYear([month("2026-05", "calorieBalance", -420, 25)], balance, ctx), balance);
+    expect(months[4].value).toBe(-420);
+    expect(months[3].value).toBeNull();
+    expect(months.filter((m) => m.value === 0)).toHaveLength(0);
   });
 
   it("기여한 해가 없는 달은 null", () => {

@@ -4,6 +4,7 @@ import { buildCompareRows, compareMetricIds } from "../compare";
 
 const peak = {
   months: 5,
+  totalDays: 152, // 2023-11-01 ~ 2024-03-31
   values: {
     runningKm: { value: 1185.22, coveredDays: 92 },
     runningCount: { value: 92, coveredDays: 92 },
@@ -16,6 +17,7 @@ const peak = {
 };
 const recent = {
   months: 3,
+  totalDays: 92,
   values: {
     runningKm: { value: 385.69, coveredDays: 41 },
     runningCount: { value: 41, coveredDays: 41 },
@@ -59,11 +61,23 @@ describe("buildCompareRows", () => {
   });
 
   it("구간 길이가 다르면 합계형에만 월평균 병기", () => {
-    expect(by.runningKm.a.perMonthText).toBe("237.04");
-    expect(by.runningKm.b.perMonthText).toBe("128.56");
+    expect(by.runningKm.a.perMonthText).toBe("237.34"); // 1185.22 / (152일 / 30.4375)
+    expect(by.runningKm.b.perMonthText).toBe("127.60");
     expect(by.restingHR.a.perMonthText).toBeNull();
     const same = buildCompareRows(peak, { ...recent, months: 5 }, "runningKm");
     expect(same[0].a.perMonthText).toBeNull();
+  });
+
+  // 회귀: #395 사전 리뷰 info 4 — 이번 달이 낀 구간은 오늘까지만 조회된다. 명목 월 수(3)로 나누면 월평균이 과소 계산된다.
+  it("월평균은 명목 월 수가 아니라 실제 조회 일수 기준", () => {
+    const partialMonth = buildCompareRows(peak, { ...recent, months: 3, totalDays: 82 }, "runningKm"); // 7/1 ~ 9/21
+    expect(partialMonth[0].b.perMonthText).toBe("143.16"); // 385.69 / (82 / 30.4375). 3 으로 나누면 128.56
+  });
+
+  it("반올림하면 0 인 차이는 부호 없이", () => {
+    const a = { ...peak, values: { ...peak.values, vo2max: { value: 50.34, coveredDays: 10, last: 50 } } };
+    const b = { ...recent, values: { ...recent.values, vo2max: { value: 50.3, coveredDays: 10, last: 50 } } };
+    expect(buildCompareRows(a, b, "runningKm").find((r) => r.key === "vo2max")?.diffText).toBe("0.0");
   });
 
   it("KPI 에 없는 선택 지표는 맨 아래 행, 한쪽이 기록 없음이면 차이도 없음", () => {

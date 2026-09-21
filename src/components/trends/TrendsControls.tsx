@@ -92,7 +92,10 @@ export default function TrendsControls({ query, ctx, color }: TrendsControlsProp
       {query.view === "series" && (
         <div className="mb-[18px] flex flex-wrap gap-3">
           <Segment label="단위" options={UNITS} selected={query.unit} hrefFor={(unit) => buildTrendsHref(query, { unit }, ctx)} />
-          <Segment label="기간" options={RANGES} selected={query.range} hrefFor={(range) => buildTrendsHref(query, { range }, ctx)} />
+          {/* 연 단위는 항상 전체 기간 (6년 = 막대 7개) — 기간 선택이 의미가 없어 숨긴다 */}
+          {query.unit !== "year" && (
+            <Segment label="기간" options={RANGES} selected={query.range} hrefFor={(range) => buildTrendsHref(query, { range }, ctx)} />
+          )}
         </div>
       )}
     </div>

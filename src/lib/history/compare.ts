@@ -30,8 +30,13 @@ export interface CompareRow {
 
 export interface ComparePeriod {
   values: HistoryBucketValues;
+  /** 명목 월 수 (구간 길이 비교 · 표기) */
   months: number;
+  /** 실제 조회 일수 — 이번 달이 들어가면 오늘까지만이라 명목 월 수로 나누면 월평균이 과소 계산된다 */
+  totalDays: number;
 }
+
+const DAYS_PER_MONTH = 365.25 / 12;
 
 interface RowSpec {
   key: string;
@@ -73,7 +78,8 @@ function buildRow(spec: RowSpec, a: ComparePeriod, b: ComparePeriod, selected: b
     if (value === null) return { text: null, perMonthText: null };
     return {
       text: format(value),
-      perMonthText: showPerMonth && def && period.months > 0 ? formatHistoryValue(def, value / period.months) : null,
+      perMonthText:
+        showPerMonth && def && period.totalDays > 0 ? formatHistoryValue(def, value / (period.totalDays / DAYS_PER_MONTH)) : null,
     };
   };
 
@@ -83,9 +89,9 @@ function buildRow(spec: RowSpec, a: ComparePeriod, b: ComparePeriod, selected: b
   const diffText =
     diff === null
       ? null
-      : isPace
+      : def === null || isPace
         ? signed(Math.round(diff), `${Math.abs(Math.round(diff))}초`)
-        : signed(Number(diff.toFixed(def?.decimals ?? 0)), formatHistoryValue(def ?? { decimals: 0 }, Math.abs(diff)));
+        : signed(Number(diff.toFixed(def.decimals)), formatHistoryValue(def, Math.abs(diff)));
 
   return {
     key: spec.key,

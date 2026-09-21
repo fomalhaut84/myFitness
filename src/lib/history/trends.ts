@@ -30,7 +30,7 @@ export interface TrendPoint {
   coveredDays: number;
   totalDays: number;
   lowCoverage: boolean;
-  partial: boolean;
+  partial: PartialReason | null;
   /** `/history` 의 대응 레벨 */
   href: string;
 }
@@ -50,9 +50,24 @@ export function isLowCoverage(def: HistoryMetricDef, coveredDays: number, totalD
   return coveredDays / totalDays < LOW_COVERAGE_RATIO;
 }
 
-export function isPartialBucket(bucket: Pick<SummaryBucket, "start" | "end">, ctx: TrendsDataContext): boolean {
-  return bucket.start < ctx.lowerBound || bucket.end > addDaysYmd(ctx.today, 1);
+/**
+ * 다 채워지지 않은 버킷의 이유. 둘은 화면 문구가 다르다 — 6년 전 달에 "진행 중" 이라고 쓰면 안 된다 (사전 리뷰 major 3).
+ * - `current`: 오늘이 속한 버킷 (아직 끝나지 않음)
+ * - `clipped`: 기록 시작일 (하한) 이 걸린 첫 버킷
+ * 둘 다 해당하면 (데이터가 한 버킷 미만) `current`.
+ */
+export type PartialReason = "current" | "clipped";
+
+export function partialReason(bucket: Pick<SummaryBucket, "start" | "end">, ctx: TrendsDataContext): PartialReason | null {
+  if (bucket.end > addDaysYmd(ctx.today, 1)) return "current";
+  if (bucket.start < ctx.lowerBound) return "clipped";
+  return null;
 }
+
+export const PARTIAL_LABELS: Record<PartialReason, string> = {
+  current: "아직 끝나지 않음",
+  clipped: "기록 시작일이 걸림",
+};
 
 /** 축 라벨. 주 `3/11` · 월 `3월` · 연 `2024`. 연 경계 버킷은 차트가 연도로 바꿔 그린다. */
 export function formatBucketLabel(key: string, granularity: HistoryGranularity): string {
@@ -68,7 +83,10 @@ export function formatBucketLabel(key: string, granularity: HistoryGranularity):
 }
 
 function bucketHref(bucket: SummaryBucket, granularity: HistoryGranularity): string {
-  return granularity === "year" ? historyYearPath(Number(bucket.key)) : historyMonthPath(bucket.start.slice(0, 7));
+  if (granularity === "year") return historyYearPath(Number(bucket.key));
+  // 주 버킷은 월 경계를 걸칠 수 있다 — 주의 가운데 날 (목요일) 이 속한 달로 보낸다
+  const anchor = granularity === "week" ? addDaysYmd(bucket.start, 3) : bucket.start;
+  return historyMonthPath(anchor.slice(0, 7));
 }
 
 export function toTrendPoints(
@@ -91,7 +109,7 @@ export function toTrendPoints(
       coveredDays,
       totalDays: bucket.totalDays,
       lowCoverage: isLowCoverage(def, coveredDays, bucket.totalDays),
-      partial: isPartialBucket(bucket, ctx),
+      partial: partialReason(bucket, ctx),
       href: bucketHref(bucket, granularity),
     };
   });
@@ -100,7 +118,7 @@ export function toTrendPoints(
 /** 최고/최저 판독값에 쓸 수 있는 포인트 — 결측 · 저커버리지 · (합계형) 미완결 제외. */
 function isComparable(point: TrendPoint, def: HistoryMetricDef): boolean {
   if (point.value === null || point.lowCoverage) return false;
-  return !(def.aggregate === "sum" && point.partial);
+  return !(def.aggregate === "sum" && point.partial !== null);
 }
 
 export function summarizeSeries(
@@ -120,7 +138,7 @@ export interface YearMonthValue {
   coveredDays: number;
   totalDays: number;
   lowCoverage: boolean;
-  partial: boolean;
+  partial: PartialReason | null;
 }
 
 export interface YearPivot {
@@ -144,11 +162,39 @@ export function pivotByYear(monthBuckets: readonly SummaryBucket[], def: History
       coveredDays,
       totalDays: bucket.totalDays,
       lowCoverage: isLowCoverage(def, coveredDays, bucket.totalDays),
-      partial: isPartialBucket(bucket, ctx),
+      partial: partialReason(bucket, ctx),
     };
     cells[year] = row;
   }
   return { years: Object.keys(cells).map(Number).sort((a, b) => a - b), cells };
+}
+
+export type YoyRow = { month: number } & Record<string, number | null>;
+
+/**
+ * YoY 차트 행. 연도마다 두 계열:
+ * - `y{year}` 실선 — 완결되고 기록이 충분한 달
+ * - `p{year}` 점선 — 다 채워지지 않은 달 (합계형만) 과 **그 앞뒤** 의 완결 달. 미완결 달이 시리즈의 끝 (이번 달) 이든
+ *   처음 (기록 시작일이 걸린 달) 이든 이웃과 이어진다.
+ */
+export function buildYoyRows(pivot: YearPivot, def: Pick<HistoryMetricDef, "aggregate">): YoyRow[] {
+  const isSum = def.aggregate === "sum";
+  const usable = (c: YearMonthValue | null | undefined): c is YearMonthValue & { value: number } =>
+    c != null && c.value !== null && !c.lowCoverage;
+  const isPartial = (c: YearMonthValue | null | undefined) => isSum && usable(c) && c.partial !== null;
+
+  return Array.from({ length: 12 }, (_, i) => {
+    const row: YoyRow = { month: i + 1 };
+    for (const year of pivot.years) {
+      const cells = pivot.cells[year] ?? [];
+      const cell = cells[i];
+      const partial = isPartial(cell);
+      const besidePartial = isPartial(cells[i - 1]) || isPartial(cells[i + 1]);
+      row[`y${year}`] = usable(cell) && !partial ? cell.value : null;
+      row[`p${year}`] = usable(cell) && (partial || besidePartial) ? cell.value : null;
+    }
+    return row;
+  });
 }
 
 export interface SeasonalityMonth {
@@ -171,7 +217,7 @@ export function seasonality(pivot: YearPivot, def: HistoryMetricDef): Seasonalit
     const used = pivot.years.flatMap((year) => {
       const cell = pivot.cells[year]?.[i];
       if (!cell || cell.value === null || cell.lowCoverage) return [];
-      if (def.aggregate === "sum" && cell.partial) return [];
+      if (def.aggregate === "sum" && cell.partial !== null) return [];
       return [{ year, value: cell.value, weight: cell.coveredDays }];
     });
     const points = used.map(({ year, value }) => ({ year, value }));

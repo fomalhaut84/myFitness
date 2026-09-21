@@ -5,7 +5,7 @@
 // 합계형의 미완결 월 (이번 달 · 하한이 걸친 첫 달) 은 점선 + 속 빈 점 — 부분 합계가 "적게 뛴 달" 로 읽히지 않게.
 import { useState } from "react";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
-import type { YearPivot } from "@/lib/history/trends";
+import { buildYoyRows, PARTIAL_LABELS, type YearPivot, type YoyRow } from "@/lib/history/trends";
 import {
   CHART_AXIS_TICK,
   CHART_GRID_STROKE,
@@ -24,7 +24,7 @@ interface YoyChartProps {
 
 const PAST_GRAYS = ["#3a3a3a", "#4a4a4a", "#5c5c5c", "#737373", "#8f8f8f", "#b0b0b0"];
 
-type Row = { month: number } & Record<string, number | null>;
+type Row = YoyRow;
 
 function yearColor(year: number, years: readonly number[], currentYear: number, color: string): string {
   if (year === currentYear) return color;
@@ -38,20 +38,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
   const isSum = metric.aggregate === "sum";
 
-  // 실선 = 완결 · 기록 충분한 달. 점선 = 직전 완결 달 → 미완결 달 (합계형만)
-  const rows: Row[] = Array.from({ length: 12 }, (_, i) => {
-    const row: Row = { month: i + 1 };
-    for (const year of pivot.years) {
-      const cell = pivot.cells[year]?.[i] ?? null;
-      const usable = cell !== null && cell.value !== null && !cell.lowCoverage;
-      const partial = usable && isSum && cell.partial;
-      row[`y${year}`] = usable && !partial ? cell.value : null;
-      const next = pivot.cells[year]?.[i + 1] ?? null;
-      const leadsToPartial = isSum && next !== null && next.partial && next.value !== null && !next.lowCoverage;
-      row[`p${year}`] = partial || (usable && leadsToPartial) ? cell.value : null;
-    }
-    return row;
-  });
+  const rows = buildYoyRows(pivot, metric);
   const visible = pivot.years.filter((y) => !hidden.has(y));
 
   function toggle(year: number) {
@@ -87,7 +74,9 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                 if (!row) return null;
                 const items = [...visible].reverse().flatMap((year) => {
                   const value = row[`y${year}`] ?? row[`p${year}`];
-                  return value === null || value === undefined ? [] : [{ year, value, partial: row[`y${year}`] === null }];
+                  if (value === null || value === undefined) return [];
+                  const reason = row[`y${year}`] === null ? (pivot.cells[year]?.[row.month - 1]?.partial ?? null) : null;
+                  return [{ year, value, reason }];
                 });
                 if (items.length === 0) return null;
                 return (
@@ -98,7 +87,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                         <span style={{ color: yearColor(it.year, pivot.years, currentYear, color) }}>{it.year}</span>
                         <span className={it.year === currentYear ? "text-bright" : ""}>
                           {formatChartValue(metric, it.value)}
-                          {it.partial ? " (진행 중)" : ""}
+                          {it.reason ? ` (${PARTIAL_LABELS[it.reason]})` : ""}
                         </span>
                       </div>
                     ))}
