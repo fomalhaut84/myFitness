@@ -5,7 +5,49 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-18 저녁, M15-1 집계 기반 · v2.30.0 세션 종료 시점)
+## 현재 상태 (2026-09-21, M15-2 `/history` · M15-3 `/trends` · v2.32.0 세션 종료 시점)
+
+**최근 릴리즈:** **v2.31.0** — `/history` 브라우저 + summary 메모리 캐시 (#394, PR #402) · **v2.32.0** — `/trends` 추이 분석 (#395, PR #407). main = `v2.32.0`, dev 는 문서 커밋 (로드맵 · 이 인계 문서) 만 앞섬 — 런타임 동일. 둘 다 배포 success · migration 없음 · 패키지 변경 없음 · 배포 후 사용자 실데이터 확인 완료.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음. 다음 착수: #396 하이라이트 (M15-4).** 스키마 변경 (`Activity.eventType` 컬럼 승격 + rawData 백필 · API 호출 0) 이 있어 `prisma-drift-fix` 절차 + 에이전트 사전 리뷰 필수. UI 는 M15-2/3 시안 (`docs/designs/394-history/` · `395-trends/`) 에 **추가** 하는 형태 — 새 디자인 언어를 만들지 않는다 (한 화면 한 지표 색 · 판독값 띠 · 불완전한 데이터 3구분).
+
+**#396 에 편입된 항목 (릴리즈 PR #409 Codex P2):** `/trends` 최고/최저 판독값의 `/history` 링크 (`src/lib/history/trends.ts` `bucketHref`) 가 선택 지표를 싣지 않아 기본 지표로 열린다 → `historyMetricQuery(def.id)` 1줄 + `trends.test.ts` href 기대값. #396 의 "차트 포인트 → 일 뷰 링크" 가 같은 경로라 처음부터 지표를 실어 만든다. 이슈 코멘트에 기록됨.
+
+**#396 착수 시 알아둘 것:**
+- `/trends` 툴팁에는 링크를 못 넣는다 (Recharts 툴팁은 포인터를 따라다녀 클릭 불가) — 포인트 클릭은 `Bar`/`Line` 의 `onClick` + `router.push` 로.
+- 이벤트 마커는 카테고리 X 축 (버킷 키) 위 `ReferenceLine x=<버킷 키>` — 동작 확인됨 (연 경계선이 이미 그렇게 그려진다). 이벤트 날짜 → 버킷 키는 `bucketKeyOf(ymd, granularity)`.
+- 커버리지 띠는 MCP `get_data_coverage` 재사용이 스펙 문구지만, 웹은 `src/mcp/` 를 import 하지 않는다 — 로직을 `src/lib/` 로 올리거나 summary 의 `coveredDays/totalDays` 로 만든다 (착수 시 판단).
+
+**독립 후속 (전부 P2):**
+
+| # | 내용 | 비고 |
+|---|---|---|
+| #405 + #408 | 히스토리 하한 입구 정리 — 하한 > 오늘 방어 (#405) · 첫 버킷 커버리지 분모 = 버킷 ∩ [하한, 오늘] · 하한 이전 포인트 제외 (#408) | **묶어서 한 PR.** 같은 입구 (`src/app/history/resolve.ts` · `validateSummaryParams` · `loadDailyPoints`). `view.ts` 의 `coverableDays` 를 공용으로 올린다. 둘 다 현재 프로덕션 데이터 (하한 2020-06-16 · 그 앞에 행 없음) 에서는 드러나지 않음 |
+| #403 | 히스토리 캐시 프로세스 간 무효화 (봇 식단 기록 · 봇 발 싱크의 백그라운드 재계산) | 현재 최대 TTL 10분 지연 수용. DB epoch 행을 stamp 와 함께 읽는 방향. 일 뷰는 비캐시라 무관 |
+| #390 | backfill 종료 시 weather lock 해제 실패 | 데이터 영향 없음 · TTL 10분 self-heal |
+| #365 | 서버 로컬 TZ 잔여 | 이번 세션에서 `TrendLineChart` 의 브라우저 로컬 TZ 파싱 1건 흡수 (#395). 남은 것: 봇 `toLocaleDateString` · ecosystem TZ · `MonthlyHeatmap` (로컬 `new Date`) · `body-composition` route `parseLocalDate` · verify 스캔 확장 |
+| #371 · #370 | orphan-check 스킬 오판 · 하네스 절대경로 | 하네스 정비 |
+
+**이후 순서:** #396 → #397 심화 시각화 (D8 표에서 3~4개 선별). M15 완료 시 major/minor 판단.
+
+**이번 세션 결과 (2026-09-21):**
+- **#394 완료 (v2.31.0, PR #402)** — `/history/[year]/[month]/[day]` · 연 뷰 (월 카드에 미니 달력) · 월 뷰 (`MonthGrid` 신설, `MonthlyHeatmap` 무변경) · 일 뷰 (8행 장부) · 지표 3건 (`runningDurationSec` 비노출 · `calorieBalance` · `intakeKcal` = 식단 캘린더 B-2 흡수) · `selectable` · `format: "pace"`. **summary 메모리 캐시** (`cache-core.ts` 순수 / `cache.ts` globalThis 싱글턴): 키 = 파라미터 + `max(lastSyncAt)` + 수동 쓰기 버전 + today + lowerBound, TTL 10분 · 64 엔트리. 무효화 = 체중 · 식단 route `finally` + cron 후속 쓰기 + `recalculateAllCalorieBalances` 완료 시점. 사전 리뷰 major 2 · info 4 + Codex 4회 (P2 5 — 반영 4 · #403 1) + 릴리즈 PR P2 1 (→ #405).
+- **#393 F12 닫음** — 프로덕션 재측정 (서버 내부, 전 지표 14개): 콜드 1.65s → **웜 0.090s · 0.003s** (이전 웜 1.09~1.22s). PR #406.
+- **#395 완료 (v2.32.0, PR #407)** — `/trends` 4 뷰 (시계열 · 전년 동기 · 계절성 · 기간 비교), 상태 전부 URL 쿼리. 순수 로직 `trends-params.ts` · `trends.ts` · `compare.ts` · `range-totals.ts` (`rollup.ts` 의 `aggregatePoints` 공유) · `chart-format.ts`. 불완전한 데이터 3구분 (결측 / 기록 절반 미만 / 다 채워지지 않음 = `current` · `clipped`) · 레지스트리 `sparse` (체중 · ltPace). 사전 리뷰 major 3 · info 8 + Codex 4회 (P2 6 — 반영 4 · #408 2) + 릴리즈 PR P2 1 (→ #396). vitest 53 → 152건.
+- **HRV 시작일 확인** — 야간 HRV (`SleepRecord.hrvOvernight`) 는 2026-04-20경부터만 있다. 프로덕션 쿼리로 `rawData->>'avgOvernightHrv'` 도 그 이전 전부 없음 확인 → Garmin 미제공 (파싱 누락 아님). memory `project_hrv_data_start`. 미확인 경로는 `hrv-service/hrv/{date}` (감사 D-1) 뿐.
+
+**세션 관찰:**
+- **Codex 자동 재리뷰는 문서 커밋에도 붙는다.** PR #407 4회차는 push 없이 PR body · 이슈만 갱신해 라운드를 끊었다 — P2 만 연속이면 "후속 이슈 + PR 코멘트 + body 갱신, **push 안 함**" 이 루프를 끝내는 방법이다. 남은 스펙 기록은 머지 후 문서 PR 에 묶는다.
+- **로드맵 완료 표기 전에 스펙 체크리스트를 구현 상태로 맞춘다** (PR #406 Codex P2 2라운드). #395 는 PR 단계에서 F1~F22 체크 + 달라진 항목 ↳ 주석을 미리 넣어 문서 PR (#410) 이 0라운드로 끝났다.
+- **`next dev` 는 `localhost` 로 연다.** `127.0.0.1` 로 열면 Next 16 이 `/_next/*` 를 교차 출처로 막아 **클라이언트 컴포넌트가 하이드레이션되지 않는다** (차트가 빈 컨테이너로 남음 · 에러 없음). 프로덕션 빌드와 무관. memory `project_next_dev_localhost_origin`.
+- **headless 시각 검증**: Chrome `--screenshot` 은 `ResponsiveContainer` (ResizeObserver) 를 기다리지 않는다. Recharts 화면은 CDP (원격 디버깅 포트 + `node_modules/ws`) 로 실제 시간 대기 후 캡처해야 찍힌다. Claude in Chrome 확장은 이 세션 내내 미연결이었다.
+- `next dev` 가 `CLAUDE.md` 끝에 `nextjs-agent-rules` 블록을 자동으로 덧붙인다 (gitignore 대상이라 커밋 영향 없음 · 지워도 다시 생김).
+
+---
+
+## 이전 상태 (2026-09-18 저녁, M15-1 집계 기반 · v2.30.0 세션 종료 시점)
 
 **최근 릴리즈:** **v2.30.0** — M15-1 집계 기반 (#393, PR #399) + M15 마일스톤 스펙 (PR #398). main = `v2.30.0`, dev 는 이 인계 문서만 앞섬. 배포 success (migration 없음, 패키지 변경: vitest · postcss override). 배포 후 검증 ✅ (부분 합계 회귀 · lifestyle 카운트 · lowerBound 2020-06-17).
 
