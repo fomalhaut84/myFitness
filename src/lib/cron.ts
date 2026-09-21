@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { syncAll } from "@/lib/garmin/sync";
 import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
 import { listStaleRecalcDates, ackStaleRecalcClaim } from "@/lib/nutrition/stale-recalc";
@@ -92,6 +93,9 @@ export function startCronJobs() {
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);
       } finally {
+        // #394: 위 kcal backfill · stale recalc 는 syncAll 이 lastSyncAt 을 갱신한 **뒤에** DailySummary 를 쓴다 →
+        // stamp 로는 안 잡히므로 버전을 올린다 (사전 리뷰 info 2).
+        bumpHistoryCacheVersion();
         isSyncing = false;
       }
     },

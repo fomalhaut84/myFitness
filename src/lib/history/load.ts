@@ -68,11 +68,19 @@ async function loadDateKeyed(source: DateKeyedSource, range: Range, defs: readon
   return pointsFromRows(rows, fieldDefs);
 }
 
-async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Promise<DailyPointsByMetric> {
-  const rows = await prisma.activity.findMany({
-    where: { startTime: { gte: range.start, lt: range.end } },
-    select: { startTime: true, activityType: true, distance: true },
-  });
+export interface ActivityRow {
+  startTime: Date;
+  activityType: string;
+  distance: number | null;
+  duration: number;
+}
+
+/**
+ * 러닝 활동 행 → 지표별 일별 포인트. 순수 (테스트 대상).
+ * `duration` 은 **거리가 있는 러닝만** 센다 — 평균 페이스 KPI 가 `시간 합 / 거리 합` 이라 두 합계가 같은 활동 집합을
+ * 덮어야 한다. 거리 없는 러닝 (GPS 없는 트레드밀 등) 의 시간이 섞이면 페이스가 실제보다 느리게 나온다 (PR #402 Codex P2).
+ */
+export function activityPoints(rows: readonly ActivityRow[], defs: readonly HistoryMetricDef[]): DailyPointsByMetric {
   const running = rows.filter((r) => isRunningType(r.activityType));
   return Object.fromEntries(
     defs.flatMap((def) => {
@@ -80,11 +88,21 @@ async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Pr
       const points: DailyPoint[] = running.flatMap((r) => {
         const ymd = ymdKST(r.startTime);
         if (def.kind === "count") return [{ ymd, value: 1 }];
+        const hasDistance = typeof r.distance === "number" && r.distance > 0;
+        if (def.kind === "duration") return hasDistance ? [{ ymd, value: r.duration }] : [];
         return typeof r.distance === "number" ? [{ ymd, value: r.distance / 1000 }] : [];
       });
       return [[def.id, points]];
     }),
   );
+}
+
+async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Promise<DailyPointsByMetric> {
+  const rows = await prisma.activity.findMany({
+    where: { startTime: { gte: range.start, lt: range.end } },
+    select: { startTime: true, activityType: true, distance: true, duration: true },
+  });
+  return activityPoints(rows, defs);
 }
 
 /** 요청 지표의 소스만 골라 병렬 조회. 반환은 지표 id → 일별 포인트 (요청 지표 전부 키 존재). */

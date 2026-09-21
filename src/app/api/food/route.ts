@@ -11,6 +11,7 @@ import { estimateNutritionFromPhoto } from "@/lib/nutrition/estimate-nutrition-p
 import { findRecentSameDescription } from "@/lib/nutrition/repeat-lookup";
 import { scaleMacrosForNewKcal } from "@/lib/nutrition/scale-macros";
 import { scaleItemsForNewKcal, type FoodItemBreakdown } from "@/lib/nutrition/food-items";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 
 // #309 (M14 Phase 2 #5): 사진 업로드 상한 (client 에서 downscale 후 upload 하지만 방어).
 const MAX_PHOTO_BYTES = 8 * 1024 * 1024;
@@ -70,11 +71,17 @@ export async function GET(request: Request) {
 }
 
 export async function POST(request: Request) {
-  const contentType = request.headers.get("content-type") ?? "";
-  if (contentType.startsWith("multipart/form-data")) {
-    return handlePhotoPost(request);
+  try {
+    const contentType = request.headers.get("content-type") ?? "";
+    if (contentType.startsWith("multipart/form-data")) {
+      return await handlePhotoPost(request);
+    }
+    return await handleJsonPost(request);
+  } finally {
+    // #394: 수동 쓰기는 SyncMetadata 를 안 건드린다 → 히스토리 캐시 버전을 올려 즉시 무효화 (PR #401 Codex P2).
+    // finally 라 실패 시에도 올라가지만 캐시 미스 1회일 뿐이고, 커밋 **뒤에** 올라가는 순서를 보장한다.
+    bumpHistoryCacheVersion();
   }
-  return handleJsonPost(request);
 }
 
 async function handleJsonPost(request: Request) {

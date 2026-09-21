@@ -1,6 +1,13 @@
 // #393 (M15-1) 회귀: 지표 레지스트리 정합. id 유일 · 초기 세트 · 규칙별 플래그 조합.
 import { describe, expect, it } from "vitest";
-import { HISTORY_METRICS, HISTORY_METRIC_IDS, getHistoryMetric, isHistoryMetricId } from "../metrics";
+import {
+  HISTORY_METRICS,
+  HISTORY_METRIC_IDS,
+  HISTORY_PRIMARY_METRIC_IDS,
+  getHistoryMetric,
+  isHistoryMetricId,
+  selectableHistoryMetrics,
+} from "../metrics";
 import { clampLowerBound } from "../lower-bound";
 
 describe("HISTORY_METRICS", () => {
@@ -26,6 +33,14 @@ describe("HISTORY_METRICS", () => {
     for (const m of HISTORY_METRICS) {
       if (m.withMinMax) expect(m.aggregate).toBe("avg");
     }
+  });
+
+  it("#394: 선택기 비노출 지표는 selectable 목록에서 빠지고, 기본 5개는 전부 selectable", () => {
+    const selectable = selectableHistoryMetrics().map((m) => m.id);
+    expect(selectable).not.toContain("runningDurationSec");
+    for (const id of HISTORY_PRIMARY_METRIC_IDS) expect(selectable).toContain(id);
+    expect(selectable).toContain("intakeKcal");
+    expect(selectable).toContain("calorieBalance");
   });
 
   it("getHistoryMetric 은 미등록 id 에 throw", () => {
