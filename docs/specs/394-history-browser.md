@@ -222,7 +222,7 @@ vitest (`src/lib/history/__tests__/`):
   - info 2: cron 의 kcal backfill · stale recalc 는 `lastSyncAt` 갱신 **뒤** 에 쓴다 → cron `finally` 에서 버전 bump
   - info 3: sync stamp 5초 재사용 (웜 연 뷰 렌더의 DB 왕복 4 → 1)
   - info 4: 하한이 걸친 달의 커버리지 분모에서 하한 이전 일수 제외
-- Codex bot: PR 오픈 후
+- Codex bot 1회차 (PR #402, 2026-09-21): P0/P1 0 · P2 1 → 반영. `PATCH /api/profile` 의 `recalculateAllCalorieBalances()` 는 백그라운드라 응답 시점 bump 가 재계산 **중간** 값을 새 버전으로 캐시 → 정착 시점 (`.finally`) bump 로 이동
 
 ## 9. 시안 · 스펙 대비 구현 차이
 

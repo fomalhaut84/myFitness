@@ -267,16 +267,16 @@ export async function PATCH(request: Request) {
             "[profile] 프로필 변경 후 칼로리 재계산 실패:",
             err instanceof Error ? err.message : String(err)
           );
-        });
+        })
+        // #394: 재계산은 await 하지 않는 백그라운드 작업 — 응답 시점에 bump 하면 진행 중인 (부분 재계산) 값이
+        // 새 버전 키로 캐시돼 TTL 동안 남는다. **정착 시점** 에 올린다. 일부 날짜가 실패해도 성공분은 반영돼야 하므로
+        // 성공/실패 무관 (PR #402 Codex P2). 다른 프로필 필드는 히스토리 지표에 영향이 없다.
+        .finally(() => bumpHistoryCacheVersion());
     }
 
     return NextResponse.json({ profile });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
     return NextResponse.json({ error: message }, { status: 500 });
-  } finally {
-    // #394: 수동 쓰기는 SyncMetadata 를 안 건드린다 → 히스토리 캐시 버전을 올려 즉시 무효화 (PR #401 Codex P2).
-    // finally 라 실패 시에도 올라가지만 캐시 미스 1회일 뿐이고, 커밋 **뒤에** 올라가는 순서를 보장한다.
-    bumpHistoryCacheVersion();
   }
 }
