@@ -40,6 +40,7 @@
 **라우트 · 네비**
 - [x] F1 라우트: `/history` → 오늘 KST 의 연도로 redirect. `/history/[year]` · `/history/[year]/[month]` · `/history/[year]/[month]/[day]`. 전부 `force-dynamic` 서버 컴포넌트
 - [x] F2 `src/lib/history/route-params.ts` (순수) — `parseHistoryRoute({ year, month?, day? }, { today, lowerBound })` → `{ level, ymd 범위 } | { redirectTo }`. 형식 오류·실존하지 않는 날짜 (2월 30일)·미래·하한 이전은 **같은 레벨의 가장 가까운 유효 값으로 redirect** (미래 → 오늘이 속한 연/월/일, 하한 이전 → 하한이 속한 연/월/일). 숫자가 아닌 세그먼트는 `/history` 로
+  - ↳ **실존하지 않는 날짜 (2월 30일 · 비숫자 일) 는 같은 레벨이 아니라 그 달의 월 뷰로** redirect 한다 (`/history/2024/02/30` → `/history/2024/02`) — "가장 가까운 날" 을 추측하지 않는다. 월 범위 밖 (`13`) · 비숫자 월은 연 뷰로. 범위 (미래 · 하한 이전) 와 zero-pad 만 같은 레벨에서 클램프 (`route-params.test.ts` 가 고정)
 - [x] F3 `HistoryNav` (client) — 레벨 파라미터화: 이전/다음 · 점프 picker (연: 연도 탭 `lowerBound 연도 ~ 올해`, 월: `<input type="month">`, 일: `<input type="date">`, `min`/`max` = 하한/오늘) · 브레드크럼 `기록 › 2024 › 3월 › 15일` (상위 레벨 링크) · "오늘로". 이전/다음은 경계에서 disabled. `?metric=` 은 레벨 이동 시 유지
 - [x] F4 사이드바 "기록" (`/history`) 추가 — "리포트" 위. 활성 판정을 `pathname === href || pathname.startsWith(href + "/")` 로 (단 `/` 는 완전 일치 유지). 기존 항목 회귀 없음 (`/settings/profile` 등)
 
