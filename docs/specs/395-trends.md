@@ -34,37 +34,47 @@
 
 ## 3. 요구사항
 
+> **구현 완료 (PR #407, 2026-09-21).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다 (전체 목록 §9).
+
 **라우트 · 컨트롤**
-- [ ] F1 `/trends` 단일 페이지 (`force-dynamic` 서버 컴포넌트). 쿼리: `view=series|yoy|season|compare` (기본 `series`) · `metric` (기본 `runningKm`, selectable 만) · `unit=week|month|year` (기본 `month`) · `range=1y|3y|all` (기본 `3y`) · 비교 뷰 `a=YYYY-MM..YYYY-MM` · `b=…`. 잘못된 값은 **기본값으로 fallback** (redirect 없음 — 쿼리는 정규화하지 않는다)
-- [ ] F2 `src/lib/history/trends-params.ts` (순수) — 쿼리 파싱 + `range` → `{ from, to }` (오늘 기준 역산 · 하한 클램프) + 비교 구간 파싱/기본값 (A = 직전 3개월 완결 월, B = 그 1년 전 같은 달들) + 기본값은 URL 에서 생략하는 쿼리 빌더
-- [ ] F3 컨트롤 바: 뷰 탭 4 · 지표 선택 (`MetricPicker` 재사용 — basePath + 나머지 쿼리 보존하도록 일반화) · 단위/기간 세그먼트. 뷰에 의미 없는 컨트롤은 숨긴다 (YoY · 계절성은 단위 = 월 고정, 계절성 · 비교는 기간 컨트롤 없음)
-- [ ] F4 사이드바 "추이" (`/trends`) — "기록" 아래
+- [x] F1 `/trends` 단일 페이지 (`force-dynamic` 서버 컴포넌트). 쿼리: `view=series|yoy|season|compare` (기본 `series`) · `metric` (기본 `runningKm`, selectable 만) · `unit=week|month|year` (기본 `month`) · `range=1y|3y|all` (기본 `3y`) · 비교 뷰 `a=YYYY-MM..YYYY-MM` · `b=…`. 잘못된 값은 **기본값으로 fallback** (redirect 없음 — 쿼리는 정규화하지 않는다)
+  - ↳ `unit=year` 는 `range` 와 무관하게 항상 전체 기간 (사전 리뷰 major 1). `unit` · `range` 는 다른 탭에 다녀와도 URL 에 유지
+- [x] F2 `src/lib/history/trends-params.ts` (순수) — 쿼리 파싱 + `range` → `{ from, to }` (오늘 기준 역산 · 하한 클램프) + 비교 구간 파싱/기본값 (A = 직전 3개월 완결 월, B = 그 1년 전 같은 달들) + 기본값은 URL 에서 생략하는 쿼리 빌더
+  - ↳ 기본 비교 구간은 **A = 1년 전 같은 달들, B = 직전 완결 3개월** (위 문구와 A/B 가 반대 — 표가 `B − A` = "그때 대비 지금"). `range` → `from` 은 단위의 버킷 시작으로 스냅
+- [x] F3 컨트롤 바: 뷰 탭 4 · 지표 선택 (`MetricPicker` 재사용 — basePath + 나머지 쿼리 보존하도록 일반화) · 단위/기간 세그먼트. 뷰에 의미 없는 컨트롤은 숨긴다 (YoY · 계절성은 단위 = 월 고정, 계절성 · 비교는 기간 컨트롤 없음)
+  - ↳ `MetricPicker` 는 `basePath` 대신 `hrefFor(id)` prop. 연 단위에서는 기간 세그먼트도 숨긴다
+- [x] F4 사이드바 "추이" (`/trends`) — "기록" 아래
 
 **시계열**
-- [ ] F5 합계형 (`aggregate: "sum"`) 은 막대, 그 외는 선. avg + `withMinMax` 지표는 **min~max 밴드** (Area) + 평균선. `vo2max` (max + last) 는 최고선 하나
-- [ ] F6 X 축 = 버킷 키. 라벨은 단위별 포맷 (주 `3/11` · 월 `24.03` · 연 `2024`), 연 경계에 연도 표시. 버킷이 연속 (빈 버킷 포함) 이라 **카테고리 축이 등간격 = 실제 시간 간격** — `scale="time"` 불필요 (memory `feedback_recharts_defaults` 의 "카테고리 축 등간격 함정" 은 포인트가 빠질 때의 문제)
-- [ ] F7 결측 버킷은 선이 **끊긴다** (`connectNulls={false}`). 합계형 `missingAsZero` 의 0 은 0 막대
-- [ ] F8 **저커버리지**: `missingAsZero` 가 아닌 지표에서 `coveredDays / totalDays < 0.5` 인 버킷은 흐리게 (막대 opacity · 선은 속 빈 점). 기준값은 상수 1곳. 툴팁에 `N/M일 기록` 표기
-- [ ] F9 툴팁: 버킷 라벨 (기간) · 값 (`formatHistoryValue` + `historyDisplayUnit`) · min/max (있으면) · 커버리지. **포인트 클릭 → `/history` 링크는 #396** (이 이슈는 툴팁 안 텍스트 링크까지만 — 월 버킷 → 월 뷰, 연 버킷 → 연 뷰)
-- [ ] F10 요약 줄: 기간 전체 값 (구간 롤업 — F15) · 최고 버킷 · 최저 버킷 (결측·저커버리지 제외)
+- [x] F5 합계형 (`aggregate: "sum"`) 은 막대, 그 외는 선. avg + `withMinMax` 지표는 **min~max 밴드** (Area) + 평균선. `vo2max` (max + last) 는 최고선 하나
+- [x] F6 X 축 = 버킷 키. 라벨은 단위별 포맷 (주 `3/11` · 월 `24.03` · 연 `2024`), 연 경계에 연도 표시. 버킷이 연속 (빈 버킷 포함) 이라 **카테고리 축이 등간격 = 실제 시간 간격** — `scale="time"` 불필요 (memory `feedback_recharts_defaults` 의 "카테고리 축 등간격 함정" 은 포인트가 빠질 때의 문제)
+  - ↳ 월 라벨은 `24.03` 이 아니라 `3월` + 연 경계에 밝은 연도 (`formatBucketLabel`)
+- [x] F7 결측 버킷은 선이 **끊긴다** (`connectNulls={false}`). 합계형 `missingAsZero` 의 0 은 0 막대
+- [x] F8 **저커버리지**: `missingAsZero` 가 아닌 지표에서 `coveredDays / totalDays < 0.5` 인 버킷은 흐리게 (막대 opacity · 선은 속 빈 점). 기준값은 상수 1곳. 툴팁에 `N/M일 기록` 표기
+- [x] F9 툴팁: 버킷 라벨 (기간) · 값 (`formatHistoryValue` + `historyDisplayUnit`) · min/max (있으면) · 커버리지. **포인트 클릭 → `/history` 링크는 #396** (이 이슈는 툴팁 안 텍스트 링크까지만 — 월 버킷 → 월 뷰, 연 버킷 → 연 뷰)
+  - ↳ 툴팁에 링크 없음 (포인터를 따라다녀 클릭 불가) — 차트 아래 판독값의 기간 표기가 `/history` 링크. 미완결 사유는 `current` / `clipped` 로 구분해 표기
+- [x] F10 요약 줄: 기간 전체 값 (구간 롤업 — F15) · 최고 버킷 · 최저 버킷 (결측·저커버리지 제외)
 
 **YoY · 계절성**
-- [ ] F11 YoY: 전체 기간 월 버킷 → 연도별 12칸 피벗 (`pivotByYear`, 순수). x = 1~12월, 연도별 선. **올해는 지표색 굵은 선, 과거는 회색 계열 (최근일수록 밝게)**. 범례 클릭으로 연도 토글 (client state — URL 에 넣지 않는다)
-- [ ] F12 YoY 미완결 월 (이번 달 · 하한이 걸친 첫 달) 은 합계형에서 **점선/속 빈 점** — 부분 합계가 "적게 뛴 달" 로 읽히지 않게
-- [ ] F13 계절성: 월별 (1~12) 대표값 12개 막대 + 연도별 점 (분포). 대표값 규칙 = 합계형: 완결 월들의 **월 합계 평균** / 평균형: `coveredDays` **가중 평균** / max 형: 최고 / last 형: 월 값 평균. 기여 연도 수를 막대 아래 표기 (`n=6`)
-- [ ] F14 피벗·계절성 규칙은 `src/lib/history/trends.ts` 순수 함수 + vitest
+- [x] F11 YoY: 전체 기간 월 버킷 → 연도별 12칸 피벗 (`pivotByYear`, 순수). x = 1~12월, 연도별 선. **올해는 지표색 굵은 선, 과거는 회색 계열 (최근일수록 밝게)**. 범례 클릭으로 연도 토글 (client state — URL 에 넣지 않는다)
+- [x] F12 YoY 미완결 월 (이번 달 · 하한이 걸친 첫 달) 은 합계형에서 **점선/속 빈 점** — 부분 합계가 "적게 뛴 달" 로 읽히지 않게
+- [x] F13 계절성: 월별 (1~12) 대표값 12개 막대 + 연도별 점 (분포). 대표값 규칙 = 합계형: 완결 월들의 **월 합계 평균** / 평균형: `coveredDays` **가중 평균** / max 형: 최고 / last 형: 월 값 평균. 기여 연도 수를 막대 아래 표기 (`n=6`)
+  - ↳ 연도별 점은 `Scatter` 가 아니라 선 없는 `Line` (카테고리 축에서 안정적). 기여 연도 수는 막대 아래가 아니라 툴팁 · 판독값 캡션
+- [x] F14 피벗·계절성 규칙은 `src/lib/history/trends.ts` 순수 함수 + vitest
 
 **기간 비교**
-- [ ] F15 `src/lib/history/range-totals.ts` — `getHistoryRangeTotals({ from, to, metrics })`: 구간 전체를 **한 버킷** 으로 롤업 (평균의 평균 금지 — #394 KPI 와 같은 원칙). `rollup.ts` 의 집계 본체를 `aggregatePoints(points, def)` 로 추출해 공유. 캐시 경유 (`cache().get`)
-- [ ] F16 비교 뷰: 구간 A · B 를 `<input type="month">` 4개 (uncontrolled + `key` — #394 major 1) 로 선택 → KPI 7종 (`buildHistoryKpis`) + 선택 지표를 **A | B | 차이** 3열 표로. 차이는 부호 + 단위, 페이스는 초 차이. 좋고 나쁨 색은 넣지 않는다 (지표마다 방향이 다르다 — 심박은 낮을수록, 거리는 높을수록)
-- [ ] F17 구간 길이가 다르면 합계형 옆에 **월평균** 을 병기 (5개월 vs 3개월 합계 비교가 오독되지 않게)
-- [ ] F18 구간 검증: 형식 오류 · 역순 · 하한 이전 · 미래 → 기본 구간 fallback. 최대 길이 제한 없음 (연 단위 비교 허용)
+- [x] F15 `src/lib/history/range-totals.ts` — `getHistoryRangeTotals({ from, to, metrics })`: 구간 전체를 **한 버킷** 으로 롤업 (평균의 평균 금지 — #394 KPI 와 같은 원칙). `rollup.ts` 의 집계 본체를 `aggregatePoints(points, def)` 로 추출해 공유. 캐시 경유 (`cache().get`)
+- [x] F16 비교 뷰: 구간 A · B 를 `<input type="month">` 4개 (uncontrolled + `key` — #394 major 1) 로 선택 → KPI 7종 (`buildHistoryKpis`) + 선택 지표를 **A | B | 차이** 3열 표로. 차이는 부호 + 단위, 페이스는 초 차이. 좋고 나쁨 색은 넣지 않는다 (지표마다 방향이 다르다 — 심박은 낮을수록, 거리는 높을수록)
+  - ↳ KPI 행은 `buildHistoryKpis` 재사용이 아니라 `compare.ts` 의 행 정의 (같은 KPI 정의 — 페이스 = 시간 합 / 거리 합, 체중 = 기간 말 값 — 에 A/B/차이가 필요해서). 차이에는 단위를 붙이지 않고 행 제목의 단위를 따른다 (페이스만 `+50초`)
+- [x] F17 구간 길이가 다르면 합계형 옆에 **월평균** 을 병기 (5개월 vs 3개월 합계 비교가 오독되지 않게)
+  - ↳ 월평균은 명목 월 수가 아니라 **실제 조회 일수** (`totalDays / 30.4375`) 로 나눈다 — 이번 달이 낀 구간은 오늘까지만 조회된다
+- [x] F18 구간 검증: 형식 오류 · 역순 · 하한 이전 · 미래 → 기본 구간 fallback. 최대 길이 제한 없음 (연 단위 비교 허용)
 
 **공통**
-- [ ] F19 한국어 UI · 다크 테마 · 모바일 (360px 에서 차트 가로 스크롤 없이 축소, 컨트롤은 가로 스크롤 pill) · 수치 단위 규칙
-- [ ] F20 KST · ymd 헬퍼만. 신규 코드에 `new Date(y, m, d)` · `formatDateLocal` 금지
-- [ ] F21 SpO2 관련 지표는 이번 선택기에 없다 (레지스트리 미등록) — 추가 시 임계 색 금지 원칙 유지
-- [ ] F22 성능: 전 기간 주 단위 (약 330 버킷) 시계열 웜 응답이 캐시로 즉시. 콜드는 단일 지표라 소스 1개 조회 (#393 실측 155ms 수준)
+- [x] F19 한국어 UI · 다크 테마 · 모바일 (360px 에서 차트 가로 스크롤 없이 축소, 컨트롤은 가로 스크롤 pill) · 수치 단위 규칙
+- [x] F20 KST · ymd 헬퍼만. 신규 코드에 `new Date(y, m, d)` · `formatDateLocal` 금지
+- [x] F21 SpO2 관련 지표는 이번 선택기에 없다 (레지스트리 미등록) — 추가 시 임계 색 금지 원칙 유지
+- [x] F22 성능: 전 기간 주 단위 (약 330 버킷) 시계열 웜 응답이 캐시로 즉시. 콜드는 단일 지표라 소스 1개 조회 (#393 실측 155ms 수준)
 
 ## 4. 기술 설계
 
