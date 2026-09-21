@@ -7,7 +7,6 @@ import {
   recordMetricChange,
   type MetricField,
 } from "@/lib/fitness/profile-history";
-import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 
 /** "YYYY-MM-DD" 형식이면서 실제 달력상 유효한 날짜인지 검증 */
 const birthDateSchema = z
@@ -267,11 +266,7 @@ export async function PATCH(request: Request) {
             "[profile] 프로필 변경 후 칼로리 재계산 실패:",
             err instanceof Error ? err.message : String(err)
           );
-        })
-        // #394: 재계산은 await 하지 않는 백그라운드 작업 — 응답 시점에 bump 하면 진행 중인 (부분 재계산) 값이
-        // 새 버전 키로 캐시돼 TTL 동안 남는다. **정착 시점** 에 올린다. 일부 날짜가 실패해도 성공분은 반영돼야 하므로
-        // 성공/실패 무관 (PR #402 Codex P2). 다른 프로필 필드는 히스토리 지표에 영향이 없다.
-        .finally(() => bumpHistoryCacheVersion());
+        });
     }
 
     return NextResponse.json({ profile });

@@ -224,6 +224,8 @@ vitest (`src/lib/history/__tests__/`):
   - info 4: 하한이 걸친 달의 커버리지 분모에서 하한 이전 일수 제외
 - Codex bot 1회차 (PR #402, 2026-09-21): P0/P1 0 · P2 1 → 반영. `PATCH /api/profile` 의 `recalculateAllCalorieBalances()` 는 백그라운드라 응답 시점 bump 가 재계산 **중간** 값을 새 버전으로 캐시 → 정착 시점 (`.finally`) bump 로 이동
 - Codex bot 2회차 (자동 재리뷰): P0/P1 0 · P2 1 → 반영. 거리 없는 (0 · null) 러닝의 `duration` 이 평균 페이스 분자에만 들어가 KPI 가 느려짐 → 거리 있는 러닝만 합산 (`activityPoints` 순수 함수로 추출). 회귀 `__tests__/load-activity.test.ts`
+- Codex bot 3회차 (자동 재리뷰): P0/P1 0 · P2 2 → 반영. (1) daily-summary fetcher 의 백그라운드 `recalculateAllCalorieBalances()` 도 1회차와 같은 부분 재계산 캐시 문제 → bump 를 **함수 자체의 완료 시점** 으로 옮겨 모든 호출자를 한 곳에서 덮음 (프로필 route 의 `.finally` 제거) (2) 선택 가능해진 `ltPace` 가 `321 sec/km` 로 표시 → 레지스트리 `format: "pace"` + `historyDisplayUnit`, 회귀 `kpi.test.ts`
+- **종료 판단**: P2 만 3라운드 연속 (memory `project_codex_auto_rereview`). 이후 자동 재리뷰가 P2 이하만 내면 후속 이슈로 트래킹하고 이 PR 에서는 반영하지 않는다
 
 ## 9. 시안 · 스펙 대비 구현 차이
 

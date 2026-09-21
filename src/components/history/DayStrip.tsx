@@ -1,7 +1,7 @@
 // #394 (M15-2): 월 뷰 일별 스트립 — 선택 지표의 그 달 모양. 막대가 곧 일 뷰 링크.
 // 그리드가 이미 값을 보여 주므로 축·툴팁이 있는 차트(Recharts) 대신 링크 막대로 가볍게 둔다 (서버 렌더 · JS 없음).
 import Link from "next/link";
-import { formatHistoryValue } from "@/lib/history/format";
+import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import type { HistoryMetricDef } from "@/lib/history/metrics";
 import { historyDayPath, historyMetricQuery } from "@/lib/history/route-params";
 import { buildStripScale } from "@/lib/history/strip-scale";
@@ -17,17 +17,18 @@ export default function DayStrip({ cells, metric }: DayStripProps) {
   const values = cells.flatMap((c) => (c.state === "value" && c.value !== null ? [c.value] : []));
   const toPercent = buildStripScale(values, metric.aggregate === "sum");
   const color = metricColor(metric.id);
+  const unit = historyDisplayUnit(metric);
 
   return (
     <section className="mt-7">
       <h2 className="mb-2.5 text-[13px] font-medium text-muted">
-        {metric.label} 일별{metric.unit && <span className="font-normal text-sub"> ({metric.unit})</span>}
+        {metric.label} 일별{unit && <span className="font-normal text-sub"> ({unit})</span>}
       </h2>
       <div className="flex h-[72px] items-end gap-0.5 border-b border-border">
         {cells.map((cell) => {
           if (cell.state === "value" && cell.value !== null) {
             const percent = toPercent(cell.value);
-            const label = `${cell.day}일 ${formatHistoryValue(metric, cell.value)}${metric.unit}`;
+            const label = `${cell.day}일 ${formatHistoryValue(metric, cell.value)}${unit}`;
             return (
               <Link
                 key={cell.ymd}

@@ -1,7 +1,7 @@
 // #394 (M15-2): 연 뷰 월 카드 — 그 달의 실제 달력을 작게 넣는다 (12개월 밀착 인화).
 // 미니 달력은 aria-hidden: 카드의 숫자·커버리지가 같은 정보를 글자로 준다.
 import Link from "next/link";
-import { formatHistoryValue } from "@/lib/history/format";
+import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import type { HistoryMetricDef } from "@/lib/history/metrics";
 import { historyMetricQuery, historyMonthPath } from "@/lib/history/route-params";
 import type { HistoryDayCell, HistoryMonthSummary } from "@/lib/history/view";
@@ -26,6 +26,7 @@ function coverageText(summary: HistoryMonthSummary, metric: HistoryMetricDef): s
 }
 
 export default function YearMonthCard({ summary, metric }: YearMonthCardProps) {
+  const unit = historyDisplayUnit(metric);
   const body = (
     <>
       <div className="sm:mb-2.5 sm:flex sm:items-baseline sm:justify-between">
@@ -36,7 +37,7 @@ export default function YearMonthCard({ summary, metric }: YearMonthCardProps) {
           ) : (
             <span className="mt-0.5 block font-[family-name:var(--font-geist-mono)] text-[17px] font-medium text-bright sm:mt-0 sm:text-[14px]">
               {formatHistoryValue(metric, summary.value)}
-              {metric.unit && <span className="ml-0.5 text-[11px] font-normal text-sub">{metric.unit}</span>}
+              {unit && <span className="ml-0.5 text-[11px] font-normal text-sub">{unit}</span>}
             </span>
           ))}
       </div>

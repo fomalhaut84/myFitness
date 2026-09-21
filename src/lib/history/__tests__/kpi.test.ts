@@ -1,7 +1,8 @@
 // #394 (M15-2): 연·월 KPI — 평균 페이스는 시간 합 / 거리 합, 결측은 null ("기록 없음").
 import { describe, expect, it } from "vitest";
 import { averagePaceSecPerKm, buildHistoryKpis } from "../kpi";
-import { formatHistoryCellValue, formatHistoryValue } from "../format";
+import { formatHistoryCellValue, formatHistoryValue, historyDisplayUnit } from "../format";
+import { getHistoryMetric } from "../metrics";
 
 describe("averagePaceSecPerKm", () => {
   it("시간 합 / 거리 합 (활동별 페이스의 평균이 아니다)", () => {
@@ -70,5 +71,14 @@ describe("formatHistoryValue / formatHistoryCellValue", () => {
     expect(formatHistoryCellValue({ decimals: 0 }, 7712)).toBe("7,712");
     expect(formatHistoryCellValue({ decimals: 2 }, 12.46)).toBe("12.5");
     expect(formatHistoryCellValue({ decimals: 1 }, 71.2)).toBe("71.2");
+  });
+
+  // 회귀: PR #402 Codex P2 — 선택 가능한 ltPace (sec/km) 가 `321 sec/km` 로 그려졌다.
+  it("pace 지표는 앱 페이스 표기 + /km", () => {
+    const ltPace = getHistoryMetric("ltPace");
+    expect(formatHistoryValue(ltPace, 321)).toBe(`5'21"`);
+    expect(formatHistoryCellValue(ltPace, 321)).toBe(`5'21"`);
+    expect(historyDisplayUnit(ltPace)).toBe("/km");
+    expect(historyDisplayUnit(getHistoryMetric("weight"))).toBe("kg");
   });
 });
