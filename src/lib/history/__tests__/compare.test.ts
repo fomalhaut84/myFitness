@@ -1,10 +1,11 @@
 // #395 (M15-3): 기간 비교 표 행.
 import { describe, expect, it } from "vitest";
-import { buildCompareRows, compareMetricIds } from "../compare";
+import { buildCompareRows, compareMetricIds, needsPerMonth } from "../compare";
 
 const peak = {
   months: 5,
   totalDays: 152, // 2023-11-01 ~ 2024-03-31
+  truncated: false,
   values: {
     runningKm: { value: 1185.22, coveredDays: 92 },
     runningCount: { value: 92, coveredDays: 92 },
@@ -18,6 +19,7 @@ const peak = {
 const recent = {
   months: 3,
   totalDays: 92,
+  truncated: false,
   values: {
     runningKm: { value: 385.69, coveredDays: 41 },
     runningCount: { value: 41, coveredDays: 41 },
@@ -72,6 +74,18 @@ describe("buildCompareRows", () => {
   it("월평균은 명목 월 수가 아니라 실제 조회 일수 기준", () => {
     const partialMonth = buildCompareRows(peak, { ...recent, months: 3, totalDays: 82 }, "runningKm"); // 7/1 ~ 9/21
     expect(partialMonth[0].b.perMonthText).toBe("143.16"); // 385.69 / (82 / 30.4375). 3 으로 나누면 128.56
+  });
+
+  // 회귀: PR #407 Codex P2 — 7~9월 2025 (92일) vs 7~9월 2026 오늘까지 (83일) 은 명목 월 수가 같아 월평균이 빠지고,
+  // 끝나지 않은 구간의 합계가 그대로 비교돼 낮아 보였다.
+  it("월 수가 같아도 한쪽이 잘린 구간이면 월평균 병기, 자연스러운 일수 차이 (2월 vs 3월) 는 대상 아님", () => {
+    const lastYear = { ...recent, totalDays: 92, truncated: false };
+    const thisYear = { ...recent, totalDays: 83, truncated: true };
+    expect(buildCompareRows(lastYear, thisYear, "runningKm")[0].b.perMonthText).not.toBeNull();
+    expect(needsPerMonth(lastYear, thisYear)).toBe(true);
+    const feb = { ...recent, months: 1, totalDays: 28 };
+    const mar = { ...recent, months: 1, totalDays: 31 };
+    expect(needsPerMonth(feb, mar)).toBe(false);
   });
 
   it("반올림하면 0 인 차이는 부호 없이", () => {

@@ -13,11 +13,12 @@ import { aggregateCaption } from "@/components/trends/chart-format";
 import { todayKSTString } from "@/lib/garmin/utils";
 import type { HistoryGranularity } from "@/lib/history/buckets";
 import { getCachedHistorySummary, getCachedLowerBound, getCachedRangeTotals } from "@/lib/history/cache";
-import { buildCompareRows, compareMetricIds } from "@/lib/history/compare";
+import { buildCompareRows, compareMetricIds, needsPerMonth } from "@/lib/history/compare";
 import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import { getHistoryMetric, type HistoryMetricDef } from "@/lib/history/metrics";
 import { pivotByYear, seasonality, summarizeSeries, toTrendPoints, type TrendPoint } from "@/lib/history/trends";
 import {
+  isMonthRangeTruncated,
   monthRangeLength,
   monthRangeToYmd,
   parseTrendsQuery,
@@ -198,15 +199,13 @@ async function CompareView({ query, ctx, def, color }: ViewProps) {
   ]);
   const monthsA = monthRangeLength(query.a);
   const monthsB = monthRangeLength(query.b);
-  const rows = buildCompareRows(
-    { values: a.values, months: monthsA, totalDays: a.totalDays },
-    { values: b.values, months: monthsB, totalDays: b.totalDays },
-    def.id,
-  );
+  const periodA = { values: a.values, months: monthsA, totalDays: a.totalDays, truncated: isMonthRangeTruncated(query.a, ctx) };
+  const periodB = { values: b.values, months: monthsB, totalDays: b.totalDays, truncated: isMonthRangeTruncated(query.b, ctx) };
+  const rows = buildCompareRows(periodA, periodB, def.id);
   return (
     <>
       <ComparePeriodForm query={query} ctx={ctx} color={color} />
-      <CompareTable rows={rows} color={color} lengthsDiffer={monthsA !== monthsB} />
+      <CompareTable rows={rows} color={color} perMonthShown={needsPerMonth(periodA, periodB)} />
     </>
   );
 }

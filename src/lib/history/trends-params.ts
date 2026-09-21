@@ -104,6 +104,12 @@ export function monthRangeToYmd(range: MonthRange, ctx: TrendsContext): { from: 
   return { from: start < ctx.lowerBound ? ctx.lowerBound : start, to: end > ctx.today ? ctx.today : end };
 }
 
+/** 구간이 하한 · 오늘에 잘려 달력 월 전체를 덮지 못하는가 (이번 달 · 기록 시작일이 걸린 달 포함). */
+export function isMonthRangeTruncated(range: MonthRange, ctx: TrendsContext): boolean {
+  const { from, to } = monthRangeToYmd(range, ctx);
+  return from !== `${range.fromYm}-01` || to !== `${range.toYm}-${String(daysInYm(range.toYm)).padStart(2, "0")}`;
+}
+
 export function parseTrendsQuery(raw: RawQuery, ctx: TrendsContext): TrendsQuery {
   const metricRaw = first(raw.metric);
   const metric =

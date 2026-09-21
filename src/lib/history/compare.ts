@@ -3,7 +3,7 @@
  *
  * - KPI 7종 (#394 와 같은 정의: 평균 페이스 = 시간 합 / 거리 합, 체중 = 기간 말 값) + 선택 지표가 거기 없으면 1행 추가.
  * - 차이에는 좋고 나쁨을 싣지 않는다 (지표마다 방향이 다르다). 부호 + 크기만.
- * - 구간 길이가 다르면 합계형에 월평균을 병기한다 — 5개월 vs 3개월 합계는 비교가 안 된다.
+ * - 구간 길이가 다르거나 한쪽이 잘린 구간이면 합계형에 월평균을 병기한다 — 5개월 vs 3개월 합계는 비교가 안 된다.
  */
 import { formatPace } from "@/lib/format";
 import { formatHistoryValue, historyDisplayUnit } from "./format";
@@ -34,6 +34,16 @@ export interface ComparePeriod {
   months: number;
   /** 실제 조회 일수 — 이번 달이 들어가면 오늘까지만이라 명목 월 수로 나누면 월평균이 과소 계산된다 */
   totalDays: number;
+  /** 하한 · 오늘에 잘려 달력 월 전체를 덮지 못하는 구간 */
+  truncated: boolean;
+}
+
+/**
+ * 합계를 그대로 비교하면 안 되는가. 명목 월 수가 다르거나, 같아도 한쪽이 잘린 구간이면 (7~9월 2025 = 92일 vs
+ * 7~9월 2026 오늘까지 = 83일) 월평균을 병기한다 (PR #407 Codex P2). 2월 vs 3월 같은 자연스러운 일수 차이는 대상이 아니다.
+ */
+export function needsPerMonth(a: ComparePeriod, b: ComparePeriod): boolean {
+  return a.months !== b.months || a.truncated || b.truncated;
 }
 
 const DAYS_PER_MONTH = 365.25 / 12;
@@ -71,7 +81,7 @@ function buildRow(spec: RowSpec, a: ComparePeriod, b: ComparePeriod, selected: b
   const def = spec.metricId ? getHistoryMetric(spec.metricId) : null;
   const isPace = def === null || def.format === "pace";
   const format = (n: number) => (def && !isPace ? formatHistoryValue(def, n) : formatPace(n));
-  const showPerMonth = def !== null && def.aggregate === "sum" && a.months !== b.months;
+  const showPerMonth = def !== null && def.aggregate === "sum" && needsPerMonth(a, b);
 
   const cell = (period: ComparePeriod): CompareCell => {
     const value = spec.pick(period.values);

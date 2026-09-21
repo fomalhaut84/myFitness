@@ -6,7 +6,8 @@ import type { CompareCell, CompareRow } from "@/lib/history/compare";
 interface CompareTableProps {
   rows: readonly CompareRow[];
   color: string;
-  lengthsDiffer: boolean;
+  /** 합계 지표에 월평균이 병기됐는가 (구간 길이가 다르거나 한쪽이 이번 달 · 기록 시작일에 잘림) */
+  perMonthShown: boolean;
 }
 
 function ValueCell({ cell, unit }: { cell: CompareCell; unit: string }) {
@@ -20,7 +21,7 @@ function ValueCell({ cell, unit }: { cell: CompareCell; unit: string }) {
   );
 }
 
-export default function CompareTable({ rows, color, lengthsDiffer }: CompareTableProps) {
+export default function CompareTable({ rows, color, perMonthShown }: CompareTableProps) {
   return (
     <div>
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -58,7 +59,7 @@ export default function CompareTable({ rows, color, lengthsDiffer }: CompareTabl
       </div>
       <p className="mt-2.5 text-[11px] leading-relaxed text-sub">
         차이에는 좋고 나쁨 색을 넣지 않습니다. 거리는 높을수록, 심박과 페이스는 낮을수록 좋아서 방향이 지표마다 다릅니다.
-        {lengthsDiffer && " 구간 길이가 달라 합계 지표는 월평균을 함께 표시합니다."}
+        {perMonthShown && " 두 구간의 실제 일수가 달라 (길이가 다르거나 아직 끝나지 않은 달 포함) 합계 지표는 월평균을 함께 표시합니다."}
       </p>
     </div>
   );

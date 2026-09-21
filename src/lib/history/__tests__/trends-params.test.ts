@@ -4,6 +4,7 @@ import { enumerateBuckets } from "../buckets";
 import {
   buildTrendsHref,
   effectiveTrendsRange,
+  isMonthRangeTruncated,
   defaultCompareRanges,
   monthRangeLength,
   monthRangeToYmd,
@@ -105,6 +106,16 @@ describe("비교 구간", () => {
     expect(monthRangeLength({ fromYm: "2023-11", toYm: "2024-03" })).toBe(5);
     expect(monthRangeToYmd({ fromYm: "2023-11", toYm: "2024-02" }, ctx)).toEqual({ from: "2023-11-01", to: "2024-02-29" });
     expect(monthRangeToYmd({ fromYm: "2020-06", toYm: "2026-09" }, ctx)).toEqual({ from: "2020-06-16", to: "2026-09-21" });
+  });
+});
+
+describe("isMonthRangeTruncated", () => {
+  it("이번 달 · 기록 시작일이 걸린 달이 끼면 true", () => {
+    expect(isMonthRangeTruncated({ fromYm: "2026-07", toYm: "2026-09" }, ctx)).toBe(true);
+    expect(isMonthRangeTruncated({ fromYm: "2020-06", toYm: "2020-08" }, ctx)).toBe(true);
+    expect(isMonthRangeTruncated({ fromYm: "2025-07", toYm: "2025-09" }, ctx)).toBe(false);
+    // 오늘이 그 달의 말일이면 달력상 잘리지 않는다
+    expect(isMonthRangeTruncated({ fromYm: "2026-09", toYm: "2026-09" }, { ...ctx, today: "2026-09-30" })).toBe(false);
   });
 });
 
