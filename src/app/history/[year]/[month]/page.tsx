@@ -5,7 +5,7 @@ import IntensityLegend from "@/components/history/IntensityLegend";
 import KpiRow from "@/components/history/KpiRow";
 import MetricPicker from "@/components/history/MetricPicker";
 import MonthGrid from "@/components/history/MonthGrid";
-import { historyMonthPath } from "@/lib/history/route-params";
+import { historyMetricQuery, historyMonthPath } from "@/lib/history/route-params";
 import { loadHistoryMonthView, resolveHistoryMetric } from "@/lib/history/view";
 import { resolveHistoryRoute } from "../../resolve";
 
@@ -25,7 +25,7 @@ export default async function HistoryMonthPage({ params, searchParams }: PagePro
   return (
     <div>
       <HistoryNav route={route} today={ctx.today} lowerBound={ctx.lowerBound} metric={metricId} />
-      <MetricPicker basePath={historyMonthPath(route.ym)} selected={metricId} />
+      <MetricPicker hrefFor={(id) => `${historyMonthPath(route.ym)}${historyMetricQuery(id)}`} selected={metricId} />
       <KpiRow kpis={view.kpis} />
       <MonthGrid leadingBlanks={view.leadingBlanks} cells={view.cells} metric={view.metric} today={ctx.today} />
       <IntensityLegend metric={view.metric} />
