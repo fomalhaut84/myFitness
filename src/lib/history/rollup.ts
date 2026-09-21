@@ -52,6 +52,24 @@ function aggregateValue(points: readonly DailyPoint[], def: HistoryMetricDef): n
   }
 }
 
+/**
+ * 포인트 묶음 하나 → 값. 버킷과 무관한 집계 본체 — `rollup` (버킷별) 과 `range-totals` (#395, 임의 구간 한 덩어리) 가 공유한다.
+ */
+export function aggregatePoints(points: readonly DailyPoint[], def: HistoryMetricDef): BucketValue {
+  const result: BucketValue = {
+    value: aggregateValue(points, def),
+    coveredDays: new Set(points.map((p) => p.ymd)).size,
+  };
+  const withMinMax = def.withMinMax
+    ? {
+        min: points.length ? roundTo(Math.min(...points.map((p) => p.value)), def.decimals) : null,
+        max: points.length ? roundTo(Math.max(...points.map((p) => p.value)), def.decimals) : null,
+      }
+    : {};
+  const withLast = def.withLast ? { last: lastByYmd(points, def.decimals) } : {};
+  return { ...result, ...withMinMax, ...withLast };
+}
+
 export function rollup(
   points: readonly DailyPoint[],
   buckets: readonly HistoryBucket[],
@@ -68,19 +86,5 @@ export function rollup(
     else grouped.set(key, [p]);
   }
 
-  return buckets.map((bucket) => {
-    const inBucket = grouped.get(bucket.key) ?? [];
-    const result: BucketValue = {
-      value: aggregateValue(inBucket, def),
-      coveredDays: new Set(inBucket.map((p) => p.ymd)).size,
-    };
-    const withMinMax = def.withMinMax
-      ? {
-          min: inBucket.length ? roundTo(Math.min(...inBucket.map((p) => p.value)), def.decimals) : null,
-          max: inBucket.length ? roundTo(Math.max(...inBucket.map((p) => p.value)), def.decimals) : null,
-        }
-      : {};
-    const withLast = def.withLast ? { last: lastByYmd(inBucket, def.decimals) } : {};
-    return { ...result, ...withMinMax, ...withLast };
-  });
+  return buckets.map((bucket) => aggregatePoints(grouped.get(bucket.key) ?? [], def));
 }
