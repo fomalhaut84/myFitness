@@ -7,3 +7,9 @@ export * from "./summary-params";
 export { clampLowerBound, getHistoryLowerBound } from "./lower-bound";
 export { loadDailyPoints, type DailyPointsByMetric } from "./load";
 export { getHistorySummary, validateSummaryParams, type HistorySummary, type SummaryBucket, type SummaryMetricMeta } from "./summary";
+// #394 (M15-2)
+export * from "./month-cells";
+export * from "./route-params";
+export * from "./format";
+export * from "./kpi";
+export { bumpHistoryCacheVersion, getCachedHistorySummary, getCachedLowerBound } from "./cache";

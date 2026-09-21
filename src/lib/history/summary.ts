@@ -45,11 +45,15 @@ export interface HistorySummary {
  * 검증 컨텍스트(오늘 · 하한)를 DB 에서 채워 파라미터를 검증한다.
  * 형식·순서 오류는 하한 조회 없이 먼저 걸러낸다 (사전 리뷰 info 5 — 400 에 DB 5회 왕복 방지).
  */
-export async function validateSummaryParams(raw: SummaryRawParams): Promise<ParseResult & { lowerBound: string; today: string }> {
+export async function validateSummaryParams(
+  raw: SummaryRawParams,
+  // #394: route 는 캐시된 하한(`getCachedLowerBound`)을 주입한다. cache.ts 가 이 모듈을 import 하므로 기본값은 비캐시.
+  lowerBoundLoader: () => Promise<string> = getHistoryLowerBound,
+): Promise<ParseResult & { lowerBound: string; today: string }> {
   const today = todayKSTString();
   const pure = parseSummaryParams(raw, { todayYmd: today, lowerBound: MIN_HISTORY_YMD });
   if (!pure.ok) return { ...pure, lowerBound: MIN_HISTORY_YMD, today };
-  const lowerBound = await getHistoryLowerBound();
+  const lowerBound = await lowerBoundLoader();
   return { ...parseSummaryParams(raw, { todayYmd: today, lowerBound }), lowerBound, today };
 }
 

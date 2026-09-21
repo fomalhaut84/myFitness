@@ -71,7 +71,7 @@ async function loadDateKeyed(source: DateKeyedSource, range: Range, defs: readon
 async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Promise<DailyPointsByMetric> {
   const rows = await prisma.activity.findMany({
     where: { startTime: { gte: range.start, lt: range.end } },
-    select: { startTime: true, activityType: true, distance: true },
+    select: { startTime: true, activityType: true, distance: true, duration: true },
   });
   const running = rows.filter((r) => isRunningType(r.activityType));
   return Object.fromEntries(
@@ -80,6 +80,7 @@ async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Pr
       const points: DailyPoint[] = running.flatMap((r) => {
         const ymd = ymdKST(r.startTime);
         if (def.kind === "count") return [{ ymd, value: 1 }];
+        if (def.kind === "duration") return [{ ymd, value: r.duration }];
         return typeof r.distance === "number" ? [{ ymd, value: r.distance / 1000 }] : [];
       });
       return [[def.id, points]];
