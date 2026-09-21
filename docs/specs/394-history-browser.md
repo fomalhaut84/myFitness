@@ -35,42 +35,50 @@
 
 ## 3. 요구사항
 
+> **구현 완료 (PR #402 · v2.31.0, 2026-09-21).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다 (전체 목록 §9).
+
 **라우트 · 네비**
-- [ ] F1 라우트: `/history` → 오늘 KST 의 연도로 redirect. `/history/[year]` · `/history/[year]/[month]` · `/history/[year]/[month]/[day]`. 전부 `force-dynamic` 서버 컴포넌트
-- [ ] F2 `src/lib/history/route-params.ts` (순수) — `parseHistoryRoute({ year, month?, day? }, { today, lowerBound })` → `{ level, ymd 범위 } | { redirectTo }`. 형식 오류·실존하지 않는 날짜 (2월 30일)·미래·하한 이전은 **같은 레벨의 가장 가까운 유효 값으로 redirect** (미래 → 오늘이 속한 연/월/일, 하한 이전 → 하한이 속한 연/월/일). 숫자가 아닌 세그먼트는 `/history` 로
-- [ ] F3 `HistoryNav` (client) — 레벨 파라미터화: 이전/다음 · 점프 picker (연: 연도 탭 `lowerBound 연도 ~ 올해`, 월: `<input type="month">`, 일: `<input type="date">`, `min`/`max` = 하한/오늘) · 브레드크럼 `기록 › 2024 › 3월 › 15일` (상위 레벨 링크) · "오늘로". 이전/다음은 경계에서 disabled. `?metric=` 은 레벨 이동 시 유지
-- [ ] F4 사이드바 "기록" (`/history`) 추가 — "리포트" 위. 활성 판정을 `pathname === href || pathname.startsWith(href + "/")` 로 (단 `/` 는 완전 일치 유지). 기존 항목 회귀 없음 (`/settings/profile` 등)
+- [x] F1 라우트: `/history` → 오늘 KST 의 연도로 redirect. `/history/[year]` · `/history/[year]/[month]` · `/history/[year]/[month]/[day]`. 전부 `force-dynamic` 서버 컴포넌트
+- [x] F2 `src/lib/history/route-params.ts` (순수) — `parseHistoryRoute({ year, month?, day? }, { today, lowerBound })` → `{ level, ymd 범위 } | { redirectTo }`. 형식 오류·실존하지 않는 날짜 (2월 30일)·미래·하한 이전은 **같은 레벨의 가장 가까운 유효 값으로 redirect** (미래 → 오늘이 속한 연/월/일, 하한 이전 → 하한이 속한 연/월/일). 숫자가 아닌 세그먼트는 `/history` 로
+  - ↳ **실존하지 않는 날짜 (2월 30일 · 비숫자 일) 는 같은 레벨이 아니라 그 달의 월 뷰로** redirect 한다 (`/history/2024/02/30` → `/history/2024/02`) — "가장 가까운 날" 을 추측하지 않는다. 월 범위 밖 (`13`) · 비숫자 월은 연 뷰로. 범위 (미래 · 하한 이전) 와 zero-pad 만 같은 레벨에서 클램프 (`route-params.test.ts` 가 고정)
+- [x] F3 `HistoryNav` (client) — 레벨 파라미터화: 이전/다음 · 점프 picker (연: 연도 탭 `lowerBound 연도 ~ 올해`, 월: `<input type="month">`, 일: `<input type="date">`, `min`/`max` = 하한/오늘) · 브레드크럼 `기록 › 2024 › 3월 › 15일` (상위 레벨 링크) · "오늘로". 이전/다음은 경계에서 disabled. `?metric=` 은 레벨 이동 시 유지
+- [x] F4 사이드바 "기록" (`/history`) 추가 — "리포트" 위. 활성 판정을 `pathname === href || pathname.startsWith(href + "/")` 로 (단 `/` 는 완전 일치 유지). 기존 항목 회귀 없음 (`/settings/profile` 등)
 
 **연 뷰**
-- [ ] F5 12개월 카드 그리드 (데스크톱 4×3 · 태블릿 3열 · 모바일 세로 스택). 카드 = 월 이름 + 선택 지표 월 값 + **미니 히트맵** (그 달 일별 값 색 강도) → 클릭 시 월 뷰. 미래 월·하한 이전 월은 비활성 표시
-- [ ] F6 연 KPI 7종: 총 km · 러닝 횟수 · 평균 페이스 · 최고 VO2max · 평균 RHR · 평균 수면 점수 · 연말 체중 (`weight.last`). 평균 페이스 = 러닝 시간 합 / 러닝 km 합 (§4.2)
-- [ ] F7 지표 선택기 `?metric=` (기본 `runningKm`). 미등록·비노출 id 는 기본값으로 fallback (400 아님 — 페이지 URL). 초기 노출 5개 + 추가 지표 (§4.2)
+- [x] F5 12개월 카드 그리드 (데스크톱 4×3 · 태블릿 3열 · 모바일 세로 스택). 카드 = 월 이름 + 선택 지표 월 값 + **미니 히트맵** (그 달 일별 값 색 강도) → 클릭 시 월 뷰. 미래 월·하한 이전 월은 비활성 표시
+- [x] F6 연 KPI 7종: 총 km · 러닝 횟수 · 평균 페이스 · 최고 VO2max · 평균 RHR · 평균 수면 점수 · 연말 체중 (`weight.last`). 평균 페이스 = 러닝 시간 합 / 러닝 km 합 (§4.2)
+- [x] F7 지표 선택기 `?metric=` (기본 `runningKm`). 미등록·비노출 id 는 기본값으로 fallback (400 아님 — 페이지 URL). 초기 노출 5개 + 추가 지표 (§4.2)
 
 **월 뷰**
-- [ ] F8 `MonthGrid` 신설 — 7열 (일~토, 기존 `MonthlyHeatmap` 과 같은 요일 순서), 셀 = 날짜 + 선택 지표 값. 러닝 km 는 숫자 + 색 강도, 나머지 지표는 숫자 (색 강도는 지표 def 의 `intensity` 플래그로 — 디자인 단계에서 확정). 셀 클릭 → 일 뷰. 오늘 링 표시, 미래·하한 이전 셀 비활성. **360px 에서 7열 유지**
-- [ ] F9 월 KPI (연 KPI 와 같은 7종, 월 범위) + 일별 스트립 (선택 지표의 그 달 일별 막대/선 — Recharts, 포인트 클릭 → 일 뷰)
-- [ ] F10 `MonthlyHeatmap` 은 **건드리지 않는다** (§4.4). lifestyle 회귀 0
+- [x] F8 `MonthGrid` 신설 — 7열 (일~토, 기존 `MonthlyHeatmap` 과 같은 요일 순서), 셀 = 날짜 + 선택 지표 값. 러닝 km 는 숫자 + 색 강도, 나머지 지표는 숫자 (색 강도는 지표 def 의 `intensity` 플래그로 — 디자인 단계에서 확정). 셀 클릭 → 일 뷰. 오늘 링 표시, 미래·하한 이전 셀 비활성. **360px 에서 7열 유지**
+  - ↳ 승인된 시안대로 **모든 지표에 색 강도** (`intensity` 플래그 없음 — 합계형 0 기준 · 평균형 min~max 정규화, `intensity.ts`). 디자인 결정 1
+- [x] F9 월 KPI (연 KPI 와 같은 7종, 월 범위) + 일별 스트립 (선택 지표의 그 달 일별 막대/선 — Recharts, 포인트 클릭 → 일 뷰)
+  - ↳ 스트립은 Recharts 가 아니라 서버 렌더 링크 막대 (`DayStrip` + `strip-scale.ts`)
+- [x] F10 `MonthlyHeatmap` 은 **건드리지 않는다** (§4.4). lifestyle 회귀 0
 
 **일 뷰 (일간 종합)**
-- [ ] F11 `src/lib/history/day.ts` — `getHistoryDay(ymd)`: 8개 소스를 `Promise.all` 로 조회 (rawData 제외 select), 직렬화 가능한 DTO 반환. 범위는 전부 `kstDayRange(ymd)`
-- [ ] F12 8 섹션 (순서 고정): ① 활동 목록 → `/activities/[id]` ② 수면 요약 (점수·총 수면·단계·HRV·최저 SpO2) → `/sleep/[date]` ③ 심박·스트레스·바디배터리 ④ 체중·체지방 ⑤ 혈압 ⑥ 걸음·칼로리 밸런스 ⑦ 식단 → `/nutrition?date=` ⑧ AI 리포트 (`AIAdvice.reportDate === ymd`, morning/evening)
-- [ ] F13 데이터 없는 섹션은 **"기록 없음" 접힌 행**으로 표시 (숨기지 않는다). 결측과 0 을 구분 (걸음 0 ≠ 기록 없음)
-- [ ] F14 상단: 전날/다음날 · 월 뷰로 올라가기 (HistoryNav 의 일 레벨)
-- [ ] F15 SpO2 는 값만 표시 — **절대 임계 색·경고 금지** (memory `project_user_spo2_baseline`). 기존 `fmtSpO2` 재사용
+- [x] F11 `src/lib/history/day.ts` — `getHistoryDay(ymd)`: 8개 소스를 `Promise.all` 로 조회 (rawData 제외 select), 직렬화 가능한 DTO 반환. 범위는 전부 `kstDayRange(ymd)`
+- [x] F12 8 섹션 (순서 고정): ① 활동 목록 → `/activities/[id]` ② 수면 요약 (점수·총 수면·단계·HRV·최저 SpO2) → `/sleep/[date]` ③ 심박·스트레스·바디배터리 ④ 체중·체지방 ⑤ 혈압 ⑥ 걸음·칼로리 밸런스 ⑦ 식단 → `/nutrition?date=` ⑧ AI 리포트 (`AIAdvice.reportDate === ymd`, morning/evening)
+- [x] F13 데이터 없는 섹션은 **"기록 없음" 접힌 행**으로 표시 (숨기지 않는다). 결측과 0 을 구분 (걸음 0 ≠ 기록 없음)
+- [x] F14 상단: 전날/다음날 · 월 뷰로 올라가기 (HistoryNav 의 일 레벨)
+- [x] F15 SpO2 는 값만 표시 — **절대 임계 색·경고 금지** (memory `project_user_spo2_baseline`). 기존 `fmtSpO2` 재사용
+  - ↳ `fmtSpO2` 는 "평균 (최저 N%)" 결합 형식이라 재사용하지 않았다 — 일 뷰는 최저 SpO2 를 단독 판독값으로 (정수 %). 임계 색·경고 없음은 그대로
 
 **지표**
-- [ ] F16 레지스트리 추가 3건: `runningDurationSec` (activity `kind: "duration"`, sum, missingAsZero, **선택기 비노출**) · `calorieBalance` (daily, avg) · `intakeKcal` (daily `estimatedIntakeCalories`, avg — **식단 캘린더 B-2 흡수**, §4.2). `HistoryMetricDef` 에 `selectable: boolean` 추가
-- [ ] F17 지표 추가 = 레지스트리 1건 원칙 유지 — 선택기·그리드·KPI 포맷이 def (`label`/`unit`/`decimals`) 만 보고 렌더
+- [x] F16 레지스트리 추가 3건: `runningDurationSec` (activity `kind: "duration"`, sum, missingAsZero, **선택기 비노출**) · `calorieBalance` (daily, avg) · `intakeKcal` (daily `estimatedIntakeCalories`, avg — **식단 캘린더 B-2 흡수**, §4.2). `HistoryMetricDef` 에 `selectable: boolean` 추가
+- [x] F17 지표 추가 = 레지스트리 1건 원칙 유지 — 선택기·그리드·KPI 포맷이 def (`label`/`unit`/`decimals`) 만 보고 렌더
 
 **캐시**
-- [ ] F18 `src/lib/history/cache.ts` — summary 메모리 캐시 (§4.5). 키 = 정규화 파라미터 + `max(SyncMetadata.lastSyncAt)` + `historyCacheVersion` + today. TTL 10분 · 최대 엔트리 수 제한. `getHistoryLowerBound` 도 같은 키 체계로 캐시
-- [ ] F19 수동 쓰기 무효화: `bumpHistoryCacheVersion()` 을 `POST /api/body-composition` · `POST /api/food` · `PATCH|DELETE /api/food/[id]` 성공 경로에서 호출
-- [ ] F20 회귀 테스트 (PR #401 Codex P2): 체중 수동 저장 (version bump) 직후 summary 가 새 값을 반환 / 같은 키 재호출은 loader 를 다시 부르지 않음 / TTL 경과 후 재조회 / lastSyncAt 변경 시 재조회
-- [ ] F21 **프로덕션 재측정**: 6년 `granularity=year` 전 지표 웜 1s 이내 → `393-history-aggregation.md` F12 체크 · `docs/roadmap.md` M15-1 완료 표기. 배포 후 작업이라 PR 의 Test plan 에 남긴다
+- [x] F18 `src/lib/history/cache.ts` — summary 메모리 캐시 (§4.5). 키 = 정규화 파라미터 + `max(SyncMetadata.lastSyncAt)` + `historyCacheVersion` + today. TTL 10분 · 최대 엔트리 수 제한. `getHistoryLowerBound` 도 같은 키 체계로 캐시
+  - ↳ 최종 키에 `lowerBound` 추가 · `clampedFrom/To` 제외 · sync stamp 5초 재사용 (§8 info 1 · 3)
+- [x] F19 수동 쓰기 무효화: `bumpHistoryCacheVersion()` 을 `POST /api/body-composition` · `POST /api/food` · `PATCH|DELETE /api/food/[id]` 성공 경로에서 호출
+  - ↳ `finally` 에서 bump (성공·실패 무관 — 커밋 뒤 순서 보장). 대상 확대: cron 후속 쓰기 · `recalculateAllCalorieBalances` 완료 시점 (프로필 PATCH · daily-summary fetcher 를 한 곳에서). 프로세스 간은 #403
+- [x] F20 회귀 테스트 (PR #401 Codex P2): 체중 수동 저장 (version bump) 직후 summary 가 새 값을 반환 / 같은 키 재호출은 loader 를 다시 부르지 않음 / TTL 경과 후 재조회 / lastSyncAt 변경 시 재조회
+- [x] F21 **프로덕션 재측정** — **프로덕션 재측정 (v2.31.0, 2026-09-21, 서버 내부 `127.0.0.1:4200` · 전 지표 14개): 콜드 1.65s → 웜 0.090s · 0.003s · 0.003s** (이전 웜 1.09~1.22s).: 6년 `granularity=year` 전 지표 웜 1s 이내 → `393-history-aggregation.md` F12 체크 · `docs/roadmap.md` M15-1 완료 표기. 배포 후 작업이라 PR 의 Test plan 에 남긴다
 
 **공통**
-- [ ] F22 한국어 UI · 다크 테마 · 모바일 반응형 · 수치 단위 규칙 (km 2자리 · bpm 정수 · kg 1자리 · 페이스 min:sec/km · kcal 정수)
-- [ ] F23 신규 코드에서 `formatDateLocal` · `new Date(y, m, d)` (로컬 TZ) 금지. 날짜 산술은 `buckets.ts` 의 ymd 헬퍼만
+- [x] F22 한국어 UI · 다크 테마 · 모바일 반응형 · 수치 단위 규칙 (km 2자리 · bpm 정수 · kg 1자리 · 페이스 min:sec/km · kcal 정수)
+- [x] F23 신규 코드에서 `formatDateLocal` · `new Date(y, m, d)` (로컬 TZ) 금지. 날짜 산술은 `buckets.ts` 의 ymd 헬퍼만
 
 ## 4. 기술 설계
 
