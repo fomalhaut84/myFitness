@@ -104,10 +104,12 @@ export function monthRangeToYmd(range: MonthRange, ctx: TrendsContext): { from: 
   return { from: start < ctx.lowerBound ? ctx.lowerBound : start, to: end > ctx.today ? ctx.today : end };
 }
 
-/** 구간이 하한 · 오늘에 잘려 달력 월 전체를 덮지 못하는가 (이번 달 · 기록 시작일이 걸린 달 포함). */
+/**
+ * 구간이 다 채워지지 않았는가 — 기록 시작일이 걸린 달에서 시작하거나 **이번 달** 에서 끝난다.
+ * 오늘이 이번 달의 말일이어도 하루가 끝나지 않았으니 미완결이다 (`partialReason` 의 `current` 와 같은 기준 — PR #407 Codex P2).
+ */
 export function isMonthRangeTruncated(range: MonthRange, ctx: TrendsContext): boolean {
-  const { from, to } = monthRangeToYmd(range, ctx);
-  return from !== `${range.fromYm}-01` || to !== `${range.toYm}-${String(daysInYm(range.toYm)).padStart(2, "0")}`;
+  return monthRangeToYmd(range, ctx).from !== `${range.fromYm}-01` || range.toYm === ctx.today.slice(0, 7);
 }
 
 export function parseTrendsQuery(raw: RawQuery, ctx: TrendsContext): TrendsQuery {

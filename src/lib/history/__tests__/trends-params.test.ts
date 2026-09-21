@@ -114,8 +114,9 @@ describe("isMonthRangeTruncated", () => {
     expect(isMonthRangeTruncated({ fromYm: "2026-07", toYm: "2026-09" }, ctx)).toBe(true);
     expect(isMonthRangeTruncated({ fromYm: "2020-06", toYm: "2020-08" }, ctx)).toBe(true);
     expect(isMonthRangeTruncated({ fromYm: "2025-07", toYm: "2025-09" }, ctx)).toBe(false);
-    // 오늘이 그 달의 말일이면 달력상 잘리지 않는다
-    expect(isMonthRangeTruncated({ fromYm: "2026-09", toYm: "2026-09" }, { ...ctx, today: "2026-09-30" })).toBe(false);
+    // 회귀: PR #407 Codex P2 (3회차) — 오늘이 말일이어도 이번 달은 아직 끝나지 않았다 (partialReason 의 current 와 같은 기준)
+    expect(isMonthRangeTruncated({ fromYm: "2026-09", toYm: "2026-09" }, { ...ctx, today: "2026-09-30" })).toBe(true);
+    expect(isMonthRangeTruncated({ fromYm: "2026-08", toYm: "2026-08" }, { ...ctx, today: "2026-09-30" })).toBe(false);
   });
 });
 
