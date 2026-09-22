@@ -59,6 +59,7 @@
 
 ## 구현 시 시안과 달라지는 것
 
+- **포인트는 `<a>` 가 아니라 SVG `onClick`** (Recharts 막대 · 점). 차트가 `role="img"` 라 접근 가능한 경로는 판독값 · 이벤트 목록 링크 — YoY 뷰는 후속 이슈.
 - 차트는 Recharts — 마커는 `ReferenceLine` (`x=버킷 키`, 카테고리 축 · 연 경계선과 같은 방식) + `label`, 밴드는 `ReferenceArea`. 클릭은 `Bar`/`Line` `onClick` + `router.push`.
 - 툴팁의 이벤트 문장은 시안에 `<title>` 로만 있다.
 - 시안의 SVG 는 viewBox 축소라 모바일에서 글자가 작다 — 구현은 고정 높이 (220/300).

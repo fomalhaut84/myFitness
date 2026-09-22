@@ -7,7 +7,10 @@ function ym(ymd: string): string {
 }
 
 export default function CoverageStrip({ strip }: { strip: CoverageStripModel }) {
-  const years = Array.from({ length: Number(strip.to.slice(0, 4)) - Number(strip.from.slice(0, 4)) }, (_, i) => Number(strip.from.slice(0, 4)) + i);
+  // 축 라벨 = 시작 해 … 마지막 해 직전 + `오늘` (마지막 해는 `오늘` 이 대신한다). 등간격 라벨이라 퍼센트 막대와 수 % 어긋날 수 있다 — 정보성 띠.
+  const fromYear = Number(strip.from.slice(0, 4));
+  const toYear = Number(strip.to.slice(0, 4));
+  const years = Array.from({ length: Math.max(1, toYear - fromYear) }, (_, i) => fromYear + i);
   return (
     <details className="group mb-3.5 rounded-xl border border-border bg-card">
       <summary className="flex cursor-pointer list-none flex-wrap items-baseline gap-x-3 gap-y-1 px-3.5 py-2 text-[12px] text-sub [&::-webkit-details-marker]:hidden">

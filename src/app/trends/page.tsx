@@ -15,7 +15,7 @@ import TrendsControls from "@/components/trends/TrendsControls";
 import YoyChart from "@/components/trends/YoyChart";
 import { aggregateCaption } from "@/components/trends/chart-format";
 import { todayKSTString } from "@/lib/garmin/utils";
-import type { HistoryGranularity } from "@/lib/history/buckets";
+import { addDaysYmd, type HistoryGranularity } from "@/lib/history/buckets";
 import { getCachedHistorySummary, getCachedLowerBound, getCachedPersonalRecords, getCachedRangeTotals } from "@/lib/history/cache";
 import { loadHistoryEvents } from "@/lib/history/events";
 import { toChartMarkers } from "@/lib/history/markers";
@@ -84,12 +84,12 @@ function pointReadout(label: string, point: TrendPoint | null, def: HistoryMetri
 
 async function SeriesView({ query, ctx, def, color }: ViewProps) {
   const range = resolveTrendsRange(query.range, query.unit, ctx);
-  const [summary, whole, events] = await Promise.all([
-    loadSummary(query.unit, range, def, ctx),
-    getCachedRangeTotals(range, [def.id]),
-    // #396: 이벤트 마커. 캐시하지 않는다 — 레이스 · 플랜 · 지표 변경은 행 수가 적고 (6년 30건 안팎) 수동 쓰기가 잦다
-    query.marks ? loadHistoryEvents(range) : Promise.resolve([]),
-  ]);
+  const [summary, whole] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id])]);
+  // #396: 이벤트 마커. 조회 범위는 **버킷 스팬** — 첫 버킷은 달력 전체라 하한 앞의 플랜 · 지표 변경도 그 버킷에 속한다 (사전 리뷰 info 12).
+  // 캐시하지 않는다 — 레이스 · 플랜 · 지표 변경은 행 수가 적고 (6년 30건 안팎) 수동 쓰기가 잦다
+  const first = summary.buckets[0];
+  const last = summary.buckets[summary.buckets.length - 1];
+  const events = query.marks && first && last ? await loadHistoryEvents({ from: first.start, to: addDaysYmd(last.end, -1) }) : [];
   const points = toTrendPoints(summary.buckets, def, query.unit, ctx);
   const markers = query.marks ? toChartMarkers(events, points.map((p) => p.key), query.unit) : undefined;
   const { best, worst } = summarizeSeries(points, def);

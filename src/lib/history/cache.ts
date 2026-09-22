@@ -75,7 +75,7 @@ export function getCachedRangeTotals(
 
 /** #396: 개인 기록. 이번 달 포함 여부 (`bestMonth.current`) 가 오늘에 달려 키에 today 를 넣는다. */
 export function getCachedPersonalRecords(ctx: { lowerBound: string; today: string }): Promise<PersonalRecords> {
-  return cache().get(JSON.stringify(["records", ctx.lowerBound, ctx.today]), () => getPersonalRecords(ctx));
+  return cache().get(JSON.stringify(["records", ctx.lowerBound, ctx.today]), () => getPersonalRecords(ctx, getCachedHistorySummary));
 }
 
 /** #396: 커버리지 집계 (`/history` 띠). 싱크 stamp · 수동 쓰기 버전이 키에 섞인다 — 식단 · 혈압 · 체중 기록 직후 갱신. */

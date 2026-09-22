@@ -19,7 +19,13 @@ interface RecordRowView {
 }
 
 const BUCKET_LABELS = { "5k": "5K 최고", "10k": "10K 최고", HM: "하프 최고", FM: "풀 최고" } as const;
-const BUCKET_EMPTY = { "5k": "4.5km 이상 달린 기록이 없습니다", "10k": "9km 이상 달린 기록이 없습니다", HM: "20km 이상 달린 기록이 없습니다", FM: "40km 이상 달린 기록이 없습니다" } as const;
+// 버킷은 닫힌 구간 (`bucketOf`) — 하한만 말하면 45km 울트라가 있는데 "40km 이상 기록 없음" 이 된다 (사전 리뷰 major 1)
+const BUCKET_EMPTY = {
+  "5k": "4.5~5.5km 구간 기록이 없습니다",
+  "10k": "9~11km 구간 기록이 없습니다",
+  HM: "20~22km 구간 기록이 없습니다",
+  FM: "40~44km 구간 기록이 없습니다",
+} as const;
 
 function runningRow(key: keyof typeof BUCKET_LABELS, r: RunningRecordRow | null): RecordRowView {
   if (!r) return { key, label: BUCKET_LABELS[key], value: null, empty: BUCKET_EMPTY[key] };

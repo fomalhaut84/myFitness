@@ -57,9 +57,9 @@ describe("toChartMarkers", () => {
 });
 
 describe("raceDetail", () => {
-  it("거리 · 페이스 · 시간 (1시간 넘으면 h:mm:ss)", () => {
-    expect(raceDetail(21100, 289, 6098)).toBe("21.10km · 4:49/km · 1:41:38");
-    expect(raceDetail(10010, 270, 2703)).toBe("10.01km · 4:30/km · 45:03");
+  it("거리 · 페이스 (앱 공통 표기) · 시간 (1시간 넘으면 h:mm:ss)", () => {
+    expect(raceDetail(21100, 289, 6098)).toBe(`21.10km · 4'49"/km · 1:41:38`);
+    expect(raceDetail(10010, 270, 2703)).toBe(`10.01km · 4'30"/km · 45:03`);
     expect(raceDetail(null, null, 59)).toBe("0:59");
   });
 });

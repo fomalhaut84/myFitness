@@ -9,8 +9,8 @@ import { ymdKST } from "@/lib/garmin/utils";
 import { RACE_EVENT_TYPE } from "@/lib/garmin/parse-event-type";
 import { RUNNING_TYPES } from "@/lib/activity/running-types";
 import { type Bucket, bucketOf } from "@/lib/running/buckets";
-import { getCachedHistorySummary } from "./cache";
-import type { SummaryBucket } from "./summary";
+import { getHistorySummary, type HistorySummary, type SummaryBucket } from "./summary";
+import type { SummaryParams } from "./summary-params";
 
 export const RECORD_BUCKETS: readonly Bucket[] = ["5k", "10k", "HM", "FM"];
 /** 버킷 하한 (5k 는 4.5km 부터) — 조회 범위를 좁히는 용도. `bucketOf` 가 정본. */
@@ -24,6 +24,16 @@ export interface RunningRecordRow {
   durationSec: number;
   avgPace: number;
   race: boolean;
+}
+
+/** 레이스 목록 행 — 러닝이 아닌 활동 (거리 0 · 페이스 없음) 도 레이스일 수 있어 거리 · 페이스는 옵셔널 (사전 리뷰 major 2) */
+export interface RaceRow {
+  id: string;
+  ymd: string;
+  name: string;
+  distanceM: number | null;
+  durationSec: number;
+  avgPace: number | null;
 }
 
 export interface DatedValue {
@@ -45,8 +55,8 @@ export interface PersonalRecords {
   bestMonth: BestMonth | null;
   bestVo2max: DatedValue | null;
   lowestRestingHR: DatedValue | null;
-  /** 최신순 */
-  races: RunningRecordRow[];
+  /** 최신순 · `eventType = "race"` 전부 */
+  races: RaceRow[];
 }
 
 /** 동률이면 먼저 달성한 날 (ymd 오름차순). `direction` 은 `"min"` (페이스 · 심박) 또는 `"max"` (거리 · VO2max). */
@@ -60,18 +70,14 @@ export function firstExtreme<T>(rows: readonly T[], value: (row: T) => number, y
   }, null);
 }
 
-/** 거리 버킷별 최저 평균 페이스 + 최장 거리. 버킷 밖 거리 (예: 15km) 는 버킷 기록에 들어가지 않는다. */
-export function rankRunningRecords(rows: readonly RunningRecordRow[]): {
-  byBucket: Record<Bucket, RunningRecordRow | null>;
-  longest: RunningRecordRow | null;
-} {
-  const byBucket = Object.fromEntries(
+/** 거리 버킷별 최저 평균 페이스. 버킷 밖 거리 (예: 15km) 는 버킷 기록에 들어가지 않는다. 최장 거리는 별도 조회 (버킷 하한 밖 거리도 대상). */
+export function rankRunningRecords(rows: readonly RunningRecordRow[]): Record<Bucket, RunningRecordRow | null> {
+  return Object.fromEntries(
     RECORD_BUCKETS.map((bucket) => {
       const inBucket = rows.filter((r) => bucketOf(r.distanceM) === bucket);
       return [bucket, firstExtreme(inBucket, (r) => r.avgPace, (r) => r.ymd, "min")];
     }),
   ) as Record<Bucket, RunningRecordRow | null>;
-  return { byBucket, longest: firstExtreme(rows, (r) => r.distanceM, (r) => r.ymd, "max") };
 }
 
 /** 월 버킷 중 러닝 km 최대. 이번 달이 최다면 사실이다 — 제외하지 않고 `current` 로 표시한다. */
@@ -91,7 +97,7 @@ export function bestRunningMonth(buckets: readonly SummaryBucket[], today: strin
   };
 }
 
-type ActivityRow = {
+export type ActivityRow = {
   id: string;
   startTime: Date;
   name: string;
@@ -114,6 +120,17 @@ function toRunningRow(r: ActivityRow): RunningRecordRow | null {
   };
 }
 
+export function toRaceRow(r: ActivityRow): RaceRow {
+  return {
+    id: r.id,
+    ymd: ymdKST(r.startTime),
+    name: r.name,
+    distanceM: r.distance !== null && r.distance > 0 ? r.distance : null,
+    durationSec: r.duration,
+    avgPace: r.avgPace !== null && r.avgPace > 0 ? r.avgPace : null,
+  };
+}
+
 const ACTIVITY_SELECT = {
   id: true,
   startTime: true,
@@ -127,7 +144,13 @@ const ACTIVITY_SELECT = {
 /** `isRunningType` 의 "이름에 running 포함" 규칙과 같은 조건을 DB 에서 — 통합 셋 + `contains: "running"`. */
 const RUNNING_WHERE = { OR: [{ activityType: { in: [...RUNNING_TYPES] } }, { activityType: { contains: "running" } }] };
 
-export async function getPersonalRecords(ctx: { lowerBound: string; today: string }): Promise<PersonalRecords> {
+export type SummaryLoader = (params: SummaryParams, ctx: { lowerBound: string; today: string }) => Promise<HistorySummary>;
+
+/** `loadSummary` 는 캐시 래퍼 (`cache.ts`) 가 주입한다 — records ↔ cache 순환 import 방지 (사전 리뷰 info 4). */
+export async function getPersonalRecords(
+  ctx: { lowerBound: string; today: string },
+  loadSummary: SummaryLoader = getHistorySummary,
+): Promise<PersonalRecords> {
   const [bucketRows, longestRow, raceRows, vo2, rhr, monthly] = await Promise.all([
     prisma.activity.findMany({
       where: { AND: [RUNNING_WHERE, { distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
@@ -154,14 +177,14 @@ export async function getPersonalRecords(ctx: { lowerBound: string; today: strin
       orderBy: [{ restingHR: "asc" }, { date: "asc" }],
       select: { date: true, restingHR: true },
     }),
-    getCachedHistorySummary(
+    loadSummary(
       { granularity: "month", from: ctx.lowerBound, to: ctx.today, metrics: ["runningKm", "runningCount"], clampedFrom: false, clampedTo: false },
       ctx,
     ),
   ]);
 
   const rows = bucketRows.map(toRunningRow).filter((r): r is RunningRecordRow => r !== null);
-  const { byBucket } = rankRunningRecords(rows);
+  const byBucket = rankRunningRecords(rows);
   const longest = longestRow ? toRunningRow(longestRow) : null;
   return {
     byBucket,
@@ -169,6 +192,6 @@ export async function getPersonalRecords(ctx: { lowerBound: string; today: strin
     bestMonth: bestRunningMonth(monthly.buckets, ctx.today),
     bestVo2max: vo2?.vo2maxRunning != null ? { value: vo2.vo2maxRunning, ymd: ymdKST(vo2.date) } : null,
     lowestRestingHR: rhr?.restingHR != null ? { value: rhr.restingHR, ymd: ymdKST(rhr.date) } : null,
-    races: raceRows.map(toRunningRow).filter((r): r is RunningRecordRow => r !== null),
+    races: raceRows.map(toRaceRow),
   };
 }

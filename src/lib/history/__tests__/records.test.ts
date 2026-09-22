@@ -1,6 +1,6 @@
 // #396 (M15-4): 개인 기록 랭킹 (순수).
 import { describe, expect, it } from "vitest";
-import { bestRunningMonth, firstExtreme, rankRunningRecords, type RunningRecordRow } from "../records";
+import { bestRunningMonth, firstExtreme, rankRunningRecords, toRaceRow, type RunningRecordRow } from "../records";
 import type { SummaryBucket } from "../summary";
 
 function run(ymd: string, km: number, pace: number, extra: Partial<RunningRecordRow> = {}): RunningRecordRow {
@@ -17,7 +17,7 @@ describe("firstExtreme", () => {
 });
 
 describe("rankRunningRecords", () => {
-  it("거리 버킷별 최저 페이스 · 버킷 밖 거리 (15km) 는 버킷 기록에 안 들어간다 · 최장 거리는 버킷과 무관", () => {
+  it("거리 버킷별 최저 페이스 · 버킷 밖 거리 (15km) 는 버킷 기록에 안 들어간다", () => {
     const rows = [
       run("2024-03-09", 5.01, 272),
       run("2021-11-28", 10.04, 281, { race: true }),
@@ -26,19 +26,24 @@ describe("rankRunningRecords", () => {
       run("2024-03-17", 30.12, 341),
       run("2024-06-01", 15, 260),
     ];
-    const { byBucket, longest } = rankRunningRecords(rows);
+    const byBucket = rankRunningRecords(rows);
     expect(byBucket["5k"]?.ymd).toBe("2024-03-09");
     expect(byBucket["10k"]?.ymd).toBe("2021-11-28");
     expect(byBucket["10k"]?.race).toBe(true);
     expect(byBucket.HM?.ymd).toBe("2023-10-22");
     expect(byBucket.FM).toBeNull();
-    expect(longest?.ymd).toBe("2024-03-17");
   });
 
   it("빈 입력", () => {
-    const { byBucket, longest } = rankRunningRecords([]);
-    expect(Object.values(byBucket).every((v) => v === null)).toBe(true);
-    expect(longest).toBeNull();
+    expect(Object.values(rankRunningRecords([])).every((v) => v === null)).toBe(true);
+  });
+});
+
+// 회귀: 사전 리뷰 major 2 — 거리 0 · 페이스 없는 레이스 (실내 · 비러닝) 가 목록에서 조용히 빠지고 건수가 틀렸다
+describe("toRaceRow", () => {
+  it("거리 · 페이스가 없어도 행을 만든다 (null 로)", () => {
+    const row = toRaceRow({ id: "a", startTime: new Date("2025-01-15T00:30:00Z"), name: "실내 레이스", distance: 0, duration: 3600, avgPace: null, eventType: "race" });
+    expect(row).toEqual({ id: "a", ymd: "2025-01-15", name: "실내 레이스", distanceM: null, durationSec: 3600, avgPace: null });
   });
 });
 

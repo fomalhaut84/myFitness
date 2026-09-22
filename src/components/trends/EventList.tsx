@@ -23,7 +23,7 @@ export default function EventList({ events }: { events: readonly HistoryEvent[] 
         <ol className="py-1">
           {shown.map((e, i) => (
             <li
-              key={`${e.kind}-${e.ymd}-${e.title}`}
+              key={`${i}-${e.kind}-${e.ymd}`}
               className={`grid grid-cols-[78px_1fr] items-baseline gap-x-2.5 px-3.5 py-2 sm:grid-cols-[92px_auto_1fr_auto] ${i > 0 ? "border-t border-[#1c1c1c]" : ""}`}
             >
               <time className="font-[family-name:var(--font-geist-mono)] text-[13px] text-muted">{e.ymd}</time>

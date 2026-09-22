@@ -97,8 +97,8 @@ export default function TrendSeriesChart({ points, metric, color, showBand, unit
             <ReferenceLine key={p.key} x={p.key} stroke="#2a2a2a" strokeDasharray="2 3" pointerEvents="none" />
           ))}
           {/* #396: 플랜 밴드는 데이터 아래 (막대 색이 탁해지지 않게), 마커 선은 데이터 위 — 렌더 순서로 층을 나눈다 */}
-          {markers?.bands.map((b) => (
-            <ReferenceArea key={`band-${b.fromKey}-${b.event.title}`} x1={b.fromKey} x2={b.toKey} fill={MARKER_COLORS.plan} fillOpacity={PLAN_BAND_OPACITY} stroke="none" pointerEvents="none" />
+          {markers?.bands.map((b, i) => (
+            <ReferenceArea key={`band-${i}-${b.fromKey}`} x1={b.fromKey} x2={b.toKey} fill={MARKER_COLORS.plan} fillOpacity={PLAN_BAND_OPACITY} stroke="none" pointerEvents="none" />
           ))}
           <Tooltip
             // #396: 커서 (컬럼 하이라이트) 가 막대 · 점 위에 그려져 클릭을 가로챈다 — 포인터 이벤트를 끈다

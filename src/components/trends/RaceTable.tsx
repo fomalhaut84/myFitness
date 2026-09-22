@@ -2,9 +2,9 @@
 import Link from "next/link";
 import { formatClock, formatPace } from "@/lib/format";
 import { historyDayPath } from "@/lib/history/route-params";
-import type { RunningRecordRow } from "@/lib/history/records";
+import type { RaceRow } from "@/lib/history/records";
 
-export default function RaceTable({ races }: { races: readonly RunningRecordRow[] }) {
+export default function RaceTable({ races }: { races: readonly RaceRow[] }) {
   return (
     <section className="mt-6">
       <h2 className="mb-2 text-[13px] font-medium text-muted">
@@ -40,12 +40,12 @@ export default function RaceTable({ races }: { races: readonly RunningRecordRow[
                     </Link>
                   </td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-[family-name:var(--font-geist-mono)] text-[14px] font-medium text-bright">
-                    {(r.distanceM / 1000).toFixed(2)}
-                    <span className="ml-0.5 text-[11px] font-normal text-sub">km</span>
+                    {r.distanceM === null ? <span className="font-normal text-dim">—</span> : (r.distanceM / 1000).toFixed(2)}
+                    {r.distanceM !== null && <span className="ml-0.5 text-[11px] font-normal text-sub">km</span>}
                   </td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-[family-name:var(--font-geist-mono)] text-[14px] font-medium text-bright">
-                    {formatPace(r.avgPace)}
-                    <span className="ml-0.5 text-[11px] font-normal text-sub">/km</span>
+                    {r.avgPace === null ? <span className="font-normal text-dim">—</span> : formatPace(r.avgPace)}
+                    {r.avgPace !== null && <span className="ml-0.5 text-[11px] font-normal text-sub">/km</span>}
                   </td>
                   <td className="whitespace-nowrap px-3.5 py-2.5 text-right font-[family-name:var(--font-geist-mono)] text-[14px] font-medium text-bright">
                     {formatClock(r.durationSec)}

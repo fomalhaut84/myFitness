@@ -3,8 +3,7 @@
  * 소스 3종 — 레이스 (`Activity.eventType = "race"`) · 지표 변경 (`MetricChange.field ∈ {maxHR, lthr}`) · 트레이닝 플랜 기간. 같은 버킷의 이벤트는 선 하나로 합친다 — 연 단위에서 레이스 3건이
  * 겹쳐 두꺼운 선 하나로 보이면 정보가 없다 (시안 결정 2).
  */
-import { formatClock } from "@/lib/format";
-import { formatPace } from "@/lib/running/buckets";
+import { formatClock, formatPace } from "@/lib/format";
 import { bucketKeyOf, type HistoryGranularity } from "./buckets";
 
 export type HistoryEventKind = "race" | "metric" | "plan";

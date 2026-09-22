@@ -21,7 +21,7 @@ describe("buildCoverageStrip", () => {
     const strip = buildCoverageStrip(ranges, ctx);
     expect(strip.rows.map((row) => row.id)).toEqual(["activities", "daily_stats", "sleep", "body_composition", "fitness_metrics", "hrv", "blood_pressure", "food_log"]);
     const activities = strip.rows[0];
-    expect(activities.note).toBe("러닝 1,957");
+    expect(activities.note).toBe("러닝 1,957건");
     expect(activities.startPct).toBeCloseTo((3 / 2288) * 100, 5);
     expect(activities.endPct).toBe(100);
     const hrv = strip.rows.find((row) => row.id === "hrv");

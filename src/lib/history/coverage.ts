@@ -120,7 +120,7 @@ export function buildCoverageStrip(ranges: CoverageRanges, ctx: { lowerBound: st
       unit,
       startPct: has ? pct(range.oldest as string, ctx.lowerBound, span) : null,
       endPct: has ? pct(range.newest as string, ctx.lowerBound, span) : null,
-      note: id === "activities" ? `러닝 ${ranges.activities.running.count.toLocaleString("ko-KR")}` : null,
+      note: id === "activities" ? `러닝 ${ranges.activities.running.count.toLocaleString("ko-KR")}건` : null,
     };
   });
   return { from: ctx.lowerBound, to: ctx.today, rows };

@@ -52,12 +52,13 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 - [x] F6 `src/lib/history/records.ts` — `getPersonalRecords(ctx)`: 순수 랭킹 함수 + 조회 함수 분리
   - 5K · 10K · HM · FM 최고: `activityType contains "running"` · `distance` · `avgPace` 있는 활동 → `bucketOf(distance)` 별 **최저 avgPace** (동률이면 먼저 달성한 날). 값 = 페이스 (`m:ss/km`) + 소요 시간 (`h:mm:ss`) + 거리. FM 은 기록 없으면 "기록 없음"
   - 최장 거리: 러닝 `max(distance)`
-  - 최다 km 월: 전체 기간 월 summary (`runningKm`) 의 최대 버킷 — 캐시 엔트리는 YoY · 계절성과 공유
+  - 최다 km 월: 전체 기간 월 summary (`runningKm` + `runningCount`) 의 최대 버킷 — 횟수를 병기하려고 지표 2개를 부르므로 YoY · 계절성 (지표 1개) 과 **캐시 엔트리를 공유하지 않는다** (개인 기록 탭 첫 진입 시 월 롤업 1회 · 사전 리뷰 info 7)
   - 최고 VO2max: `FitnessMetricDaily.vo2maxRunning` 최대 · **처음 도달한 날** (`bestOf` 의 plateau 는 MCP 용 — 여기서는 첫 도달일 하나. 캡션에 "N일 유지" 는 넣지 않는다)
   - 최저 RHR: `DailySummary.restingHR` 최소 (`> 0` — stub 방어) · 처음 도달한 날
   - ↳ 최고 VO2max · 최저 RHR 은 DB 정렬 (`orderBy [값, date asc] take 1`) — 순수 랭킹은 러닝 버킷 · 최다 km 월만. 러닝 조회는 `distance ≥ 4500m` 로 좁혔고 최장 거리는 별도 `orderBy distance desc`
 - [x] F7 각 기록 = 라벨 · 값 · 날짜 · 링크 (`/history/Y/M/D`, 최다 km 월은 `/history/Y/M`). 러닝 기록이 **레이스** 활동이면 `레이스` 배지. 표시는 `ReadoutRow` 와 같은 토큰 (판독값 띠) — 7칸이라 3열 그리드 (모바일 1열)
 - [x] F8 **레이스 목록**: 같은 뷰 아래에 `eventType = "race"` 활동 전부 (최신순) — 날짜 · 이름 · 거리 · 페이스 · 시간 · 일 뷰 링크. 이름이 Garmin 기본값 (`달리기` · `러닝` · `10km 러닝`) 인 것도 그대로 (이름을 지어내지 않는다). 0건이면 "레이스로 표시된 활동이 없다 — Garmin 에서 활동 유형을 레이스로 바꾸면 다음 싱크에 반영" 안내
+  - ↳ 거리 · 페이스가 없는 레이스 (실내 · 비러닝) 도 행을 만들고 `—` 로 그린다 — 필터로 조용히 빠지면 건수가 틀린다 (사전 리뷰 major 2 · 회귀 `records.test.ts`). 빈 버킷 문구는 하한이 아니라 **구간** (`40~44km 구간 기록이 없습니다`) — 45km 울트라와 같은 장부에서 모순되지 않게 (major 1 · 회귀 `records-panel.test.ts`)
 - [x] F9 결과는 `getCachedPersonalRecords()` (`cache().get("records", …)`) — 싱크 · 수동 쓰기 · 날짜 변경 시 자동 무효화 (기존 키 규칙)
 
 **C. 이벤트 마커 (`/trends` 시계열)**
@@ -79,6 +80,7 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 - [x] F17 `YoyChart` 포인트 클릭 → `/history/YYYY/MM?metric=` · `SeasonalityChart` 연도별 점 클릭 → 같은 경로 (`YoyRow` 에 연도 · 월이 있으므로 컴포넌트에서 `historyMonthPath` 로 조립 — `route-params` 는 순수 lib 라 client import 가능, `MonthGrid` 선례)
   - ↳ YoY 는 실선 점 · 점선 (미완결 달) 속 빈 점 둘 다 링크
 - [x] F18 판독값 캡션 링크 (`ReadoutRow`) 는 그대로 — 키보드 · 스크린리더 경로
+  - ↳ 포인트 클릭은 SVG `onClick` (마우스 · 터치) 이고 `<a>` 가 아니다 — 차트가 `role="img"` 라 AT 에서는 판독값 · 이벤트 목록 링크가 경로. **YoY 뷰에는 판독값 띠가 없어 키보드 경로가 없다** → 후속 이슈 (사전 리뷰 info 13)
 
 **E. 커버리지 띠 (`/history` 연 뷰)**
 - [x] F19 `src/lib/history/coverage.ts` — `getCoverageRanges()` (prisma 집계 8종, MCP 에서 이동) + 순수 `buildCoverageStrip(ranges, ctx)` → 소스별 `{ id, label, oldest, newest, count, startPct, endPct }` (하한 ~ 오늘 축 기준). MCP `coverage.ts` 는 `getCoverageRanges` 를 import 해 기존 반환 shape (`types` · `syncCoverage` · `_context`) 유지 — `verify:mcp-long-history` 무변경 통과
@@ -237,4 +239,9 @@ vitest:
 
 ## 8. 코드 리뷰 결과
 
-(구현 후 기록)
+- 사전 에이전트 리뷰 1회 (2026-09-22, pr-review-toolkit code-reviewer · worktree): critical 0 · major 2 · info 11
+  - major 1: 빈 버킷 문구가 하한만 말해 (`40km 이상 달린 기록이 없습니다`) 45km 울트라가 있으면 같은 장부의 `최장 거리 45.00km` 와 모순 → 구간 문구. 회귀 `src/components/trends/__tests__/records-panel.test.ts`
+  - major 2: 레이스 목록이 거리 0 · 페이스 없는 레이스를 `toRunningRow` 필터로 조용히 버려 건수가 틀림 (F8 "전부" 위반) → `RaceRow` (거리 · 페이스 옵셔널) + 표에서 `—`. 회귀 `records.test.ts` (`toRaceRow`)
+  - info 반영 7: 페이스 표기 통일 (`4'49"` — `@/lib/format`) · records ↔ cache 순환 import (로더 주입) · `러닝 1,957건` 단위 · React key (index) · `rankRunningRecords` 의 죽은 `longest` 제거 · 이벤트 조회 범위를 버킷 스팬으로 (첫 버킷이 하한 앞으로 걸칠 때) · 커버리지 축 같은 해 방어
+  - info 미반영 4: MCP 도구가 안 쓰는 HRV · 식단 집계 2건도 매번 실행 (스펙 §4.7 선택 — 집계 8→10, 도구 호출 빈도 낮음) · 백필 `parseArg` 가 값 누락 시 다음 플래그를 값으로 (running-dynamics 선례 그대로 · 죽으므로 데이터 사고 아님) · 커버리지 축 라벨 등간격 vs 퍼센트 막대 오차 (정보성 띠) · 포인트 클릭 마우스 전용 + YoY 키보드 경로 없음 → **후속 이슈**
+- Codex bot: 리뷰 대기
