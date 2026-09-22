@@ -131,17 +131,18 @@ B 는 기존 페이지가 고정창이라 성립하지 않는다. A 로 가되 *
 
 | 영역 | 후보 | 필드 |
 |---|---|---|
-| 러닝 | 페이스 대비 심박 효율 산점도 (연도별 색) | avgPace, avgHR |
-| 러닝 | 월별 HR 존 분포 스택 | zoneDistribution |
+| 러닝 | ✅ 페이스 대비 심박 효율 산점도 (연도별 색) — `/insights` A (#397) | avgPace, avgHR |
+| 러닝 | ✅ 월별 HR 존 분포 스택 — `/insights` C (#397, 2024-12 부터 · 과거 존은 활동별 API 필요) | zoneDistribution |
 | 러닝 | 유산소·무산소 TE · intensityLabel 비율 월별 | aerobicTE, anaerobicTE, intensityLabel |
-| 러닝 | 기온 vs 페이스 산점도 (습도 색) | weatherTempC, weatherHumidityPct |
+| 러닝 | ✅ 기온 vs 페이스 산점도 (습도 색) — `/insights` B (#397) | weatherTempC, weatherHumidityPct |
 | 러닝 | 케이던스·보폭·수직진폭 장기 추세 | avgCadence, avgStrideLength, avgVerticalOscillation |
 | 러닝 | 요일·시간대 히스토그램, routeTag 별 반복 코스 비교 | startTime, routeTag |
-| 수면 | 취침·기상 시각 산점도 (규칙성의 연 단위 변화) | sleepStart, sleepEnd |
+| 수면 | 취침·기상 시각 산점도 (규칙성의 연 단위 변화) — `/lifestyle` `SleepRegularity` 에 이미 있음 | sleepStart, sleepEnd |
 | 수면 | 단계 비율 월별 스택 · HRV + 7일 기준선 · 최저 SpO2 월별 | deep/light/rem, hrvOvernight, lowestSpO2 |
 | 일상 | 스트레스 고·중·저 시간 스택 · 바디배터리 충전/소모 | stress*Duration, bodyBattery* |
 | 체중 | 전체 이력 + 목표선 · 월별 칼로리 밸런스 vs 체중 변화 | weight, targetWeight, calorieBalance |
-| 교차 | 주간 km 와 다음 주 RHR 지연 상관 · 수면 점수와 다음날 페이스 | 조인 |
+| 교차 | ✅ 주간 km 와 다음 주 RHR 지연 상관 — `/insights` D (#397) · 수면 점수와 다음날 페이스 (미선별) | 조인 |
+| 심박 | 러닝 종료 후 심박 회복 (HRR) — 활동 상세 곡선 + 연도별 추이 → **#418** (2026-09-22 추가) | HeartRateRecord.rawData.heartRateValues (2분 간격) |
 
 **SpO2 는 절대 임계 경고 금지** (memory `project_user_spo2_baseline`: 사용자 야간 최저 83~88 이 정상 범위). 개인 baseline 대비로만 표현.
 
@@ -175,8 +176,9 @@ B 는 기존 페이지가 고정창이라 성립하지 않는다. A 로 가되 *
 ### M15-4: 하이라이트 — 개인 기록 · 이벤트 마커 · 포인트 링크 · 커버리지 띠 (#396) — 우선순위 ★★
 - 범위: D7. `Activity.eventType` 컬럼 승격 + rawData 백필 스크립트 (스키마 변경 1건 → `prisma-drift-fix` 절차, 에이전트 리뷰 필수). M15-2 · M15-3 의존.
 
-### M15-5: 심화 시각화 (#397) — 우선순위 ★
+### M15-5: 심화 시각화 (#397) — 우선순위 ★ ✅
 - 범위: D8 표에서 착수 시 3~4개 선별. 나머지는 이 이슈에 체크리스트로 남긴다. M15-3 의존.
+- 결과 (2026-09-22, PR #417 · v2.34.0): 4개 선별 → `/insights` 신설 (스펙 `docs/specs/397-insights.md`). 나머지는 D8 표 · #397 체크리스트.
 
 ## 제외 사항
 
