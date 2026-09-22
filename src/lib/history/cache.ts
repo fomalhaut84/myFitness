@@ -13,6 +13,8 @@ import { getHistoryRangeTotals, type HistoryRangeTotals } from "./range-totals";
 import { getHistorySummary, type HistorySummary } from "./summary";
 import { getCoverageRanges, type CoverageRanges } from "./coverage";
 import { getPersonalRecords, type PersonalRecords } from "./records";
+import { loadInsightRuns } from "@/lib/insights/load";
+import type { InsightContext, InsightRun } from "@/lib/insights/types";
 import type { SummaryParams } from "./summary-params";
 
 const globalForCache = globalThis as unknown as { historyCache: HistoryCache | undefined };
@@ -81,4 +83,9 @@ export function getCachedPersonalRecords(ctx: { lowerBound: string; today: strin
 /** #396: 커버리지 집계 (`/history` 띠). 싱크 stamp · 수동 쓰기 버전이 키에 섞인다 — 식단 · 혈압 · 체중 기록 직후 갱신. */
 export function getCachedCoverageRanges(): Promise<CoverageRanges> {
   return cache().get("coverage", getCoverageRanges);
+}
+
+/** #397: `/insights` 러닝 행 (약 2,200건). 하한 · 오늘이 조회 범위라 키에 넣는다. */
+export function getCachedInsightRuns(ctx: InsightContext): Promise<InsightRun[]> {
+  return cache().get(JSON.stringify(["insightRuns", ctx.lowerBound, ctx.today]), () => loadInsightRuns(ctx));
 }
