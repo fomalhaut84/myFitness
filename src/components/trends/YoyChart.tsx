@@ -16,6 +16,7 @@ import {
   formatChartValue,
   type ChartMetric,
 } from "./chart-format";
+import { yearColor } from "./year-colors";
 
 interface YoyChartProps {
   pivot: YearPivot;
@@ -24,17 +25,7 @@ interface YoyChartProps {
   currentYear: number;
 }
 
-const PAST_GRAYS = ["#3a3a3a", "#4a4a4a", "#5c5c5c", "#737373", "#8f8f8f", "#b0b0b0"];
-
 type Row = YoyRow;
-
-function yearColor(year: number, years: readonly number[], currentYear: number, color: string): string {
-  if (year === currentYear) return color;
-  const past = years.filter((y) => y !== currentYear);
-  const rank = past.indexOf(year); // 0 = 가장 오래된 해
-  const offset = PAST_GRAYS.length - past.length;
-  return PAST_GRAYS[Math.max(0, Math.min(PAST_GRAYS.length - 1, rank + offset))];
-}
 
 export default function YoyChart({ pivot, metric, color, currentYear }: YoyChartProps) {
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
