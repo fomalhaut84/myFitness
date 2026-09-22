@@ -107,6 +107,9 @@ model Activity {
   intensityLabel  String?             // recovery|easy|tempo|threshold|interval|max
   // #261: 사용자 커스텀 코스명 태그. 같은 GPS/거리 클러스터 + 같은 태그 = 같은 코스로 취급.
   routeTag        String?
+  // #396: Garmin eventType.typeKey ("race" · "training" · "uncategorized" …) 원문. rawData 에서 승격 — 레이스 마커 · 개인 기록 배지.
+  // Nullable: 기존 행은 backfill:event-type (API 호출 0), 신규 행은 sync 에서 채움.
+  eventType       String?
   // #269: 손목 측정 온도 (Garmin rawData 파싱). 햇빛/의류 영향으로 실제 기상과 다를 수 있음.
   wristTempMaxC        Float?
   wristTempMinC        Float?
@@ -126,6 +129,7 @@ model Activity {
   @@index([activityType, startTime])
   @@index([startTime])
   @@index([routeTag])
+  @@index([eventType, startTime])
 }
 
 model DailySummary {
