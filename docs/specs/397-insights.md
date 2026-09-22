@@ -170,7 +170,8 @@ vitest:
 
 ## 7. 배포 전 · 후 확인
 
-- **배포 전 (프로덕션 psql)**: 2020~2024-11 활동의 rawData 에 `hrTimeInZone_1` 이 있는지 — 있으면 `npm run backfill:intensity` 재실행 (skip 규칙이라 안전 · API 호출 0) 으로 존 스택이 2020-06 부터 채워진다. 없으면 존 패널은 2024-12 부터 (캡션 표기)
+- **배포 전 확인 결과 (2026-09-22)**: `zoneDistribution` 이 없는 러닝 1,550건의 rawData 에 `hrTimeInZone_1` 이 **0건** — 목록 API 페이로드에 존이 없던 시기 (#377 히스토리 백필로 들어온 행). 존 패널은 **2024-12 부터** (캡션은 데이터에서). 과거 존은 활동별 API (`activity-service/activity/{id}/hrTimeInZones`, 1,550회 호출) 가 필요해 후속 후보로 남긴다.
+- ~~배포 전 (프로덕션 psql)~~: 2020~2024-11 활동의 rawData 에 `hrTimeInZone_1` 이 있는지 — 있으면 `npm run backfill:intensity` 재실행 (skip 규칙이라 안전 · API 호출 0) 으로 존 스택이 2020-06 부터 채워진다. 없으면 존 패널은 2024-12 부터 (캡션 표기)
   ```bash
   psql "$DATABASE_URL" -Atc "select count(*) filter (where \"rawData\" ? 'hrTimeInZone_1') as has_zone_raw, count(*) as no_zone_col from \"Activity\" where \"zoneDistribution\" is null and \"activityType\" like '%running%';"
   ```
