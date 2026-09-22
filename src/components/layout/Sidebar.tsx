@@ -134,6 +134,19 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    label: "분석",
+    href: "/insights",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v14h14" />
+        <circle cx="7" cy="12" r="1.2" />
+        <circle cx="10" cy="8" r="1.2" />
+        <circle cx="13.5" cy="10.5" r="1.2" />
+        <circle cx="15.5" cy="5.5" r="1.2" />
+      </svg>
+    ),
+  },
+  {
     label: "리포트",
     href: "/reports",
     icon: (
