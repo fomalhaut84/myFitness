@@ -9,6 +9,7 @@ import { ymdKST } from "@/lib/garmin/utils";
 import { RACE_EVENT_TYPE } from "@/lib/garmin/parse-event-type";
 import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
 import { type Bucket, bucketOf } from "@/lib/running/buckets";
+import { kstDayRange } from "./buckets";
 import { getHistorySummary, type HistorySummary, type SummaryBucket } from "./summary";
 import type { SummaryParams } from "./summary-params";
 
@@ -149,29 +150,31 @@ export async function getPersonalRecords(
   ctx: { lowerBound: string; today: string },
   loadSummary: SummaryLoader = getHistorySummary,
 ): Promise<PersonalRecords> {
+  // 조회 범위 = [하한, 오늘] — 패널이 "하한 부터" 라고 말하고 링크도 그 범위로 redirect 되므로 그 밖의 행 (하한 이전 · 미래) 은 기록이 아니다 (PR #412 Codex P2)
+  const within = { gte: kstDayRange(ctx.lowerBound).start, lt: kstDayRange(ctx.today).end };
   const [bucketRows, longestRow, raceRows, vo2, rhr, monthly] = await Promise.all([
     prisma.activity.findMany({
-      where: { AND: [RUNNING_ACTIVITY_WHERE, { distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
+      where: { AND: [RUNNING_ACTIVITY_WHERE, { startTime: within, distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
       select: ACTIVITY_SELECT,
     }),
     prisma.activity.findFirst({
-      where: { AND: [RUNNING_ACTIVITY_WHERE, { distance: { not: null }, avgPace: { not: null } }] },
+      where: { AND: [RUNNING_ACTIVITY_WHERE, { startTime: within, distance: { not: null }, avgPace: { not: null } }] },
       orderBy: [{ distance: "desc" }, { startTime: "asc" }],
       select: ACTIVITY_SELECT,
     }),
     prisma.activity.findMany({
-      where: { eventType: RACE_EVENT_TYPE },
+      where: { eventType: RACE_EVENT_TYPE, startTime: within },
       orderBy: { startTime: "desc" },
       select: ACTIVITY_SELECT,
     }),
     prisma.fitnessMetricDaily.findFirst({
-      where: { vo2maxRunning: { not: null } },
+      where: { vo2maxRunning: { not: null }, date: within },
       orderBy: [{ vo2maxRunning: "desc" }, { date: "asc" }],
       select: { date: true, vo2maxRunning: true },
     }),
     // stub 행 (0) 방어 — 안정시 심박 0 은 측정이 아니다
     prisma.dailySummary.findFirst({
-      where: { restingHR: { gt: 0 } },
+      where: { restingHR: { gt: 0 }, date: within },
       orderBy: [{ restingHR: "asc" }, { date: "asc" }],
       select: { date: true, restingHR: true },
     }),

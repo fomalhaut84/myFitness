@@ -87,9 +87,11 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
   const [summary, whole] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id])]);
   // #396: 이벤트 마커. 조회 범위는 **버킷 스팬** — 첫 버킷은 달력 전체라 하한 앞의 플랜 · 지표 변경도 그 버킷에 속한다 (사전 리뷰 info 12).
   // 캐시하지 않는다 — 레이스 · 플랜 · 지표 변경은 행 수가 적고 (6년 30건 안팎) 수동 쓰기가 잦다
+  // 상한은 오늘 — 진행 중 버킷의 끝은 미래라 내일 시작하는 플랜이 목록에 올라온다 (PR #412 Codex P2). 진행 중 플랜은 겹침 조건으로 그대로 잡힌다
   const first = summary.buckets[0];
   const last = summary.buckets[summary.buckets.length - 1];
-  const events = query.marks && first && last ? await loadHistoryEvents({ from: first.start, to: addDaysYmd(last.end, -1) }) : [];
+  const lastDay = last ? addDaysYmd(last.end, -1) : ctx.today;
+  const events = query.marks && first ? await loadHistoryEvents({ from: first.start, to: lastDay < ctx.today ? lastDay : ctx.today }) : [];
   const points = toTrendPoints(summary.buckets, def, query.unit, ctx);
   const markers = query.marks ? toChartMarkers(events, points.map((p) => p.key), query.unit) : undefined;
   const { best, worst } = summarizeSeries(points, def);
