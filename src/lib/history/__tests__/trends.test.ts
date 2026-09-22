@@ -11,6 +11,7 @@ import {
   seasonality,
   summarizeSeries,
   toTrendPoints,
+  bucketHref,
 } from "../trends";
 
 const ctx = { today: "2026-09-21", lowerBound: "2020-06-16" };
@@ -209,5 +210,26 @@ describe("seasonality", () => {
   it("기여한 해가 없는 달은 null", () => {
     const pivot = pivotByYear([month("2024-05", "vo2max", 49.8, 20)], vo2, ctx);
     expect(seasonality(pivot, vo2)[0]).toEqual({ month: 1, value: null, years: 0, points: [] });
+  });
+});
+
+// #396: 포인트 → /history 링크가 선택 지표를 싣는다 (회귀: 릴리즈 PR #409 Codex P2 — 체중 추이에서 눌러도 기본 지표로 열림)
+describe("bucketHref", () => {
+  it("비기본 지표는 ?metric= 을 붙이고 기본 지표 (러닝 거리) 는 붙이지 않는다", () => {
+    const bucket = { key: "2024-03", start: "2024-03-01" };
+    expect(bucketHref(bucket, "month", weight)).toBe("/history/2024/03?metric=weight");
+    expect(bucketHref(bucket, "month", km)).toBe("/history/2024/03");
+    expect(bucketHref({ key: "2024", start: "2024-01-01" }, "year", weight)).toBe("/history/2024?metric=weight");
+  });
+
+  it("일 버킷은 일 뷰, 주 버킷은 목요일이 속한 달", () => {
+    expect(bucketHref({ key: "2024-03-15", start: "2024-03-15" }, "day", sleep)).toBe("/history/2024/03/15?metric=sleepScore");
+    expect(bucketHref({ key: "2024-02-26", start: "2024-02-26" }, "week", km)).toBe("/history/2024/02");
+    expect(bucketHref({ key: "2024-02-29", start: "2024-02-29" }, "week", km)).toBe("/history/2024/03");
+  });
+
+  it("toTrendPoints 의 href 도 같은 규칙", () => {
+    const points = toTrendPoints([month("2024-03", "weight", 71.2, 5)], weight, "month", ctx);
+    expect(points[0].href).toBe("/history/2024/03?metric=weight");
   });
 });

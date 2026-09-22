@@ -6,63 +6,20 @@
  */
 import prisma from "../prisma";
 import { ymdKST, todayKSTString } from "@/lib/garmin/utils";
+import { getCoverageRanges } from "@/lib/history/coverage";
 import { MAX_QUERY_DAYS } from "./constants";
 
-interface Range {
-  oldest: string | null;
-  newest: string | null;
-  count: number;
-}
-
-function toRange(
-  min: Date | null | undefined,
-  max: Date | null | undefined,
-  count: number,
-): Range {
-  return {
-    oldest: min ? ymdKST(min) : null,
-    newest: max ? ymdKST(max) : null,
-    count,
-  };
-}
-
 export async function getDataCoverage() {
-  const [activity, running, daily, sleep, hr, body, bp, fm, meta] = await Promise.all([
-    prisma.activity.aggregate({
-      _min: { startTime: true },
-      _max: { startTime: true },
-      _count: { _all: true },
-    }),
-    prisma.activity.aggregate({
-      where: { activityType: { contains: "running" } },
-      _min: { startTime: true },
-      _max: { startTime: true },
-      _count: { _all: true },
-    }),
-    prisma.dailySummary.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
-    prisma.sleepRecord.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
-    prisma.heartRateRecord.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
-    prisma.bodyComposition.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
-    prisma.bloodPressure.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
-    prisma.fitnessMetricDaily.aggregate({ _min: { date: true }, _max: { date: true }, _count: { _all: true } }),
+  // #396: 집계는 src/lib/history/coverage.ts 로 이동 — `/history` 커버리지 띠와 같은 숫자. 반환 shape 는 그대로.
+  const [ranges, meta] = await Promise.all([
+    getCoverageRanges(),
     prisma.syncMetadata.findMany({
       select: { dataType: true, oldestFetchedDate: true, coveredThroughDate: true, lastSyncAt: true },
     }),
   ]);
-
-  const types = {
-    activities: {
-      ...toRange(activity._min.startTime, activity._max.startTime, activity._count._all),
-      running: toRange(running._min.startTime, running._max.startTime, running._count._all),
-    },
-    daily_stats: toRange(daily._min.date, daily._max.date, daily._count._all),
-    sleep: toRange(sleep._min.date, sleep._max.date, sleep._count._all),
-    heart_rate: toRange(hr._min.date, hr._max.date, hr._count._all),
-    body_composition: toRange(body._min.date, body._max.date, body._count._all),
-    blood_pressure: toRange(bp._min.date, bp._max.date, bp._count._all),
-    // #378: VO2max 일별 + 젖산역치 감지일. oldest 는 VO2max 시작(2020-06)이 된다.
-    fitness_metrics: toRange(fm._min.date, fm._max.date, fm._count._all),
-  };
+  const { activities, daily_stats, sleep, heart_rate, body_composition, blood_pressure, fitness_metrics } = ranges;
+  // #378: VO2max 일별 + 젖산역치 감지일. fitness_metrics.oldest 는 VO2max 시작(2020-06)이 된다.
+  const types = { activities, daily_stats, sleep, heart_rate, body_composition, blood_pressure, fitness_metrics };
 
   const syncCoverage = Object.fromEntries(
     meta

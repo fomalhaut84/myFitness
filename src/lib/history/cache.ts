@@ -11,6 +11,8 @@ import { getHistoryLowerBound } from "./lower-bound";
 import type { HistoryMetricId } from "./metrics";
 import { getHistoryRangeTotals, type HistoryRangeTotals } from "./range-totals";
 import { getHistorySummary, type HistorySummary } from "./summary";
+import { getCoverageRanges, type CoverageRanges } from "./coverage";
+import { getPersonalRecords, type PersonalRecords } from "./records";
 import type { SummaryParams } from "./summary-params";
 
 const globalForCache = globalThis as unknown as { historyCache: HistoryCache | undefined };
@@ -69,4 +71,14 @@ export function getCachedRangeTotals(
 ): Promise<HistoryRangeTotals> {
   const key = JSON.stringify(["rangeTotals", range.from, range.to, [...metricIds].sort()]);
   return cache().get(key, () => getHistoryRangeTotals(range, metricIds));
+}
+
+/** #396: 개인 기록. 이번 달 포함 여부 (`bestMonth.current`) 가 오늘에 달려 키에 today 를 넣는다. */
+export function getCachedPersonalRecords(ctx: { lowerBound: string; today: string }): Promise<PersonalRecords> {
+  return cache().get(JSON.stringify(["records", ctx.lowerBound, ctx.today]), () => getPersonalRecords(ctx));
+}
+
+/** #396: 커버리지 집계 (`/history` 띠). 싱크 stamp · 수동 쓰기 버전이 키에 섞인다 — 식단 · 혈압 · 체중 기록 직후 갱신. */
+export function getCachedCoverageRanges(): Promise<CoverageRanges> {
+  return cache().get("coverage", getCoverageRanges);
 }

@@ -147,3 +147,20 @@ describe("buildTrendsHref", () => {
     expect(parsed).toEqual(q);
   });
 });
+
+// #396: 개인 기록 뷰 · 이벤트 마커 토글
+describe("records 뷰 · marks (#396)", () => {
+  it("view=records 를 받고, marks 는 기본 true · '0' 만 false", () => {
+    expect(parseTrendsQuery({ view: "records" }, ctx).view).toBe("records");
+    expect(parseTrendsQuery({}, ctx).marks).toBe(true);
+    expect(parseTrendsQuery({ marks: "0" }, ctx).marks).toBe(false);
+    expect(parseTrendsQuery({ marks: "false" }, ctx).marks).toBe(true);
+  });
+
+  it("href 는 마커 켜짐 (기본) 을 생략하고 꺼짐만 marks=0 으로 싣는다", () => {
+    const q = parseTrendsQuery({}, ctx);
+    expect(buildTrendsHref(q, {}, ctx)).toBe("/trends");
+    expect(buildTrendsHref(q, { marks: false }, ctx)).toBe("/trends?marks=0");
+    expect(buildTrendsHref(q, { view: "records", marks: false }, ctx)).toBe("/trends?view=records&marks=0");
+  });
+});

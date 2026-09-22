@@ -2,7 +2,7 @@
 // → 조정된 workout + rationale. DB / IO 없음. 순수 함수.
 
 import type { WorkoutType } from "./workout-patterns";
-import { formatPace } from "../../mcp/tools/running-buckets";
+import { formatPace } from "@/lib/running/buckets";
 import { paceZoneFor } from "./pace-calc";
 
 export type ReadinessLabel =

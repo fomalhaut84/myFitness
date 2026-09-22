@@ -124,7 +124,8 @@ check("backfill-history BACKFILL_TYPES 에 fitness_metrics", /"fitness_metrics"/
 check("weekly-report NON_PROFILE_TYPES 에 fitness_metrics (I2: cron 실패 주 gap-fill)", /NON_PROFILE_TYPES = \[[\s\S]*?"fitness_metrics"[\s\S]*?\] as const;/.test(read("src", "lib", "weekly-report.ts")));
 check("claude-advisor allowlist 에 get_fitness_metric_trend", read("src", "lib", "ai", "claude-advisor.ts").includes("mcp__myfitness__get_fitness_metric_trend"));
 check("server.ts 에 get_fitness_metric_trend 등록", /server\.tool\(\s*"get_fitness_metric_trend"/.test(read("src", "mcp", "server.ts")));
-check("get_data_coverage 에 fitness_metrics 범위", /fitness_metrics:\s*toRange/.test(read("src", "mcp", "tools", "coverage.ts")));
+// #396: 집계는 src/lib/history/coverage.ts 로 이동 (MCP 와 /history 띠 공유). 도구 반환 shape 에 fitness_metrics 가 남아 있는지도 본다.
+check("get_data_coverage 에 fitness_metrics 범위", /fitness_metrics:\s*toRange/.test(read("src", "lib", "history", "coverage.ts")) && /fitness_metrics/.test(read("src", "mcp", "tools", "coverage.ts")));
 
 // --- 7. 사전 리뷰 회귀
 console.log("\n[7] 사전 리뷰 회귀 (M1 · M2 · I3 · I4)");
