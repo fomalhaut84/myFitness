@@ -39,49 +39,58 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 
 ## 3. 요구사항
 
+> **구현 완료 (PR 대기, 2026-09-22).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다.
+
 **A. `Activity.eventType` 승격 (스키마 · 싱크 · 백필)**
-- [ ] F1 `Activity.eventType String?` + `@@index([eventType, startTime])`. 값은 Garmin `eventType.typeKey` **원문 그대로** (`race` · `training` · `uncategorized` …), 없으면 `null`. 수동 SQL 마이그레이션 (`prisma-drift-fix`) — `routeTag` 선례 그대로 nullable · additive
-- [ ] F2 `src/lib/garmin/parse-event-type.ts` — `parseEventType(raw): string | null` (순수). 빈 문자열 · 비문자열은 `null`. `fetchers/activities.ts` 의 `data` 객체에 `eventType` 추가 (create · update 양쪽 — Garmin 에서 나중에 레이스로 바꿔도 다음 싱크에 반영)
-- [ ] F3 `scripts/backfill-event-type.ts` + `npm run backfill:event-type`. `--dry-run` · `--limit N` · `--after-id <cuid>` (composite cursor) · `--force` (이미 값 있어도 덮어씀). 기본은 `eventType IS NULL` 행만. 종료 시 값 분포 로그. 배포 후 사용자가 1회 실행 (2,335행 · API 호출 0)
-- [ ] F4 `Activity` 의 `eventType` 은 `loadDailyPoints` (히스토리 집계) 에 넣지 않는다 — 레이스는 별도 조회 (F9)
+- [x] F1 `Activity.eventType String?` + `@@index([eventType, startTime])`. 값은 Garmin `eventType.typeKey` **원문 그대로** (`race` · `training` · `uncategorized` …), 없으면 `null`. 수동 SQL 마이그레이션 (`prisma-drift-fix`) — `routeTag` 선례 그대로 nullable · additive
+- [x] F2 `src/lib/garmin/parse-event-type.ts` — `parseEventType(raw): string | null` (순수). 빈 문자열 · 비문자열은 `null`. `fetchers/activities.ts` 의 `data` 객체에 `eventType` 추가 (create · update 양쪽 — Garmin 에서 나중에 레이스로 바꿔도 다음 싱크에 반영)
+- [x] F3 `scripts/backfill-event-type.ts` + `npm run backfill:event-type`. `--dry-run` · `--limit N` · `--after-id <cuid>` (composite cursor) · `--force` (이미 값 있어도 덮어씀). 기본은 `eventType IS NULL` 행만. 종료 시 값 분포 로그. 배포 후 사용자가 1회 실행 (2,335행 · API 호출 0)
+- [x] F4 `Activity` 의 `eventType` 은 `loadDailyPoints` (히스토리 집계) 에 넣지 않는다 — 레이스는 별도 조회 (F9)
 
 **B. 개인 기록 (`/trends?view=records`)**
-- [ ] F5 `/trends` 5번째 뷰 탭 `개인 기록 — 역대 최고는?`. 이 뷰에서는 지표 pill · 단위 · 기간 컨트롤을 **숨긴다** (지표와 무관한 화면 — 395 의 "뷰에 의미 없으면 숨긴다")
-- [ ] F6 `src/lib/history/records.ts` — `getPersonalRecords(ctx)`: 순수 랭킹 함수 + 조회 함수 분리
+- [x] F5 `/trends` 5번째 뷰 탭 `개인 기록 — 역대 최고는?`. 이 뷰에서는 지표 pill · 단위 · 기간 컨트롤을 **숨긴다** (지표와 무관한 화면 — 395 의 "뷰에 의미 없으면 숨긴다")
+- [x] F6 `src/lib/history/records.ts` — `getPersonalRecords(ctx)`: 순수 랭킹 함수 + 조회 함수 분리
   - 5K · 10K · HM · FM 최고: `activityType contains "running"` · `distance` · `avgPace` 있는 활동 → `bucketOf(distance)` 별 **최저 avgPace** (동률이면 먼저 달성한 날). 값 = 페이스 (`m:ss/km`) + 소요 시간 (`h:mm:ss`) + 거리. FM 은 기록 없으면 "기록 없음"
   - 최장 거리: 러닝 `max(distance)`
   - 최다 km 월: 전체 기간 월 summary (`runningKm`) 의 최대 버킷 — 캐시 엔트리는 YoY · 계절성과 공유
   - 최고 VO2max: `FitnessMetricDaily.vo2maxRunning` 최대 · **처음 도달한 날** (`bestOf` 의 plateau 는 MCP 용 — 여기서는 첫 도달일 하나. 캡션에 "N일 유지" 는 넣지 않는다)
   - 최저 RHR: `DailySummary.restingHR` 최소 (`> 0` — stub 방어) · 처음 도달한 날
-- [ ] F7 각 기록 = 라벨 · 값 · 날짜 · 링크 (`/history/Y/M/D`, 최다 km 월은 `/history/Y/M`). 러닝 기록이 **레이스** 활동이면 `레이스` 배지. 표시는 `ReadoutRow` 와 같은 토큰 (판독값 띠) — 7칸이라 3열 그리드 (모바일 1열)
-- [ ] F8 **레이스 목록**: 같은 뷰 아래에 `eventType = "race"` 활동 전부 (최신순) — 날짜 · 이름 · 거리 · 페이스 · 시간 · 일 뷰 링크. 이름이 Garmin 기본값 (`달리기` · `러닝` · `10km 러닝`) 인 것도 그대로 (이름을 지어내지 않는다). 0건이면 "레이스로 표시된 활동이 없다 — Garmin 에서 활동 유형을 레이스로 바꾸면 다음 싱크에 반영" 안내
-- [ ] F9 결과는 `getCachedPersonalRecords()` (`cache().get("records", …)`) — 싱크 · 수동 쓰기 · 날짜 변경 시 자동 무효화 (기존 키 규칙)
+  - ↳ 최고 VO2max · 최저 RHR 은 DB 정렬 (`orderBy [값, date asc] take 1`) — 순수 랭킹은 러닝 버킷 · 최다 km 월만. 러닝 조회는 `distance ≥ 4500m` 로 좁혔고 최장 거리는 별도 `orderBy distance desc`
+- [x] F7 각 기록 = 라벨 · 값 · 날짜 · 링크 (`/history/Y/M/D`, 최다 km 월은 `/history/Y/M`). 러닝 기록이 **레이스** 활동이면 `레이스` 배지. 표시는 `ReadoutRow` 와 같은 토큰 (판독값 띠) — 7칸이라 3열 그리드 (모바일 1열)
+- [x] F8 **레이스 목록**: 같은 뷰 아래에 `eventType = "race"` 활동 전부 (최신순) — 날짜 · 이름 · 거리 · 페이스 · 시간 · 일 뷰 링크. 이름이 Garmin 기본값 (`달리기` · `러닝` · `10km 러닝`) 인 것도 그대로 (이름을 지어내지 않는다). 0건이면 "레이스로 표시된 활동이 없다 — Garmin 에서 활동 유형을 레이스로 바꾸면 다음 싱크에 반영" 안내
+- [x] F9 결과는 `getCachedPersonalRecords()` (`cache().get("records", …)`) — 싱크 · 수동 쓰기 · 날짜 변경 시 자동 무효화 (기존 키 규칙)
 
 **C. 이벤트 마커 (`/trends` 시계열)**
-- [ ] F10 `src/lib/history/markers.ts` — `loadEventMarkers({ from, to })` (조회) + `toChartMarkers(events, buckets, granularity)` (순수)
+- [x] F10 `src/lib/history/markers.ts` — `loadEventMarkers({ from, to })` (조회) + `toChartMarkers(events, buckets, granularity)` (순수)
   - 소스 3종: `MetricChange` (`field ∈ {maxHR, lthr}`, `changedAt` → KST ymd, `oldValue → newValue`) · `TrainingPlan` (`startDate ~ endDate`, `targetDistance` · `status` 무관 — archived 도 과거 사실) · 레이스 (`Activity.eventType = "race"`: `startTime` → ymd · 이름 · 거리)
   - 날짜 → 버킷 키 = `bucketKeyOf(ymd, granularity)`. 조회 범위 밖 · 버킷 목록에 없는 키는 버린다. 플랜은 `{ fromKey, toKey }` (시작/끝을 각각 클램프)
   - **같은 버킷에 이벤트가 여럿이면 선 하나 + 라벨 합침** (연 단위에서 레이스 3개가 겹쳐 그려지지 않게)
-- [ ] F11 `TrendSeriesChart` — 레이스 = 실선 `ReferenceLine` (`#d4d4d4`) + 상단 짧은 라벨 (`R`) · `MetricChange` = 점선 `ReferenceLine` (`#737373`) · 플랜 = `ReferenceArea` (`#ffffff` 6%). **지표 색을 쓰지 않는다** (한 화면 한 지표 색 — 마커는 무채색). 툴팁 하단에 그 버킷의 이벤트 문장 (`레이스 · 2024 아름다운 제주 국제마라톤 21.06km` / `LTHR 157 → 160`)
-- [ ] F12 차트 아래 **"이 기간의 이벤트" 목록** (최신순, 최대 30건 · 초과 시 "외 N건"): 날짜 · 종류 배지 · 설명 · 링크 (레이스 → 일 뷰 · 플랜 → `/training` · 지표 변경 → `/settings/profile`). 차트가 `role="img"` 라 마커의 접근 가능한 대응물이 이 목록이다
-- [ ] F13 토글: 쿼리 `marks=0` 으로 끔 (기본 켜짐 · 기본값은 URL 에서 생략). 컨트롤 바 시계열에서만 `이벤트 마커` pill 1개. 범례 한 줄: `│ 레이스 · ┆ maxHR · LTHR 변경 · ▒ 트레이닝 플랜`
-- [ ] F14 YoY · 계절성 · 비교 뷰에는 마커 없음 (x 축이 달력 순서가 아니다)
+  - ↳ 조회는 `events.ts` (prisma · 서버 전용), 순수 매핑은 `markers.ts` — 클라이언트 차트가 `markers.ts` 의 라벨 · 타입을 import 하므로 prisma 를 끌어오지 않게 파일을 나눴다 (Turbopack 이 `node:module` 로 빌드 실패)
+- [x] F11 `TrendSeriesChart` — 레이스 = 실선 `ReferenceLine` (`#d4d4d4`) + 상단 짧은 라벨 (`R`) · `MetricChange` = 점선 `ReferenceLine` (`#737373`) · 플랜 = `ReferenceArea` (`#ffffff` 6%). **지표 색을 쓰지 않는다** (한 화면 한 지표 색 — 마커는 무채색). 툴팁 하단에 그 버킷의 이벤트 문장 (`레이스 · 2024 아름다운 제주 국제마라톤 21.06km` / `LTHR 157 → 160`)
+  - ↳ 마커 선 · 밴드 · 툴팁 커서는 `pointer-events: none` — 마커가 있는 버킷의 막대 클릭을 가로챘다 (CDP 클릭 테스트로 발견). 최초 설정 지표 변경은 `maxHR 175 (처음 설정)`
+- [x] F12 차트 아래 **"이 기간의 이벤트" 목록** (최신순, 최대 30건 · 초과 시 "외 N건"): 날짜 · 종류 배지 · 설명 · 링크 (레이스 → 일 뷰 · 플랜 → `/training` · 지표 변경 → `/settings/profile`). 차트가 `role="img"` 라 마커의 접근 가능한 대응물이 이 목록이다
+- [x] F13 토글: 쿼리 `marks=0` 으로 끔 (기본 켜짐 · 기본값은 URL 에서 생략). 컨트롤 바 시계열에서만 `이벤트 마커` pill 1개. 범례 한 줄: `│ 레이스 · ┆ maxHR · LTHR 변경 · ▒ 트레이닝 플랜`
+- [x] F14 YoY · 계절성 · 비교 뷰에는 마커 없음 (x 축이 달력 순서가 아니다)
 
 **D. 포인트 → `/history` 링크**
-- [ ] F15 `bucketHref` — export · `historyMetricQuery(def.id)` 부착 (릴리즈 PR #409 Codex P2) · `day` granularity 는 `historyDayPath`. 회귀 테스트: 비기본 지표의 href 에 `?metric=` 이 있다
-- [ ] F16 `TrendSeriesChart` — `Bar` / `Line` 활성 포인트 클릭 → `router.push(point.href)` (`useRouter`). 커서 `pointer`. 툴팁 마지막 줄 `클릭 → 월 뷰` / `연 뷰` (버킷 단위에 따라). 주 버킷은 그 주 목요일이 속한 달 (#395 기존 규칙)
-- [ ] F17 `YoyChart` 포인트 클릭 → `/history/YYYY/MM?metric=` · `SeasonalityChart` 연도별 점 클릭 → 같은 경로 (`YoyRow` 에 연도 · 월이 있으므로 컴포넌트에서 `historyMonthPath` 로 조립 — `route-params` 는 순수 lib 라 client import 가능, `MonthGrid` 선례)
-- [ ] F18 판독값 캡션 링크 (`ReadoutRow`) 는 그대로 — 키보드 · 스크린리더 경로
+- [x] F15 `bucketHref` — export · `historyMetricQuery(def.id)` 부착 (릴리즈 PR #409 Codex P2) · `day` granularity 는 `historyDayPath`. 회귀 테스트: 비기본 지표의 href 에 `?metric=` 이 있다
+- [x] F16 `TrendSeriesChart` — `Bar` / `Line` 활성 포인트 클릭 → `router.push(point.href)` (`useRouter`). 커서 `pointer`. 툴팁 마지막 줄 `클릭 → 월 뷰` / `연 뷰` (버킷 단위에 따라). 주 버킷은 그 주 목요일이 속한 달 (#395 기존 규칙)
+  - ↳ `Bar onClick` + `activeDot` 렌더 함수 + **정적 점 자체의 onClick** (정적 점 층이 활성 점보다 위라 활성 점만으로는 클릭이 안 된다). 툴팁 마지막 줄 `클릭 → 월 뷰` / `연 뷰`
+- [x] F17 `YoyChart` 포인트 클릭 → `/history/YYYY/MM?metric=` · `SeasonalityChart` 연도별 점 클릭 → 같은 경로 (`YoyRow` 에 연도 · 월이 있으므로 컴포넌트에서 `historyMonthPath` 로 조립 — `route-params` 는 순수 lib 라 client import 가능, `MonthGrid` 선례)
+  - ↳ YoY 는 실선 점 · 점선 (미완결 달) 속 빈 점 둘 다 링크
+- [x] F18 판독값 캡션 링크 (`ReadoutRow`) 는 그대로 — 키보드 · 스크린리더 경로
 
 **E. 커버리지 띠 (`/history` 연 뷰)**
-- [ ] F19 `src/lib/history/coverage.ts` — `getCoverageRanges()` (prisma 집계 8종, MCP 에서 이동) + 순수 `buildCoverageStrip(ranges, ctx)` → 소스별 `{ id, label, oldest, newest, count, startPct, endPct }` (하한 ~ 오늘 축 기준). MCP `coverage.ts` 는 `getCoverageRanges` 를 import 해 기존 반환 shape (`types` · `syncCoverage` · `_context`) 유지 — `verify:mcp-long-history` 무변경 통과
-- [ ] F20 `CoverageStrip` 컴포넌트 — `/history/[year]` 의 `MetricPicker` 아래 · `KpiRow` 위. 접힌 한 줄 `2020.06 ~ 2026.09 · 활동 2,332건 · 일간 요약 … ` + 네이티브 `<details>` 로 펼치면 소스별 가로 막대 (하한 → 오늘 축, 무채색 · 지표 색 없음). 표시 소스 8: 활동 (러닝 건수 병기) · 일간 요약 · 수면 · 체중 · 피트니스 지표 · **야간 HRV** (`SleepRecord.hrvOvernight not null`) · **혈압** · **식단** (`FoodLog`). 기존 5개 소스는 실데이터에서 전부 2020-06 시작이라 막대가 똑같다 — 범위가 실제로 다른 뒤 3개가 띠에 정보를 준다 (시안 결정 6)
-- [ ] F21 `getCachedCoverage()` — `cache().get("coverage", …)`. 월 · 일 뷰에는 넣지 않는다
+- [x] F19 `src/lib/history/coverage.ts` — `getCoverageRanges()` (prisma 집계 8종, MCP 에서 이동) + 순수 `buildCoverageStrip(ranges, ctx)` → 소스별 `{ id, label, oldest, newest, count, startPct, endPct }` (하한 ~ 오늘 축 기준). MCP `coverage.ts` 는 `getCoverageRanges` 를 import 해 기존 반환 shape (`types` · `syncCoverage` · `_context`) 유지 — `verify:mcp-long-history` 무변경 통과
+- [x] F20 `CoverageStrip` 컴포넌트 — `/history/[year]` 의 `MetricPicker` 아래 · `KpiRow` 위. 접힌 한 줄 `2020.06 ~ 2026.09 · 활동 2,332건 · 일간 요약 … ` + 네이티브 `<details>` 로 펼치면 소스별 가로 막대 (하한 → 오늘 축, 무채색 · 지표 색 없음). 표시 소스 8: 활동 (러닝 건수 병기) · 일간 요약 · 수면 · 체중 · 피트니스 지표 · **야간 HRV** (`SleepRecord.hrvOvernight not null`) · **혈압** · **식단** (`FoodLog`). 기존 5개 소스는 실데이터에서 전부 2020-06 시작이라 막대가 똑같다 — 범위가 실제로 다른 뒤 3개가 띠에 정보를 준다 (시안 결정 6)
+  - ↳ 스펙 표기 `2020.06 ~ 2026.09 · 활동 2,332건 · …` 은 접힌 한 줄 그대로. 펼친 행의 캡션은 `2020.06 ~ 2026.09 · 2,332건` (시안 재캡처 후 폭 196px)
+- [x] F21 `getCachedCoverage()` — `cache().get("coverage", …)`. 월 · 일 뷰에는 넣지 않는다
+  - ↳ 키에 today 는 넣지 않았다 — 커버리지 집계는 오늘과 무관하고 (`buildCoverageStrip` 이 ctx.today 로 퍼센트를 계산) stamp · version 이 갱신을 덮는다
 
 **공통**
-- [ ] F22 한국어 UI · 다크 · 모바일 360px (마커 라벨은 모바일에서 숨기고 목록으로) · 수치 단위 규칙 (페이스 `m:ss/km` · 거리 km 소수 2자리)
-- [ ] F23 KST · ymd 헬퍼만. `MetricChange.changedAt` · `Activity.startTime` → `ymdKST`. `TrainingPlan` 날짜는 `@db.Date` → 기존 `plan-detail.ts` 의 변환 규칙 재사용
-- [ ] F24 순수 로직 (랭킹 · 마커 버킷 매핑 · 커버리지 shape · `parseEventType` · 쿼리 파싱) 전부 vitest
+- [x] F22 한국어 UI · 다크 · 모바일 360px (마커 라벨은 모바일에서 숨기고 목록으로) · 수치 단위 규칙 (페이스 `m:ss/km` · 거리 km 소수 2자리)
+- [x] F23 KST · ymd 헬퍼만. `MetricChange.changedAt` · `Activity.startTime` → `ymdKST`. `TrainingPlan` 날짜는 `@db.Date` → 기존 `plan-detail.ts` 의 변환 규칙 재사용
+- [x] F24 순수 로직 (랭킹 · 마커 버킷 매핑 · 커버리지 shape · `parseEventType` · 쿼리 파싱) 전부 vitest
 
 ## 4. 기술 설계
 
