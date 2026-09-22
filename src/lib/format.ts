@@ -26,6 +26,16 @@ export function formatPace(secPerKm: number): string {
   return `${min}'${sec.toString().padStart(2, "0")}"`;
 }
 
+/** #396: 초 → `h:mm:ss` (1시간 미만은 `m:ss`). 레이스 · 개인 기록의 소요 시간 표기. */
+export function formatClock(seconds: number): string {
+  const total = Math.round(seconds);
+  const h = Math.floor(total / 3600);
+  const m = Math.floor((total % 3600) / 60);
+  const s = total % 60;
+  const ss = String(s).padStart(2, "0");
+  return h > 0 ? `${h}:${String(m).padStart(2, "0")}:${ss}` : `${m}:${ss}`;
+}
+
 /** 초 → Xh Xm 또는 Xm */
 export function formatDuration(seconds: number): string {
   const h = Math.floor(seconds / 3600);

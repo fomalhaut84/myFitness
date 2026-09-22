@@ -17,6 +17,7 @@
     "backfill:running-dynamics": "tsx scripts/backfill-running-dynamics.ts",
     "backfill:food-kcal": "tsx scripts/backfill-food-kcal.ts",
     "backfill:history": "tsx scripts/backfill-history.ts",
+    "backfill:event-type": "tsx scripts/backfill-event-type.ts",
     "test": "vitest run && npm run verify:mcp-date-labels && npm run verify:food-edit-pending && npm run verify:mcp-long-history && npm run verify:fitness-metrics-parse && npm run verify:empty-day-skip",
     "verify:fitness-metrics-parse": "tsx scripts/verify-fitness-metrics-parse.ts",
     "verify:empty-day-skip": "tsx scripts/verify-empty-day-skip.ts",

@@ -4,7 +4,9 @@
 // 연도마다 색을 주면 범례를 읽어야 하는 무지개가 된다. 범례 버튼으로 연도를 켜고 끈다 (client state, URL 에 넣지 않음).
 // 합계형의 미완결 월 (이번 달 · 하한이 걸친 첫 달) 은 점선 + 속 빈 점 — 부분 합계가 "적게 뛴 달" 로 읽히지 않게.
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { historyMetricQuery, historyMonthPath } from "@/lib/history/route-params";
 import { buildYoyRows, PARTIAL_LABELS, type YearPivot, type YoyRow } from "@/lib/history/trends";
 import {
   CHART_AXIS_TICK,
@@ -36,7 +38,11 @@ function yearColor(year: number, years: readonly number[], currentYear: number, 
 
 export default function YoyChart({ pivot, metric, color, currentYear }: YoyChartProps) {
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
+  const router = useRouter();
   const isSum = metric.aggregate === "sum";
+  // #396: 점 클릭 → 그 연도 · 달의 월 뷰 (선택 지표 유지)
+  const goMonth = (year: number, month: number) =>
+    router.push(`${historyMonthPath(`${year}-${String(month).padStart(2, "0")}`)}${historyMetricQuery(metric.id)}`);
 
   const rows = buildYoyRows(pivot, metric);
   const visible = pivot.years.filter((y) => !hidden.has(y));
@@ -67,7 +73,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
               tickFormatter={(v) => formatAxisValue(metric, v)}
             />
             <Tooltip
-              cursor={{ stroke: "#333333" }}
+              cursor={{ stroke: "#333333", pointerEvents: "none" }}
               content={({ active, payload, label }) => {
                 if (!active || !payload) return null;
                 const row = payload[0]?.payload as Row | undefined;
@@ -104,8 +110,24 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                   dataKey={`y${year}`}
                   stroke={stroke}
                   strokeWidth={current ? 2.6 : 1.4}
-                  dot={current ? { r: 3, fill: stroke, strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }}
+                  // 올해의 정적 점은 활성 점보다 위층이라 클릭을 받는다 — 점 자체에 링크를 건다
+                  dot={
+                    current
+                      ? ({ cx, cy, payload, index }: { cx?: number; cy?: number; payload?: Row; index: number }) =>
+                          cx === undefined || cy === undefined || !payload || typeof payload[`y${year}`] !== "number" ? (
+                            <g key={index} />
+                          ) : (
+                            <circle key={index} cx={cx} cy={cy} r={3} fill={stroke} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
+                          )
+                      : false
+                  }
+                  activeDot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: Row }) =>
+                    cx === undefined || cy === undefined || !payload ? (
+                      <g />
+                    ) : (
+                      <circle cx={cx} cy={cy} r={4} fill={stroke} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
+                    )
+                  }
                   connectNulls={false}
                   isAnimationActive={false}
                 />,
@@ -120,7 +142,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                     cx === undefined || cy === undefined || payload[`y${year}`] !== null || payload[`p${year}`] === null ? (
                       <g key={index} />
                     ) : (
-                      <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={stroke} strokeWidth={1.5} />
+                      <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={stroke} strokeWidth={1.5} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
                     )
                   }
                   activeDot={false}
