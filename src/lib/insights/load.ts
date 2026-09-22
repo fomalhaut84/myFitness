@@ -20,7 +20,8 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
     where: {
       AND: [
         RUNNING_ACTIVITY_WHERE,
-        { startTime: { gte: kstDayRange(ctx.lowerBound).start, lt: kstDayRange(ctx.today).end }, distance: { gt: 0 }, avgPace: { gt: 0 } },
+        // 거리 · 페이스 조건은 넣지 않는다 — 존 패널은 GPS 없는 트레드밀 러닝도 센다 (PR #417 Codex P2). 산점도는 `usableRuns` 가 거른다
+        { startTime: { gte: kstDayRange(ctx.lowerBound).start, lt: kstDayRange(ctx.today).end } },
       ],
     },
     orderBy: { startTime: "asc" },
@@ -43,9 +44,9 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       id: r.id,
       ymd,
       year: Number(ymd.slice(0, 4)),
-      distanceM: r.distance as number,
+      distanceM: r.distance !== null && r.distance > 0 ? r.distance : null,
       durationSec: r.duration,
-      avgPace: r.avgPace as number,
+      avgPace: r.avgPace !== null && r.avgPace > 0 ? r.avgPace : null,
       avgHR: r.avgHR,
       tempC: r.weatherTempC,
       humidityPct: r.weatherHumidityPct,

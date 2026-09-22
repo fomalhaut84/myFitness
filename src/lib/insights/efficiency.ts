@@ -1,6 +1,6 @@
 // #397 A: 페이스 대비 심박 효율 — "같은 페이스, 더 낮은 심박?". 기준 페이스 구간의 연도별 평균 심박이 답.
 import { mean } from "./stats";
-import type { InsightRun } from "./types";
+import type { UsableRun } from "./types";
 
 /** 기준 페이스 구간 (초/km, [from, to)) — 5'00" ~ 5'30". 사용자 평균 페이스 근처의 30초 폭. 상수 1곳 (스펙 F5). */
 export const EFFICIENCY_BAND: readonly [number, number] = [300, 330];
@@ -17,7 +17,7 @@ export interface EfficiencyPoint {
   race: boolean;
 }
 
-export function efficiencyPoints(runs: readonly InsightRun[]): EfficiencyPoint[] {
+export function efficiencyPoints(runs: readonly UsableRun[]): EfficiencyPoint[] {
   return runs.flatMap((r) =>
     r.avgHR === null || r.avgHR <= 0 ? [] : [{ id: r.id, ymd: r.ymd, year: r.year, pace: r.avgPace, hr: r.avgHR, distanceM: r.distanceM, race: r.race }],
   );

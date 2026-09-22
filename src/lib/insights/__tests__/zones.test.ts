@@ -28,6 +28,13 @@ describe("zoneShareByMonth", () => {
     expect(months[3]).toMatchObject({ current: true });
   });
 
+  // 회귀: PR #417 Codex P2 — 트레드밀 (거리 없음) 도 존이 있으면 달의 비율 · 커버리지에 들어간다
+  it("거리 · 페이스 없는 러닝도 존이 있으면 센다", () => {
+    const months = zoneShareByMonth([run("2026-08-01", { distanceM: null, avgPace: null, zones: z(0, 600, 0, 0, 0) }), run("2026-08-02")], ctx);
+    expect(months[0]).toMatchObject({ key: "2026-08", runs: 2, withZones: 1, lowCoverage: false });
+    expect(months[0].share?.[1]).toBe(1);
+  });
+
   it("존 있는 러닝이 없으면 빈 배열", () => {
     expect(zoneShareByMonth([run("2026-06-10")], ctx)).toEqual([]);
   });

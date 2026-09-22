@@ -12,3 +12,12 @@ describe("usableRuns", () => {
     expect(r.total).toBe(5);
   });
 });
+
+// 회귀: PR #417 Codex P2 — 거리 · 페이스 없는 러닝은 조회가 아니라 여기서만 빠진다 (존 패널은 전체 러닝)
+describe("usableRuns · 거리 없는 러닝", () => {
+  it("null 거리 · 페이스는 산점도에서 제외되고 dropped 로 센다", () => {
+    const r = usableRuns([run("2024-01-01", { distanceM: null, avgPace: null }), run("2024-01-02")]);
+    expect(r.kept.map((x) => x.ymd)).toEqual(["2024-01-02"]);
+    expect(r.dropped).toBe(1);
+  });
+});

@@ -196,4 +196,4 @@ vitest:
   - major 1: 효율 판독값 라벨이 "올해" 로 고정 — `efficiencyDelta.lastYear` 는 **평균이 있는 마지막 해** 라 연초 · 올해 구간 러닝 5건 미만이면 올해가 아니다 (지난해 값이 올해로 읽힘) → 라벨 · 캡션이 `lastYear` 를 읽는다. 회귀 `efficiency.test.ts`
   - info 반영 6: 클릭 불가 점의 `cursor: pointer` (D 패널) · C 패널 foot 문구 (이번 달은 비교에 포함) · 존 툴팁 시간 `Xh Xm` · 레이스 점이 연도 토글을 따르게 (`toggleId`) · 존 없는 달 점선 빈 칸 · 모바일 점 r 2 (CSS `r`) · `signed` 의 `−0.00` · 천 단위 표기
   - info 미반영 1 → **후속 이슈**: RSC 페이로드 — 점 4,300개의 툴팁 문자열 · href 를 서버에서 직렬화 (약 400~500KB). 원시값만 넘기고 클라이언트에서 조립
-- Codex bot: 리뷰 대기
+- Codex bot 1회차 (PR #417, 2026-09-22): P0/P1 0 · P2 1 → 반영. 러닝 조회가 `distance > 0 · avgPace > 0` 을 요구해 GPS 없는 트레드밀 러닝 (존은 있음) 이 존 패널의 비율 · 커버리지 (`withZones/runs`) 에서 빠짐 → 조회는 러닝 전부, 거리 · 페이스 조건은 `usableRuns` (산점도) 에서만 (`InsightRun.distanceM/avgPace` nullable · `UsableRun` 타입). 회귀 `filter.test.ts` · `zones.test.ts`. P2 만 반영이라 재리뷰 요청 없음

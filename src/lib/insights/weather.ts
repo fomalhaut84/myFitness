@@ -1,6 +1,6 @@
 // #397 B: 기온 vs 페이스 — "여름이 페이스를 얼마나 깎나?". 5°C 구간별 중앙값 페이스가 답.
 import { median } from "./stats";
-import type { InsightRun } from "./types";
+import type { UsableRun } from "./types";
 
 /** 습도 3단: 0 = 50% 미만 · 1 = 50~75% · 2 = 75% 초과. null 은 중간 단 */
 export type HumidityLevel = 0 | 1 | 2;
@@ -24,7 +24,7 @@ export interface WeatherPoint {
   distanceM: number;
 }
 
-export function weatherPoints(runs: readonly InsightRun[]): WeatherPoint[] {
+export function weatherPoints(runs: readonly UsableRun[]): WeatherPoint[] {
   return runs.flatMap((r) =>
     r.tempC === null ? [] : [{ id: r.id, ymd: r.ymd, year: r.year, tempC: r.tempC, humidityPct: r.humidityPct, humidity: humidityLevel(r.humidityPct), pace: r.avgPace, distanceM: r.distanceM }],
   );
