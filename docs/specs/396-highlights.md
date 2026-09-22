@@ -75,7 +75,7 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 
 **E. 커버리지 띠 (`/history` 연 뷰)**
 - [ ] F19 `src/lib/history/coverage.ts` — `getCoverageRanges()` (prisma 집계 8종, MCP 에서 이동) + 순수 `buildCoverageStrip(ranges, ctx)` → 소스별 `{ id, label, oldest, newest, count, startPct, endPct }` (하한 ~ 오늘 축 기준). MCP `coverage.ts` 는 `getCoverageRanges` 를 import 해 기존 반환 shape (`types` · `syncCoverage` · `_context`) 유지 — `verify:mcp-long-history` 무변경 통과
-- [ ] F20 `CoverageStrip` 컴포넌트 — `/history/[year]` 의 `MetricPicker` 아래 · `KpiRow` 위. 접힌 한 줄 `데이터 범위 2020-06-16 ~ 2026-09-21 · 활동 2,332 · 일간 · 수면 · 체중 · 피트니스` + 네이티브 `<details>` 로 펼치면 소스별 가로 막대 (하한 → 오늘 축, 무채색 · 지표 색 없음). 표시 소스 6: 활동 (러닝 건수 병기) · 일간 · 수면 · 심박 · 체중 · 피트니스 지표. 혈압은 사용자 수동 입력이라 제외
+- [ ] F20 `CoverageStrip` 컴포넌트 — `/history/[year]` 의 `MetricPicker` 아래 · `KpiRow` 위. 접힌 한 줄 `2020.06 ~ 2026.09 · 활동 2,332건 · 일간 요약 … ` + 네이티브 `<details>` 로 펼치면 소스별 가로 막대 (하한 → 오늘 축, 무채색 · 지표 색 없음). 표시 소스 8: 활동 (러닝 건수 병기) · 일간 요약 · 수면 · 체중 · 피트니스 지표 · **야간 HRV** (`SleepRecord.hrvOvernight not null`) · **혈압** · **식단** (`FoodLog`). 기존 5개 소스는 실데이터에서 전부 2020-06 시작이라 막대가 똑같다 — 범위가 실제로 다른 뒤 3개가 띠에 정보를 준다 (시안 결정 6)
 - [ ] F21 `getCachedCoverage()` — `cache().get("coverage", …)`. 월 · 일 뷰에는 넣지 않는다
 
 **공통**
@@ -159,7 +159,7 @@ function toChartMarkers(events, bucketKeys: readonly string[], granularity): { l
 
 ### 4.7 커버리지 (`coverage.ts`)
 
-MCP `getDataCoverage()` 의 `Promise.all` 9개 중 집계 8개를 `src/lib/history/coverage.ts` `getCoverageRanges()` 로 옮긴다 (`Range { oldest, newest, count }` 그대로). `syncMetadata` 조회 · `syncCoverage` · `_context` 문구 · `MAX_QUERY_DAYS` 는 MCP 에 남는다. `buildCoverageStrip(ranges, { lowerBound, today })` 는 `startPct = days(lowerBound → oldest) / days(lowerBound → today) × 100` — `oldest < lowerBound` 면 0 (하한은 5개 모델 최초일이라 원칙적으로 없지만 심박 · 혈압은 하한 계산에 안 들어간다).
+MCP `getDataCoverage()` 의 `Promise.all` 9개 중 집계 8개를 `src/lib/history/coverage.ts` `getCoverageRanges()` 로 옮기고 (`Range { oldest, newest, count }` 그대로), 웹 띠용으로 HRV (`sleepRecord` where `hrvOvernight not null`) · `foodLog` 집계 2개를 더한다 — MCP 반환에는 넣지 않는다 (도구 shape 무변경). `syncMetadata` 조회 · `syncCoverage` · `_context` 문구 · `MAX_QUERY_DAYS` 는 MCP 에 남는다. `buildCoverageStrip(ranges, { lowerBound, today })` 는 `startPct = days(lowerBound → oldest) / days(lowerBound → today) × 100` — `oldest < lowerBound` 면 0 (하한은 5개 모델 최초일이라 원칙적으로 없지만 심박 · 혈압은 하한 계산에 안 들어간다).
 
 ### 4.8 `trends-params`
 
