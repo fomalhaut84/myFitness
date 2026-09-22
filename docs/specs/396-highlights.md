@@ -39,7 +39,7 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 
 ## 3. 요구사항
 
-> **구현 완료 (PR 대기, 2026-09-22).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다.
+> **구현 완료 (PR #412 · v2.33.0, 2026-09-22).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다.
 
 **A. `Activity.eventType` 승격 (스키마 · 싱크 · 백필)**
 - [x] F1 `Activity.eventType String?` + `@@index([eventType, startTime])`. 값은 Garmin `eventType.typeKey` **원문 그대로** (`race` · `training` · `uncategorized` …), 없으면 `null`. 수동 SQL 마이그레이션 (`prisma-drift-fix`) — `routeTag` 선례 그대로 nullable · additive
@@ -246,3 +246,7 @@ vitest:
   - info 미반영 4: MCP 도구가 안 쓰는 HRV · 식단 집계 2건도 매번 실행 (스펙 §4.7 선택 — 집계 8→10, 도구 호출 빈도 낮음) · 백필 `parseArg` 가 값 누락 시 다음 플래그를 값으로 (running-dynamics 선례 그대로 · 죽으므로 데이터 사고 아님) · 커버리지 축 라벨 등간격 vs 퍼센트 막대 오차 (정보성 띠) · 포인트 클릭 마우스 전용 + YoY 키보드 경로 없음 → **후속 이슈**
 - Codex bot 1회차 (PR #412, 2026-09-22): P0/P1 0 · P2 2 → 반영. (1) 식단 커버리지가 `FoodLog` 행 수 (하루 여러 끼) 를 `일` 로 표기 → KST 고유 일수 (`distinctDayRange`, 회귀 `coverage.test.ts`) (2) 러닝 건수가 `contains: "running"` 만 써서 `virtual_run` · `obstacle_run` 누락 (MCP 원본 로직 그대로였음) → `RUNNING_ACTIVITY_WHERE` 공용 (개인 기록과 같은 조건 — MCP `get_data_coverage` 의 running 카운트도 같이 정확해진다). P2 만 반영이라 재리뷰 요청 없음
 - Codex bot 2회차 (push 자동 재리뷰): P0/P1 0 · P2 2 → 반영. (1) 진행 중 버킷의 끝이 미래라 내일 시작하는 플랜이 이벤트 목록 · 마커에 올라옴 → 이벤트 조회 상한을 오늘로 (2) 개인 기록 직접 조회 (버킷 · 최장 · 레이스 · VO2max · RHR) 에 [하한, 오늘] 경계가 없어 하한 이전 행이 기록이 될 수 있음 (프로덕션은 하한 = 최초 기록일이라 해당 없음) → `within` 범위. **종료 판단**: P2 만 2라운드 연속 — 이 PR 에서의 반영은 여기까지. 이후 자동 재리뷰가 P2 이하만 내면 후속 이슈로 트래킹 (push 없음)
+- Codex bot 3회차 (push 자동 재리뷰): P0/P1 0 · P2 1 → **후속 #414** (미반영). 이미 싱크된 과거 활동을 Garmin 에서 레이스로 바꿔도 증분 싱크 (`lastSyncDate + 1` 부터) 가 다시 가져오지 않는다 — 레이스 표의 "다음 싱크에 반영" 문구는 새 활동에만 참. 재조회 경로 + 문구 정정을 #414 로
+- **최종**: 사전 critical/major 0/0 · 봇 P0/P1 0/0 · info 11건 (반영 7 · 후속 #413 1 · 미반영 3) · 봇 P2 5건 (반영 4 · 후속 #414 1)
+- 릴리즈 PR #415 (v2.33.0): Codex 👍 (지적 없음)
+- **배포 후 확인 (v2.33.0, 2026-09-22)**: Deploy success (마이그레이션 자동 적용) · 프로덕션 백필 완료 · 사용자 실데이터 확인 완료 (개인 기록 · 레이스 표 · 마커 · 커버리지 띠)
