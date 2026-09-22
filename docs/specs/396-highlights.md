@@ -244,4 +244,4 @@ vitest:
   - major 2: 레이스 목록이 거리 0 · 페이스 없는 레이스를 `toRunningRow` 필터로 조용히 버려 건수가 틀림 (F8 "전부" 위반) → `RaceRow` (거리 · 페이스 옵셔널) + 표에서 `—`. 회귀 `records.test.ts` (`toRaceRow`)
   - info 반영 7: 페이스 표기 통일 (`4'49"` — `@/lib/format`) · records ↔ cache 순환 import (로더 주입) · `러닝 1,957건` 단위 · React key (index) · `rankRunningRecords` 의 죽은 `longest` 제거 · 이벤트 조회 범위를 버킷 스팬으로 (첫 버킷이 하한 앞으로 걸칠 때) · 커버리지 축 같은 해 방어
   - info 미반영 4: MCP 도구가 안 쓰는 HRV · 식단 집계 2건도 매번 실행 (스펙 §4.7 선택 — 집계 8→10, 도구 호출 빈도 낮음) · 백필 `parseArg` 가 값 누락 시 다음 플래그를 값으로 (running-dynamics 선례 그대로 · 죽으므로 데이터 사고 아님) · 커버리지 축 라벨 등간격 vs 퍼센트 막대 오차 (정보성 띠) · 포인트 클릭 마우스 전용 + YoY 키보드 경로 없음 → **후속 이슈**
-- Codex bot: 리뷰 대기
+- Codex bot 1회차 (PR #412, 2026-09-22): P0/P1 0 · P2 2 → 반영. (1) 식단 커버리지가 `FoodLog` 행 수 (하루 여러 끼) 를 `일` 로 표기 → KST 고유 일수 (`distinctDayRange`, 회귀 `coverage.test.ts`) (2) 러닝 건수가 `contains: "running"` 만 써서 `virtual_run` · `obstacle_run` 누락 (MCP 원본 로직 그대로였음) → `RUNNING_ACTIVITY_WHERE` 공용 (개인 기록과 같은 조건 — MCP `get_data_coverage` 의 running 카운트도 같이 정확해진다). P2 만 반영이라 재리뷰 요청 없음

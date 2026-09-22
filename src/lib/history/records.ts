@@ -7,7 +7,7 @@
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 import { RACE_EVENT_TYPE } from "@/lib/garmin/parse-event-type";
-import { RUNNING_TYPES } from "@/lib/activity/running-types";
+import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
 import { type Bucket, bucketOf } from "@/lib/running/buckets";
 import { getHistorySummary, type HistorySummary, type SummaryBucket } from "./summary";
 import type { SummaryParams } from "./summary-params";
@@ -141,8 +141,6 @@ const ACTIVITY_SELECT = {
   eventType: true,
 } as const;
 
-/** `isRunningType` 의 "이름에 running 포함" 규칙과 같은 조건을 DB 에서 — 통합 셋 + `contains: "running"`. */
-const RUNNING_WHERE = { OR: [{ activityType: { in: [...RUNNING_TYPES] } }, { activityType: { contains: "running" } }] };
 
 export type SummaryLoader = (params: SummaryParams, ctx: { lowerBound: string; today: string }) => Promise<HistorySummary>;
 
@@ -153,11 +151,11 @@ export async function getPersonalRecords(
 ): Promise<PersonalRecords> {
   const [bucketRows, longestRow, raceRows, vo2, rhr, monthly] = await Promise.all([
     prisma.activity.findMany({
-      where: { AND: [RUNNING_WHERE, { distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
+      where: { AND: [RUNNING_ACTIVITY_WHERE, { distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
       select: ACTIVITY_SELECT,
     }),
     prisma.activity.findFirst({
-      where: { AND: [RUNNING_WHERE, { distance: { not: null }, avgPace: { not: null } }] },
+      where: { AND: [RUNNING_ACTIVITY_WHERE, { distance: { not: null }, avgPace: { not: null } }] },
       orderBy: [{ distance: "desc" }, { startTime: "asc" }],
       select: ACTIVITY_SELECT,
     }),

@@ -4,6 +4,7 @@
  */
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
+import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
 import { diffDaysYmd } from "./buckets";
 
 export interface CoverageRange {
@@ -34,8 +35,9 @@ const DATE_AGG = { _min: { date: true }, _max: { date: true }, _count: { _all: t
 export async function getCoverageRanges(): Promise<CoverageRanges> {
   const [activity, running, daily, sleep, hr, body, bp, fm, hrv, food] = await Promise.all([
     prisma.activity.aggregate({ _min: { startTime: true }, _max: { startTime: true }, _count: { _all: true } }),
+    // PR #412 Codex P2: `contains: "running"` 만으로는 virtual_run · obstacle_run 이 빠진다 — 개인 기록과 같은 조건
     prisma.activity.aggregate({
-      where: { activityType: { contains: "running" } },
+      where: RUNNING_ACTIVITY_WHERE,
       _min: { startTime: true },
       _max: { startTime: true },
       _count: { _all: true },
@@ -47,7 +49,8 @@ export async function getCoverageRanges(): Promise<CoverageRanges> {
     prisma.bloodPressure.aggregate(DATE_AGG),
     prisma.fitnessMetricDaily.aggregate(DATE_AGG),
     prisma.sleepRecord.aggregate({ where: { hrvOvernight: { not: null } }, ...DATE_AGG }),
-    prisma.foodLog.aggregate(DATE_AGG),
+    // PR #412 Codex P2: FoodLog 는 하루 여러 끼 (date 는 시각) — 행 수가 아니라 KST 고유 일수를 센다 (띠 단위가 `일`)
+    prisma.foodLog.findMany({ select: { date: true } }),
   ]);
   return {
     activities: {
@@ -61,8 +64,16 @@ export async function getCoverageRanges(): Promise<CoverageRanges> {
     blood_pressure: toRange(bp._min.date, bp._max.date, bp._count._all),
     fitness_metrics: toRange(fm._min.date, fm._max.date, fm._count._all),
     hrv: toRange(hrv._min.date, hrv._max.date, hrv._count._all),
-    food_log: toRange(food._min.date, food._max.date, food._count._all),
+    food_log: distinctDayRange(food.map((f) => f.date)),
   };
+}
+
+/** 시각 열 (하루 여러 행) → KST 고유 일수 범위. */
+export function distinctDayRange(dates: readonly Date[]): CoverageRange {
+  const days = new Set(dates.map((d) => ymdKST(d)));
+  if (days.size === 0) return { oldest: null, newest: null, count: 0 };
+  const sorted = [...days].sort();
+  return { oldest: sorted[0], newest: sorted[sorted.length - 1], count: sorted.length };
 }
 
 export type CoverageSourceId = "activities" | "daily_stats" | "sleep" | "body_composition" | "fitness_metrics" | "hrv" | "blood_pressure" | "food_log";

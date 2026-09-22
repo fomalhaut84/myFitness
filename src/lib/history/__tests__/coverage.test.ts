@@ -1,6 +1,6 @@
 // #396 (M15-4): 커버리지 띠 shape (순수).
 import { describe, expect, it } from "vitest";
-import { buildCoverageStrip, type CoverageRanges } from "../coverage";
+import { buildCoverageStrip, distinctDayRange, type CoverageRanges } from "../coverage";
 
 const r = (oldest: string | null, newest: string | null, count: number) => ({ oldest, newest, count });
 const ranges: CoverageRanges = {
@@ -37,5 +37,19 @@ describe("buildCoverageStrip", () => {
   it("데이터가 하루뿐이면 (span 0) 0 으로", () => {
     const strip = buildCoverageStrip(ranges, { lowerBound: "2026-09-21", today: "2026-09-21" });
     expect(strip.rows[0].startPct).toBe(0);
+  });
+});
+
+// 회귀: PR #412 Codex P2 — 식단은 하루 여러 끼라 행 수가 일수처럼 읽혔다
+describe("distinctDayRange", () => {
+  it("같은 KST 날의 여러 행은 하루로 센다 · UTC 경계 (KST 자정 전후) 는 KST 기준", () => {
+    const range = distinctDayRange([
+      new Date("2026-05-02T00:30:00+09:00"),
+      new Date("2026-05-02T12:00:00+09:00"),
+      new Date("2026-05-02T23:50:00+09:00"),
+      new Date("2026-05-03T00:10:00+09:00"), // UTC 로는 5/2 15:10 — KST 로 5/3
+    ]);
+    expect(range).toEqual({ oldest: "2026-05-02", newest: "2026-05-03", count: 2 });
+    expect(distinctDayRange([])).toEqual({ oldest: null, newest: null, count: 0 });
   });
 });
