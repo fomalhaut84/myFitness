@@ -37,8 +37,15 @@ export async function loadHistoryEvents(range: { from: string; to: string }): Pr
   });
   const metricEvents = changes.map((c): HistoryEvent => {
     const label = METRIC_FIELD_LABELS[c.field as (typeof MARKER_METRIC_FIELDS)[number]] ?? c.field;
-    const fmt = (v: number | null) => (v === null ? "—" : String(Math.round(v)));
-    return { kind: "metric", ymd: ymdKST(c.changedAt), endYmd: null, title: `${label} ${fmt(c.oldValue)} → ${fmt(c.newValue)}`, detail: null, href: PROFILE_PATH };
+    const fmt = (v: number) => String(Math.round(v));
+    // oldValue null = 처음 설정 · newValue null = 삭제 (profile-history.ts 규칙)
+    const title =
+      c.oldValue === null && c.newValue !== null
+        ? `${label} ${fmt(c.newValue)} (처음 설정)`
+        : c.newValue === null && c.oldValue !== null
+          ? `${label} ${fmt(c.oldValue)} 삭제`
+          : `${label} ${c.oldValue === null ? "—" : fmt(c.oldValue)} → ${c.newValue === null ? "—" : fmt(c.newValue)}`;
+    return { kind: "metric", ymd: ymdKST(c.changedAt), endYmd: null, title, detail: null, href: PROFILE_PATH };
   });
   const planEvents = plans.map((p): HistoryEvent => {
     const distance = p.targetDistance ? PLAN_DISTANCE_LABELS[p.targetDistance] ?? p.targetDistance : null;

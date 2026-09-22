@@ -94,14 +94,15 @@ export default function TrendSeriesChart({ points, metric, color, showBand, unit
             tickFormatter={(v) => formatAxisValue(metric, v)}
           />
           {points.filter((p) => p.yearStart).map((p) => (
-            <ReferenceLine key={p.key} x={p.key} stroke="#2a2a2a" strokeDasharray="2 3" />
+            <ReferenceLine key={p.key} x={p.key} stroke="#2a2a2a" strokeDasharray="2 3" pointerEvents="none" />
           ))}
           {/* #396: 플랜 밴드는 데이터 아래 (막대 색이 탁해지지 않게), 마커 선은 데이터 위 — 렌더 순서로 층을 나눈다 */}
           {markers?.bands.map((b) => (
-            <ReferenceArea key={`band-${b.fromKey}-${b.event.title}`} x1={b.fromKey} x2={b.toKey} fill={MARKER_COLORS.plan} fillOpacity={PLAN_BAND_OPACITY} stroke="none" />
+            <ReferenceArea key={`band-${b.fromKey}-${b.event.title}`} x1={b.fromKey} x2={b.toKey} fill={MARKER_COLORS.plan} fillOpacity={PLAN_BAND_OPACITY} stroke="none" pointerEvents="none" />
           ))}
           <Tooltip
-            cursor={{ fill: "#ffffff", fillOpacity: 0.04, stroke: "#333333" }}
+            // #396: 커서 (컬럼 하이라이트) 가 막대 · 점 위에 그려져 클릭을 가로챈다 — 포인터 이벤트를 끈다
+            cursor={{ fill: "#ffffff", fillOpacity: 0.04, stroke: "#333333", pointerEvents: "none" }}
             content={({ active, payload }) => {
               const p = active ? (payload?.[0]?.payload as Row | undefined) : undefined;
               if (!p) return null;
@@ -155,8 +156,9 @@ export default function TrendSeriesChart({ points, metric, color, showBand, unit
               }
               dot={({ cx, cy, payload, index }: { cx?: number; cy?: number; payload: Row; index: number }) => {
                 if (cx === undefined || cy === undefined || payload.value === null) return <g key={index} />;
-                if (payload.lowCoverage) return <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={color} strokeWidth={1.5} />;
-                return showDots ? <circle key={index} cx={cx} cy={cy} r={2.2} fill={color} /> : <g key={index} />;
+                if (payload.lowCoverage)
+                  return <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={color} strokeWidth={1.5} onClick={() => go(payload)} />;
+                return showDots ? <circle key={index} cx={cx} cy={cy} r={2.2} fill={color} onClick={() => go(payload)} /> : <g key={index} />;
               }}
             />
           )}
@@ -167,6 +169,8 @@ export default function TrendSeriesChart({ points, metric, color, showBand, unit
               stroke={l.race ? MARKER_COLORS.race : MARKER_COLORS.metric}
               strokeWidth={l.race ? 1.5 : 1}
               strokeDasharray={l.race ? undefined : "3 3"}
+              // 마커 선은 막대 위에 그려진다 — 포인터 이벤트를 끄지 않으면 마커가 있는 버킷은 클릭이 안 된다
+              pointerEvents="none"
               label={
                 l.label
                   ? ({ viewBox }: { viewBox?: { x?: number; y?: number } }) =>

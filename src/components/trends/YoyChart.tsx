@@ -73,7 +73,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
               tickFormatter={(v) => formatAxisValue(metric, v)}
             />
             <Tooltip
-              cursor={{ stroke: "#333333" }}
+              cursor={{ stroke: "#333333", pointerEvents: "none" }}
               content={({ active, payload, label }) => {
                 if (!active || !payload) return null;
                 const row = payload[0]?.payload as Row | undefined;
@@ -110,7 +110,17 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                   dataKey={`y${year}`}
                   stroke={stroke}
                   strokeWidth={current ? 2.6 : 1.4}
-                  dot={current ? { r: 3, fill: stroke, strokeWidth: 0 } : false}
+                  // 올해의 정적 점은 활성 점보다 위층이라 클릭을 받는다 — 점 자체에 링크를 건다
+                  dot={
+                    current
+                      ? ({ cx, cy, payload, index }: { cx?: number; cy?: number; payload?: Row; index: number }) =>
+                          cx === undefined || cy === undefined || !payload || typeof payload[`y${year}`] !== "number" ? (
+                            <g key={index} />
+                          ) : (
+                            <circle key={index} cx={cx} cy={cy} r={3} fill={stroke} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
+                          )
+                      : false
+                  }
                   activeDot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: Row }) =>
                     cx === undefined || cy === undefined || !payload ? (
                       <g />
@@ -132,7 +142,7 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                     cx === undefined || cy === undefined || payload[`y${year}`] !== null || payload[`p${year}`] === null ? (
                       <g key={index} />
                     ) : (
-                      <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={stroke} strokeWidth={1.5} />
+                      <circle key={index} cx={cx} cy={cy} r={3.5} fill="#161616" stroke={stroke} strokeWidth={1.5} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
                     )
                   }
                   activeDot={false}

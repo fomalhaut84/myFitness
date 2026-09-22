@@ -50,7 +50,7 @@ export default function SeasonalityChart({ months, metric, color, currentYear }:
             tickFormatter={(v) => formatAxisValue(metric, v)}
           />
           <Tooltip
-            cursor={{ fill: "#ffffff", fillOpacity: 0.04 }}
+            cursor={{ fill: "#ffffff", fillOpacity: 0.04, pointerEvents: "none" }}
             content={({ active, payload }) => {
               const row = active ? (payload?.[0]?.payload as Row | undefined) : undefined;
               if (!row) return null;
