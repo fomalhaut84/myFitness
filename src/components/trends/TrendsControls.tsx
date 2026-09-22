@@ -2,6 +2,7 @@
 // (`/history` 와 공용) · 단위/기간 = 세그먼트. 뷰에 의미 없는 컨트롤은 숨긴다. 전부 링크 (서버 네비게이션).
 import Link from "next/link";
 import MetricPicker from "@/components/history/MetricPicker";
+import MarkerGlyph from "./MarkerGlyph";
 import {
   buildTrendsHref,
   type TrendsContext,
@@ -22,6 +23,7 @@ const VIEWS: readonly { id: TrendsView; label: string; question: string }[] = [
   { id: "yoy", label: "전년 동기", question: "연도끼리 겹치기" },
   { id: "season", label: "계절성", question: "몇 월에 어떤가" },
   { id: "compare", label: "기간 비교", question: "두 구간 나란히" },
+  { id: "records", label: "개인 기록", question: "역대 최고는?" },
 ];
 const UNITS: readonly { id: TrendsUnit; label: string }[] = [
   { id: "week", label: "주" },
@@ -88,14 +90,28 @@ export default function TrendsControls({ query, ctx, color }: TrendsControlsProp
           );
         })}
       </nav>
-      <MetricPicker hrefFor={(id) => buildTrendsHref(query, { metric: id }, ctx)} selected={query.metric} />
+      {/* #396: 개인 기록 뷰는 지표와 무관 — 지표 pill 도 숨긴다 */}
+      {query.view !== "records" && <MetricPicker hrefFor={(id) => buildTrendsHref(query, { metric: id }, ctx)} selected={query.metric} />}
       {query.view === "series" && (
-        <div className="mb-[18px] flex flex-wrap gap-3">
+        <div className="mb-[18px] flex flex-wrap items-center gap-3">
           <Segment label="단위" options={UNITS} selected={query.unit} hrefFor={(unit) => buildTrendsHref(query, { unit }, ctx)} />
           {/* 연 단위는 항상 전체 기간 (6년 = 막대 7개) — 기간 선택이 의미가 없어 숨긴다 */}
           {query.unit !== "year" && (
             <Segment label="기간" options={RANGES} selected={query.range} hrefFor={(range) => buildTrendsHref(query, { range }, ctx)} />
           )}
+          {/* #396: 마커 토글. 지표 pill 과 같은 형태지만 색 점 대신 글리프, 켜짐은 지표색이 아니라 밝은 테두리 — 마커는 무채색 */}
+          <Link
+            href={buildTrendsHref(query, { marks: !query.marks }, ctx)}
+            scroll={false}
+            role="switch"
+            aria-checked={query.marks}
+            className={`flex items-center gap-[7px] rounded-full border px-3 py-[5px] text-[13px] sm:ml-auto ${
+              query.marks ? "border-border-hover bg-surface text-bright" : "border-border text-sub hover:text-bright"
+            }`}
+          >
+            <MarkerGlyph kind="race" />
+            이벤트 마커
+          </Link>
         </div>
       )}
     </div>

@@ -4,7 +4,9 @@
 // 연도마다 색을 주면 범례를 읽어야 하는 무지개가 된다. 범례 버튼으로 연도를 켜고 끈다 (client state, URL 에 넣지 않음).
 // 합계형의 미완결 월 (이번 달 · 하한이 걸친 첫 달) 은 점선 + 속 빈 점 — 부분 합계가 "적게 뛴 달" 로 읽히지 않게.
 import { useState } from "react";
+import { useRouter } from "next/navigation";
 import { CartesianGrid, Line, LineChart, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { historyMetricQuery, historyMonthPath } from "@/lib/history/route-params";
 import { buildYoyRows, PARTIAL_LABELS, type YearPivot, type YoyRow } from "@/lib/history/trends";
 import {
   CHART_AXIS_TICK,
@@ -36,7 +38,11 @@ function yearColor(year: number, years: readonly number[], currentYear: number, 
 
 export default function YoyChart({ pivot, metric, color, currentYear }: YoyChartProps) {
   const [hidden, setHidden] = useState<ReadonlySet<number>>(new Set());
+  const router = useRouter();
   const isSum = metric.aggregate === "sum";
+  // #396: 점 클릭 → 그 연도 · 달의 월 뷰 (선택 지표 유지)
+  const goMonth = (year: number, month: number) =>
+    router.push(`${historyMonthPath(`${year}-${String(month).padStart(2, "0")}`)}${historyMetricQuery(metric.id)}`);
 
   const rows = buildYoyRows(pivot, metric);
   const visible = pivot.years.filter((y) => !hidden.has(y));
@@ -105,7 +111,13 @@ export default function YoyChart({ pivot, metric, color, currentYear }: YoyChart
                   stroke={stroke}
                   strokeWidth={current ? 2.6 : 1.4}
                   dot={current ? { r: 3, fill: stroke, strokeWidth: 0 } : false}
-                  activeDot={{ r: 4 }}
+                  activeDot={({ cx, cy, payload }: { cx?: number; cy?: number; payload?: Row }) =>
+                    cx === undefined || cy === undefined || !payload ? (
+                      <g />
+                    ) : (
+                      <circle cx={cx} cy={cy} r={4} fill={stroke} style={{ cursor: "pointer" }} onClick={() => goMonth(year, payload.month)} />
+                    )
+                  }
                   connectNulls={false}
                   isAnimationActive={false}
                 />,

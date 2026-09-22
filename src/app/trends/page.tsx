@@ -4,7 +4,11 @@ import type { ReactNode } from "react";
 import { metricColor } from "@/components/history/metric-colors";
 import CompareTable from "@/components/trends/CompareTable";
 import ComparePeriodForm from "@/components/trends/ComparePeriodForm";
+import EventList from "@/components/trends/EventList";
+import MarkerGlyph from "@/components/trends/MarkerGlyph";
+import RaceTable from "@/components/trends/RaceTable";
 import ReadoutRow, { type Readout } from "@/components/trends/ReadoutRow";
+import RecordsPanel from "@/components/trends/RecordsPanel";
 import SeasonalityChart from "@/components/trends/SeasonalityChart";
 import TrendSeriesChart from "@/components/trends/TrendSeriesChart";
 import TrendsControls from "@/components/trends/TrendsControls";
@@ -12,7 +16,9 @@ import YoyChart from "@/components/trends/YoyChart";
 import { aggregateCaption } from "@/components/trends/chart-format";
 import { todayKSTString } from "@/lib/garmin/utils";
 import type { HistoryGranularity } from "@/lib/history/buckets";
-import { getCachedHistorySummary, getCachedLowerBound, getCachedRangeTotals } from "@/lib/history/cache";
+import { getCachedHistorySummary, getCachedLowerBound, getCachedPersonalRecords, getCachedRangeTotals } from "@/lib/history/cache";
+import { loadHistoryEvents } from "@/lib/history/events";
+import { toChartMarkers } from "@/lib/history/markers";
 import { buildCompareRows, compareMetricIds, needsPerMonth } from "@/lib/history/compare";
 import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import { getHistoryMetric, type HistoryMetricDef } from "@/lib/history/metrics";
@@ -78,8 +84,14 @@ function pointReadout(label: string, point: TrendPoint | null, def: HistoryMetri
 
 async function SeriesView({ query, ctx, def, color }: ViewProps) {
   const range = resolveTrendsRange(query.range, query.unit, ctx);
-  const [summary, whole] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id])]);
+  const [summary, whole, events] = await Promise.all([
+    loadSummary(query.unit, range, def, ctx),
+    getCachedRangeTotals(range, [def.id]),
+    // #396: 이벤트 마커. 캐시하지 않는다 — 레이스 · 플랜 · 지표 변경은 행 수가 적고 (6년 30건 안팎) 수동 쓰기가 잦다
+    query.marks ? loadHistoryEvents(range) : Promise.resolve([]),
+  ]);
   const points = toTrendPoints(summary.buckets, def, query.unit, ctx);
+  const markers = query.marks ? toChartMarkers(events, points.map((p) => p.key), query.unit) : undefined;
   const { best, worst } = summarizeSeries(points, def);
   const unitLabel = UNIT_LABELS[query.unit];
   const wholeValue = whole.values[def.id]?.value ?? null;
@@ -91,10 +103,19 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
     <>
       <Panel title={def.label} note={`${unitLabel} 단위${unit ? ` (${unit})` : ""}`} caption={aggregateCaption(def)}>
         {points.some((p) => p.value !== null) ? (
-          <TrendSeriesChart points={points} metric={def} color={color} showBand={def.aggregate === "avg" && def.withMinMax} unitLabel={unitLabel} />
+          <TrendSeriesChart
+            points={points}
+            metric={def}
+            color={color}
+            showBand={def.aggregate === "avg" && def.withMinMax}
+            unitLabel={unitLabel}
+            markers={markers}
+            clickTarget={query.unit === "year" ? "연 뷰" : "월 뷰"}
+          />
         ) : (
           <EmptyChart message="이 기간에는 기록이 없습니다. 기간을 넓히거나 다른 지표를 골라 보세요." />
         )}
+        {markers && <MarkerKeys unitLabel={unitLabel} yearUnit={query.unit === "year"} />}
         <Keys
           items={[
             ...(hasLowCoverage ? [`${isSum ? "흐린 막대" : "속 빈 점"} = 기록이 절반 미만인 ${unitLabel}`] : []),
@@ -114,6 +135,43 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
           pointReadout(`가장 낮은 ${unitLabel}`, worst, def),
         ]}
       />
+      {query.marks && <EventList events={events} />}
+    </>
+  );
+}
+
+/** #396: 마커 범례 — 글리프가 곧 배지 (이벤트 목록과 같은 모양). 연 단위에서는 플랜 밴드를 그리지 않는다 (한 해를 덮는다). */
+function MarkerKeys({ unitLabel, yearUnit }: { unitLabel: string; yearUnit: boolean }) {
+  return (
+    <ul className="mt-2.5 flex flex-wrap gap-x-3.5 gap-y-1 text-[11px] text-sub">
+      <li className="flex items-center gap-1.5">
+        <MarkerGlyph kind="race" />
+        레이스
+      </li>
+      <li className="flex items-center gap-1.5">
+        <MarkerGlyph kind="metric" />
+        maxHR · LTHR 변경
+      </li>
+      {yearUnit ? (
+        <li className="text-dim">플랜 기간은 연 단위에서 목록에만</li>
+      ) : (
+        <li className="flex items-center gap-1.5">
+          <MarkerGlyph kind="plan" />
+          트레이닝 플랜 기간
+        </li>
+      )}
+      <li className="text-dim">한 {unitLabel}에 여럿이면 R+1 · ×2</li>
+    </ul>
+  );
+}
+
+/** #396: 개인 기록 — 지표 · 단위 · 기간과 무관한 화면. */
+async function RecordsView({ ctx }: ViewProps) {
+  const records = await getCachedPersonalRecords(ctx);
+  return (
+    <>
+      <RecordsPanel records={records} lowerBound={ctx.lowerBound} />
+      <RaceTable races={records.races} />
     </>
   );
 }
@@ -217,7 +275,7 @@ interface ViewProps {
   color: string;
 }
 
-const VIEW_COMPONENTS = { series: SeriesView, yoy: YoyView, season: SeasonView, compare: CompareView } as const;
+const VIEW_COMPONENTS = { series: SeriesView, yoy: YoyView, season: SeasonView, compare: CompareView, records: RecordsView } as const;
 
 export default async function TrendsPage({ searchParams }: PageProps) {
   const raw = await searchParams;
