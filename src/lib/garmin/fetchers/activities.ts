@@ -5,6 +5,7 @@ import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
 import { parseRunningDynamics } from "@/lib/garmin/parse-running-dynamics";
+import { parseEventType } from "@/lib/garmin/parse-event-type";
 
 const PAGE_SIZE = 20;
 
@@ -58,6 +59,8 @@ export async function syncActivities(
 
       const data = {
         activityType: a.activityType?.typeKey ?? "unknown",
+        // #396: eventType 승격 (race · training · uncategorized …). update 에도 넣어 Garmin 에서 나중에 레이스로 바꿔도 반영.
+        eventType: parseEventType(raw),
         name: a.activityName ?? "Untitled",
         startTime: activityDate,
         duration: Math.round(a.duration ?? 0),

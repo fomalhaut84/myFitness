@@ -10,7 +10,7 @@ import { addMonthsYm, daysInYm, isValidYm } from "./month-cells";
 
 export const TRENDS_PATH = "/trends";
 
-export const TRENDS_VIEWS = ["series", "yoy", "season", "compare"] as const;
+export const TRENDS_VIEWS = ["series", "yoy", "season", "compare", "records"] as const;
 export type TrendsView = (typeof TRENDS_VIEWS)[number];
 
 export const TRENDS_UNITS = ["week", "month", "year"] as const;
@@ -46,6 +46,8 @@ export interface TrendsQuery {
   /** 비교 구간 A (기준 — 기본은 1년 전 같은 달들) · B (대상 — 기본은 직전 완결 3개월). 표는 B − A */
   a: MonthRange;
   b: MonthRange;
+  /** #396: 시계열 이벤트 마커. 기본 켜짐 — `marks=0` 만 끈다 */
+  marks: boolean;
 }
 
 type RawQuery = Record<string, string | string[] | undefined>;
@@ -124,6 +126,7 @@ export function parseTrendsQuery(raw: RawQuery, ctx: TrendsContext): TrendsQuery
     range: oneOf(first(raw.range), TRENDS_RANGES, DEFAULT_TRENDS_RANGE),
     a: parseMonthRange(first(raw.a), ctx) ?? defaults.a,
     b: parseMonthRange(first(raw.b), ctx) ?? defaults.b,
+    marks: first(raw.marks) !== "0",
   };
 }
 
@@ -155,6 +158,7 @@ export function buildTrendsHref(query: TrendsQuery, patch: Partial<TrendsQuery>,
   // 단위 · 기간은 시계열 전용이지만 다른 탭에 다녀와도 유지되도록 항상 싣는다
   if (next.unit !== DEFAULT_TRENDS_UNIT) params.set("unit", next.unit);
   if (next.range !== DEFAULT_TRENDS_RANGE) params.set("range", next.range);
+  if (!next.marks) params.set("marks", "0");
   if (next.view === "compare") {
     const defaults = defaultCompareRanges(ctx);
     if (formatMonthRange(next.a) !== formatMonthRange(defaults.a)) params.set("a", formatMonthRange(next.a));

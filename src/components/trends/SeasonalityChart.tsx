@@ -2,7 +2,9 @@
 
 // #395 (M15-3): 계절성 — 월별 대표값 (합계형 막대 / 그 외 굵은 가로선) 위에 해마다의 점. 올해 점만 지표색.
 // 12개 막대만 두면 평균 뒤의 편차가 안 보인다. 점은 선 없는 Line (연도별) 으로 그린다 — 카테고리 축에서 가장 안정적.
+import { useRouter } from "next/navigation";
 import { Bar, CartesianGrid, ComposedChart, Line, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
+import { historyMetricQuery, historyMonthPath } from "@/lib/history/route-params";
 import type { SeasonalityMonth } from "@/lib/history/trends";
 import {
   CHART_AXIS_TICK,
@@ -23,6 +25,7 @@ interface SeasonalityChartProps {
 type Row = { month: number; value: number | null; years: number } & Record<string, number | null>;
 
 export default function SeasonalityChart({ months, metric, color, currentYear }: SeasonalityChartProps) {
+  const router = useRouter();
   const isSum = metric.aggregate === "sum";
   const years = [...new Set(months.flatMap((m) => m.points.map((p) => p.year)))].sort((a, b) => a - b);
   const rows: Row[] = months.map((m) => {
@@ -47,7 +50,7 @@ export default function SeasonalityChart({ months, metric, color, currentYear }:
             tickFormatter={(v) => formatAxisValue(metric, v)}
           />
           <Tooltip
-            cursor={{ fill: "#ffffff", fillOpacity: 0.04 }}
+            cursor={{ fill: "#ffffff", fillOpacity: 0.04, pointerEvents: "none" }}
             content={({ active, payload }) => {
               const row = active ? (payload?.[0]?.payload as Row | undefined) : undefined;
               if (!row) return null;
@@ -96,7 +99,23 @@ export default function SeasonalityChart({ months, metric, color, currentYear }:
               strokeWidth={0}
               isAnimationActive={false}
               activeDot={false}
-              dot={{ r: 2.6, fill: year === currentYear ? color : "#8f8f8f", fillOpacity: year === currentYear ? 1 : 0.55, strokeWidth: 0 }}
+              // #396: 해마다의 점 클릭 → 그 연도 · 달의 월 뷰
+              dot={({ cx, cy, payload, index }: { cx?: number; cy?: number; payload?: Row; index: number }) =>
+                cx === undefined || cy === undefined || !payload || typeof payload[`y${year}`] !== "number" ? (
+                  <g key={index} />
+                ) : (
+                  <circle
+                    key={index}
+                    cx={cx}
+                    cy={cy}
+                    r={2.6}
+                    fill={year === currentYear ? color : "#8f8f8f"}
+                    fillOpacity={year === currentYear ? 1 : 0.55}
+                    style={{ cursor: "pointer" }}
+                    onClick={() => router.push(`${historyMonthPath(`${year}-${String(payload.month).padStart(2, "0")}`)}${historyMetricQuery(metric.id)}`)}
+                  />
+                )
+              }
             />
           ))}
         </ComposedChart>

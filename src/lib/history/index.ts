@@ -12,8 +12,40 @@ export * from "./month-cells";
 export * from "./route-params";
 export * from "./format";
 export * from "./kpi";
-export { bumpHistoryCacheVersion, getCachedHistorySummary, getCachedLowerBound, getCachedRangeTotals } from "./cache";
+export {
+  bumpHistoryCacheVersion,
+  getCachedCoverageRanges,
+  getCachedHistorySummary,
+  getCachedLowerBound,
+  getCachedPersonalRecords,
+  getCachedRangeTotals,
+} from "./cache";
 // #395 (M15-3)
 export * from "./range-totals";
 export * from "./trends-params";
 export * from "./trends";
+// #396 (M15-4)
+export { buildCoverageStrip, getCoverageRanges, type CoverageRange, type CoverageRanges, type CoverageStrip, type CoverageStripRow } from "./coverage";
+export { loadHistoryEvents } from "./events";
+export {
+  EVENT_KIND_LABELS,
+  markerLabel,
+  raceDetail,
+  toChartMarkers,
+  type ChartMarkerBand,
+  type ChartMarkerLine,
+  type ChartMarkers,
+  type HistoryEvent,
+  type HistoryEventKind,
+} from "./markers";
+export {
+  RECORD_BUCKETS,
+  bestRunningMonth,
+  firstExtreme,
+  getPersonalRecords,
+  rankRunningRecords,
+  type BestMonth,
+  type DatedValue,
+  type PersonalRecords,
+  type RunningRecordRow,
+} from "./records";

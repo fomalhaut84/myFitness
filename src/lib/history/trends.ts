@@ -9,7 +9,7 @@
  */
 import { addDaysYmd, type HistoryGranularity } from "./buckets";
 import type { HistoryMetricDef } from "./metrics";
-import { historyMonthPath, historyYearPath } from "./route-params";
+import { historyDayPath, historyMetricQuery, historyMonthPath, historyYearPath } from "./route-params";
 import type { SummaryBucket } from "./summary";
 
 export const LOW_COVERAGE_RATIO = 0.5;
@@ -85,11 +85,20 @@ export function formatBucketLabel(key: string, granularity: HistoryGranularity):
   }
 }
 
-function bucketHref(bucket: SummaryBucket, granularity: HistoryGranularity): string {
-  if (granularity === "year") return historyYearPath(Number(bucket.key));
-  // 주 버킷은 월 경계를 걸칠 수 있다 — 주의 가운데 날 (목요일) 이 속한 달로 보낸다
+/**
+ * 버킷 → `/history` 대응 레벨 링크. **선택 지표를 쿼리로 싣는다** — 없으면 체중 추이에서 눌러도 기본 지표로 열린다
+ * (릴리즈 PR #409 Codex P2 · #396). 일 버킷은 일 뷰, 주 버킷은 월 경계를 걸칠 수 있어 주의 가운데 날 (목요일) 이 속한 달로.
+ */
+export function bucketHref(
+  bucket: Pick<SummaryBucket, "key" | "start">,
+  granularity: HistoryGranularity,
+  def: Pick<HistoryMetricDef, "id">,
+): string {
+  const query = historyMetricQuery(def.id);
+  if (granularity === "year") return `${historyYearPath(Number(bucket.key))}${query}`;
+  if (granularity === "day") return `${historyDayPath(bucket.start)}${query}`;
   const anchor = granularity === "week" ? addDaysYmd(bucket.start, 3) : bucket.start;
-  return historyMonthPath(anchor.slice(0, 7));
+  return `${historyMonthPath(anchor.slice(0, 7))}${query}`;
 }
 
 export function toTrendPoints(
@@ -113,7 +122,7 @@ export function toTrendPoints(
       totalDays: bucket.totalDays,
       lowCoverage: isLowCoverage(def, coveredDays, bucket.totalDays),
       partial: partialReason(bucket, ctx),
-      href: bucketHref(bucket, granularity),
+      href: bucketHref(bucket, granularity, def),
     };
   });
 }
