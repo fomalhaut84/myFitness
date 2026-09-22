@@ -39,3 +39,14 @@ describe("efficiencyByYear", () => {
     expect(efficiencyDelta(rows.slice(0, 1))).toBeNull();
   });
 });
+
+// 회귀: 사전 리뷰 major 1 — 올해 구간 러닝이 5건 미만이면 마지막 유효 해는 올해가 아니다. 화면은 lastYear 를 읽어야 한다
+describe("efficiencyDelta · 올해가 유효하지 않을 때", () => {
+  it("lastYear = 평균이 있는 마지막 해 (올해 n=3 → 지난해)", () => {
+    const five = (year: number, hr: number) => Array.from({ length: 5 }, (_, i) => run(`${year}-03-0${i + 1}`, { avgHR: hr }));
+    const thisYear = [run("2026-01-05", { avgHR: 140 }), run("2026-02-05", { avgHR: 141 }), run("2026-03-05", { avgHR: 142 })];
+    const rows = efficiencyByYear(efficiencyPoints([...five(2021, 158), ...five(2025, 150), ...thisYear]), undefined, [2021, 2025, 2026]);
+    expect(rows[2]).toEqual({ year: 2026, n: 3, avgHr: null });
+    expect(efficiencyDelta(rows)).toEqual({ firstYear: 2021, lastYear: 2025, from: 158, to: 150, delta: -8 });
+  });
+});

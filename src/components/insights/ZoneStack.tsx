@@ -4,13 +4,13 @@
 // 존 없는 달 = 빈 칸, 존 있는 러닝이 절반 미만 = 흐림 (#395 저커버리지), 이번 달 = 점선 (#395 미완결).
 import { Bar, BarChart, CartesianGrid, Cell, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import { CHART_AXIS_TICK, CHART_GRID_STROKE, CHART_TOOLTIP_CLASS } from "@/components/trends/chart-format";
-import { formatClock } from "@/lib/format";
+import { formatDuration } from "@/lib/format";
 import type { ZoneMonth } from "@/lib/insights/zones";
 
 import { ZONE_COLORS, ZONE_NAMES } from "./zone-colors";
 const OPACITY = { normal: 0.85, low: 0.28, current: 0.45 } as const;
 
-type Row = { key: string; z1: number; z2: number; z3: number; z4: number; z5: number; month: ZoneMonth };
+type Row = { key: string; z1: number; z2: number; z3: number; z4: number; z5: number; empty: number; month: ZoneMonth };
 
 export default function ZoneStack({ months }: { months: readonly ZoneMonth[] }) {
   const rows: Row[] = months.map((m) => ({
@@ -20,6 +20,8 @@ export default function ZoneStack({ months }: { months: readonly ZoneMonth[] }) 
     z3: m.share?.[2] ?? 0,
     z4: m.share?.[3] ?? 0,
     z5: m.share?.[4] ?? 0,
+    // 러닝은 있는데 존이 없는 달 = 점선 빈 칸 ("기록 없음 = 뚫린 칸"). 러닝도 없는 달은 그냥 공백
+    empty: m.share === null && m.runs > 0 ? 1 : 0,
     month: m,
   }));
   const byKey = new Map(rows.map((r) => [r.key, r]));
@@ -63,7 +65,7 @@ export default function ZoneStack({ months }: { months: readonly ZoneMonth[] }) 
                           존 {z + 1} {name}
                         </span>
                         <span className="font-[family-name:var(--font-geist-mono)] text-bright">
-                          {Math.round((m.share as number[])[z] * 100)}% · {formatClock((m.seconds as number[])[z])}
+                          {Math.round((m.share as number[])[z] * 100)}% · {formatDuration((m.seconds as number[])[z])}
                         </span>
                       </div>
                     ))
@@ -79,6 +81,7 @@ export default function ZoneStack({ months }: { months: readonly ZoneMonth[] }) 
               );
             }}
           />
+          <Bar dataKey="empty" stackId="zones" isAnimationActive={false} fill="none" stroke="#2a2a2a" strokeDasharray="2 3" />
           {(["z1", "z2", "z3", "z4", "z5"] as const).map((k, z) => (
             <Bar key={k} dataKey={k} stackId="zones" isAnimationActive={false}>
               {rows.map((r) => (

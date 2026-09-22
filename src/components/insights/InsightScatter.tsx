@@ -14,6 +14,8 @@ export interface ScatterPoint {
   /** 툴팁 줄 (첫 줄이 제목) */
   lines: readonly string[];
   href: string | null;
+  /** 이 계열의 토글이 아니라 다른 계열의 토글을 따르는 점 (레이스 점 → 연도) */
+  toggleId?: string;
 }
 
 export interface ScatterSeries {
@@ -41,12 +43,17 @@ interface InsightScatterProps {
   toggle: boolean;
 }
 
+/** 점 반지름 — 폰 2 · 데스크톱 2.4 (CSS `r` 로, 속성은 폴백) */
 const DOT_R = 2.4;
+const DOT_CLASS = "[r:2px] sm:[r:2.4px]";
+const HOLLOW_CLASS = "[r:3px] sm:[r:3.4px]";
 
 export default function InsightScatter({ series, x, y, ariaLabel, toggle }: InsightScatterProps) {
   const router = useRouter();
   const [hidden, setHidden] = useState<ReadonlySet<string>>(new Set());
-  const visible = series.filter((s) => !hidden.has(s.id));
+  const visible = series
+    .filter((s) => !hidden.has(s.id))
+    .map((s) => ({ ...s, points: s.points.filter((p) => p.toggleId === undefined || !hidden.has(p.toggleId)) }));
 
   function flip(id: string) {
     setHidden((prev) => {
@@ -115,10 +122,11 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
                   const go = () => {
                     if (payload.href) router.push(payload.href);
                   };
+                  const cursor = payload.href ? "pointer" : "default";
                   return s.hollow ? (
-                    <circle cx={cx} cy={cy} r={DOT_R + 1} fill="#161616" stroke={s.color} strokeWidth={1.4} style={{ cursor: "pointer" }} onClick={go} />
+                    <circle cx={cx} cy={cy} r={DOT_R + 1} className={HOLLOW_CLASS} fill="#161616" stroke={s.color} strokeWidth={1.4} style={{ cursor }} onClick={go} />
                   ) : (
-                    <circle cx={cx} cy={cy} r={DOT_R} fill={s.color} fillOpacity={0.7} style={{ cursor: "pointer" }} onClick={go} />
+                    <circle cx={cx} cy={cy} r={DOT_R} className={DOT_CLASS} fill={s.color} fillOpacity={0.7} style={{ cursor }} onClick={go} />
                   );
                 }}
               />

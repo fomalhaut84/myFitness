@@ -41,39 +41,45 @@
 
 ## 3. 요구사항
 
+> **구현 완료 (PR 대기, 2026-09-22).** 아래 문구는 착수 시점의 요구사항이고, 구현이 달라진 항목은 ↳ 로 표시했다.
+
 **라우트 · 컨트롤**
-- [ ] F1 `/insights` 단일 페이지 (`force-dynamic` 서버 컴포넌트) · 사이드바 "분석" ("추이" 아래). 기간은 항상 **전체** (하한 ~ 오늘) — 산점도는 6년이 한 번에 보여야 연도 차이가 보인다. 컨트롤은 각 패널의 **연도 토글** (client state · URL 에 넣지 않음, YoY 와 같은 규칙) 뿐
-- [ ] F2 러닝 활동 조회는 한 번 (`loadInsightRuns`): `isRunningType` · `startTime ∈ [하한, 오늘]` · select `startTime, distance, duration, avgPace, avgHR, weatherTempC, weatherHumidityPct, zoneDistribution, eventType`. `getCachedInsightRuns()` 로 캐시 (기존 키 규칙 — 싱크 stamp · 수동 쓰기 버전)
-- [ ] F3 산점도 공통 필터: `distance ≥ 3,000m` (짧은 워밍업 · 트랙 반복이 점을 흐린다) · `avgPace ∈ [150, 900]` 초/km (GPS 튐 방어). 제외 건수를 캡션에 (`2,155건 중 2,010건`)
+- [x] F1 `/insights` 단일 페이지 (`force-dynamic` 서버 컴포넌트) · 사이드바 "분석" ("추이" 아래). 기간은 항상 **전체** (하한 ~ 오늘) — 산점도는 6년이 한 번에 보여야 연도 차이가 보인다. 컨트롤은 각 패널의 **연도 토글** (client state · URL 에 넣지 않음, YoY 와 같은 규칙) 뿐
+- [x] F2 러닝 활동 조회는 한 번 (`loadInsightRuns`): `isRunningType` · `startTime ∈ [하한, 오늘]` · select `startTime, distance, duration, avgPace, avgHR, weatherTempC, weatherHumidityPct, zoneDistribution, eventType`. `getCachedInsightRuns()` 로 캐시 (기존 키 규칙 — 싱크 stamp · 수동 쓰기 버전)
+- [x] F3 산점도 공통 필터: `distance ≥ 3,000m` (짧은 워밍업 · 트랙 반복이 점을 흐린다) · `avgPace ∈ [150, 900]` 초/km (GPS 튐 방어). 제외 건수를 캡션에 (`2,155건 중 2,010건`)
 
 **A. 효율 산점도 — "같은 페이스, 더 낮은 심박?"**
-- [ ] F4 x = 평균 페이스 (초/km, **빠를수록 오른쪽** — 축 반전, 라벨 `5'00"`), y = 평균 심박 (bpm). 점 = 러닝 1건, **연도별 색 = YoY 규칙** (올해 지표색 `#f87171` 계열이 아니라 **심박 색** `#f87171` 굵게, 과거는 회색 사다리). 레이스는 속 빈 점
-- [ ] F5 판독값: **기준 페이스 구간** (5'00"~5'30"/km — 상수 1곳, 사용자 평균 페이스 근처) 의 **연도별 평균 심박** 표 (`2021 158 · 2022 155 · … · 2026 149`, n 병기). 구간에 5건 미만인 해는 `—`. 답이 되는 숫자 하나: "올해 vs 첫 해 −N bpm"
-- [ ] F6 순수: `efficiencyPoints(runs)` · `efficiencyByYear(points, band)` (`src/lib/insights/efficiency.ts`)
+- [x] F4 x = 평균 페이스 (초/km, **빠를수록 오른쪽** — 축 반전, 라벨 `5'00"`), y = 평균 심박 (bpm). 점 = 러닝 1건, **연도별 색 = YoY 규칙** (올해 지표색 `#f87171` 계열이 아니라 **심박 색** `#f87171` 굵게, 과거는 회색 사다리). 레이스는 속 빈 점
+- [x] F5 판독값: **기준 페이스 구간** (5'00"~5'30"/km — 상수 1곳, 사용자 평균 페이스 근처) 의 **연도별 평균 심박** 표 (`2021 158 · 2022 155 · … · 2026 149`, n 병기). 구간에 5건 미만인 해는 `—`. 답이 되는 숫자 하나: "올해 vs 첫 해 −N bpm"
+  - ↳ 표의 열은 러닝이 있는 해 전부 (구간에 러닝이 없는 해는 `—` n=0) — 기준 구간에 해당하는 해가 없어도 열이 비지 않게
+- [x] F6 순수: `efficiencyPoints(runs)` · `efficiencyByYear(points, band)` (`src/lib/insights/efficiency.ts`)
 
 **B. 기온 vs 페이스 — "여름이 페이스를 얼마나 깎나?"**
-- [ ] F7 x = 기온 (°C, `weatherTempC` — 체감 아님, 손목 온도 아님: memory `project_weather_wrist_separation`), y = 평균 페이스 (축 반전, 빠를수록 위). 점 색 = **습도 3단** (`< 50%` 어둡게 · `50~75%` · `> 75%` 밝게 — 단일 색조 `#fbbf24` 램프 · 범례). 습도 null 은 중간 단
-- [ ] F8 판독값: **5°C 구간별 중앙값 페이스** (`< 5 · 5~10 · … · 25~30 · ≥ 30`), n 병기, 5건 미만 구간 `—`. 답이 되는 숫자: "30°C 이상 vs 10~15°C +N초/km"
-- [ ] F9 순수: `weatherPoints(runs)` · `paceByTempBin(points)` (`src/lib/insights/weather.ts`). 중앙값 (평균 아님 — 이상치)
+- [x] F7 x = 기온 (°C, `weatherTempC` — 체감 아님, 손목 온도 아님: memory `project_weather_wrist_separation`), y = 평균 페이스 (축 반전, 빠를수록 위). 점 색 = **습도 3단** (`< 50%` 어둡게 · `50~75%` · `> 75%` 밝게 — 단일 색조 `#fbbf24` 램프 · 범례). 습도 null 은 중간 단
+- [x] F8 판독값: **5°C 구간별 중앙값 페이스** (`< 5 · 5~10 · … · 25~30 · ≥ 30`), n 병기, 5건 미만 구간 `—`. 답이 되는 숫자: "30°C 이상 vs 10~15°C +N초/km"
+- [x] F9 순수: `weatherPoints(runs)` · `paceByTempBin(points)` (`src/lib/insights/weather.ts`). 중앙값 (평균 아님 — 이상치)
 
 **C. 월별 HR 존 분포 — "강도 배분이 달라졌나?"**
-- [ ] F10 x = 월 (존이 있는 첫 달 ~ 이번 달, 빈 달 포함), y = 존 1~5 **시간 비율 (100% 스택)**. 색 = 활동 상세의 존 5색 그대로 (범주 색이라 "한 화면 한 지표 색" 예외 — 앱 안에서 이미 의미가 붙은 색). 툴팁 = 존별 시간 (h:mm) · 비율 · 존 있는 러닝 n/전체
-- [ ] F11 **커버리지**: 존이 있는 러닝이 그 달 러닝의 절반 미만이면 막대 흐리게 (#395 저커버리지 규칙 재사용, 기준 0.5 상수 공유). 러닝 0건 달은 빈 칸. 캡션에 `존 분포는 2024-12 부터` (실데이터 시작일 — 하드코딩 아님, 데이터에서)
-- [ ] F12 판독값: 최근 12개월 vs 그 전 12개월의 **존 1~2 비율** (이지 비율) · 존 4~5 비율. 답이 되는 문장: "이지 비율 62% → 71%"
-- [ ] F13 순수: `zoneShareByMonth(runs, ctx)` · `zoneShareCompare(months)` (`src/lib/insights/zones.ts`). 월 키 = `bucketKeyOf(ymd, "month")` (KST)
+- [x] F10 x = 월 (존이 있는 첫 달 ~ 이번 달, 빈 달 포함), y = 존 1~5 **시간 비율 (100% 스택)**. 색 = 활동 상세의 존 5색 그대로 (범주 색이라 "한 화면 한 지표 색" 예외 — 앱 안에서 이미 의미가 붙은 색). 툴팁 = 존별 시간 (h:mm) · 비율 · 존 있는 러닝 n/전체
+- [x] F11 **커버리지**: 존이 있는 러닝이 그 달 러닝의 절반 미만이면 막대 흐리게 (#395 저커버리지 규칙 재사용, 기준 0.5 상수 공유). 러닝 0건 달은 빈 칸. 캡션에 `존 분포는 2024-12 부터` (실데이터 시작일 — 하드코딩 아님, 데이터에서)
+- [x] F12 판독값: 최근 12개월 vs 그 전 12개월의 **존 1~2 비율** (이지 비율) · 존 4~5 비율. 답이 되는 문장: "이지 비율 62% → 71%"
+- [x] F13 순수: `zoneShareByMonth(runs, ctx)` · `zoneShareCompare(months)` (`src/lib/insights/zones.ts`). 월 키 = `bucketKeyOf(ymd, "month")` (KST)
 
 **D. 주간 km → 다음 주 안정시 심박 — "많이 뛴 다음 주에 심박이 오르나?"**
-- [ ] F14 주 버킷 summary (`runningKm` 합 · `restingHR` 평균, 전체 기간) → 쌍 `(km[w], rhr[w+1])`. **미완결 주 · RHR 커버리지 절반 미만 주 · 결측 제외**. x = 주간 km, y = 다음 주 평균 RHR. 점 색 = 연도 (YoY 규칙, 심박 색)
-- [ ] F15 판독값: **피어슨 r** — 지연 0 (같은 주) · 지연 1 (다음 주) · 지연 2, n 병기. 절대값 0.1 미만 "관계 없음" · 0.1~0.3 "약함" · 0.3 이상 "있음" 문구 (통계 검정 아님 — 캡션에 명시). 주간 km 를 **4분위** 로 나눈 다음 주 RHR 평균 표 (`0~20km 49 · 20~35 50 · …`)
-- [ ] F16 순수: `lagPairs(weeks, lag)` · `pearson(pairs)` · `quartileTable(pairs)` (`src/lib/insights/lag.ts`)
+- [x] F14 주 버킷 summary (`runningKm` 합 · `restingHR` 평균, 전체 기간) → 쌍 `(km[w], rhr[w+1])`. **미완결 주 · RHR 커버리지 절반 미만 주 · 결측 제외**. x = 주간 km, y = 다음 주 평균 RHR. 점 색 = 연도 (YoY 규칙, 심박 색)
+  - ↳ 산점도 점 클릭은 없음 (한 주는 활동 1건이 아니다) — `href: null`
+- [x] F15 판독값: **피어슨 r** — 지연 0 (같은 주) · 지연 1 (다음 주) · 지연 2, n 병기. 절대값 0.1 미만 "관계 없음" · 0.1~0.3 "약함" · 0.3 이상 "있음" 문구 (통계 검정 아님 — 캡션에 명시). 주간 km 를 **4분위** 로 나눈 다음 주 RHR 평균 표 (`0~20km 49 · 20~35 50 · …`)
+- [x] F16 순수: `lagPairs(weeks, lag)` · `pearson(pairs)` · `quartileTable(pairs)` (`src/lib/insights/lag.ts`)
 
 **공통**
-- [ ] F17 각 패널 = 질문 제목 + 한 줄 설명 + 차트 + 판독값 띠 (`ReadoutRow` 재사용 · 표는 `CompareTable` 톤). 연도 토글은 YoY 의 범례 버튼 (`aria-pressed`)
-- [ ] F18 산점도 접근성: `role="img"` + 판독값 · 표가 같은 정보를 글자로. 점 클릭 → 활동 상세 (`/activities/<id>`) — 기록 페이지가 아니라 활동 1건이 대상. 정적 점 자체에 onClick (#396 교훈: 활성 점만으로는 안 된다) · 툴팁 커서 `pointer-events: none`
-- [ ] F19 한국어 UI · 다크 · 360px (차트 220px · 산점도 점 r 2 · 판독값 1열) · 단위 규칙 (페이스 `m'ss"` · bpm 정수 · °C 소수 없음 · km 소수 1자리)
-- [ ] F20 KST · ymd 헬퍼만 (`ymdKST` · `bucketKeyOf`). 신규 코드에 `new Date(y, m, d)` 금지
-- [ ] F21 순수 로직 (F6 · F9 · F13 · F16 · 필터 · 습도 단 · 온도 구간 · 중앙값) 전부 vitest
-- [ ] F22 성능: 러닝 2,156행 1회 조회 + 주 summary 1회 (캐시) — 콜드 목표 1s 이내, 웜 즉시
+- [x] F17 각 패널 = 질문 제목 + 한 줄 설명 + 차트 + 판독값 띠 (`ReadoutRow` 재사용 · 표는 `CompareTable` 톤). 연도 토글은 YoY 의 범례 버튼 (`aria-pressed`)
+  - ↳ 답 구조 = `BigNumber` (26px 숫자 하나) + `ValueTable` (근거 표) · C · D 의 r 은 `ReadoutRow` 3칸 (시안 결정 1)
+- [x] F18 산점도 접근성: `role="img"` + 판독값 · 표가 같은 정보를 글자로. 점 클릭 → 활동 상세 (`/activities/<id>`) — 기록 페이지가 아니라 활동 1건이 대상. 정적 점 자체에 onClick (#396 교훈: 활성 점만으로는 안 된다) · 툴팁 커서 `pointer-events: none`
+  - ↳ 축 포맷은 함수가 아니라 이름 (`"pace" | "int" | "degrees"`, `scatter-format.ts`) — 서버 → 클라이언트 경계에서 함수를 넘길 수 없다. 존 색 · 이름 상수도 `"use client"` 없는 `zone-colors.ts` (클라이언트 모듈의 비컴포넌트 export 는 서버에서 참조 프록시)
+- [x] F19 한국어 UI · 다크 · 360px (차트 220px · 산점도 점 r 2 · 판독값 1열) · 단위 규칙 (페이스 `m'ss"` · bpm 정수 · °C 소수 없음 · km 소수 1자리)
+- [x] F20 KST · ymd 헬퍼만 (`ymdKST` · `bucketKeyOf`). 신규 코드에 `new Date(y, m, d)` 금지
+- [x] F21 순수 로직 (F6 · F9 · F13 · F16 · 필터 · 습도 단 · 온도 구간 · 중앙값) 전부 vitest
+- [x] F22 성능: 러닝 2,156행 1회 조회 + 주 summary 1회 (캐시) — 콜드 목표 1s 이내, 웜 즉시
 
 ## 4. 기술 설계
 
@@ -186,4 +192,8 @@ vitest:
 
 ## 9. 코드 리뷰 결과
 
-(구현 후 기록)
+- 사전 에이전트 리뷰 1회 (2026-09-22, pr-review-toolkit code-reviewer · worktree): critical 0 · major 1 · info 8
+  - major 1: 효율 판독값 라벨이 "올해" 로 고정 — `efficiencyDelta.lastYear` 는 **평균이 있는 마지막 해** 라 연초 · 올해 구간 러닝 5건 미만이면 올해가 아니다 (지난해 값이 올해로 읽힘) → 라벨 · 캡션이 `lastYear` 를 읽는다. 회귀 `efficiency.test.ts`
+  - info 반영 6: 클릭 불가 점의 `cursor: pointer` (D 패널) · C 패널 foot 문구 (이번 달은 비교에 포함) · 존 툴팁 시간 `Xh Xm` · 레이스 점이 연도 토글을 따르게 (`toggleId`) · 존 없는 달 점선 빈 칸 · 모바일 점 r 2 (CSS `r`) · `signed` 의 `−0.00` · 천 단위 표기
+  - info 미반영 1 → **후속 이슈**: RSC 페이로드 — 점 4,300개의 툴팁 문자열 · href 를 서버에서 직렬화 (약 400~500KB). 원시값만 넘기고 클라이언트에서 조립
+- Codex bot: 리뷰 대기

@@ -39,7 +39,13 @@ const LAGS = [0, 1, 2] as const;
 
 const km1 = (m: number) => `${(m / 1000).toFixed(1)}km`;
 const pct = (v: number | null) => (v === null ? null : `${Math.round(v * 100)}%`);
-const signed = (v: number, digits = 0) => `${v > 0 ? "+" : v < 0 ? "−" : ""}${Math.abs(v).toFixed(digits)}`;
+/** 부호 + 절대값. 반올림 결과가 0 이면 부호를 붙이지 않는다 (`−0.00` 방지) */
+const signed = (v: number, digits = 0) => {
+  const abs = Math.abs(v).toFixed(digits);
+  const sign = Number(abs) === 0 ? "" : v > 0 ? "+" : "−";
+  return `${sign}${abs}`;
+};
+const n = (v: number) => v.toLocaleString("ko-KR");
 const activityHref = (id: string) => `/activities/${id}`;
 
 function yearSeries<T extends { year: number }>(
@@ -57,7 +63,9 @@ function yearSeries<T extends { year: number }>(
   }));
   if (!race) return byYear;
   const races = items.filter(race);
-  return races.length === 0 ? byYear : [...byYear, { id: "race", label: "레이스", color: "#e5e5e5", hollow: true, points: races.map(toPoint) }];
+  if (races.length === 0) return byYear;
+  // 레이스는 계열 하나 (범례 1개) 지만 연도 토글을 따른다 — `toggleId` 로 그 해를 끄면 레이스 점도 숨는다 (사전 리뷰 info 6)
+  return [...byYear, { id: "race", label: "레이스", color: "#e5e5e5", hollow: true, points: races.map((it) => ({ ...toPoint(it), toggleId: String(it.year) })) }];
 }
 
 export default async function InsightsPage() {
@@ -72,7 +80,7 @@ export default async function InsightsPage() {
   ]);
   const { kept: runs, dropped, total } = usableRuns(allRuns);
   const years = [...new Set(runs.map((r) => r.year))].sort((a, b) => a - b);
-  const filterNote = `러닝 ${total.toLocaleString("ko-KR")}건 중 ${runs.length.toLocaleString("ko-KR")}건 (3km 미만 · 페이스 범위 밖 ${dropped}건 제외)`;
+  const filterNote = `러닝 ${n(total)}건 중 ${n(runs.length)}건 (3km 미만 · 페이스 범위 밖 ${n(dropped)}건 제외)`;
 
   // A
   const effPoints = efficiencyPoints(runs);
@@ -146,10 +154,11 @@ export default async function InsightsPage() {
         )}
         <Answer>
           <BigNumber
-            label={`${band} 구간 · 올해 vs ${effDelta?.firstYear ?? "첫 해"}`}
+            // 마지막 유효 해가 올해가 아닐 수 있다 (연초 · 올해 구간 러닝 5건 미만) — "올해" 로 단언하지 않는다 (사전 리뷰 major 1)
+            label={`${band} 구간 · ${effDelta ? (effDelta.lastYear === currentYear ? "올해" : effDelta.lastYear) : "올해"} vs ${effDelta?.firstYear ?? "첫 해"}`}
             text={effDelta ? signed(effDelta.delta) : null}
             unit="bpm"
-            caption={effDelta ? `${effDelta.from} → ${effDelta.to} bpm · 같은 페이스로 달릴 때` : "기준 구간에 5건 이상인 해가 둘 이상 필요"}
+            caption={effDelta ? `${effDelta.firstYear} ${effDelta.from} → ${effDelta.lastYear} ${effDelta.to} bpm · 같은 페이스로 달릴 때` : "기준 구간에 5건 이상인 해가 둘 이상 필요"}
           />
           <ValueTable corner="해" headers={effYears.map((y) => String(y.year))} rowLabel="평균 심박" cells={effYears.map((y) => ({ text: y.avgHr === null ? null : String(y.avgHr), n: y.n }))} />
         </Answer>
@@ -185,7 +194,7 @@ export default async function InsightsPage() {
       <InsightPanel
         question="강도 배분이 달라졌나?"
         how={`달마다 심박 존 1~5 에 머문 시간의 비율.${zoneFrom ? ` 존 분포는 ${zoneFrom} 부터 있습니다` : ""}`}
-        foot="존 있는 러닝이 그 달 러닝의 절반 미만이면 흐리게, 이번 달은 점선. 비교 값은 그런 달을 뺀 달 평균입니다."
+        foot="존 있는 러닝이 그 달 러닝의 절반 미만이면 흐리게, 존 없는 달은 점선 빈 칸, 이번 달은 점선 막대. 비교 값은 절반 미만인 달을 뺀 달 평균입니다 (이번 달은 진행 중이어도 비율은 의미가 있어 포함)."
       >
         {zoneMonths.length > 0 ? (
           <>
