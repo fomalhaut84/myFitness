@@ -51,6 +51,11 @@ export type HistoryMetricDef = HistoryMetricSource & {
    * 2026-04 부터 — Garmin 보존 창 · #431) 에만. 시작일은 `data-start.ts` 가 데이터에서 읽는다.
    */
   startNote?: string;
+  /**
+   * #442 (PR #447 Codex P2): 활동 지표의 커버리지 문구 명사. 기본 "달림" (러닝한 날) — 값이 있는 활동만 점을 내는 지표 (2분 HRR)
+   * 는 "N일 달림" 이 러닝 일수를 덜 세므로 다른 명사를 쓴다.
+   */
+  coverageNoun?: string;
 };
 
 export const HISTORY_METRIC_IDS = [
@@ -92,7 +97,7 @@ export const HISTORY_METRICS: readonly HistoryMetricDef[] = [
   { ...base, id: "intakeKcal", label: "섭취 칼로리", unit: "kcal", decimals: 0, source: "daily", field: "estimatedIntakeCalories", aggregate: "avg" },
   // #442 (M17-3): 러닝 종료 후 2분 HRR (`Activity.hrr2`, #425). 버킷 = 중앙값 (패널 E 와 동일), 띠 = 최저~최고 (인터벌 · 레이스의 큰 값이 보이게).
   // sparse — 주에 러닝 2~3건뿐인 것이 정상이라 커버리지 흐림을 적용하지 않는다. 프로덕션은 2026-04 부터 (Garmin 보존 창 · #431).
-  { ...base, id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", withMinMax: true, sparse: true, startNote: "종료 후 심박은 {from} 부터 있습니다" },
+  { ...base, id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", withMinMax: true, sparse: true, startNote: "종료 후 심박은 {from} 부터 있습니다", coverageNoun: "회복 기록" },
 ];
 
 /** `/history` 지표 선택기 기본 5개 (m15-overview D3 — 사용자 확정 2026-09-18). 나머지 selectable 지표는 "추가" 그룹. */

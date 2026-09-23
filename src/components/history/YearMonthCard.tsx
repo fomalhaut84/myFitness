@@ -19,9 +19,12 @@ function MiniCell({ cell, metric }: { cell: HistoryDayCell; metric: HistoryMetri
   return <span className="aspect-square rounded-[3px]" style={{ background: intensityBackground(metric.id, cell.level) }} />;
 }
 
-function coverageText(summary: HistoryMonthSummary, metric: HistoryMetricDef): string {
+const DEFAULT_ACTIVITY_COVERAGE_NOUN = "달림";
+
+/** 활동 지표는 "N일 달림" — 값이 있는 활동만 세는 지표 (2분 HRR) 는 정의의 `coverageNoun` (PR #447 Codex P2) */
+export function coverageText(summary: Pick<HistoryMonthSummary, "coveredDays" | "totalDays">, metric: Pick<HistoryMetricDef, "source" | "coverageNoun">): string {
   return metric.source === "activity"
-    ? `${summary.coveredDays}일 달림`
+    ? `${summary.coveredDays}일 ${metric.coverageNoun ?? DEFAULT_ACTIVITY_COVERAGE_NOUN}`
     : `${summary.coveredDays}/${summary.totalDays}일 기록`;
 }
 
