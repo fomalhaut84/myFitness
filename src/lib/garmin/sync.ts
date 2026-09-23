@@ -9,6 +9,8 @@ import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
 import { syncHeartRate } from "./fetchers/heart-rate";
+import { fillRecoveryColumns } from "@/lib/heart/fill-recovery";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { syncBodyComposition } from "./fetchers/body-composition";
 import { syncBloodPressure } from "./fetchers/blood-pressure";
 import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
@@ -295,6 +297,8 @@ export async function syncAll(
   const endDate = options?.endDate ?? todayKST();
   const dataTypes = options?.dataTypes ?? SYNC_ORDER;
   const results: SyncResult[] = [];
+  // #425: 활동 · 심박이 실제로 돈 최소 startDate — 루프 뒤 hrr2 후처리 창의 시작
+  let recoveryFrom: Date | null = null;
 
   for (const dataType of dataTypes) {
     // 초기화 여부는 lastSyncDate로 판정:
@@ -379,6 +383,9 @@ export async function syncAll(
       await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
+      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || startDate < recoveryFrom)) {
+        recoveryFrom = startDate;
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
@@ -395,6 +402,20 @@ export async function syncAll(
         () => {},
       );
       // 하나 실패해도 나머지 진행
+    }
+  }
+
+  // #425: 종료 후 심박 회복 (hrr2 · hrrDrop10) 후처리 — 심박이 SYNC_ORDER 의 마지막이라 활동 fetcher 안에서는 그 날 심박이
+  // 없을 수 있다. 창은 시작일 − 2일: 저녁 러닝 직후 싱크에서 하루치 심박이 부분이라 null 로 남은 활동을 다음 싱크 (창이 오늘뿐) 가
+  // 다시 잡게. DB 만 읽고 쓰므로 await (수 건). 실패는 로그만 — 싱크 결과에 영향 X.
+  if (recoveryFrom !== null) {
+    try {
+      const r = await fillRecoveryColumns({ from: new Date(recoveryFrom.getTime() - 2 * DAY_MS), to: new Date(endDate.getTime() + DAY_MS) });
+      if (r.candidates > 0) console.log(`[sync] hrr 후처리: 대상 ${r.candidates}, 갱신 ${r.updated}, 레코드 없음 ${r.missing}, 결측 ${r.skipped}`);
+      // 싱크 stamp 는 이미 갱신됐으므로 (updateSyncMetadata) 수동 쓰기 버전으로 캐시를 무효화한다
+      if (r.updated > 0) bumpHistoryCacheVersion();
+    } catch (hrrErr) {
+      console.error("[sync] hrr 후처리 에러:", hrrErr instanceof Error ? hrrErr.message : hrrErr);
     }
   }
 
