@@ -69,3 +69,7 @@ Activity list 응답에 있으나 컬럼 없음(rawData 에는 있음): `eventTy
 - #377 backfill 은 D-2(복원력) 없이도 청크 재시도로 동작하지만, 4.5시간 실행이므로 **D-2 를 #377 직후 우선 처리** 권장. D-3 은 backfill 이전이면 이득.
 - #378 은 C 의 `heatAltitudeAcclimation` 을 rawData 로 보존 (이미 스펙 §6).
 - 후속 이슈 후보: D-1 (HRV), D-2 (복원력), D-3+D-4 (활동 싱크/컬럼), D-5 (training daily), D-6 (race prediction).
+
+## G. 보존 창 관찰 (2026-09-23 · #431)
+
+일별 wellness 응답 (`getHeartRate` · `getSleepData`) 은 요청일 기준 **약 150일** 이전 날짜에 대해 요약 (`restingHeartRate` · 수면 시간) 은 주지만 **`heartRateValues: null` · `avgOvernightHrv` 없음** 으로 온다 (2026-09-17 기준 경계 2026-04-20). 키는 있어 `rawData ? 'key'` 로는 구분이 안 되고 `jsonb_typeof(...) = 'array'` 로 세야 한다. #377 백필 (09-17) 이 2020-06-01~ 을 재조회하며 fetcher 의 무조건 upsert 로 2025-11 ~ 2026-04-19 의 시계열 · avgHR · HRV 를 잃었다 (복구 불가). 가드: `src/lib/garmin/preserve.ts` (#431). **미확인**: `daily_stats` 의 stress/bodyBattery 상세 · `fitness_metrics` 에 같은 창이 있는지 — 다음 백필 전 `jsonb_typeof` 로 기간별 분포 확인.
