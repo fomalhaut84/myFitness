@@ -17,6 +17,8 @@ export interface FillRecoveryOptions {
   dryRun?: boolean;
   /** 상한 (백필 분할용) */
   limit?: number;
+  /** 이어가기 커서 — 이 (startTime, id) **뒤** 부터 (PR #428 Codex P2: limit 분할 실행이 매번 처음부터 돌지 않게) */
+  after?: { startTime: Date; id: string };
   batchSize?: number;
   log?: (line: string) => void;
 }
@@ -30,14 +32,16 @@ export interface FillRecoveryResult {
   missing: number;
   /** 레코드는 있으나 0 · +2 분 결측 → null 유지 (부분 데이터 · 워치 벗음) */
   skipped: number;
+  /** 마지막으로 처리한 (startTime, id) — `limit` 에 걸렸으면 다음 실행의 `after` */
+  lastCursor: { startTime: Date; id: string } | null;
 }
 
 const DEFAULT_BATCH = 200;
 
 export async function fillRecoveryColumns(opts: FillRecoveryOptions): Promise<FillRecoveryResult> {
   const batchSize = opts.batchSize ?? DEFAULT_BATCH;
-  const result: FillRecoveryResult = { candidates: 0, updated: 0, missing: 0, skipped: 0 };
-  let cursor: { startTime: Date; id: string } | undefined;
+  const result: FillRecoveryResult = { candidates: 0, updated: 0, missing: 0, skipped: 0, lastCursor: null };
+  let cursor: { startTime: Date; id: string } | undefined = opts.after;
 
   while (opts.limit === undefined || result.candidates < opts.limit) {
     const take = opts.limit === undefined ? batchSize : Math.min(batchSize, opts.limit - result.candidates);
@@ -60,6 +64,7 @@ export async function fillRecoveryColumns(opts: FillRecoveryOptions): Promise<Fi
     if (rows.length === 0) break;
     result.candidates += rows.length;
     cursor = { startTime: rows[rows.length - 1].startTime, id: rows[rows.length - 1].id };
+    result.lastCursor = cursor;
 
     const plan = planChunk(rows);
     const records = await prisma.heartRateRecord.findMany({

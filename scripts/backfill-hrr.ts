@@ -2,12 +2,13 @@
  * #425: 이미 저장된 러닝의 `hrr2` · `hrrDrop10` 을 하루치 심박 시계열 (HeartRateRecord) 에서 채운다. Garmin API 호출 0.
  *
  * 실행:
- *   npm run backfill:hrr -- [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--force] [--dry-run]
+ *   npm run backfill:hrr -- [--from YYYY-MM-DD] [--to YYYY-MM-DD] [--limit N] [--after-id <cuid>] [--force] [--dry-run]
  *
  * 옵션:
  *  --from      시작일 (KST, 포함). 기본 2020-01-01 (하한 이전은 러닝이 없다)
  *  --to        종료일 (KST, 포함). 기본 오늘
- *  --limit N   대상 상한 (분할 실행)
+ *  --limit N   대상 상한 (분할 실행). 걸렸으면 종료 시 다음 실행용 `--after-id <cuid>` 를 출력
+ *  --after-id  이 활동 (startTime, id) 뒤부터 이어간다 (PR #428 Codex P2 — 분할 실행이 매번 처음부터 돌지 않게)
  *  --force     이미 채워진 행도 다시 계산
  *  --dry-run   update 만 생략, 집계는 출력
  *
@@ -44,10 +45,17 @@ async function main() {
   const to = parseYmd(parseArg("--to"), "--to", todayKSTString());
   if (from > to) throw new Error(`--from (${from}) 이 --to (${to}) 보다 늦습니다`);
   const limit = parsePositiveInt(parseArg("--limit"), "--limit");
+  const afterId = parseArg("--after-id") || undefined;
+  let after: { startTime: Date; id: string } | undefined;
+  if (afterId) {
+    const anchor = await prisma.activity.findUnique({ where: { id: afterId }, select: { id: true, startTime: true } });
+    if (!anchor) throw new Error(`--after-id "${afterId}" 로 활동을 찾을 수 없습니다`);
+    after = anchor;
+  }
   const force = process.argv.includes("--force");
   const dryRun = process.argv.includes("--dry-run");
 
-  console.log(`[backfill:hrr] ${from} ~ ${to}${limit ? ` · limit ${limit}` : ""}${force ? " · force" : ""}${dryRun ? " · dry-run" : ""}`);
+  console.log(`[backfill:hrr] ${from} ~ ${to}${limit ? ` · limit ${limit}` : ""}${after ? ` · after ${after.id}` : ""}${force ? " · force" : ""}${dryRun ? " · dry-run" : ""}`);
   const started = Date.now();
   const result = await fillRecoveryColumns({
     from: kstDayRange(from).start,
@@ -55,11 +63,15 @@ async function main() {
     force,
     dryRun,
     limit,
+    after,
     log: (line) => console.log(line),
   });
   console.log(
     `[backfill:hrr] 완료 (${((Date.now() - started) / 1000).toFixed(1)}s) — 대상 ${result.candidates} · 갱신 ${result.updated} · 레코드 없음 ${result.missing} · 결측 ${result.skipped}${dryRun ? " (dry-run: 저장 안 함)" : ""}`,
   );
+  if (limit !== undefined && result.candidates >= limit && result.lastCursor) {
+    console.log(`[backfill:hrr] limit 도달 — 이어가려면: npm run backfill:hrr -- --from ${from} --to ${to} --limit ${limit} --after-id ${result.lastCursor.id}${force ? " --force" : ""}`);
+  }
   if (!dryRun && result.updated > 0) console.log("[backfill:hrr] 웹 캐시는 별 프로세스 — `pm2 restart` 또는 10분 뒤 반영");
 }
 
