@@ -6,4 +6,5 @@ export * from "./efficiency";
 export * from "./weather";
 export * from "./zones";
 export * from "./lag";
+export * from "./recovery";
 export { loadInsightRuns } from "./load";

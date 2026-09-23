@@ -11,3 +11,13 @@ describe("formatAxis", () => {
     expect(formatAxis("pace", NaN)).toBe("");
   });
 });
+
+// #425: 시간 축 — 소수 연도를 정수 연도로
+describe("formatAxis year", () => {
+  it("소수 연도 → 정수 연도 · 비수치는 빈 문자열", () => {
+    expect(formatAxis("year", 2024)).toBe("2024");
+    expect(formatAxis("year", 2024.53)).toBe("2024");
+    expect(formatAxis("year", 2025.999)).toBe("2025");
+    expect(formatAxis("year", "2024")).toBe("");
+  });
+});

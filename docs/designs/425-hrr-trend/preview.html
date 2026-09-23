@@ -1,0 +1,100 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>회복이 빨라졌나? — /insights 패널 E 시안 (#425)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --border:#262626; --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed;
+    --hr:#f87171; --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 "Geist",system-ui,sans-serif; }
+  .page { max-width:1040px; margin:0 auto; padding:24px 16px 80px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:20px; }
+  .panel { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:18px 18px 14px; margin-bottom:14px; }
+  .panel h2 { font-size:17px; font-weight:600; color:var(--bright); letter-spacing:-0.01em; }
+  .panel .how { font-size:12px; color:var(--sub); margin:3px 0 12px; }
+  svg { display:block; width:100%; height:auto; overflow:visible; }
+  svg text { font:10px var(--mono); fill:var(--dim); }
+  .grid-line { stroke:#1f1f1f; }
+  .legend { display:flex; flex-wrap:wrap; gap:6px; margin-top:10px; align-items:center; }
+  .legend button { display:flex; align-items:center; gap:6px; font:500 12px var(--mono); padding:4px 9px; border:1px solid var(--border); border-radius:999px; color:var(--text); background:none; cursor:pointer; }
+  .legend button i { width:8px; height:8px; border-radius:50%; background:var(--c); }
+  .legend .k { display:flex; align-items:center; gap:5px; font-size:11px; color:var(--sub); margin-left:6px; } .legend .k i { width:8px; height:8px; border-radius:50%; background:var(--c); }
+  .legend .k.hollow i { background:transparent; border:1.5px solid var(--sub); }
+  .legend .k.median i { width:10px; height:10px; background:transparent; border:1.5px solid var(--bright); }
+  .answer { display:grid; grid-template-columns:200px 1fr; gap:14px; margin-top:14px; }
+  .big { border:1px solid var(--border); border-radius:12px; padding:12px 14px; background:var(--bg); }
+  .big dt { font-size:11px; color:var(--sub); } .big dd { font:500 26px/1.2 var(--mono); color:var(--bright); margin-top:4px; letter-spacing:-0.02em; }
+  .big dd small { font:400 12px var(--mono); color:var(--sub); margin-left:4px; } .big dd span { display:block; font:400 11px "Geist",sans-serif; color:var(--sub); margin-top:4px; }
+  table { width:100%; border-collapse:collapse; } th, td { padding:6px 10px; text-align:right; border-top:1px solid var(--border); white-space:nowrap; font-size:12px; }
+  thead th { border-top:0; font-weight:500; color:var(--sub); } th:first-child, td:first-child { text-align:left; }
+  tbody th { font-weight:400; color:var(--text); font-family:var(--mono); } td { font:500 13px var(--mono); color:var(--bright); } td small { font:400 11px var(--mono); color:var(--dim); margin-left:4px; } td.na { color:var(--dim); font-weight:400; }
+  .tablewrap { border:1px solid var(--border); border-radius:12px; overflow-x:auto; background:var(--bg); }
+  .foot { font-size:11px; color:var(--dim); margin-top:8px; }
+  @media (max-width:560px) { .panel { padding:14px 10px 10px; } .panel h2 { font-size:15px; } .answer { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 #425 — `/insights` 5번째 패널. 데이터는 가짜 (시드 난수 · 해마다 HRR 이 조금씩 커지는 경향 · 2023 은 표본 부족). 하한 2020-06-16 · 오늘 2026-09-23 고정.</p>
+  <div id="app"></div>
+</div>
+<script>
+const CUR=2026, YEARS=[2020,2021,2022,2023,2024,2025,2026];
+const GRAYS=["#3a3a3a","#4a4a4a","#5c5c5c","#737373","#8f8f8f","#b0b0b0"];
+const yc=y=>y===CUR?"#f87171":GRAYS[y-2020];
+function rnd(k){let h=2166136261;for(const c of k){h^=c.charCodeAt(0);h=Math.imul(h,16777619);}h^=h>>>13;h=Math.imul(h,0x5bd1e995);return((h^(h>>>15))>>>0)/4294967296;}
+const gauss=k=>(rnd(k+"a")+rnd(k+"b")+rnd(k+"c")-1.5)*2;
+const median=a=>{if(!a.length)return null;const s=[...a].sort((x,y)=>x-y);const m=s.length>>1;return s.length%2?s[m]:(s[m-1]+s[m])/2;};
+
+// 가짜 러닝: 연도별 ~300건, 2023 은 4건 (표본 부족 → —), hrr2 = 14 + (year-2020)*1.2 + 잡음, 레이스는 크게
+const runs=[];
+for(const y of YEARS){
+  const n = y===2023 ? 4 : (y===CUR ? 210 : 300);
+  const endFrac = y===CUR ? 266/365 : 1;
+  for(let i=0;i<n;i++){
+    const f = (y===2020 ? 0.46 : 0) + rnd(`${y}-${i}`)*(endFrac-(y===2020?0.46:0));
+    const race = rnd(`r${y}-${i}`)<0.02;
+    let v = 14 + (y-2020)*1.2 + gauss(`${y}-${i}`)*4 + (race?10:0);
+    if(rnd(`n${y}-${i}`)<0.03) v = -3 + rnd(`m${y}-${i}`)*6; // 종료 뒤 심박 오른 케이스
+    runs.push({year:y, x:y+f, hrr2:Math.round(v), race});
+  }
+}
+const byYear = YEARS.map(y=>{const v=runs.filter(r=>r.year===y).map(r=>r.hrr2);return {year:y,n:v.length,med:v.length>=5?median(v):null};});
+const usable = byYear.filter(y=>y.med!==null);
+const first=usable[0], last=usable[usable.length-1];
+const delta = Math.round(last.med-first.med);
+
+function chart(){
+  const W=1000,H=320,L=36,R=12,T=10,B=24;
+  const x0=2020.3, x1=2027; const lo=-8, hi=40;
+  const xs=v=>L+(v-x0)/(x1-x0)*(W-L-R), ys=v=>T+(1-(v-lo)/(hi-lo))*(H-T-B);
+  let s=`<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="연도별 2분 HRR 산점도">`;
+  for(const t of [0,10,20,30,40]) s+=`<line class="grid-line" x1="${L}" x2="${W-R}" y1="${ys(t)}" y2="${ys(t)}"/><text x="${L-6}" y="${ys(t)+3}" text-anchor="end">${t}</text>`;
+  for(const y of YEARS){ s+=`<line class="grid-line" x1="${xs(y)}" x2="${xs(y)}" y1="${T}" y2="${H-B}"/><text x="${xs(y)}" y="${H-8}" text-anchor="middle">${y}</text>`; }
+  s+=`<line x1="${L}" x2="${W-R}" y1="${ys(0)}" y2="${ys(0)}" stroke="#333"/>`;
+  for(const r of runs){ const c=yc(r.year); s+= r.race ? `<circle cx="${xs(r.x)}" cy="${ys(r.hrr2)}" r="3.4" fill="none" stroke="#e5e5e5" stroke-width="1.2" opacity=".8"/>` : `<circle cx="${xs(r.x)}" cy="${ys(r.hrr2)}" r="2.4" fill="${c}" opacity=".7"/>`; }
+  // 연도 중앙값 — 큰 속 빈 점, 밝은 색. 이 패널의 굵은 표현
+  for(const y of byYear){ if(y.med===null) continue; s+=`<circle cx="${xs(y.year+0.5)}" cy="${ys(y.med)}" r="6" fill="#161616" stroke="#ededed" stroke-width="1.6"/>`; }
+  return s+`</svg>`;
+}
+
+document.getElementById("app").innerHTML=`
+<section class="panel">
+  <h2>회복이 빨라졌나?</h2>
+  <p class="how">점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값</p>
+  ${chart()}
+  <div class="legend">${YEARS.map(y=>`<button aria-pressed="true" style="--c:${yc(y)}"><i></i>${y}</button>`).join("")}<span class="k hollow" style="--c:#e5e5e5"><i></i>레이스</span><span class="k median"><i></i>연도 중앙값</span></div>
+  <div class="answer">
+    <dl class="big"><dt>중앙값 · ${last.year===CUR?"올해":last.year} vs ${first.year}</dt><dd>${delta>0?"+":""}${delta}<small>bpm</small><span>${first.year} ${first.med} → ${last.year} ${last.med} bpm · 2분 뒤 낙차</span></dd></dl>
+    <div class="tablewrap"><table><thead><tr><th>해</th>${byYear.map(y=>`<th>${y.year}</th>`).join("")}</tr></thead>
+    <tbody><tr><th>중앙값 HRR</th>${byYear.map(y=>y.med===null?`<td class="na">—<small>n=${y.n}</small></td>`:`<td>${y.med}<small>n=${y.n}</small></td>`).join("")}</tr></tbody></table></div>
+  </div>
+  <p class="foot">중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없는 날의 러닝은 빠집니다 (n 참조). 5건 미만인 해는 —. 0 아래는 종료 뒤 심박이 오히려 오른 러닝.</p>
+</section>`;
+</script>
+</body>
+</html>

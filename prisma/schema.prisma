@@ -110,6 +110,10 @@ model Activity {
   // #396: Garmin eventType.typeKey ("race" · "training" · "uncategorized" …) 원문. rawData 에서 승격 — 레이스 마커 · 개인 기록 배지.
   // Nullable: 기존 행은 backfill:event-type (API 호출 0), 신규 행은 sync 에서 채움.
   eventType       String?
+  // #425: 종료 후 심박 회복 (2분 HRR = 종료 − 2분 후 · 10분 낙차). #418 의 recoveryCurve 값을 승격 — 하루치 심박 시계열 (HeartRateRecord) 에서 계산, API 호출 0.
+  // Nullable: 하루 심박 없음 · 종료 후 샘플 결측 (부분 데이터) 이면 null 로 두고 다음 싱크 · backfill:hrr 이 다시 시도. 음수 = 종료 뒤 심박 상승 (필터하지 않음).
+  hrr2            Int?
+  hrrDrop10       Int?
   // #269: 손목 측정 온도 (Garmin rawData 파싱). 햇빛/의류 영향으로 실제 기상과 다를 수 있음.
   wristTempMaxC        Float?
   wristTempMinC        Float?

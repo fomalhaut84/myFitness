@@ -16,6 +16,8 @@ export interface InsightRun {
   humidityPct: number | null;
   zones: ZoneDistribution | null;
   race: boolean;
+  /** #425: 종료 후 2분 HRR (`Activity.hrr2`, 양수 = 회복). 백필 전 · 하루 심박 없음 · 결측이면 null */
+  hrr2: number | null;
 }
 
 export interface InsightContext {

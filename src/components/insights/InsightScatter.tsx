@@ -4,7 +4,7 @@
 // 점 클릭 → 활동 상세. 정적 점 자체에 onClick (#396 교훈) · 툴팁 커서는 pointer-events none.
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { CartesianGrid, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
+import { CartesianGrid, ReferenceLine, ResponsiveContainer, Scatter, ScatterChart, Tooltip, XAxis, YAxis } from "recharts";
 import { CHART_AXIS_TICK, CHART_GRID_STROKE, CHART_TOOLTIP_CLASS } from "@/components/trends/chart-format";
 import { formatAxis, type AxisFormat } from "./scatter-format";
 
@@ -24,6 +24,8 @@ export interface ScatterSeries {
   color: string;
   /** 속 빈 점 (레이스) */
   hollow?: boolean;
+  /** #425: 강조 계열 — 큰 속 빈 점 (연도 중앙값). 이 패널의 굵은 표현 하나 */
+  emphasis?: boolean;
   points: readonly ScatterPoint[];
 }
 
@@ -32,6 +34,12 @@ export interface ScatterAxis {
   reversed?: boolean;
   /** 서버 → 클라이언트 경계를 넘으므로 함수가 아니라 이름 */
   format: AxisFormat;
+  /** #425: 명시 눈금 (시간 축 — 정수 연도만) */
+  ticks?: readonly number[];
+  /** #425: 명시 도메인 — 시간 축은 [첫 해, 마지막 해 + 1] (한 해뿐이면 자동 도메인이 너무 좁다) */
+  domain?: readonly [number, number];
+  /** #425: 0 기준선 (음수 = 종료 뒤 심박 상승을 숨기지 않는다) */
+  zeroLine?: boolean;
 }
 
 interface InsightScatterProps {
@@ -47,6 +55,7 @@ interface InsightScatterProps {
 const DOT_R = 2.4;
 const DOT_CLASS = "[r:2px] sm:[r:2.4px]";
 const HOLLOW_CLASS = "[r:3px] sm:[r:3.4px]";
+const EMPHASIS_R = 6;
 
 export default function InsightScatter({ series, x, y, ariaLabel, toggle }: InsightScatterProps) {
   const router = useRouter();
@@ -73,7 +82,8 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
             <XAxis
               dataKey="x"
               type="number"
-              domain={["auto", "auto"]}
+              domain={x.domain ? [...x.domain] : ["auto", "auto"]}
+              ticks={x.ticks ? [...x.ticks] : undefined}
               reversed={x.reversed}
               axisLine={false}
               tickLine={false}
@@ -110,6 +120,7 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
                 );
               }}
             />
+            {y.zeroLine && <ReferenceLine y={0} stroke="#333333" pointerEvents="none" />}
             {visible.map((s) => (
               <Scatter
                 key={s.id}
@@ -123,6 +134,7 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
                     if (payload.href) router.push(payload.href);
                   };
                   const cursor = payload.href ? "pointer" : "default";
+                  if (s.emphasis) return <circle cx={cx} cy={cy} r={EMPHASIS_R} fill="#161616" stroke={s.color} strokeWidth={1.6} style={{ cursor }} onClick={go} />;
                   return s.hollow ? (
                     <circle cx={cx} cy={cy} r={DOT_R + 1} className={HOLLOW_CLASS} fill="#161616" stroke={s.color} strokeWidth={1.4} style={{ cursor }} onClick={go} />
                   ) : (
@@ -146,12 +158,12 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
                 hidden.has(s.id) ? "opacity-35" : ""
               }`}
             >
-              <span className="h-2 w-2 rounded-full" style={s.hollow ? { border: `1.5px solid ${s.color}` } : { background: s.color }} />
+              <span className={s.emphasis ? "h-2.5 w-2.5 rounded-full" : "h-2 w-2 rounded-full"} style={s.hollow || s.emphasis ? { border: `1.5px solid ${s.color}` } : { background: s.color }} />
               {s.label}
             </button>
           ) : (
             <span key={s.id} className="flex items-center gap-1.5 text-[11px] text-sub">
-              <span className="h-2 w-2 rounded-full" style={s.hollow ? { border: `1.5px solid ${s.color}` } : { background: s.color }} />
+              <span className={s.emphasis ? "h-2.5 w-2.5 rounded-full" : "h-2 w-2 rounded-full"} style={s.hollow || s.emphasis ? { border: `1.5px solid ${s.color}` } : { background: s.color }} />
               {s.label}
             </span>
           ),

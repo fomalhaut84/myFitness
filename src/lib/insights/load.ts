@@ -36,6 +36,7 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       weatherHumidityPct: true,
       zoneDistribution: true,
       eventType: true,
+      hrr2: true,
     },
   });
   return rows.map((r) => {
@@ -52,6 +53,7 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       humidityPct: r.weatherHumidityPct,
       zones: toZones(r.zoneDistribution),
       race: r.eventType === RACE_EVENT_TYPE,
+      hrr2: r.hrr2,
     };
   });
 }

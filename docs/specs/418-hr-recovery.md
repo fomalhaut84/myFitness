@@ -37,7 +37,9 @@ DB 에는 이미 하루치 심박 시계열 (`HeartRateRecord.rawData.heartRateV
 
 ## 3. 요구사항
 
-> **구현 (feat/418-1, 2026-09-23).** 순수 로직 vitest 14건 · 로컬 `next dev` 로 04-05 트랙 러닝 실화면 확인 (데스크톱 1040 · 폰 360, 가로 넘침 없음). 달라진 항목은 ↳.
+> **릴리즈 v2.35.0 (2026-09-23, PR #423 → 릴리즈 PR #424).** 사전 리뷰 critical 0 / major 1 / info 2 → 전부 반영 (major: 자정 직후 종료의 전날 레코드 미조회 → `recoveryDayKeys` 앞 창 + 회귀 2건). Codex bot 은 두 PR 모두 미실행. 후속 #425.
+>
+> **구현 (feat/418-1, 2026-09-23).** 순수 로직 vitest 16건 · 로컬 `next dev` 로 04-05 트랙 러닝 실화면 확인 (데스크톱 1040 · 폰 360, 가로 넘침 없음). 달라진 항목은 ↳.
 
 **순수 로직 (`src/lib/heart/recovery.ts`)**
 - [x] F1 `nearestSample(series, targetMs, toleranceMs)` — `[epochMs, bpm|null][]` 에서 목표 시각과 가장 가까운 샘플. 허용 오차 (±60초) 밖이거나 `bpm` 이 null · 0 이하면 `null`. 정렬을 가정하지 않는다 (하루 ~700개, 선형 탐색)
@@ -59,7 +61,7 @@ DB 에는 이미 하루치 심박 시계열 (`HeartRateRecord.rawData.heartRateV
 
 **디자인 · 문서**
 - [x] F11 시안 `docs/designs/418-hr-recovery/` (preview.html · design-notes.md · screenshots) — 활동 상세 카드 언어 그대로
-- [ ] F12 `docs/specs/m15-overview.md` D8 표 · 로드맵은 PR 머지 후 문서 PR 에서
+- [x] F12 `docs/specs/m15-overview.md` D8 표 · 로드맵 M16-1 — 머지 후 문서 PR
 
 ## 4. 기술 설계
 
@@ -124,7 +126,7 @@ vitest `recovery.test.ts` (실측 04-05 시계열을 픽스처로):
 
 ## 7. 제외 사항
 
-- **`/insights` 연도별 HRR 패널** — `Activity.hrr2` 컬럼 승격 (`prisma-drift-fix`) + `backfill:hrr` 스크립트 (API 호출 0 · HeartRateRecord 만 읽음) + 패널. 후속 이슈로 (이 PR 의 순수 함수를 그대로 재사용).
+- **`/insights` 연도별 HRR 패널** — `Activity.hrr2` 컬럼 승격 (`prisma-drift-fix`) + `backfill:hrr` 스크립트 (API 호출 0 · HeartRateRecord 만 읽음) + 패널. 후속 **#425** (이 PR 의 순수 함수를 그대로 재사용).
 - Garmin `recoveryTime` 보조 표기 — 로컬 전부 null. 프로덕션에 있으면 후속에서.
 - 활동 상세 엔드포인트 (초 단위) 로 1분 HRR 만들기 — 활동 구간만 담아 종료 후를 못 본다.
 - 러닝 외 활동 — 사이클 · 걷기 도 같은 계산이 되지만 러닝 중심 원칙에 따라 이번엔 러닝만.

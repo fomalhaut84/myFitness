@@ -5,7 +5,38 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-22, M15-4 하이라이트 · M15-5 `/insights` · **M15 완료** · v2.34.0 세션 종료 시점)
+## 현재 상태 (2026-09-23, M16-1 HRR · v2.35.0 배포 시점)
+
+**최근 릴리즈:** **v2.35.0** — 러닝 종료 후 심박 회복 (HRR) 활동 상세 섹션 (#418, PR #423 · 릴리즈 PR #424). main = `v2.35.0`, 배포 success (migration 없음 · 패키지 변경 없음). dev 는 문서 PR #426 (로드맵 M16-1 · D8 표 · 418 스펙 마감 · 이 절) 만 앞섬 — 런타임 동일. **다음 마일스톤은 M16** 으로 시작 (M16-1 = #418).
+
+**배포 후 프로덕션 확인 (2026-09-23):** `heartRateValues` 는 **2020-06-18 부터 2,288일** — 러닝 2,157건 전 기간 커버 ("기록 없음" 은 워치 미착용일에만). Garmin `recoveryTime` 은 **0 / 2,157** → 보조 표기 영구 제외, 2분 HRR 이 정본.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음 (#426 머지 2026-09-23).** 다음 착수 후보 (이슈 없는 항목은 표기):
+
+| 후보 | 내용 | 비고 |
+|---|---|---|
+| **#425 `/insights` 연도별 HRR** (feature · P2) | `Activity.hrr2 Int?` 승격 (수동 SQL · `prisma-drift-fix`) + 싱크 시 채움 + `backfill:hrr` (API 호출 0 · 날짜별 HeartRateRecord 1회 로드) + 5번째 패널 "회복이 빨라졌나?" (연도별 중앙값 · 5건 미만 해 —) | #418 의 `src/lib/heart/recovery.ts` 재사용 (`recoveryCurve` · `recoveryDayKeys`). 착수 시 2020~2022 샘플 간격이 2분 격자인지 확인 (`jsonb_array_length` ~700/일) — 다르면 결측률 캡션. 6년치 전부 계산 가능 (위 프로덕션 확인) |
+| **#414 과거 활동 재조회** (bug · P2) | Garmin 에서 과거 활동을 레이스로 바꿔도 증분 싱크가 다시 안 가져옴 | 최근 N일 겹침 재조회 또는 명시 명령 + 문구 정정 |
+| **#419 `/insights` 후속** (chore · P2) | RSC 페이로드 · 레이스 점 연도 색 · 제외 사유 문구 | 작음 |
+| D8 잔여 (이슈 없음 · #397 체크리스트) · 과거 존 분포 (이슈 없음) | 아래 이전 상태 표 그대로 | 착수 시 이슈 생성 |
+
+**독립 후속 (전부 P2):** #405 + #408 묶음 · #403 · #413 · #390 · #365 잔여 · #371 · #370.
+
+**이번 세션 결과 (2026-09-23):**
+- **#418 완료 (v2.35.0, PR #423)** — 스코프 분할 (활동 상세만 · 연도별 패널은 #425). `src/lib/heart/recovery.ts` 순수 (±60초 최근접 · 보간 없음 · `elapsedDuration` 벽시계 종료 · `recoveryDayKeys` 자정 앞뒤 날) + `load-recovery.ts` (활동 rawData 는 서버에서만 · 직렬화 DTO) + `RecoverySection` (2분 격자 점 · 결측 점선 빈 원 · 0 → +2 낙차 브래킷 · 판독값 2칸 양수 = 회복 · 빈 상태 3구분 · "2분 해상도"). 시안 `docs/designs/418-hr-recovery/`. 사전 리뷰 major 1 (자정 직후 종료의 전날 레코드 미조회 → 앞 창 + 회귀 2건) · info 2 반영. vitest 202 → 218건.
+- **Codex bot 이 PR #423 · 릴리즈 PR #424 모두 자동 리뷰를 붙이지 않았다** (2026-09-23). 일반 PR 은 에이전트 필수 경로라 사전 리뷰가 완료 판정, 릴리즈 PR 은 사용자가 머지 결정. 두 body 에 `봇: 미실행` 기록. 문서 PR #426 에는 붙었다 (P2 1 — 이 절 갱신).
+
+**세션 관찰:**
+- **하루치 심박 시계열은 활동 심박을 그대로 담는다** (04-05 트랙 러닝 avgHR 123 → 시계열 121~128). `Activity.startTime` 은 UTC 인스턴트 (`rawData.startTimeGMT`), `HeartRateRecord.date` 는 KST 자정 인스턴트 — psql 세션 TZ 가 Asia/Seoul 이라 `timestamp without time zone` 컬럼에 `at time zone 'Asia/Seoul'` 을 붙이면 **이중 변환**된다 (한 번 헷갈림). 비교는 `to_timestamp(ms/1000)` (timestamptz) 와 컬럼을 직접.
+- `rawData.elapsedDuration` (벽시계) 과 `duration` (타이머) 은 일시정지 시 다르다 — 시각 계산엔 elapsed.
+- 시안 · 실화면 캡처는 이전 세션의 CDP 스크립트 (`capture.mjs` · `capture-live.mjs`) 를 스크래치에 복사해 재사용. 섹션만 자르려면 `getBoundingClientRect` 로 clip 을 잡는다 (`capture-section.mjs`). 첫 실행에서 Chrome 기동 1.5초 대기가 짧아 실패할 수 있다 — 재실행하면 된다. 실패 시 디버그 포트의 Chrome 이 남으니 `lsof -ti :<port> | xargs kill`.
+- 리뷰 에이전트 worktree 는 `--detach` 를 지시해도 worktree 디렉터리와 `worktree-agent-*` 브랜치가 남는다 — `git worktree remove --force` + `branch -D` 로 정리.
+
+---
+
+## 이전 상태 (2026-09-22, M15-4 하이라이트 · M15-5 `/insights` · **M15 완료** · v2.34.0 세션 종료 시점)
 
 **최근 릴리즈:** **v2.33.0** — 하이라이트 (#396, PR #412 · `Activity.eventType` 마이그레이션 + 프로덕션 백필 완료 race 14) · **v2.34.0** — `/insights` 심화 시각화 (#397, PR #417). main = `v2.34.0`, dev 는 문서 커밋 (로드맵 · 이 인계 문서) 만 앞섬 — 런타임 동일. 둘 다 배포 success · 배포 후 사용자 실데이터 확인 완료. **M15 마일스톤 완료** (2026-09-18 ~ 09-22, v2.30.0 ~ v2.34.0, 추적 #392 닫음).
 
