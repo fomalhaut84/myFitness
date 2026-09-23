@@ -155,10 +155,13 @@ export default async function InsightsPage() {
       label: "연도 중앙값",
       color: MEDIAN_COLOR,
       emphasis: true,
-      points: hrrByYear.flatMap((y) => (y.medianHrr2 === null ? [] : [{ x: y.year + 0.5, y: y.medianHrr2, lines: [String(y.year), `중앙값 ${Math.round(y.medianHrr2)} bpm · n=${y.n}`], href: null }])),
+      // 중앙값 점도 그 해의 연도 토글을 따른다 (#429 · PR #428 Codex P2)
+      points: hrrByYear.flatMap((y) => (y.medianHrr2 === null ? [] : [{ x: y.year + 0.5, y: y.medianHrr2, lines: [String(y.year), `중앙값 ${Math.round(y.medianHrr2)} bpm · n=${y.n}`], href: null, toggleId: String(y.year) }])),
     },
   ];
   const hrrMissing = allRuns.length - hrrPoints.length;
+  // 시작일은 데이터에서 (존 패널 `zoneFrom` 규칙) — 프로덕션은 2026-04 부터 (Garmin 보존 창 · #431)
+  const hrrFrom = hrrPoints[0]?.ymd.slice(0, 7).replace("-", ".") ?? null;
 
   return (
     <div>
@@ -287,7 +290,7 @@ export default async function InsightsPage() {
       {/* #425 E — 시간 축 (소수 연도) · 연도 중앙값은 강조 계열 · 0 선 */}
       <InsightPanel
         question="회복이 빨라졌나?"
-        how="점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값, 작은 속 빈 점 = 레이스"
+        how={`점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값, 작은 속 빈 점 = 레이스.${hrrFrom ? ` 종료 후 심박은 ${hrrFrom} 부터 있습니다` : ""}`}
         foot={`중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없거나 종료 후 샘플이 빠진 러닝 ${n(hrrMissing)}건은 뺐습니다. 5건 미만인 해는 —. 0 아래는 종료 뒤 심박이 오히려 오른 러닝.`}
       >
         {hrrPoints.length > 0 ? (
