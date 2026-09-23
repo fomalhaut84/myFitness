@@ -19,28 +19,47 @@ export function withoutNulls<T extends Record<string, unknown>>(data: T): Partia
 
 const asRecord = (raw: unknown): Record<string, unknown> | null => (raw !== null && typeof raw === "object" ? (raw as Record<string, unknown>) : null);
 
-/** 심박 응답에 하루치 시계열이 있는가 (`heartRateValues` 비지 않은 배열) */
-export function hasHeartRateDetail(raw: unknown): boolean {
-  const r = asRecord(raw);
-  return r !== null && Array.isArray(r.heartRateValues) && r.heartRateValues.length > 0;
+const isPlainObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** "값 있음" — 비지 않은 배열 · 0 이 아닌 유한수 · 비지 않은 객체. 문자열 · 불리언 · 0 · 빈 컨테이너는 요약/플래그라 세지 않는다 */
+function isPresent(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "number") return Number.isFinite(v) && v !== 0;
+  if (isPlainObject(v)) return Object.keys(v).length > 0;
+  return false;
 }
 
 /**
- * 수면 응답에 상세가 있는가 — 야간 HRV (`avgOvernightHrv` 유한수) **만** 본다. `sleepLevels` 는 보존 창 밖에서도 올 수 있어
- * (Garmin Connect 는 수년 전 수면 단계도 보여 준다) OR 조건에 넣으면 HRV 없는 재조회가 rawData 를 다시 덮어쓴다 (사전 리뷰 major 1).
- * 소실이 실측된 필드만 기준으로 한다.
+ * `prev` 에 있던 값이 `next` 에서 사라졌는가 — 객체는 **재귀** (PR #436 Codex P2: `dailySleepDTO.averageSpO2Value` 처럼 중첩 필드만 빠지고
+ * 부모 객체는 비지 않은 채 오는 응답). 배열 · 수치는 잎으로 비교 (값 변경 · 길이 변경은 소실이 아니다)
  */
-export function hasSleepDetail(raw: unknown): boolean {
-  const r = asRecord(raw);
-  return r !== null && typeof r.avgOvernightHrv === "number" && Number.isFinite(r.avgOvernightHrv);
+function hasLost(prev: unknown, next: unknown): boolean {
+  if (isPlainObject(prev)) {
+    if (!isPlainObject(next)) return Object.keys(prev).some((k) => isPresent(prev[k]) || isPlainObject(prev[k]));
+    return Object.keys(prev).some((k) => hasLost(prev[k], next[k]));
+  }
+  return isPresent(prev) && !isPresent(next);
 }
 
 /**
- * upsert 의 `update` payload. null 필드는 생략하고, 응답에 상세가 없는데 기존 행에는 있으면 `rawData` 도 생략한다 (기존 유지).
- * 둘 다 상세가 없으면 rawData 는 갱신한다 — 요약이라도 최신으로. 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 첫 규칙이 뺀다.
+ * #435: 응답이 기존 rawData 보다 빈약한가 — 기존의 "값 있음" 키 (중첩 포함) 중 하나라도 응답에서 사라졌으면 (null · 없음 · 빈 배열 · 0)
+ * 보존 창 밖 재조회로 본다. 특정 필드 (`heartRateValues` · `avgOvernightHrv`) 만 보면 HRV 없는 밤의 SpO2 epochs · `sleepHeartRate`
+ * 타임라인을 놓친다 (릴리즈 PR #434 Codex P2). 값 변경 · 새 키 추가 · 요약 갱신은 trimmed 가 아니다.
+ * 단 0 아닌 수치 → 0 / null 은 trimmed 로 본다 (사전 리뷰 info 1) — 그때도 컬럼은 `withoutNulls` 로 갱신되고 rawData 만 유지된다.
  */
-export function preserveUpdate<T extends Record<string, unknown>>(data: T, ctx: { incomingDetail: boolean; existingDetail: boolean }): Partial<T> {
+export function isTrimmedResponse(incoming: unknown, existing: unknown): boolean {
+  const prev = asRecord(existing);
+  if (prev === null || !isPresent(prev)) return false;
+  if (!Object.keys(prev).some((k) => isPresent(prev[k]))) return false;
+  return hasLost(prev, incoming);
+}
+
+/**
+ * upsert 의 `update` payload. null 필드는 생략하고, 응답이 기존보다 빈약하면 (`trimmed`) `rawData` 도 생략한다 (기존 유지).
+ * 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 첫 규칙이 뺀다.
+ */
+export function preserveUpdate<T extends Record<string, unknown>>(data: T, ctx: { trimmed: boolean }): Partial<T> {
   const out = withoutNulls(data);
-  if (!ctx.incomingDetail && ctx.existingDetail) delete out.rawData;
+  if (ctx.trimmed) delete out.rawData;
   return out;
 }
