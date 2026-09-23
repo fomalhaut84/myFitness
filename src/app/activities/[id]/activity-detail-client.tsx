@@ -7,6 +7,8 @@ import DOMPurify from "dompurify";
 import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
 import SplitChart from "@/components/activity/SplitChart";
+import RecoverySection from "@/components/activity/RecoverySection";
+import type { RecoveryDTO } from "@/lib/heart/load-recovery";
 import { formatPace } from "@/lib/format";
 import { isRunningType } from "@/lib/activity/running-types";
 
@@ -66,6 +68,8 @@ interface SimilarActivity {
 
 interface Props {
   activity: ActivityData;
+  /** #418: 러닝 계열만 (null = 섹션 없음) */
+  recovery?: RecoveryDTO | null;
   similarActivities?: SimilarActivity[];
 }
 
@@ -83,6 +87,7 @@ function Stat({ label, value, unit }: { label: string; value: string; unit?: str
 
 export default function ActivityDetailClient({
   activity,
+  recovery = null,
   similarActivities = [],
 }: Props) {
   const [aiEval, setAiEval] = useState<string | null>(null);
@@ -132,6 +137,9 @@ export default function ActivityDetailClient({
           zone={activity.estimatedZone}
         />
       )}
+
+      {/* #418: 종료 후 심박 회복 (러닝 계열만 · 기록 없어도 섹션은 남긴다) */}
+      {recovery && <RecoverySection recovery={recovery} />}
 
       {/* 러닝 다이나믹스 */}
       {hasDynamics && (
