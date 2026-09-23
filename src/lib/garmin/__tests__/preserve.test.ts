@@ -1,7 +1,7 @@
 // #431: 재싱크 덮어쓰기 가드 — Garmin 보존 창 (~150일) 밖 응답 (시계열 · HRV null) 이 기존 값을 지우지 않는다.
 // 회귀: 2026-09-17 backfill:history 가 2025-11 ~ 2026-04-19 의 heartRateValues · avgHR · hrvOvernight 를 null 로 덮어씀.
 import { describe, expect, it } from "vitest";
-import { WELLNESS_RETENTION_DAYS, hasHeartRateDetail, hasSleepDetail, isTrimmedResponse, preserveUpdate, withoutNulls } from "../preserve";
+import { WELLNESS_RETENTION_DAYS, isTrimmedResponse, preserveUpdate, withoutNulls } from "../preserve";
 
 const series = [[1_775_401_200_000, 60], [1_775_401_320_000, 62]];
 
@@ -9,32 +9,6 @@ describe("withoutNulls", () => {
   it("null · undefined 키만 뺀다 — 0 · false · 빈 문자열 · 빈 배열은 남긴다", () => {
     expect(withoutNulls({ a: null, b: undefined, c: 0, d: false, e: "", f: [], g: 5 })).toEqual({ c: 0, d: false, e: "", f: [], g: 5 });
     expect(withoutNulls({})).toEqual({});
-  });
-});
-
-describe("hasHeartRateDetail / hasSleepDetail", () => {
-  it("심박: heartRateValues 가 비지 않은 배열", () => {
-    expect(hasHeartRateDetail({ heartRateValues: series })).toBe(true);
-    expect(hasHeartRateDetail({ heartRateValues: null })).toBe(false);
-    expect(hasHeartRateDetail({ heartRateValues: [] })).toBe(false);
-    expect(hasHeartRateDetail({})).toBe(false);
-    expect(hasHeartRateDetail(null)).toBe(false);
-    expect(hasHeartRateDetail("x")).toBe(false);
-  });
-
-  // 회귀: 사전 리뷰 major 1 — sleepLevels 는 보존 창 밖에서도 올 수 있어 상세 판정에 넣지 않는다
-  it("수면: avgOvernightHrv 유한수만 — sleepLevels 가 있어도 HRV 없으면 상세 없음", () => {
-    expect(hasSleepDetail({ avgOvernightHrv: 43 })).toBe(true);
-    expect(hasSleepDetail({ avgOvernightHrv: null, sleepLevels: [{ x: 1 }] })).toBe(false);
-    expect(hasSleepDetail({ avgOvernightHrv: Number.NaN })).toBe(false);
-    expect(hasSleepDetail(undefined)).toBe(false);
-  });
-
-  it("회귀: 기존 rawData 에 HRV 있음 + 응답은 sleepLevels 만 → update 에서 rawData 제외", () => {
-    const existingRaw = { avgOvernightHrv: 43, sleepLevels: [{ x: 1 }] };
-    const incoming = { hrvOvernight: null, totalSleep: 420, rawData: { avgOvernightHrv: null, sleepLevels: [{ x: 1 }] } };
-    const update = preserveUpdate(incoming, { trimmed: isTrimmedResponse(incoming.rawData, existingRaw) });
-    expect(update).toEqual({ totalSleep: 420 });
   });
 });
 
@@ -109,6 +83,19 @@ describe("isTrimmedResponse", () => {
     const existing = { calendarDate: "2026-04-05", skinTempDataExists: true, sleepScores: {}, restlessMomentsCount: 0 };
     expect(isTrimmedResponse({ calendarDate: null, skinTempDataExists: false, sleepScores: null, restlessMomentsCount: null }, existing)).toBe(false);
   });
+
+  // 사전 리뷰 info 1: 0 아닌 수치 → 0 도 trimmed (rawData 만 유지 · 컬럼은 갱신) — 의도를 고정
+  it("0 아닌 수치가 0 으로 바뀌면 trimmed", () => {
+    expect(isTrimmedResponse({ restlessMomentsCount: 0 }, { restlessMomentsCount: 5 })).toBe(true);
+  });
+
+  it("회귀: 기존 rawData 에 HRV 있음 + 응답은 sleepLevels 만 → update 에서 rawData 제외", () => {
+    const existingRaw = { avgOvernightHrv: 43, sleepLevels: [{ x: 1 }] };
+    const incoming = { hrvOvernight: null, totalSleep: 420, rawData: { avgOvernightHrv: null, sleepLevels: [{ x: 1 }] } };
+    const update = preserveUpdate(incoming, { trimmed: isTrimmedResponse(incoming.rawData, existingRaw) });
+    expect(update).toEqual({ totalSleep: 420 });
+  });
+
 });
 
 describe("preserveUpdate with trimmed", () => {
