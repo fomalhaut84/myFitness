@@ -1,6 +1,6 @@
 # [M17 #5] 리포트 근거 확장 — Phase 1: 도구 필드 · 활동 컨텍스트 도구 · 프롬프트
 
-> **초안 (2026-09-24) — 사용자 승인 전.** 항목별 채택은 기획 승인 때 확정한다.
+> **초안 (2026-09-24) — 사용자 승인 전.** 항목별 채택은 기획 승인 때 확정한다. F7 직전 4주 창은 PR #453 Codex P2 반영본.
 
 - **작성일**: 2026-09-24
 - **타입**: feature
@@ -45,7 +45,8 @@
 **프롬프트 (A3 · A4 · A7 · A11)**
 - [ ] F5 모닝: `get_blood_pressure(days=7)` 한 줄 ("측정이 있으면 7일 평균 · 경고 규칙, 없으면 생략") · `recommend_today_workout` 명시 ("오늘의 운동 추천은 이 도구의 결과를 근거로").
 - [ ] F6 이브닝: "오늘 러닝이 있으면 활동마다 `get_activity_context(activityId)` 를 호출해 스플릿 · 회복 · 같은 코스 비교까지 근거로 분석. 기상 (환경 섹션) 이 페이스/심박에 준 영향 한 줄".
-- [ ] F7 주간: 도구 목록에 `get_fitness_metric_trend(days=13, granularity="daily")` · `get_active_training_plan()` 추가. 항목에 (a) 존 분포 80/20 (`runningSummary.easyPct`) (b) HRR 주간 중앙값 vs 지난 4주 (`get_activities(days=27)` 의 `runningSummary.hrr2` 와 비교 — 프롬프트가 두 창을 지시) (c) VO2max 변화 · LT 감지 (d) 플랜 있으면 준수율 (completed / missed).
+- [ ] F7 주간: 도구 목록에 `get_fitness_metric_trend(days=13, granularity="daily")` · `get_active_training_plan()` 추가. 항목에 (a) 존 분포 80/20 (`runningSummary.easyPct`) 이번 주 vs 직전 4주 (b) HRR 주간 중앙값 vs 직전 4주 (c) VO2max 변화 · LT 감지 (d) 플랜 있으면 준수율 (completed / missed).
+  - **직전 4주 창 (PR #453 Codex P2 · 이슈 댓글 2026-09-24):** `days=N` 은 오늘 포함 창이라 `days=27` 만 쓰면 이번 주가 기준선에 섞인다 → `get_activities(days=27, endDate=<오늘 − 7일>)` (= [오늘−34, 오늘−7]) 로 **이번 주를 제외**. 프롬프트가 `days=6` (이번 주) 와 이 호출 둘을 명시하고, `runningSummary._context` 에 "endDate 없는 창은 오늘 포함" 한 줄. 존 80/20 비교도 같은 두 창.
 - [ ] F8 프롬프트 회귀 테스트 `src/lib/__tests__/report-prompts.test.ts` — 세 프롬프트가 요구 도구 이름을 포함하는지 (문자열 검사 · 프롬프트를 export).
 
 **검증 · 문서**
@@ -67,7 +68,7 @@ claude-advisor.ts allowlist += get_activity_context · system-prompt.ts 가이�
 
 **80/20 정의** — 이지 = Z1+Z2 시간, 하드 = Z4+Z5, Z3 은 중간 (표시만). 비율은 존 시간 합 기준 (활동 수 아님).
 
-**주간 HRR 비교** — 도구에 "지난 4주" 창을 넣지 않고 프롬프트가 `days=6` 과 `days=27` 두 번 부르게 한다 (도구는 단순하게).
+**주간 HRR · 80/20 비교** — 도구에 "직전 4주" 창을 넣지 않고 프롬프트가 `days=6` 과 `days=27, endDate=오늘−7일` 두 번 부르게 한다 (도구는 단순하게 · 이번 주 제외).
 
 ## 5. 변경 파일
 
@@ -85,7 +86,7 @@ claude-advisor.ts allowlist += get_activity_context · system-prompt.ts 가이�
 
 - `running-window.test.ts`: 존 합 · easy/hard % (반올림) · Z3 · 존 없는 활동 제외 · hrr2 중앙값 (홀짝 · 없음 null) · 러닝 외 제외 · 빈 창.
 - `activity-context.test.ts`: id 해석 · fetch 실패 → errorPayload (fetch 모킹).
-- `report-prompts.test.ts`: 모닝 (`get_blood_pressure` · `recommend_today_workout`) · 이브닝 (`get_activity_context`) · 주간 (`get_fitness_metric_trend` · `get_active_training_plan` · `days=27`).
+- `report-prompts.test.ts`: 모닝 (`get_blood_pressure` · `recommend_today_workout`) · 이브닝 (`get_activity_context`) · 주간 (`get_fitness_metric_trend` · `get_active_training_plan` · `days=27` 와 `endDate` 동반).
 - `npm run test` 의 `verify-mcp-long-history [7]`.
 - 로컬: `curl localhost:3000/api/activities/<id>/context` · MCP HTTP 로 `get_activities(days=6)` 응답에 `runningSummary` 확인.
 
