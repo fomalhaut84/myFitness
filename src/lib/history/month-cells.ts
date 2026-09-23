@@ -1,6 +1,6 @@
 /**
  * #394 (M15-2): 달력 그리드 계산. 순수 · prisma 없음 (client 컴포넌트에서 import 가능).
- * `MonthlyHeatmap` 은 로컬 TZ `new Date(y, m, 1)` 로 달력을 만든다 — 여기서는 ymd 문자열 + 합성 UTC 로만 계산한다 (#365).
+ * ymd 문자열 + 합성 UTC 로만 계산한다 (#365). `MonthlyHeatmap` (lifestyle) 도 #445 부터 이 모듈을 쓴다 — 로컬 TZ 달력 계산은 남아 있지 않다.
  */
 import { addDaysYmd, diffDaysYmd } from "./buckets";
 

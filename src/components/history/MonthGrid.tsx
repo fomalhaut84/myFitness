@@ -1,7 +1,7 @@
 // #394 (M15-2): 월 그리드 — 7열 (월~일 · #445), 셀 = 날짜 + 선택 지표 값 + 색 강도. 360px 에서도 7열 유지.
 //
-// `MonthlyHeatmap` (lifestyle) 을 일반화하지 않고 신설했다: 그쪽은 로컬 TZ Date 로 달력을 만들고 이진값만 받는다.
-// 여기는 ymd 기반 (`monthCells`) + 값·강도. 셀의 세 상태: 값 / 0 (쉰 날 — 채워진 빈칸) / 기록 없음 (뚫린 칸).
+// `MonthlyHeatmap` (lifestyle) 을 일반화하지 않고 신설했다: 그쪽은 이진값 (운동한 날) 만 받는다 (달력 계산은 둘 다 `monthCells` · #445).
+// 여기는 값·강도. 셀의 세 상태: 값 / 0 (쉰 날 — 채워진 빈칸) / 기록 없음 (뚫린 칸).
 import Link from "next/link";
 import { formatHistoryCellValue, formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import type { HistoryMetricDef } from "@/lib/history/metrics";

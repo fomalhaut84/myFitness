@@ -30,6 +30,7 @@
 
 ## 3. 요구사항
 
+> **사전 리뷰 (2026-09-24):** critical 0 / major 0 / info 2 (구현으로 낡아진 주석 — `month-cells.ts` 헤더 · `MonthGrid` 헤더) → 반영. TZ=America/Los_Angeles 에서도 테스트 통과 확인 (리뷰 에이전트).
 > **구현 (fix/445-1, 2026-09-24).** vitest 288 → 290 · 로컬 `next dev` 3화면 (`/history/2026/09` · `/history/2026` · `/lifestyle`) 캡처 `docs/designs/445-monday-start-grids/screenshots/`. 달라진 항목은 ↳.
 
 **순수 로직 (`src/lib/history/month-cells.ts`)**
@@ -47,7 +48,7 @@
 **테스트 · 문서**
 - [x] F8 `month-cells.test.ts`: `weekdayIndexMon` (월 0 · 일 6) · `monthCells("2024-09").leadingBlanks` = 6 (1일이 일요일) · `"2026-06"` = 0 (1일이 월요일) · 기존 `2024-03` 기대값 5 → 4 로 갱신. `WEEKDAY_LABELS` 길이 7 · 첫 원소 "월".
 - [x] F9 로컬 `next dev`: `/history/2026/09` 월 그리드 (2026-09-01 화 → 빈 칸 1) · `/history/2026` 연간 카드 · `/lifestyle` 히트맵 헤더 `월…일`.
-- [ ] F10 `docs/roadmap.md` M17-4 · `docs/specs/M14-followup.md`.
+- [x] F10 `docs/roadmap.md` M17-4 · `docs/specs/M14-followup.md`.
 
 ## 4. 기술 설계
 
