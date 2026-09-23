@@ -1,10 +1,11 @@
-// #394 (M15-2): 월 그리드 — 7열 (일~토), 셀 = 날짜 + 선택 지표 값 + 색 강도. 360px 에서도 7열 유지.
+// #394 (M15-2): 월 그리드 — 7열 (월~일 · #445), 셀 = 날짜 + 선택 지표 값 + 색 강도. 360px 에서도 7열 유지.
 //
-// `MonthlyHeatmap` (lifestyle) 을 일반화하지 않고 신설했다: 그쪽은 로컬 TZ Date 로 달력을 만들고 이진값만 받는다.
-// 여기는 ymd 기반 (`monthCells`) + 값·강도. 셀의 세 상태: 값 / 0 (쉰 날 — 채워진 빈칸) / 기록 없음 (뚫린 칸).
+// `MonthlyHeatmap` (lifestyle) 을 일반화하지 않고 신설했다: 그쪽은 이진값 (운동한 날) 만 받는다 (달력 계산은 둘 다 `monthCells` · #445).
+// 여기는 값·강도. 셀의 세 상태: 값 / 0 (쉰 날 — 채워진 빈칸) / 기록 없음 (뚫린 칸).
 import Link from "next/link";
 import { formatHistoryCellValue, formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import type { HistoryMetricDef } from "@/lib/history/metrics";
+import { WEEKDAY_LABELS } from "@/lib/history/month-cells";
 import { historyDayPath, historyMetricQuery } from "@/lib/history/route-params";
 import type { HistoryDayCell } from "@/lib/history/view";
 import { HOT_LEVEL, intensityBackground, metricColor } from "./metric-colors";
@@ -16,7 +17,6 @@ interface MonthGridProps {
   today: string;
 }
 
-const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
 const CELL_BASE =
   "relative flex aspect-square min-w-0 items-end justify-center rounded-md pb-[16%] sm:rounded-lg lg:aspect-[1.55] lg:items-center lg:pb-0";
 const DATE_BASE = "absolute left-1 top-[3px] text-[9px] sm:left-[7px] sm:top-[5px] sm:text-[10px]";
@@ -78,7 +78,7 @@ export default function MonthGrid({ leadingBlanks, cells, metric, today }: Month
   return (
     <div>
       <div className="mb-1.5 grid grid-cols-7 gap-[3px] text-center text-[11px] text-dim sm:gap-1">
-        {DAY_LABELS.map((label) => (
+        {WEEKDAY_LABELS.map((label) => (
           <span key={label}>{label}</span>
         ))}
       </div>
