@@ -399,10 +399,33 @@
 - [x] `/insights` 패널 E "회복이 빨라졌나?" — 연도별 중앙값
 - 이슈: #425 · PR #428 · **v2.36.0** (2026-09-23). 프로덕션 백필 갱신 111 / 2,157 — 심박 시계열이 2026-04-20 이후만 존재 (Garmin 보존 창 · 09-17 백필 덮어쓰기 → **#431** P1). 후속: #429 (캡션 시작일 · `--dry-run` 이어가기 · 중앙값 토글) · #431
 
-## M16-3: 심박 · 수면 재싱크 덮어쓰기 가드 — 우선순위 ★★★
+## M16-3: 심박 · 수면 재싱크 덮어쓰기 가드 — 우선순위 ★★★ ✅
 
-- [ ] fetcher 가 응답 상세 (`heartRateValues` · `avgOvernightHrv`) null 이면 기존 값 유지 · `backfill:history` 보존 창 밖 wellness 재조회 차단
-- 이슈: #431 (P1 · 데이터 손실 재발 방지). 2026-04 이전 시계열 · HRV 는 복구 불가
+- [x] `preserve.ts` — update 에서 null 필드 생략 · `isTrimmedResponse` (기존 rawData 의 값 있던 키가 응답에서 사라지면 rawData 유지, 중첩 재귀) · `backfill:history` 보존 창 밖 wellness 기본 중단
+- [x] 패널 E 후속 (#429)
+- 이슈: #431 · #435 · #429 · PR #433 · #436 · **v2.36.1** (2026-09-23). 2026-04 이전 시계열 · HRV 는 복구 불가. 후속: #437 (숫자 문자열 · sleepScoreDetails 보존 · P2). 배포 후 확인 (09-23 15:00 cron 뒤 array 156 · HRV 156 유지) · daily_stats 보존 창 감사 **창 없음** (431 스펙 §4)
+
+# 마일스톤 17: 러닝 상세 AI 평가 확장 + HRR 후속
+
+> 시작: 2026-09-23. 세션 인계 후보 3건 (#440 · #441 · #442) — M16 의 HRR 을 `/trends` 로 넓히고, 활동 상세 AI 평가를 페이지 지표 전체 근거로.
+
+## M17-1: 러닝 상세 AI 평가 — 상세 페이지 지표 전체를 근거로 — 우선순위 ★★★ ✅
+
+- [x] `src/lib/ai/activity-eval/` 순수 조립 (섹션 8개 · km 스플릿 파생값 · rawData 보조 지표 · 요약 모드) + vitest 27건
+- [x] `POST /api/activities/[id]/evaluate` — 서버 조립 · 평가 전용 세션 채널 · Garmin 스플릿 공용 fetch
+- [x] `AiEvalCard` — 근거 칩 · 섹션 헤딩 · 종합 강조 · 분석 중/오류/다시 평가
+- 이슈: #440 · PR #446 · **v2.37.0** (2026-09-23). 스펙 `docs/specs/440-activity-ai-eval.md` · 시안 `docs/designs/440-activity-ai-eval/`. 후속: #444 (이브닝 리포트 · MCP `get_activity_context`) · #448 (Codex P2 3건 — 같은 코스 이전 기록 조회를 매처 안으로 · 제외 집합 · 1km 라벨)
+
+## M17-2: HRR 해상도 조사 (2분 → 1분) — 우선순위 ★
+
+- [x] 프로덕션 간격 분포 (2026-09-23): 2026-04 ~ 09 전 월 `gap_60s = 0` · 120초 107,630 · 기타 183 (null 구간) — **2분 격자 확인**
+- [ ] 워치 "매초" 설정 실험 (사용자) → 소스 있으면 격자 자동 감지 + `hrr1`, 없으면 결론 기록
+- 이슈: #441 · 스펙 `docs/specs/441-hrr-1min-resolution.md`
+
+## M17-3: `/trends` HRR 지표 — 우선순위 ★★ ✅
+
+- [x] `metrics.ts` `hrr2` (activity · median 집계 · sparse) · 시작일 캡션 · 개인 기록 "가장 큰 2분 HRR"
+- 이슈: #442 · PR #447 · **v2.37.0** (2026-09-23). 스펙 `docs/specs/442-trends-hrr-metric.md`. 후속: #449 (기간 비교 안내 문구 지표 방향)
 
 ---
 

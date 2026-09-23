@@ -25,6 +25,8 @@ v2.36.0 `backfill:hrr` 에서 발견 (2026-09-23): 프로덕션 `HeartRateRecord
 
 ## 3. 요구사항
 
+> **릴리즈 v2.36.1 (2026-09-23, PR #433 · #436 → 릴리즈 PR #434).** 사전 리뷰 2회 (major 1 · info 7 반영) · Codex: PR #433 미실행 · PR #436 P2 2 (반영 1 · #437) · 릴리즈 PR P2 2 (#435 반영 · #437). 후속 #437.
+>
 > **구현 (fix/431-1, 2026-09-23).** `preserve.ts` vitest 9건 (230 → 239). 실 API 없이 단위 테스트로 검증. 달라진 항목은 ↳.
 
 **가드 (`src/lib/garmin/preserve.ts`, 순수)**
@@ -71,6 +73,14 @@ psql "$DATABASE_URL" -Atc "select coalesce(jsonb_typeof(\"rawData\"->'heartRateV
 psql "$DATABASE_URL" -Atc "select count(*) filter (where \"hrvOvernight\" is not null), min(date) filter (where \"hrvOvernight\" is not null)::date from \"SleepRecord\";"
 ```
 
+**배포 후 확인 (2026-09-23 · v2.36.1 · 14:11 KST 재기동 → 15:00 cron 21건 · 실패 0 이후)**: `heartRateValues` array **156일 (2026-04-20 ~ 09-22)** · null 2,132일 (2020-06-18 ~ 2026-04-19) · `hrvOvernight` **156일 (2026-04-20 ~)** — 릴리즈 전 기준 (156 · 156 · 04-20) 과 동일. 손실 없음. 일일 cron 은 3일 창이라 보존 창 안쪽만 재조회하므로 이 확인은 "가드가 정상 데이터를 깎지 않는다" 의 확인이고, 가드가 실제로 개입하는 상황은 다음 `backfill:history` — 그때 같은 두 쿼리를 전후로 다시 돈다.
+
+**보존 창 감사 (2026-09-23 · 체크리스트 "다른 일별 타입 감사")**: `DailySummary.rawData` 를 월별 `jsonb_typeof(... ) = 'number'` 로 셈 (2020-06 ~ 2026-09, 76개월) — `bodyBatteryMostRecentValue` · `averageStressLevel` 은 **전 기간 행 수와 일치** (창 없음). `highStressDuration` 만 2023-10 ~ 2025-04 사이 월 1~2일 결측 (워치 미착용 · 스트레스 미측정 성격, 기간 경계 아님). `fitness_metrics` 는 fetcher 가 소스 키 단위로 rawData 를 병합해 (사전 리뷰 M1) 빈 응답이 기존 원본을 지우지 못하므로 덮어쓰기 위험 없음 — 창 자체는 미측정. **daily_stats fetcher 에 가드를 추가할 이유 없음. 이슈 미생성.**
+
+```bash
+psql "$DATABASE_URL" -Atc "select to_char(date,'YYYY-MM') m, count(*) n, count(*) filter (where jsonb_typeof(\"rawData\"->'bodyBatteryMostRecentValue')='number') bb, count(*) filter (where jsonb_typeof(\"rawData\"->'averageStressLevel')='number') stress, count(*) filter (where jsonb_typeof(\"rawData\"->'highStressDuration')='number') stress_dur from \"DailySummary\" group by 1 order by 1;"
+```
+
 ## 5. 변경 파일
 
 | 파일 | 변경 |
@@ -91,5 +101,5 @@ psql "$DATABASE_URL" -Atc "select count(*) filter (where \"hrvOvernight\" is not
 - **알려진 한계 (사전 리뷰 info 3)**: 값이 정당하게 present → absent 로 바뀌는 드문 경우 (Garmin Connect 에서 수면 구간을 편집해 어떤 단계가 0초가 되면 `x ? … : null` 이 null) 는 update 에서 생략돼 옛 값이 남는다. wellness 값의 변화 방향이 거의 항상 "없어짐 = 보존 창" 이라 수용. `hrvBaseline` 은 항상 null 을 보내므로 update 에서 영구 무변경 — 지금 계산하는 코드가 없어 영향 없음 (info 4).
 
 - 2026-04 이전 시계열 · HRV 복구 — 불가.
-- `daily_stats` (스트레스 · 바디배터리 상세) · `fitness_metrics` 의 보존 창 — #431 체크리스트 감사 항목, 이번엔 문서에 미확인으로 남김.
+- `daily_stats` (스트레스 · 바디배터리 상세) 의 보존 창 — 릴리즈 시점엔 미확인으로 남겼고, 배포 후 감사 (§4) 로 **창 없음** 확인. `fitness_metrics` 의 보존 창은 **여전히 미측정** — fetcher 의 소스 키 병합은 잘린 응답이 기존 원본을 덮어쓰지 못한다는 것만 보장하고, 엔드포인트가 옛 날짜를 주는지는 별개 (다음 백필 전 감사).
 - `body_composition` · `blood_pressure` 는 수동/기기 기록이라 보존 창 무관 (가정).

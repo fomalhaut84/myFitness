@@ -6,10 +6,12 @@
  * - avg: 평균 (decimals 반올림). `withMinMax` 면 min/max.
  * - max: 버킷 최고값.
  * - last: 버킷 안 최신 ymd 의 값.
+ * - median: 중앙값 (#442 · 2분 HRR). 짝수 개면 두 값 평균 → decimals 반올림.
  * - `withLast`: 규칙과 별개로 last 를 병기.
  * - coveredDays: 값이 있는 **날** 수 (같은 날 포인트가 여러 개여도 1일).
  * - 모든 출력값(value · min · max · last)은 `decimals` 로 반올림 — 평균선이 min/max 밴드 밖으로 나가지 않게.
  */
+import { median } from "@/lib/insights/stats";
 import { bucketKeyOf, type HistoryBucket } from "./buckets";
 import type { HistoryMetricDef } from "./metrics";
 
@@ -49,6 +51,10 @@ function aggregateValue(points: readonly DailyPoint[], def: HistoryMetricDef): n
       return roundTo(Math.max(...values), def.decimals);
     case "last":
       return lastByYmd(points, def.decimals);
+    case "median": {
+      const m = median(values);
+      return m === null ? null : roundTo(m, def.decimals);
+    }
   }
 }
 

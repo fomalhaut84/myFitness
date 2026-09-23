@@ -41,7 +41,7 @@ function runningRow(key: keyof typeof BUCKET_LABELS, r: RunningRecordRow | null)
 }
 
 export function buildRecordRows(records: PersonalRecords): RecordRowView[] {
-  const { byBucket, longest, bestMonth, bestVo2max, lowestRestingHR } = records;
+  const { byBucket, longest, bestMonth, bestVo2max, lowestRestingHR, bestHrr2 } = records;
   return [
     runningRow("5k", byBucket["5k"]),
     runningRow("10k", byBucket["10k"]),
@@ -76,6 +76,10 @@ export function buildRecordRows(records: PersonalRecords): RecordRowView[] {
     lowestRestingHR
       ? { key: "rhr", label: "최저 안정시 심박", value: String(Math.round(lowestRestingHR.value)), unit: "bpm", sub: "처음 도달한 날", date: lowestRestingHR.ymd, href: `${historyDayPath(lowestRestingHR.ymd)}${historyMetricQuery("restingHR")}` }
       : { key: "rhr", label: "최저 안정시 심박", value: null, empty: "안정시 심박 기록이 없습니다" },
+    // #442: 2분 HRR — 러닝 종료 2분 뒤 낙폭. 인터벌 · 레이스가 크게 나오므로 "가장 큰 값" (빠른 회복이라고 단정하지 않는다)
+    bestHrr2
+      ? { key: "hrr2", label: "가장 큰 2분 HRR", value: String(Math.round(bestHrr2.value)), unit: "bpm", sub: "처음 도달한 날", date: bestHrr2.ymd, href: `${historyDayPath(bestHrr2.ymd)}${historyMetricQuery("hrr2")}` }
+      : { key: "hrr2", label: "가장 큰 2분 HRR", value: null, empty: "종료 후 심박이 계산된 러닝이 없습니다" },
   ];
 }
 
