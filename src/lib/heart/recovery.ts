@@ -11,8 +11,10 @@ export const RECOVERY_OFFSETS_MIN = [-4, -2, 0, 2, 4, 6, 10] as const;
 export type RecoveryOffsetMin = (typeof RECOVERY_OFFSETS_MIN)[number];
 /** 목표 시각에서 이만큼 안의 가장 가까운 샘플만 채택 — 2분 격자에서 항상 한 샘플이 걸린다 */
 export const SAMPLE_TOLERANCE_MS = 60_000;
-/** 종료 후 이 창이 다음 날로 넘어가면 로더가 다음 날 레코드도 읽는다 (+10 분 + 허용 오차) */
+/** 종료 후 창 (+10 분 + 허용 오차) — 다음 날로 넘어가면 로더가 다음 날 레코드도 읽는다 */
 export const RECOVERY_WINDOW_MS = (10 + 1) * 60_000;
+/** 종료 전 창 (−4 분 − 허용 오차) — 자정 직후 종료면 전날 레코드도 읽는다 (사전 리뷰 major 1) */
+export const RECOVERY_PRE_WINDOW_MS = (4 + 1) * 60_000;
 const HRR_OFFSET_MIN = 2;
 const DROP_OFFSET_MIN = 10;
 
@@ -95,9 +97,8 @@ export function activityEndMs(startTime: Date, durationSec: number, rawData: unk
   return startTime.getTime() + sec * 1000;
 }
 
-/** 읽어야 할 `HeartRateRecord` 의 KST 일자 — 종료일, 그리고 종료 + 창이 다음 날이면 그 날도 */
+/** 읽어야 할 `HeartRateRecord` 의 KST 일자 — 종료 앞뒤 창이 걸치는 날 전부 (창이 16분이라 1~2일). 종료일은 항상 포함 */
 export function recoveryDayKeys(endMs: number): string[] {
-  const first = ymdKST(new Date(endMs));
-  const last = ymdKST(new Date(endMs + RECOVERY_WINDOW_MS));
-  return first === last ? [first] : [first, last];
+  const keys = [endMs - RECOVERY_PRE_WINDOW_MS, endMs, endMs + RECOVERY_WINDOW_MS].map((ms) => ymdKST(new Date(ms)));
+  return [...new Set(keys)];
 }

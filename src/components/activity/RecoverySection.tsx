@@ -131,6 +131,8 @@ function RecoveryChart({ recovery, endLabel }: { recovery: RecoveryDTO; endLabel
           <Tooltip
             cursor={{ stroke: "#333", pointerEvents: "none" }}
             isAnimationActive={false}
+            // 결측 행도 툴팁에 "결측" 으로 — 기본 filterNull 은 null 값을 payload 에서 뺀다 (사전 리뷰 info 1)
+            filterNull={false}
             content={({ active, payload }) => {
               const row = payload?.[0]?.payload as Row | undefined;
               if (!active || !row) return null;

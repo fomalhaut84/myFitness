@@ -1,11 +1,12 @@
 // #418: 활동 1건의 종료 후 회복 곡선 — 서버 전용 (prisma). 활동 rawData 는 여기서만 읽고 클라이언트로 흘리지 않는다.
 import prisma from "@/lib/prisma";
+import { ymdKST } from "@/lib/garmin/utils";
 import { kstInstant } from "@/lib/history/buckets";
 import { activityEndMs, parseHeartRateValues, recoveryCurve, recoveryDayKeys, type RecoveryOffsetMin } from "./recovery";
 
 /** 서버 → 클라이언트 (직렬화 가능) */
 export interface RecoveryDTO {
-  /** 종료일 (·다음 날) 의 HeartRateRecord 존재 여부 — false 면 "이 날 심박 기록이 없습니다" */
+  /** 종료일 HeartRateRecord 존재 여부 — false 면 "이 날 심박 기록이 없습니다" (앞뒤 날 행만 있는 경우는 없음으로 본다) */
   hasRecord: boolean;
   /** 종료 시각 (UTC ISO) — 표시는 `formatTimeKST` */
   endIso: string;
@@ -26,9 +27,10 @@ export async function loadActivityRecovery(activityId: string): Promise<Recovery
   const endIso = new Date(endMs).toISOString();
   const rows = await prisma.heartRateRecord.findMany({
     where: { date: { in: recoveryDayKeys(endMs).map(kstInstant) } },
-    select: { rawData: true },
+    select: { date: true, rawData: true },
   });
-  if (rows.length === 0) return { hasRecord: false, endIso, points: [], hrr2: null, drop10: null, postSamples: 0 };
+  const endDayMs = kstInstant(ymdKST(new Date(endMs))).getTime();
+  if (!rows.some((r) => r.date.getTime() === endDayMs)) return { hasRecord: false, endIso, points: [], hrr2: null, drop10: null, postSamples: 0 };
 
   const series = rows.flatMap((r) => {
     const raw = r.rawData !== null && typeof r.rawData === "object" ? (r.rawData as Record<string, unknown>).heartRateValues : undefined;

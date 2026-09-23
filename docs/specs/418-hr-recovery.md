@@ -26,7 +26,7 @@ DB 에는 이미 하루치 심박 시계열 (`HeartRateRecord.rawData.heartRateV
 이슈 문구에서 달라지는 점 (재검증):
 
 1. **종료 시각 = `startTime + elapsedDuration`** (rawData, 없으면 `duration`). 일시정지가 있는 러닝은 `duration` 만으로는 종료가 앞당겨져 회복 곡선이 활동 구간 안에 잡힌다.
-2. 종료가 KST 자정 근처면 (종료 + 11분이 다음 날) **다음 날 레코드도 함께** 읽는다.
+2. 종료가 KST 자정 근처면 **앞뒤 날 레코드도 함께** 읽는다 — 종료 + 11분이 다음 날이면 다음 날, 종료 − 5분이 전날이면 전날 (사전 리뷰 major 1: 자정 직후 종료의 −4 · −2 분은 전날 시계열이다).
 3. `/insights` 연도별 패널은 러닝 2,156건마다 하루치 시계열 (~15KB) 을 읽어야 해 페이지마다 계산할 수 없다 → `Activity.hrr2` 컬럼 승격 + 백필 이 필요하므로 **후속 이슈로 분리** (2026-09-23 승인).
 
 ## 2. 목표
@@ -41,12 +41,12 @@ DB 에는 이미 하루치 심박 시계열 (`HeartRateRecord.rawData.heartRateV
 
 **순수 로직 (`src/lib/heart/recovery.ts`)**
 - [x] F1 `nearestSample(series, targetMs, toleranceMs)` — `[epochMs, bpm|null][]` 에서 목표 시각과 가장 가까운 샘플. 허용 오차 (±60초) 밖이거나 `bpm` 이 null · 0 이하면 `null`. 정렬을 가정하지 않는다 (하루 ~700개, 선형 탐색)
-- [x] F2 `recoveryCurve(series, endMs)` → `{ endMs, points: { offsetMin, bpm, sampledAtMs }[], hrr2, samples }`. 오프셋은 **−4 · −2 · 0 · +2 · +4 · +6 · +10 분** (음수는 곡선의 맥락 — 달리던 심박). `hrr2 = bpm(0) − bpm(+2)`, 둘 중 하나라도 결측이면 `null`. `samples` = 유효 점 개수
+- [x] F2 `recoveryCurve(series, endMs)` → `{ endMs, points: { offsetMin, bpm, sampledAtMs }[], hrr2, drop10, postSamples }`. 오프셋은 **−4 · −2 · 0 · +2 · +4 · +6 · +10 분** (음수는 곡선의 맥락 — 달리던 심박). `hrr2 = bpm(0) − bpm(+2)`, 둘 중 하나라도 결측이면 `null`. `postSamples` = 종료 이후 (오프셋 ≥ 0) 유효 점 개수 — UI 의 "샘플 부족" 분기
 - [x] F3 `parseHeartRateValues(raw)` — `rawData.heartRateValues` 검증 파서. 배열이 아니거나 원소가 `[number, number|null]` 꼴이 아니면 그 원소는 버린다 (memory: 필드 casing · 타입 없는 rawData 는 조용히 null 이 된다 — 여기서는 형태를 검사한다)
 - [x] F4 `activityEndMs(startTime, durationSec, rawData)` — `rawData.elapsedDuration` 이 양수 유한값이면 그것, 아니면 `durationSec`
 
 **서버 로딩 (`src/lib/heart/load-recovery.ts`, prisma)**
-- [x] F5 `loadActivityRecovery(activityId)` — 활동 `startTime · duration · rawData` 조회 → 종료 시각 → 종료일 KST 와 (종료 + 11분) 의 KST 일자가 다르면 두 날 → `HeartRateRecord` `date in [...]` `select rawData` → 파싱 · 합치기 → `recoveryCurve`. 레코드가 없으면 `{ hasRecord: false }`
+- [x] F5 `loadActivityRecovery(activityId)` — 활동 `startTime · duration · rawData` 조회 → 종료 시각 → `recoveryDayKeys` (종료 − 5분 · 종료 · 종료 + 11분 의 KST 일자, 1~2일) → `HeartRateRecord` `date in [...]` `select date, rawData` → 파싱 · 합치기 → `recoveryCurve`. **종료일** 행이 없으면 `{ hasRecord: false }` (앞뒤 날 행만 있는 경우는 없음으로)
 - [x] F6 러닝 계열 (`isRunningType`) 만 호출. 페이지의 기존 select 는 건드리지 않고 별도 조회 1회 (rawData 를 클라이언트로 흘리지 않기 위해 분리)
 
 **UI (`src/components/activity/RecoverySection.tsx`, 활동 상세 강도 분석 아래)**
@@ -85,14 +85,14 @@ interface RecoveryDTO {
   points: { offsetMin: number; bpm: number | null }[];   // 7점 고정
   hrr2: number | null;
   drop10: number | null;              // bpm(0) − bpm(10)
-  samples: number;                    // 유효 점 개수
+  postSamples: number;                // 종료 이후 유효 점 개수
 }
 ```
 
 **시각 규칙**
 - 종료 시각 `endMs = startTime.getTime() + activityEndMs(...) * 1000`.
 - 오프셋 목표 `endMs + offsetMin * 60_000`, 허용 오차 `±60_000ms` (2분 격자에서 항상 한 샘플이 걸린다). 격자 두 샘플과 정확히 같은 거리면 앞쪽 (더 이른) 샘플.
-- 날짜 경계: `ymdKST(end)` 와 `ymdKST(end + 11min)`. 다르면 두 `startOfDay` 로 `date: { in: [...] }`.
+- 날짜 경계: `ymdKST(end − 5min)` · `ymdKST(end)` · `ymdKST(end + 11min)` 의 고유 일자 (1~2일) 를 `kstInstant` 로 `date: { in: [...] }`.
 
 **보간 · 리샘플 금지.** 워치 1분 HRR 을 흉내 내지 않는다 (PR #422 Codex P2).
 
@@ -115,10 +115,10 @@ vitest `recovery.test.ts` (실측 04-05 시계열을 픽스처로):
 - 실측 케이스: 종료 22:44:39 → `bpm(0)=125 · (+2)=109 · (+4)=92 · (+6)=82 · (+10)=77 · hrr2=16 · drop10=48`
 - 허용 오차: 목표에서 61초 떨어진 샘플만 있으면 결측 · 60초면 채택 · 동거리면 이른 쪽
 - null 샘플: 오프셋 자리가 `[ms, null]` 이면 그 점 결측, `hrr2` 는 0 · +2 중 하나라도 결측이면 null
-- 워치 벗음: 종료 후 전부 null → `samples` 가 음수 오프셋만 세어져 UI 분기 (b)
+- 워치 벗음: 종료 후 전부 null → `postSamples = 0` 으로 UI 분기 (b)
 - `parseHeartRateValues`: 배열 아님 · 원소 형태 불량 · 문자열 bpm 은 버림
 - `activityEndMs`: elapsedDuration 우선 · 0 · 음수 · 문자열 · 없음 → duration
-- 자정 경계: 두 날의 시계열을 합쳐 +10 분이 다음 날 샘플에서 잡힘 (순수 함수는 합친 배열을 받는다 — 로더 분기는 `ymdKST` 로 확인)
+- 자정 경계: 두 날의 시계열을 합쳐 +10 분이 다음 날 샘플에서 잡힘 · **자정 직후 종료 (00:02) 의 −4 · −2 · 0 분이 전날 샘플에서 잡힘** (회귀: 사전 리뷰 major 1) — 순수 함수는 합친 배열을 받고, 로더 분기는 `recoveryDayKeys` 로 확인
 
 4종 검증 + 로컬 `next dev` 로 04-05 트랙 러닝 상세 실화면 확인 (localhost — memory `project_next_dev_localhost_origin`).
 

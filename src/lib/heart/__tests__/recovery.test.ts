@@ -2,6 +2,7 @@
 import { describe, expect, it } from "vitest";
 import {
   RECOVERY_OFFSETS_MIN,
+  RECOVERY_PRE_WINDOW_MS,
   RECOVERY_WINDOW_MS,
   SAMPLE_TOLERANCE_MS,
   activityEndMs,
@@ -109,6 +110,23 @@ describe("recoveryCurve", () => {
     expect(bpms(SERIES.slice(0, 5))).toEqual([124, 125, 125, 109, null, null, null]);
   });
 
+  // 회귀: 사전 리뷰 major 1 — 00:02 종료의 −4 · −2 · 0 분은 전날 시계열에서 잡혀야 한다
+  it("자정 직후 종료: 종료 전 점은 전날 샘플, 종료 후 점은 당일 샘플", () => {
+    const end = kst("00:02:20", "2026-04-06");
+    const merged: Array<[number, number | null]> = [
+      [kst("23:58:00"), 141],
+      [kst("00:00:00", "2026-04-06"), 140],
+      [kst("00:02:00", "2026-04-06"), 138],
+      [kst("00:04:00", "2026-04-06"), 120],
+      [kst("00:06:00", "2026-04-06"), 105],
+      [kst("00:08:00", "2026-04-06"), 96],
+      [kst("00:12:00", "2026-04-06"), 88],
+    ];
+    const c = recoveryCurve(merged, end);
+    expect(c.points.map((p) => p.bpm)).toEqual([141, 140, 138, 120, 105, 96, 88]);
+    expect(c.hrr2).toBe(18);
+  });
+
   it("자정 경계: 두 날의 시계열을 합친 배열에서 +10 분이 다음 날 샘플에 잡힌다", () => {
     const end = kst("23:55:30");
     const merged: Array<[number, number | null]> = [
@@ -130,6 +148,14 @@ describe("recoveryDayKeys", () => {
     expect(recoveryDayKeys(END)).toEqual(["2026-04-05"]);
     expect(recoveryDayKeys(kst("23:48:59"))).toEqual(["2026-04-05"]);
     expect(recoveryDayKeys(kst("23:49:00"))).toEqual(["2026-04-05", "2026-04-06"]);
+  });
+
+  // 회귀: 사전 리뷰 major 1 — 자정 직후 종료는 −4 · −2 분이 전날이라 전날 레코드도 읽어야 한다
+  it("종료 − 5분이 전날이면 전날 + 종료일 (종료일이 뒤)", () => {
+    expect(RECOVERY_PRE_WINDOW_MS).toBe(5 * MIN);
+    expect(recoveryDayKeys(kst("00:04:59", "2026-04-06"))).toEqual(["2026-04-05", "2026-04-06"]);
+    expect(recoveryDayKeys(kst("00:05:00", "2026-04-06"))).toEqual(["2026-04-06"]);
+    expect(recoveryDayKeys(kst("00:00:00", "2026-04-06"))).toEqual(["2026-04-05", "2026-04-06"]);
   });
 });
 
