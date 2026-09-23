@@ -73,6 +73,8 @@ export interface ActivityRow {
   activityType: string;
   distance: number | null;
   duration: number;
+  /** #442: 종료 후 2분 HRR (`Activity.hrr2`). 옵셔널 — 기존 호출자 (kpi 등) 는 없음 */
+  hrr2?: number | null;
 }
 
 /**
@@ -88,6 +90,8 @@ export function activityPoints(rows: readonly ActivityRow[], defs: readonly Hist
       const points: DailyPoint[] = running.flatMap((r) => {
         const ymd = ymdKST(r.startTime);
         if (def.kind === "count") return [{ ymd, value: 1 }];
+        // #442: 값 있는 러닝만 점 (null = 하루 심박 없음 · 결측). 음수 (종료 뒤 상승) 도 값이다 — 거르지 않는다
+        if (def.kind === "hrr2") return typeof r.hrr2 === "number" ? [{ ymd, value: r.hrr2 }] : [];
         const hasDistance = typeof r.distance === "number" && r.distance > 0;
         if (def.kind === "duration") return hasDistance ? [{ ymd, value: r.duration }] : [];
         return typeof r.distance === "number" ? [{ ymd, value: r.distance / 1000 }] : [];
@@ -100,7 +104,7 @@ export function activityPoints(rows: readonly ActivityRow[], defs: readonly Hist
 async function loadActivity(range: Range, defs: readonly HistoryMetricDef[]): Promise<DailyPointsByMetric> {
   const rows = await prisma.activity.findMany({
     where: { startTime: { gte: range.start, lt: range.end } },
-    select: { startTime: true, activityType: true, distance: true, duration: true },
+    select: { startTime: true, activityType: true, distance: true, duration: true, hrr2: true },
   });
   return activityPoints(rows, defs);
 }

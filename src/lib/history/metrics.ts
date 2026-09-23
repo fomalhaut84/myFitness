@@ -12,12 +12,13 @@ import type {
   SleepRecord,
 } from "@/generated/prisma/client";
 
-export type HistoryAggregate = "sum" | "avg" | "max" | "last";
+/** #442: `median` — 활동 단위 값 (2분 HRR) 을 버킷으로 묶을 때 인터벌 · 레이스의 큰 값이 평균을 끌어올리지 않게 */
+export type HistoryAggregate = "sum" | "avg" | "max" | "last" | "median";
 
 type NumericKey<T> = { [K in keyof T]: T[K] extends number | null ? K : never }[keyof T] & string;
 
 export type HistoryMetricSource =
-  | { source: "activity"; kind: "km" | "count" | "duration" }
+  | { source: "activity"; kind: "km" | "count" | "duration" | "hrr2" }
   | { source: "daily"; field: NumericKey<DailySummary> }
   | { source: "sleep"; field: NumericKey<SleepRecord> }
   | { source: "body"; field: NumericKey<BodyComposition> }
@@ -45,6 +46,11 @@ export type HistoryMetricDef = HistoryMetricSource & {
   format: "number" | "pace";
   /** #394: `/history` 지표 선택기 노출 여부. false 는 KPI 계산 전용 (러닝 시간 합 → 평균 페이스). */
   selectable: boolean;
+  /**
+   * #442: 데이터 시작일 캡션 (`{from}` 이 `YYYY-MM` 으로 치환). 기록 하한보다 훨씬 늦게 시작하는 지표 (2분 HRR 은 프로덕션
+   * 2026-04 부터 — Garmin 보존 창 · #431) 에만. 시작일은 `data-start.ts` 가 데이터에서 읽는다.
+   */
+  startNote?: string;
 };
 
 export const HISTORY_METRIC_IDS = [
@@ -62,6 +68,7 @@ export const HISTORY_METRIC_IDS = [
   "ltPace",
   "calorieBalance",
   "intakeKcal",
+  "hrr2",
 ] as const;
 export type HistoryMetricId = (typeof HISTORY_METRIC_IDS)[number];
 
@@ -83,6 +90,9 @@ export const HISTORY_METRICS: readonly HistoryMetricDef[] = [
   { ...base, id: "calorieBalance", label: "칼로리 밸런스", unit: "kcal", decimals: 0, source: "daily", field: "calorieBalance", aggregate: "avg" },
   // #394: 식단 캘린더 (M14 백로그 B-2) 를 월 그리드 지표로 흡수. FoodLog 는 2026~ 라 그 이전은 전부 결측.
   { ...base, id: "intakeKcal", label: "섭취 칼로리", unit: "kcal", decimals: 0, source: "daily", field: "estimatedIntakeCalories", aggregate: "avg" },
+  // #442 (M17-3): 러닝 종료 후 2분 HRR (`Activity.hrr2`, #425). 버킷 = 중앙값 (패널 E 와 동일), 띠 = 최저~최고 (인터벌 · 레이스의 큰 값이 보이게).
+  // sparse — 주에 러닝 2~3건뿐인 것이 정상이라 커버리지 흐림을 적용하지 않는다. 프로덕션은 2026-04 부터 (Garmin 보존 창 · #431).
+  { ...base, id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", withMinMax: true, sparse: true, startNote: "종료 후 심박은 {from} 부터 있습니다" },
 ];
 
 /** `/history` 지표 선택기 기본 5개 (m15-overview D3 — 사용자 확정 2026-09-18). 나머지 selectable 지표는 "추가" 그룹. */
