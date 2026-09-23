@@ -32,38 +32,42 @@
 
 ## 3. 요구사항
 
+> **구현 (feat/440-1, 2026-09-23).** 순수 계층 vitest 27건 · 로컬 `next dev` 로 04-04 · 04-03 러닝 실평가 (스플릿 API 성공 · 51초 · 섹션 7개 — 환경은 로컬 활동에 기상 없음) · CDP 캡처 `docs/designs/440-activity-ai-eval/screenshots/live-*.png`. 달라진 항목은 ↳.
+> 실데이터에서 잡힌 결함 3개 → 회귀 테스트 · 가드: (1) ISO 문자열을 `formatEpochKST` 에 넘겨 일시 · 종료 시각이 `-` 로 나옴 (2) 파서 정정 (#278) 이전 행의 보폭이 cm 그대로라 `7887cm` (≥ 10 이면 cm 로 간주) (3) 모델의 `120~130bpm` 을 GFM 이 취소선으로 렌더 (물결표 이스케이프).
+
 **API · 로딩**
-- [ ] F1 `POST /api/activities/[id]/evaluate` — body 없음. `id` 검증 → 활동 없으면 404. 러닝 계열 (`isRunningType`) 이면 전체 모드, 아니면 **요약 모드** (기본 지표 섹션만 · "3줄 이내" — 현행 유지). 응답 `{ result, sections: string[], omitted: string[], duration_ms }` · 실패 `{ error }`.
-- [ ] F2 `loadActivityEvalInput(id)` (prisma · Garmin) — 병렬 조회:
+- [x] F1 `POST /api/activities/[id]/evaluate` — body 없음. `id` 검증 → 활동 없으면 404. 러닝 계열 (`isRunningType`) 이면 전체 모드, 아니면 **요약 모드** (기본 지표 섹션만 · "3줄 이내" — 현행 유지). 응답 `{ result, sections: string[], omitted: string[], duration_ms }` · 실패 `{ error }`.
+- [x] F2 `loadActivityEvalInput(id)` (prisma · Garmin) — 병렬 조회 (러닝 외는 활동 행만):
   - 활동 행 전체 컬럼 + `rawData` (서버에서만 읽고 클라이언트로 흘리지 않는다)
   - 종료 후 회복: `loadActivityRecovery(id)` (#418 그대로)
   - 같은 코스: `findSimilarActivities(id, { limit: 10 })` (#261 그대로)
   - 비슷한 거리 최근 기록: 러닝 · 거리 ±10% · 활동 시작일 기준 **직전 365일** · 최근 10건 · 같은 코스에 이미 있는 id 제외
   - 개인 기준선: 같은 해 러닝의 `hrr2` 중앙값 (`recoveryByYear` 재사용, 5건 미만 null) · 거리 버킷 (`bucketOf`) 이 잡히면 그 버킷 **전 기간 최저 페이스** 1건 (개인 기록)
   - km 스플릿: Garmin API (`fetchActivitySplits(garminId)` — 기존 `/splits` route 와 공용으로 추출). **실패하면 섹션 생략 + `omitted: ["splits"]`** (평가 자체는 진행)
-- [ ] F3 `buildEvalContext(input)` **순수** → `{ sections: EvalSection[], prompt: string, mode: "full" | "brief" }`. `EvalSection = { id, title, lines: string[] }`. 값이 null 인 항목은 **줄 자체를 생략**, 줄이 0개인 섹션은 **섹션 생략**. 프롬프트에 `없음` · `null` 문자열이 들어가지 않는다.
+- [x] F3 `buildEvalContext(input)` **순수** → `{ sections: EvalSection[], prompt: string, mode: "full" | "brief" }`. `EvalSection = { id, title, lines: string[] }`. 값이 null 인 항목은 **줄 자체를 생략**, 줄이 0개인 섹션은 **섹션 생략**. 프롬프트에 `없음` · `null` 문자열이 들어가지 않는다.
 
 **섹션 (전체 모드 · 상세 페이지 순서)**
-- [ ] F4 `basic` 기본 지표 — 이름 · 종목 · 일시 (KST) · 거리 km · 시간 · 평균 페이스 · 고도 상승 · 칼로리 · 평균/최대 HR · 케이던스 · 이동 시간 vs 총 시간 (정지 시간 = `duration − movingDuration`, 1분 이상일 때만)
-- [ ] F5 `splits` km 스플릿 — 900~1,100m 랩만 (`SplitChart` 규칙). 표 (`km · 페이스 · 평균 HR · 케이던스 · 고도`) 최대 60행, 넘으면 5km 묶음 평균. **파생값** (`summarizeLaps`, 순수): 가장 빠른/느린 km · 첫 km vs 전체 평균 페이스 차 (오버페이스) · 전반 vs 후반 평균 페이스 (positive / negative split, 초/km) · 페이스 변동계수 · 전반 vs 후반 평균 HR (심박 드리프트)
-- [ ] F6 `intensity` 강도 분석 — 존 1~5 시간 · 비율 · 강도 라벨 · 점수 · 추정 존. 개인 존 경계는 시스템 프롬프트에 이미 있다 (중복 삽입 안 함)
-- [ ] F7 `recovery` 종료 후 회복 — 오프셋별 bpm (−4 … +10, 결측은 줄 생략) · 2분 HRR · 10분 낙차 · **올해 중앙값 대비** (있을 때만) · "2분 해상도" 주석. `hasRecord=false` 또는 종료 후 유효 점 2개 미만이면 섹션 생략
-- [ ] F8 `dynamics` 러닝 다이나믹스 — 케이던스 · 보폭 · 수직 진동 · 지면접촉시간 · (rawData) 수직 비율 · 좌우 균형
-- [ ] F9 `extra` 추가 지표 — 유산소/무산소 TE + Garmin 라벨 (`trainingEffectLabel`) · 트레이닝 로드 · 평균/정규화 파워 · VO2max 추정 · 평균 호흡수 · 바디배터리 변화 · 랩 수 · 최고 1km (`fastestSplit_1000`)
-- [ ] F10 `environment` 환경 — 기상 (Open-Meteo: 기온 · 체감 · 습도 · 바람 · 강수 · 상태) 과 **손목 온도는 별도 줄** (memory `project_weather_wrist_separation`)
-- [ ] F11 `comparison` 비교 — (a) 같은 코스 최근 N건: 평균 페이스 · HR 과 그 델타 (UI `SameCourseComparison` 과 같은 계산) + 최근 3건 표 (b) 비슷한 거리 최근 N건 (365일): 페이스 · HR · 케이던스 · HRR 중앙값과 델타 (c) 거리 버킷 개인 최고 페이스 (날짜). 셋 다 없으면 섹션 생략
+- [x] F4 `basic` 기본 지표 — 이름 · 종목 · 일시 (KST) · 거리 km · 시간 · 평균 페이스 · 고도 상승 · 칼로리 · 평균/최대 HR · 케이던스 · 이동 시간 vs 총 시간 (정지 시간 = `duration − movingDuration`, 1분 이상일 때만)
+  - ↳ 평균 속도는 페이스와 중복이라 넣지 않는다
+- [x] F5 `splits` km 스플릿 — 900~1,100m 랩만 (`SplitChart` 규칙). 표 (`km · 페이스 · 평균 HR · 케이던스 · 고도`) 최대 60행, 넘으면 5km 묶음 평균. **파생값** (`summarizeLaps`, 순수): 가장 빠른/느린 km · 첫 km vs 전체 평균 페이스 차 (오버페이스) · 전반 vs 후반 평균 페이스 (positive / negative split, 초/km) · 페이스 변동계수 · 전반 vs 후반 평균 HR (심박 드리프트)
+- [x] F6 `intensity` 강도 분석 — 존 1~5 시간 · 비율 · 강도 라벨 · 점수 · 추정 존. 개인 존 경계는 시스템 프롬프트에 이미 있다 (중복 삽입 안 함)
+- [x] F7 `recovery` 종료 후 회복 — 오프셋별 bpm (−4 … +10, 결측은 줄 생략) · 2분 HRR · 10분 낙차 · **올해 중앙값 대비** (있을 때만) · "2분 해상도" 주석. `hasRecord=false` 또는 종료 후 유효 점 2개 미만이면 섹션 생략
+- [x] F8 `dynamics` 러닝 다이나믹스 — 케이던스 · 보폭 · 수직 진동 · 지면접촉시간 · (rawData) 수직 비율 · 좌우 균형
+- [x] F9 `extra` 추가 지표 — 유산소/무산소 TE + Garmin 라벨 (`trainingEffectLabel`) · 트레이닝 로드 · 평균/정규화 파워 · VO2max 추정 · 평균 호흡수 · 바디배터리 변화 · 랩 수 · 최고 1km (`fastestSplit_1000`)
+- [x] F10 `environment` 환경 — 기상 (Open-Meteo: 기온 · 체감 · 습도 · 바람 · 강수 · 상태) 과 **손목 온도는 별도 줄** (memory `project_weather_wrist_separation`)
+- [x] F11 `comparison` 비교 — (a) 같은 코스 최근 N건: 평균 페이스 · HR 과 그 델타 (UI `SameCourseComparison` 과 같은 계산) + 최근 3건 표 (b) 비슷한 거리 최근 N건 (365일): 페이스 · HR · 케이던스 · HRR 중앙값과 델타 (c) 거리 버킷 개인 최고 페이스 (날짜). 셋 다 없으면 섹션 생략
 
 **프롬프트 · 호출**
-- [ ] F12 프롬프트 — 머리말: "아래는 서버가 DB 에서 조립한 이 활동의 **전체 지표**다. 추가 도구 조회 없이 이 데이터만으로 평가하라. 데이터에 없는 항목은 언급하지 말라." → 섹션 본문 → 출력 지시: 포함된 섹션마다 `### 제목` + 1~2문장, 마지막 `### 종합` 3~5문장 (잘한 점 · 개선점 · **다음 러닝 제안 한 줄**). 요약 모드는 현행 "3줄 이내".
-- [ ] F13 `askAdvisor(prompt, { channel: "activity-eval", minTurns: 0 })` — 호출 직전 `resetSession("activity-eval")` (평가는 항상 새 세션 · 채팅 세션과 분리). `AIAdvice` 저장: `category: "activity_eval"` · `reportDate: 활동 KST 날짜` · `prompt: 조립된 프롬프트`.
+- [x] F12 프롬프트 (`fullPrompt` · `briefPrompt`) — 머리말: "아래는 서버가 DB 에서 조립한 이 활동의 **전체 지표**다. 추가 도구 조회 없이 이 데이터만으로 평가하라. 데이터에 없는 항목은 언급하지 말라." → 섹션 본문 → 출력 지시: 포함된 섹션마다 `### 제목` + 1~2문장, 마지막 `### 종합` 3~5문장 (잘한 점 · 개선점 · **다음 러닝 제안 한 줄**). 요약 모드는 현행 "3줄 이내".
+- [x] F13 `askAdvisor(prompt, { channel: "activity-eval", minTurns: 0 })` (상수는 `constants.ts` — route 파일은 핸들러 외 export 불가) — 호출 직전 `resetSession("activity-eval")` (평가는 항상 새 세션 · 채팅 세션과 분리). `AIAdvice` 저장: `category: "activity_eval"` · `reportDate: 활동 KST 날짜` · `prompt: 조립된 프롬프트`.
 
 **UI (`src/components/activity/AiEvalCard.tsx`, 활동 상세 맨 아래 — 기존 자리)**
-- [ ] F14 상태 4개: 대기 (버튼) → 분석 중 (경과 초 · "보통 30~90초") → 결과 → 오류 (메시지 + 다시 시도). 결과 카드: 상단에 **근거 칩** (`sections` 의 제목 · `omitted` 는 "스플릿 조회 실패" 흐린 칩) · 본문은 마크다운 (`### ` 헤딩을 카드 안 소제목 스타일로) · 하단 "다시 평가" (같은 활동 재요청 · 결과 교체).
-- [ ] F15 시안 `docs/designs/440-activity-ai-eval/` (결과 블록만 · 데스크톱/360) — **승인 후 구현**.
+- [x] F14 상태 4개 (`AiEvalCard.tsx`): 대기 (버튼) → 분석 중 (경과 초 · "보통 30~90초") → 결과 → 오류 (메시지 + 다시 시도). 결과 카드: 상단에 **근거 칩** (`sections` 의 제목 · `omitted` 는 "스플릿 조회 실패" 흐린 칩) · 본문은 마크다운 (`### ` 헤딩을 카드 안 소제목 스타일로) · 하단 "다시 평가" (같은 활동 재요청 · 결과 교체).
+- [x] F15 시안 `docs/designs/440-activity-ai-eval/` (결과 블록만 · 데스크톱/360) — 승인 2026-09-23 → 구현. 실화면 `screenshots/live-*.png`
 
 **문서 · 테스트**
-- [ ] F16 vitest — §6.
-- [ ] F17 `docs/roadmap.md` 마일스톤 17 · `docs/specs/M14-followup.md`.
+- [x] F16 vitest — §6.
+- [x] F17 `docs/roadmap.md` 마일스톤 17 · `docs/specs/M14-followup.md`.
 
 ## 4. 기술 설계
 
