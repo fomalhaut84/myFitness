@@ -30,6 +30,7 @@ HRR 추이는 `/insights` 패널 E (연도별 산점도 + 중앙값) 에만 있�
 
 ## 3. 요구사항
 
+> **릴리즈 v2.37.0 (2026-09-23, PR #447 → 릴리즈 PR).** 사전 리뷰 critical 0 / major 0 / info 4 (3 반영) · Codex 1회차 P2 1 반영 (연간 카드 `coverageNoun`) · 2회차 P2 1 → #449 (종료 규칙).
 > **사전 리뷰 (2026-09-23):** critical 0 / major 0 / info 4 → 3 반영 (sparse 지표의 전년 동기 문구 "기록이 없는 달" · `TrendSeriesChart` 주석 · 캡션 문구 정합), 1 유지 (sparse 라 인터벌 1건인 주가 "가장 높은 주" 가 될 수 있음 — 스펙 §4 의 의도).
 > **구현 (feat/442-1, 2026-09-23).** vitest 246 → 257 · 로컬 `next dev` 로 `/trends?metric=hrr2` 5개 뷰 + `/history` 스모크 (전부 200 · 캡션 "종료 후 심박은 2026-03 부터" · 개인 기록 행) · 캡처 `docs/designs/442-trends-hrr-metric/screenshots/`. 달라진 항목은 ↳.
 
