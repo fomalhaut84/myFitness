@@ -30,20 +30,23 @@
 
 ## 3. 요구사항
 
+> **구현 (fix/445-1, 2026-09-24).** vitest 288 → 290 · 로컬 `next dev` 3화면 (`/history/2026/09` · `/history/2026` · `/lifestyle`) 캡처 `docs/designs/445-monday-start-grids/screenshots/`. 달라진 항목은 ↳.
+
 **순수 로직 (`src/lib/history/month-cells.ts`)**
-- [ ] F1 `WEEKDAY_LABELS` 상수 `["월", "화", "수", "목", "금", "토", "일"]` export (client 안전 — prisma 없음).
-- [ ] F2 `weekdayIndexMon(ymd)` — 0 = 월 … 6 = 일 (`(getUTCDay() + 6) % 7`). 기존 `dayOfWeekYmd` (0 = 일) 는 호출처가 `monthCells` 뿐이므로 **제거** (남겨 두면 다음 사람이 다시 쓴다).
-- [ ] F3 `monthCells().leadingBlanks` = `weekdayIndexMon(1일)`. 주석 "월요일 시작 그리드" 로. `view.ts` 는 변경 없음 (값만 바뀐다).
+- [x] F1 `WEEKDAY_LABELS` 상수 `["월", "화", "수", "목", "금", "토", "일"]` export (client 안전 — prisma 없음).
+- [x] F2 `weekdayIndexMon(ymd)` — 0 = 월 … 6 = 일 (`(getUTCDay() + 6) % 7`). 기존 `dayOfWeekYmd` (0 = 일) 는 **제거**.
+  - ↳ 호출처가 하나 더 있었다 — `HistoryNav` 의 요일 라벨 (`DAY_NAMES[dayOfWeekYmd()]`). `WEEKDAY_LABELS[weekdayIndexMon()]` 로 교체 (표시 결과 동일)
+- [x] F3 `monthCells().leadingBlanks` = `weekdayIndexMon(1일)`. 주석 "월요일 시작 그리드" 로. `view.ts` 는 변경 없음 (값만 바뀐다).
 
 **컴포넌트**
-- [ ] F4 `MonthGrid` — `DAY_LABELS` 삭제 → `WEEKDAY_LABELS` import. 빈 칸 · 셀 렌더는 그대로.
-- [ ] F5 `YearMonthCard` — 미니 달력 `leadingBlanks` 그대로 (정본이 바뀌므로 자동). 헤더 없음 → 변경 없음 (확인만).
-- [ ] F6 `MonthlyHeatmap` — 자체 `new Date(...)` 계산을 `monthCells(formatYm(year, month))` 로 교체 (`leadingBlanks` + `days` ymd 배열 → 셀). `DAY_LABELS` → `WEEKDAY_LABELS`. `todayStr` 도 로컬 TZ 이므로 `todayKSTString()` 으로 (같은 파일 안 잔여 정리 · #365).
-- [ ] F7 주말 강조는 현재 어느 그리드에도 없다 — 새로 넣지 않는다 (범위 밖).
+- [x] F4 `MonthGrid` — `DAY_LABELS` 삭제 → `WEEKDAY_LABELS` import. 빈 칸 · 셀 렌더는 그대로.
+- [x] F5 `YearMonthCard` — 미니 달력 `leadingBlanks` 그대로 (정본이 바뀌므로 자동). 헤더 없음 → 변경 없음 (확인만).
+- [x] F6 `MonthlyHeatmap` — 자체 `new Date(...)` 계산을 `monthCells(formatYm(year, month))` 로 교체 (`leadingBlanks` + `days` ymd 배열 → 셀). `DAY_LABELS` → `WEEKDAY_LABELS`. `todayStr` 도 로컬 TZ 이므로 `todayKSTString()` 으로 (같은 파일 안 잔여 정리 · #365).
+- [x] F7 주말 강조는 현재 어느 그리드에도 없다 — 새로 넣지 않는다 (범위 밖).
 
 **테스트 · 문서**
-- [ ] F8 `month-cells.test.ts`: `weekdayIndexMon` (월 0 · 일 6) · `monthCells("2024-09").leadingBlanks` = 6 (1일이 일요일) · `"2026-06"` = 0 (1일이 월요일) · 기존 `2024-03` 기대값 5 → 4 로 갱신. `WEEKDAY_LABELS` 길이 7 · 첫 원소 "월".
-- [ ] F9 로컬 `next dev`: `/history/2026/09` 월 그리드 (2026-09-01 화 → 빈 칸 1) · `/history/2026` 연간 카드 · `/lifestyle` 히트맵 헤더 `월…일`.
+- [x] F8 `month-cells.test.ts`: `weekdayIndexMon` (월 0 · 일 6) · `monthCells("2024-09").leadingBlanks` = 6 (1일이 일요일) · `"2026-06"` = 0 (1일이 월요일) · 기존 `2024-03` 기대값 5 → 4 로 갱신. `WEEKDAY_LABELS` 길이 7 · 첫 원소 "월".
+- [x] F9 로컬 `next dev`: `/history/2026/09` 월 그리드 (2026-09-01 화 → 빈 칸 1) · `/history/2026` 연간 카드 · `/lifestyle` 히트맵 헤더 `월…일`.
 - [ ] F10 `docs/roadmap.md` M17-4 · `docs/specs/M14-followup.md`.
 
 ## 4. 기술 설계
