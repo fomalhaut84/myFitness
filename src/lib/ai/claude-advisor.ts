@@ -28,6 +28,8 @@ const MCP_SERVER_PATH = path.resolve(process.cwd(), "dist/mcp/server.cjs");
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 
 const TIMEOUT_MS = 180_000;
+/** #440: 클라이언트 표시용 (활동 평가 카드 메타). 아래 `--model` 인자와 같은 값 */
+export const ADVISOR_MODEL = "sonnet";
 const DEFAULT_CHANNEL = "default";
 
 /** 단일 askAdvisor CLI 호출 최대 시간 (외부 소비자용 export). */
@@ -262,7 +264,7 @@ async function askAdvisorOnce(
     "--model",
     // #197: Haiku 는 system prompt 를 무시하고 tool 호출 없이 답변하거나 (turns=1)
     // 응답 본문에 tool_use JSON 을 텍스트로 노출하는 사례 다수. Sonnet 으로 upgrade.
-    "sonnet",
+    ADVISOR_MODEL,
     "--max-turns",
     // 근본 fix (issue #179) 이후에도 여유 필요 시 재조정. 10 → 15 로 완화해
     // 정상 세션이 tool 호출 횟수 초과로 실패하는 경우를 방지.
