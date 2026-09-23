@@ -103,3 +103,27 @@ describe("rollup — 경계 · 불변", () => {
     expect(rollup([{ ymd: "2024-01-01", value: 1 }], [], getHistoryMetric("steps"))).toEqual([]);
   });
 });
+
+// #442 (M17-3): median — 인터벌 · 레이스의 큰 HRR 이 평균을 끌어올리지 않게
+describe("rollup — median (2분 HRR)", () => {
+  it("홀수 개는 가운데 · 짝수 개는 두 값 평균 (decimals 0 반올림) · min/max 띠 · 빈 버킷 null (0 아님)", () => {
+    const points: DailyPoint[] = [
+      { ymd: "2024-01-03", value: 12 },
+      { ymd: "2024-01-05", value: 40 }, // 인터벌 — 평균이면 21.7, 중앙값은 13
+      { ymd: "2024-01-09", value: 13 },
+      { ymd: "2024-02-01", value: 15 },
+      { ymd: "2024-02-02", value: 18 },
+    ];
+    const out = rollup(points, months, getHistoryMetric("hrr2"));
+    expect(out[0]).toEqual({ value: 13, coveredDays: 3, min: 12, max: 40 });
+    // (15 + 18) / 2 = 16.5 → 17
+    expect(out[1]).toEqual({ value: 17, coveredDays: 2, min: 15, max: 18 });
+    const empty = rollup([], months, getHistoryMetric("hrr2"));
+    expect(empty[0]).toEqual({ value: null, coveredDays: 0, min: null, max: null });
+  });
+
+  it("같은 날 두 러닝은 점 2개로 중앙값에 들어간다 (coveredDays 는 1)", () => {
+    const out = rollup([{ ymd: "2024-01-03", value: 10 }, { ymd: "2024-01-03", value: 30 }], months, getHistoryMetric("hrr2"));
+    expect(out[0]).toEqual({ value: 20, coveredDays: 1, min: 10, max: 30 });
+  });
+});

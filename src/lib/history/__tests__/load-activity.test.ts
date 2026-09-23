@@ -38,3 +38,25 @@ describe("activityPoints", () => {
     expect(points.runningCount).toHaveLength(1);
   });
 });
+
+// #442 (M17-3): hrr2 — 러닝 · 값 있는 활동만 점. 음수 (종료 뒤 상승) 도 값이다
+describe("activityPoints — hrr2", () => {
+  it("null 은 점 없음 · 러닝 외 제외 · 같은 날 두 러닝은 점 2개 · 음수 유지", () => {
+    const rows: ActivityRow[] = [
+      { startTime: at("2024-03-01"), activityType: "running", distance: 10_000, duration: 3000, hrr2: 16 },
+      { startTime: at("2024-03-01"), activityType: "track_running", distance: 5_000, duration: 1500, hrr2: -3 },
+      { startTime: at("2024-03-02"), activityType: "running", distance: 8_000, duration: 2400, hrr2: null },
+      { startTime: at("2024-03-03"), activityType: "cycling", distance: 30_000, duration: 3600, hrr2: 20 },
+    ];
+    const points = activityPoints(rows, [getHistoryMetric("hrr2")]).hrr2 ?? [];
+    expect(points).toEqual([
+      { ymd: "2024-03-01", value: 16 },
+      { ymd: "2024-03-01", value: -3 },
+    ]);
+  });
+
+  it("hrr2 가 없는 행 (기존 호출자) 도 컴파일 · 점 없음", () => {
+    const rows: ActivityRow[] = [{ startTime: at("2024-03-01"), activityType: "running", distance: 10_000, duration: 3000 }];
+    expect(activityPoints(rows, [getHistoryMetric("hrr2")]).hrr2).toEqual([]);
+  });
+});

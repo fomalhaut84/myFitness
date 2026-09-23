@@ -56,6 +56,8 @@ export interface PersonalRecords {
   bestMonth: BestMonth | null;
   bestVo2max: DatedValue | null;
   lowestRestingHR: DatedValue | null;
+  /** #442: 가장 큰 2분 HRR (러닝 · 동률이면 먼저 달성한 날). 인터벌 · 레이스가 크게 나오므로 "빠른 회복" 보다 "가장 큰 값" 이 정직한 이름 */
+  bestHrr2: DatedValue | null;
   /** 최신순 · `eventType = "race"` 전부 */
   races: RaceRow[];
 }
@@ -152,7 +154,7 @@ export async function getPersonalRecords(
 ): Promise<PersonalRecords> {
   // 조회 범위 = [하한, 오늘] — 패널이 "하한 부터" 라고 말하고 링크도 그 범위로 redirect 되므로 그 밖의 행 (하한 이전 · 미래) 은 기록이 아니다 (PR #412 Codex P2)
   const within = { gte: kstDayRange(ctx.lowerBound).start, lt: kstDayRange(ctx.today).end };
-  const [bucketRows, longestRow, raceRows, vo2, rhr, monthly] = await Promise.all([
+  const [bucketRows, longestRow, raceRows, vo2, rhr, hrr, monthly] = await Promise.all([
     prisma.activity.findMany({
       where: { AND: [RUNNING_ACTIVITY_WHERE, { startTime: within, distance: { gte: MIN_BUCKET_DISTANCE_M }, avgPace: { not: null } }] },
       select: ACTIVITY_SELECT,
@@ -178,6 +180,12 @@ export async function getPersonalRecords(
       orderBy: [{ restingHR: "asc" }, { date: "asc" }],
       select: { date: true, restingHR: true },
     }),
+    // #442: 러닝 · hrr2 최대 · 동률이면 먼저 달성한 날
+    prisma.activity.findFirst({
+      where: { AND: [RUNNING_ACTIVITY_WHERE, { startTime: within, hrr2: { not: null } }] },
+      orderBy: [{ hrr2: "desc" }, { startTime: "asc" }],
+      select: { startTime: true, hrr2: true },
+    }),
     loadSummary(
       { granularity: "month", from: ctx.lowerBound, to: ctx.today, metrics: ["runningKm", "runningCount"], clampedFrom: false, clampedTo: false },
       ctx,
@@ -193,6 +201,7 @@ export async function getPersonalRecords(
     bestMonth: bestRunningMonth(monthly.buckets, ctx.today),
     bestVo2max: vo2?.vo2maxRunning != null ? { value: vo2.vo2maxRunning, ymd: ymdKST(vo2.date) } : null,
     lowestRestingHR: rhr?.restingHR != null ? { value: rhr.restingHR, ymd: ymdKST(rhr.date) } : null,
+    bestHrr2: hrr?.hrr2 != null ? { value: hrr.hrr2, ymd: ymdKST(hrr.startTime) } : null,
     races: raceRows.map(toRaceRow),
   };
 }

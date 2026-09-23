@@ -29,9 +29,9 @@ describe("HISTORY_METRICS", () => {
     }
   });
 
-  it("withMinMax 는 avg 형에만", () => {
+  it("withMinMax 는 avg · median 형에만 (#442: 2분 HRR 중앙값 + 최저~최고 띠)", () => {
     for (const m of HISTORY_METRICS) {
-      if (m.withMinMax) expect(m.aggregate).toBe("avg");
+      if (m.withMinMax) expect(["avg", "median"]).toContain(m.aggregate);
     }
   });
 
@@ -58,5 +58,26 @@ describe("clampLowerBound (PR #398 Codex P2)", () => {
   it("기록이 하나도 없으면 MIN_HISTORY_YMD", () => {
     expect(clampLowerBound([null, null])).toBe("2020-01-01");
     expect(clampLowerBound([])).toBe("2020-01-01");
+  });
+});
+
+// #442 (M17-3): 2분 HRR 지표 — activity 소스 · 중앙값 집계 · sparse
+describe("hrr2 지표 (#442)", () => {
+  it("등록 · 선택 가능 · 러닝 활동 소스 kind hrr2 · median 집계 · sparse · 띠", () => {
+    expect(isHistoryMetricId("hrr2")).toBe(true);
+    const def = getHistoryMetric("hrr2");
+    expect(def.source).toBe("activity");
+    expect(def.source === "activity" && def.kind).toBe("hrr2");
+    expect(def.aggregate).toBe("median");
+    expect(def.sparse).toBe(true);
+    expect(def.withMinMax).toBe(true);
+    expect(def.missingAsZero).toBe(false);
+    expect(def.unit).toBe("bpm");
+    expect(def.decimals).toBe(0);
+    expect(selectableHistoryMetrics().some((m) => m.id === "hrr2")).toBe(true);
+  });
+
+  it("시작일 캡션 문구 — `{from}` 치환 자리", () => {
+    expect(getHistoryMetric("hrr2").startNote).toContain("{from}");
   });
 });

@@ -41,5 +41,8 @@ describe("aggregateCaption", () => {
     expect(aggregateCaption({ aggregate: "sum", withMinMax: false })).toContain("합계");
     expect(aggregateCaption({ aggregate: "avg", withMinMax: true })).toContain("띠");
     expect(aggregateCaption({ aggregate: "max", withMinMax: false })).toContain("최고");
+    // #442: median
+    expect(aggregateCaption({ aggregate: "median", withMinMax: true })).toBe("선 = 기간 중앙값, 띠 = 최저~최고");
+    expect(aggregateCaption({ aggregate: "median", withMinMax: false })).toBe("선 = 기간 중앙값");
   });
 });
