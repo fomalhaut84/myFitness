@@ -5,7 +5,40 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-21, M15-2 `/history` · M15-3 `/trends` · v2.32.0 세션 종료 시점)
+## 현재 상태 (2026-09-22, M15-4 하이라이트 · M15-5 `/insights` · **M15 완료** · v2.34.0 세션 종료 시점)
+
+**최근 릴리즈:** **v2.33.0** — 하이라이트 (#396, PR #412 · `Activity.eventType` 마이그레이션 + 프로덕션 백필 완료 race 14) · **v2.34.0** — `/insights` 심화 시각화 (#397, PR #417). main = `v2.34.0`, dev 는 문서 커밋 (로드맵 · 이 인계 문서) 만 앞섬 — 런타임 동일. 둘 다 배포 success · 배포 후 사용자 실데이터 확인 완료. **M15 마일스톤 완료** (2026-09-18 ~ 09-22, v2.30.0 ~ v2.34.0, 추적 #392 닫음).
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음. 다음 마일스톤 미정 — 후보를 사용자와 정한다.** 후보 (모두 이슈 있음):
+
+| 후보 | 내용 | 비고 |
+|---|---|---|
+| **#418 HRR** (feature · P2) | 러닝 종료 후 심박 회복 — `HeartRateRecord.rawData.heartRateValues` (2분 간격 684샘플/일) 로 종료 후 +2/+4/+6/+10분 곡선 + **2분 HRR** (`hrr2` = 종료 시점 − 2분 후) 을 활동 상세에, 이력이 쌓이면 `/insights` 5번째 패널 | 사용자 직접 요청 (2026-09-22). API 호출 0. **해상도 제약 (PR #422 Codex P2):** 2분 간격 소스라 워치의 1분 HRR 은 못 만든다 — 오프셋은 2분 배수로만, 각 오프셋은 ±60초 안의 가장 가까운 샘플 (없거나 null 이면 그 점 결측), 보간 금지, UI 에 "2분 해상도" 표기. 활동 상세 엔드포인트 (`activity-service/activity/{id}/details`, 초 단위) 는 활동 구간만 담아 종료 후 회복엔 못 쓴다. 이슈에 프로덕션 확인 쿼리 2개 (`recoveryTime` 존재 · heartRateValues 시작일). UI → 디자인 단계 |
+| **#414 과거 활동 재조회** (bug · P2) | Garmin 에서 과거 활동을 레이스로 바꿔도 증분 싱크 (`lastSyncDate + 1`) 가 다시 안 가져옴. 레이스 표 "다음 싱크에 반영" 문구는 새 활동에만 참 | 최근 N일 겹침 재조회 또는 명시적 명령 + 문구 정정. 활동 이름 · 유형 변경도 같은 문제 (기존) |
+| **#419 `/insights` 후속** (chore · P2) | RSC 페이로드 (점 4,300개 툴팁 문자열 · href 직렬화 400~500KB) · 레이스 점 연도 색 · 제외 사유 문구 (거리 없음) | 배포 후 콜드 응답이 1s 안이면 페이로드 항목은 낮춤. 나머지 둘은 표시 정확도 — 작음 |
+| D8 잔여 (미선별 전부) | 러닝: 유산소·무산소 TE · `intensityLabel` 비율 월별 · 케이던스 · 보폭 · 수직진폭 추세 (`/trends` 지표 등록 1건씩) · 요일/시간대 히스토그램 · `routeTag` 반복 코스 비교 — 수면: 단계 비율 월별 스택 · HRV + 7일 기준선 · 최저 SpO2 월별 (HRV 2026-04~ · SpO2 는 baseline 상대) — 일상: 스트레스 고·중·저 스택 · 바디배터리 충전/소모 — 체중: 전체 이력 + 목표선 · 월별 칼로리 밸런스 vs 체중 변화 — 교차: 수면 점수 → 다음날 페이스 | `docs/specs/m15-overview.md` D8 표 (✅ 4건 · #418 제외한 나머지 전부) · #397 체크리스트. 취침·기상 산점도는 `/lifestyle` 에 이미 있어 제외 |
+| 과거 존 분포 | `zoneDistribution` 없는 러닝 1,550건 (2020-06 ~ 2024-11) — rawData 에 `hrTimeInZone` 0건. 활동별 API (`activity-service/activity/{id}/hrTimeInZones`) 1,550회 | 이슈 없음. 존 패널이 2024-12 부터인 이유. 감사 D 표와 함께 판단 |
+
+**독립 후속 (전부 P2):** #405 + #408 묶음 (히스토리 하한 입구) · #403 (프로세스 간 캐시) · #413 (`/trends` 포인트 클릭 접근성 — YoY 키보드 경로 없음) · #390 · #365 잔여 · #371 · #370.
+
+**이번 세션 결과 (2026-09-22):**
+- **#396 완료 (v2.33.0, PR #412)** — `Activity.eventType String?` + 인덱스 (수동 SQL · `prisma-drift-fix`), 파서 `parse-event-type.ts` 를 fetcher (create · update) 와 `backfill:event-type` 이 공유. `/trends` 개인 기록 탭 (버킷별 최저 페이스 · 최장 · 최다 km 월 · VO2max · RHR · 레이스 표) · 시계열 이벤트 마커 3종 (무채색 · 같은 버킷 합침 · 연 단위 밴드 없음) + 이벤트 목록 + `marks=0` · 포인트 클릭 → `/history` (지표 쿼리 유지 — #409 P2 편입) · `/history` 연 뷰 커버리지 띠 (소스 8개, MCP `get_data_coverage` 집계 공유 → `src/lib/history/coverage.ts`). `running-buckets` 를 `src/lib/running/` 으로. 사전 리뷰 major 2 · info 11 + Codex 3회 (P2 5 — 반영 4 · #414 1). 프로덕션 백필: race 14 · training 1 · uncategorized 2320.
+- **#397 완료 (v2.34.0, PR #417)** — `/insights` 4 패널 (질문 → 차트 → 답): 효율 산점도 (기준 구간 5'00"~5'30" 연도별 평균 심박) · 기온 vs 페이스 (습도 3단 · 5°C 구간 중앙값) · 월별 존 100% 스택 (2024-12~) · 주간 km → 다음 주 RHR (피어슨 r 지연 0/1/2 · km 구간 표). 순수 로직 `src/lib/insights/` + vitest. 사전 리뷰 major 1 · info 8 + Codex 2회 (P2 3 — 반영 1 · #419 2). vitest 152 → 202건.
+- 프로덕션 실측: 러닝 2,156건 (페이스+심박 2,155 · 기온 2,136 · 존 606 (2024-12~) · 케이던스 2,155) · RHR 2,284일 (2020-06-18~).
+
+**세션 관찰:**
+- **Next 16 서버 → 클라이언트 경계 두 번 걸림**: (1) `"use client"` 모듈의 비컴포넌트 export (`ZONE_NAMES` 배열) 를 서버 컴포넌트가 import 하면 참조 프록시라 `.map is not a function` (2) 서버에서 클라이언트 차트로 함수 prop (`format`) 을 넘기면 "Functions cannot be passed directly to Client Components". 해법: 상수 · 포맷은 `"use client"` 없는 일반 모듈 (`zone-colors.ts` · `scatter-format.ts`) 에 두고 함수는 **이름** 으로 넘겨 클라이언트에서 해석. memory `project_next_rsc_boundary`.
+- **Recharts 클릭 가로채기**: 툴팁 `cursor` (컬럼 사각형 · 세로선) · `ReferenceLine` · `ReferenceArea` 가 막대 · 점 위에 그려져 클릭을 먹는다 → `pointerEvents: "none"`. 정적 점 층 (`recharts-line-dots`) 이 활성 점보다 위라 **정적 점 자체에 onClick** 을 걸어야 한다. CDP `Input.dispatchMouseEvent` 클릭 테스트 (`elementFromPoint` 로 가로채는 요소 확인) 가 잡았다. memory `feedback_recharts_defaults` 에 추가.
+- 시안 프로토타입 캡처는 CDP 스크립트 (`Emulation.setDeviceMetricsOverride` + `Page.captureScreenshot`) 로 — headless `--window-size=360` 은 최소 창 폭을 강제해 폰 화면이 잘려 보인다 (CSS 문제가 아님).
+- `prisma format` 은 스키마 전체를 재정렬한다 — 컬럼 추가 시 실행하지 않는다 (diff 400줄).
+- 백필은 싱크 stamp · 수동 쓰기 버전을 안 올려 캐시 (TTL 10분) 가 옛 값을 보여 준다 — 백필 후 `pm2 restart` 또는 10분 대기.
+- Codex 종료 규칙 실행: #396 은 P2 3라운드 (3회차 → #414), #397 은 P2 2라운드 (2회차 → #419). 둘 다 "후속 이슈 + PR 코멘트 + body 갱신, push 없음" 으로 끝남.
+
+---
+
+## 이전 상태 (2026-09-21, M15-2 `/history` · M15-3 `/trends` · v2.32.0 세션 종료 시점)
 
 **최근 릴리즈:** **v2.31.0** — `/history` 브라우저 + summary 메모리 캐시 (#394, PR #402) · **v2.32.0** — `/trends` 추이 분석 (#395, PR #407). main = `v2.32.0`, dev 는 문서 커밋 (로드맵 · 이 인계 문서) 만 앞섬 — 런타임 동일. 둘 다 배포 success · migration 없음 · 패키지 변경 없음 · 배포 후 사용자 실데이터 확인 완료.
 
