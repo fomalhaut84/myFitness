@@ -422,10 +422,10 @@
 - [ ] 워치 "매초" 설정 실험 (사용자) → 소스 있으면 격자 자동 감지 + `hrr1`, 없으면 결론 기록
 - 이슈: #441 · 스펙 `docs/specs/441-hrr-1min-resolution.md`
 
-## M17-4: 월별 그리드 월요일 시작 — 우선순위 ★
+## M17-4: 월별 그리드 월요일 시작 — 우선순위 ★ ✅
 
 - [x] `month-cells.ts` 정본 (`WEEKDAY_LABELS` · `weekdayIndexMon`) · `MonthGrid` · `HistoryNav` · `MonthlyHeatmap` (로컬 TZ 달력 제거 · #365 잔여)
-- 이슈: #445 · 스펙 `docs/specs/445-monday-start-grids.md`. 대시보드 주간 차트는 롤링 7일이라 대상 아님
+- 이슈: #445 · PR #452 · **v2.37.1** (2026-09-24). 스펙 `docs/specs/445-monday-start-grids.md`. 대시보드 주간 차트는 롤링 7일이라 대상 아님
 
 ## M17-3: `/trends` HRR 지표 — 우선순위 ★★ ✅
 
