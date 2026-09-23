@@ -14,6 +14,7 @@ export function run(ymd: string, over: Partial<InsightRun> = {}): UsableRun {
     humidityPct: 60,
     zones: null,
     race: false,
+    hrr2: null,
     ...over,
   } as UsableRun;
 }
