@@ -21,7 +21,8 @@ import { loadHistoryEvents } from "@/lib/history/events";
 import { toChartMarkers } from "@/lib/history/markers";
 import { buildCompareRows, compareMetricIds, needsPerMonth } from "@/lib/history/compare";
 import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
-import { getHistoryMetric, type HistoryMetricDef } from "@/lib/history/metrics";
+import { loadMetricDataStart, dataStartNote } from "@/lib/history/data-start";
+import { getHistoryMetric, type HistoryAggregate, type HistoryMetricDef } from "@/lib/history/metrics";
 import { pivotByYear, seasonality, summarizeSeries, toTrendPoints, type TrendPoint } from "@/lib/history/trends";
 import {
   isMonthRangeTruncated,
@@ -40,7 +41,8 @@ interface PageProps {
 }
 
 const UNIT_LABELS = { week: "주", month: "월", year: "연" } as const;
-const WHOLE_LABELS = { sum: "합계", avg: "평균", max: "최고", last: "기간 말" } as const;
+// #442: `Record<HistoryAggregate, …>` 로 조여 새 집계 (median) 의 키 누락이 컴파일 에러가 되게
+const WHOLE_LABELS: Record<HistoryAggregate, string> = { sum: "합계", avg: "평균", max: "최고", last: "기간 말", median: "중앙값" };
 
 function Panel({ title, note, caption, children }: { title: string; note: string; caption: string; children: ReactNode }) {
   return (
@@ -84,7 +86,8 @@ function pointReadout(label: string, point: TrendPoint | null, def: HistoryMetri
 
 async function SeriesView({ query, ctx, def, color }: ViewProps) {
   const range = resolveTrendsRange(query.range, query.unit, ctx);
-  const [summary, whole] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id])]);
+  const [summary, whole, dataStart] = await Promise.all([loadSummary(query.unit, range, def, ctx), getCachedRangeTotals(range, [def.id]), loadMetricDataStart(def)]);
+  const startNote = dataStartNote(def, dataStart);
   // #396: 이벤트 마커. 조회 범위는 **버킷 스팬** — 첫 버킷은 달력 전체라 하한 앞의 플랜 · 지표 변경도 그 버킷에 속한다 (사전 리뷰 info 12).
   // 캐시하지 않는다 — 레이스 · 플랜 · 지표 변경은 행 수가 적고 (6년 30건 안팎) 수동 쓰기가 잦다
   // 상한은 오늘 — 진행 중 버킷의 끝은 미래라 내일 시작하는 플랜이 목록에 올라온다 (PR #412 Codex P2). 진행 중 플랜은 겹침 조건으로 그대로 잡힌다
@@ -109,7 +112,7 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
             points={points}
             metric={def}
             color={color}
-            showBand={def.aggregate === "avg" && def.withMinMax}
+            showBand={(def.aggregate === "avg" || def.aggregate === "median") && def.withMinMax}
             unitLabel={unitLabel}
             markers={markers}
             clickTarget={query.unit === "year" ? "연 뷰" : "월 뷰"}
@@ -122,6 +125,8 @@ async function SeriesView({ query, ctx, def, color }: ViewProps) {
           items={[
             ...(hasLowCoverage ? [`${isSum ? "흐린 막대" : "속 빈 점"} = 기록이 절반 미만인 ${unitLabel}`] : []),
             ...(isSum ? [`점선 막대 = 다 채워지지 않은 ${unitLabel} (진행 중이거나 기록 시작일이 걸림)`] : ["선이 끊긴 곳 = 기록 없음"]),
+            // #442: 기록 하한보다 늦게 시작하는 지표의 시작일 (패널 E 규칙)
+            ...(startNote ? [startNote] : []),
           ]}
         />
       </Panel>
@@ -184,7 +189,8 @@ async function loadPivot(def: HistoryMetricDef, ctx: TrendsContext) {
 }
 
 async function YoyView({ ctx, def, color }: ViewProps) {
-  const pivot = await loadPivot(def, ctx);
+  const [pivot, dataStart] = await Promise.all([loadPivot(def, ctx), loadMetricDataStart(def)]);
+  const startNote = dataStartNote(def, dataStart);
   const unit = historyDisplayUnit(def);
   const hasUsable = pivot.years.some((y) => pivot.cells[y].some((c) => c !== null && c.value !== null && !c.lowCoverage));
   return (
@@ -198,20 +204,28 @@ async function YoyView({ ctx, def, color }: ViewProps) {
       ) : (
         <EmptyChart message="겹쳐 볼 달이 아직 없습니다. 기록이 절반 넘게 있는 달부터 그립니다." />
       )}
-      <Keys items={def.aggregate === "sum" ? ["점선과 속 빈 점 = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림)"] : ["선이 끊긴 곳 = 기록이 없거나 절반 미만인 달"]} />
+      <Keys
+        items={[
+          def.aggregate === "sum" ? "점선과 속 빈 점 = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림)" : "선이 끊긴 곳 = 기록이 없거나 절반 미만인 달",
+          ...(startNote ? [startNote] : []),
+        ]}
+      />
     </Panel>
   );
 }
 
-const SEASON_CAPTIONS = {
+const SEASON_CAPTIONS: Record<HistoryAggregate, string> = {
   sum: "막대 = 끝난 달들의 월 합계 평균",
   avg: "굵은 선 = 그 달의 평균 (기록 일수 가중)",
   max: "굵은 선 = 그 달의 역대 최고",
   last: "굵은 선 = 그 달 값의 평균",
-} as const;
+  median: "굵은 선 = 그 달 중앙값들의 평균",
+};
 
 async function SeasonView({ ctx, def, color }: ViewProps) {
-  const months = seasonality(await loadPivot(def, ctx), def);
+  const [pivot, dataStart] = await Promise.all([loadPivot(def, ctx), loadMetricDataStart(def)]);
+  const months = seasonality(pivot, def);
+  const startNote = dataStartNote(def, dataStart);
   const unit = historyDisplayUnit(def);
   const usable = months.filter((m) => m.value !== null);
   const high = usable.length ? usable.reduce((a, m) => ((m.value as number) > (a.value as number) ? m : a)) : null;
@@ -235,6 +249,7 @@ async function SeasonView({ ctx, def, color }: ViewProps) {
         ) : (
           <EmptyChart message="계절성을 볼 달이 아직 없습니다. 기록이 절반 넘게 있는, 끝난 달만 셉니다." />
         )}
+        {startNote && <Keys items={[startNote]} />}
       </Panel>
       <ReadoutRow
         items={[

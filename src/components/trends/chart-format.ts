@@ -28,6 +28,8 @@ export function aggregateCaption(metric: Pick<ChartMetric, "aggregate" | "withMi
   if (metric.aggregate === "sum") return "막대 = 기간 합계";
   if (metric.aggregate === "max") return "선 = 기간 최고";
   if (metric.aggregate === "last") return "선 = 기간 말 값";
+  // #442: median (2분 HRR)
+  if (metric.aggregate === "median") return metric.withMinMax ? "선 = 기간 중앙값, 띠 = 최저~최고" : "선 = 기간 중앙값";
   return metric.withMinMax ? "선 = 기간 평균, 띠 = 최저~최고" : "선 = 기간 평균";
 }
 
