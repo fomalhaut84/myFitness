@@ -59,6 +59,16 @@ describe("summarizeLaps", () => {
     expect(s!.paceCv).toBeCloseTo(0.0366, 3);
   });
 
+  it("페이스 없는 랩을 걸러도 가장 빠른/느린 km 번호는 표의 번호 그대로 (PR #446 Codex P2)", () => {
+    // 2km 랩은 averageSpeed 0 → 페이스 없음. 실제 3km 가 가장 빠르다
+    const laps = toEvalLaps([lap(310), { distance: 1000, duration: 300, averageSpeed: 0 }, lap(290), lap(320)]);
+    const s = summarizeLaps(laps)!;
+    expect(s.count).toBe(3);
+    expect(s.fastest).toEqual({ index: 3, paceSecPerKm: 290 });
+    expect(s.slowest).toEqual({ index: 4, paceSecPerKm: 320 });
+    expect(lapTableLines(laps)[2]).toMatch(/^3km 4'50"/);
+  });
+
   it("km 랩이 1개면 split · 드리프트는 null, 가장 빠른 km 는 있다", () => {
     const s = summarizeLaps(toEvalLaps([lap(300)]));
     expect(s!.count).toBe(1);

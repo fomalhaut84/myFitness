@@ -22,7 +22,7 @@ export interface EvalLap {
 }
 
 export interface LapExtreme {
-  /** km 랩 안에서의 1-based 순번 */
+  /** km 랩 안에서의 1-based 순번 — 표 (`lapTableLines`) 의 `Nkm` 과 같은 번호. 페이스 없는 랩을 걸러도 번호는 유지 (PR #446 Codex P2) */
   index: number;
   paceSecPerKm: number;
 }
@@ -86,7 +86,8 @@ export function kmLaps(laps: readonly EvalLap[]): EvalLap[] {
   return laps.filter((l) => l.distanceM >= KM_LAP_MIN_M && l.distanceM <= KM_LAP_MAX_M);
 }
 
-type PacedLap = EvalLap & { paceSecPerKm: number };
+/** 페이스가 있는 km 랩 + 표와 같은 1-based 번호 */
+type PacedLap = EvalLap & { paceSecPerKm: number; kmIndex: number };
 
 function mean(values: readonly number[]): number {
   return values.reduce((s, v) => s + v, 0) / values.length;
@@ -104,16 +105,21 @@ function halves<T>(items: readonly T[]): { first: T[]; second: T[] } {
 
 function extreme(laps: readonly PacedLap[], pick: "min" | "max"): LapExtreme {
   return laps.reduce<LapExtreme>(
-    (best, lap, i) => {
+    (best, lap) => {
       const better = pick === "min" ? lap.paceSecPerKm < best.paceSecPerKm : lap.paceSecPerKm > best.paceSecPerKm;
-      return better ? { index: i + 1, paceSecPerKm: lap.paceSecPerKm } : best;
+      return better ? { index: lap.kmIndex, paceSecPerKm: lap.paceSecPerKm } : best;
     },
-    { index: 1, paceSecPerKm: laps[0].paceSecPerKm },
+    { index: laps[0].kmIndex, paceSecPerKm: laps[0].paceSecPerKm },
   );
 }
 
+/** km 랩에 표 번호를 붙인 뒤 페이스 없는 랩을 거른다 — 번호가 밀리지 않게 */
+function pacedKmLaps(laps: readonly EvalLap[]): PacedLap[] {
+  return kmLaps(laps).flatMap((l, i) => (l.paceSecPerKm === null ? [] : [{ ...l, paceSecPerKm: l.paceSecPerKm, kmIndex: i + 1 }]));
+}
+
 export function summarizeLaps(laps: readonly EvalLap[]): LapSummary | null {
-  const paced = kmLaps(laps).filter((l): l is PacedLap => l.paceSecPerKm !== null);
+  const paced = pacedKmLaps(laps);
   if (paced.length === 0) return null;
   const paces = paced.map((l) => l.paceSecPerKm);
   const meanPace = mean(paces);
