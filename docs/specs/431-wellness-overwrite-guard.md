@@ -25,24 +25,27 @@ v2.36.0 `backfill:hrr` 에서 발견 (2026-09-23): 프로덕션 `HeartRateRecord
 
 ## 3. 요구사항
 
+> **구현 (fix/431-1, 2026-09-23).** `preserve.ts` vitest 9건 (230 → 239). 실 API 없이 단위 테스트로 검증. 달라진 항목은 ↳.
+
 **가드 (`src/lib/garmin/preserve.ts`, 순수)**
-- [ ] F1 `withoutNulls(data)` — update payload 에서 값이 `null` / `undefined` 인 키를 뺀다 (Prisma 에서 `undefined` = 무변경). create 는 그대로 (null 명시)
-- [ ] F2 `hasHeartRateDetail(raw)` = `heartRateValues` 가 비지 않은 배열 · `hasSleepDetail(raw)` = `avgOvernightHrv` 가 유한수 **또는** `sleepLevels` 가 비지 않은 배열
-- [ ] F3 `preserveUpdate(data, { incomingDetail, existingDetail })` — `withoutNulls` 적용 후, `!incomingDetail && existingDetail` 이면 `rawData` 도 뺀다 (기존 rawData 유지). 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 F1 이 이미 뺀다
-- [ ] F4 회귀 테스트 3 케이스 + null 필드 생략 + `existingDetail` 만 있을 때 rawData 제외 (`src/lib/garmin/__tests__/preserve.test.ts`)
+- [x] F1 `withoutNulls(data)` — update payload 에서 값이 `null` / `undefined` 인 키를 뺀다 (Prisma 에서 `undefined` = 무변경). create 는 그대로 (null 명시)
+- [x] F2 `hasHeartRateDetail(raw)` = `heartRateValues` 가 비지 않은 배열 · `hasSleepDetail(raw)` = `avgOvernightHrv` 가 유한수 **또는** `sleepLevels` 가 비지 않은 배열
+- [x] F3 `preserveUpdate(data, { incomingDetail, existingDetail })` — `withoutNulls` 적용 후, `!incomingDetail && existingDetail` 이면 `rawData` 도 뺀다 (기존 rawData 유지). 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 F1 이 이미 뺀다
+- [x] F4 회귀 테스트 3 케이스 + null 필드 생략 + `existingDetail` 만 있을 때 rawData 제외 (`src/lib/garmin/__tests__/preserve.test.ts`)
 
 **fetcher**
-- [ ] F5 `syncHeartRate`: 응답에 상세가 없으면 기존 행 `select { rawData }` 1회 → `preserveUpdate`. 상세가 있으면 조회 없이 `withoutNulls(data)` 로 update. create 는 기존과 동일. `isEmptyHeartRate` (#383 빈 날 skip) 는 그대로 — 요약도 없는 날은 여전히 저장하지 않는다
-- [ ] F6 `syncSleep`: 동일. `sleepScoreDetails` 는 객체 | null 로 들고 create 에서만 `Prisma.DbNull` 로 (update 에서 null 이면 생략)
-- [ ] F7 `backfill:history`: `--types` 에 `heart_rate` · `sleep` 이 있고 `--from` 이 `today − 150일` 보다 앞이면 **기본 중단** + 안내 (보존 창 · 가드 · `--allow-old-wellness` 로 강제). 상수 `WELLNESS_RETENTION_DAYS = 150` 은 `preserve.ts` 에
+- [x] F5 `syncHeartRate`: 응답에 상세가 없으면 기존 행 `select { rawData }` 1회 → `preserveUpdate`. 상세가 있으면 조회 없이 `withoutNulls(data)` 로 update. create 는 기존과 동일. `isEmptyHeartRate` (#383 빈 날 skip) 는 그대로 — 요약도 없는 날은 여전히 저장하지 않는다
+- [x] F6 `syncSleep`: 동일. `sleepScoreDetails` 는 객체 | null 로 들고 create 에서만 `Prisma.DbNull` 로 (update 에서 null 이면 생략)
+  - ↳ Prisma update 타입이 `null` 을 받지 않아 `sleepScoreDetails` 는 data 밖에서 조건부 spread
+- [x] F7 `backfill:history`: `--types` 에 `heart_rate` · `sleep` 이 있고 `--from` 이 `today − 150일` 보다 앞이면 **기본 중단** + 안내 (보존 창 · 가드 · `--allow-old-wellness` 로 강제). 상수 `WELLNESS_RETENTION_DAYS = 150` 은 `preserve.ts` 에
 
 **#429 (같은 PR)**
-- [ ] F8 `scripts/backfill-hrr.ts` 이어가기 명령에 `--dry-run` 유지
-- [ ] F9 패널 E 연도 중앙값 점에 `toggleId: String(year)` — 연도 토글을 끄면 그 해 중앙값도 숨김
-- [ ] F10 패널 E `how` 캡션에 시작일을 데이터에서 — `종료 후 심박은 2026-04 부터 있습니다` (존 패널 `zoneFrom` 규칙 · `hrrPoints[0].ymd`)
+- [x] F8 `scripts/backfill-hrr.ts` 이어가기 명령에 `--dry-run` 유지
+- [x] F9 패널 E 연도 중앙값 점에 `toggleId: String(year)` — 연도 토글을 끄면 그 해 중앙값도 숨김
+- [x] F10 패널 E `how` 캡션에 시작일을 데이터에서 — `종료 후 심박은 2026-04 부터 있습니다` (존 패널 `zoneFrom` 규칙 · `hrrPoints[0].ymd`)
 
 **문서**
-- [ ] F11 `docs/specs/garmin-endpoint-audit-20260917.md` 에 보존 창 관찰 추가 · 이 스펙에 프로덕션 확인 쿼리 (`jsonb_typeof`)
+- [x] F11 `docs/specs/garmin-endpoint-audit-20260917.md` 에 보존 창 관찰 추가 · 이 스펙에 프로덕션 확인 쿼리 (`jsonb_typeof`)
 
 ## 4. 기술 설계
 
