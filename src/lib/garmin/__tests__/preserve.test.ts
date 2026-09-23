@@ -84,6 +84,16 @@ describe("isTrimmedResponse", () => {
     expect(isTrimmedResponse({ calendarDate: null, skinTempDataExists: false, sleepScores: null, restlessMomentsCount: null }, existing)).toBe(false);
   });
 
+  // 회귀: PR #436 Codex P2 — 중첩 필드 (dailySleepDTO.averageSpO2Value) 만 빠지고 부모 객체는 비지 않은 응답
+  it("중첩 값이 사라지면 trimmed · 중첩 값 변경 · 부모에 새 키 추가는 아님", () => {
+    const existing = { dailySleepDTO: { calendarDate: "2026-04-05", averageSpO2Value: 94, lowestSpO2Value: 86, sleepTimeSeconds: 25200 }, sleepLevels: [{ x: 1 }] };
+    expect(isTrimmedResponse({ dailySleepDTO: { calendarDate: "2026-04-05", averageSpO2Value: null, sleepTimeSeconds: 25200 }, sleepLevels: [{ x: 1 }] }, existing)).toBe(true);
+    expect(isTrimmedResponse({ dailySleepDTO: { calendarDate: "2026-04-05", sleepTimeSeconds: 25200 }, sleepLevels: [{ x: 1 }] }, existing)).toBe(true);
+    expect(isTrimmedResponse({ dailySleepDTO: { calendarDate: "2026-04-06", averageSpO2Value: 95, lowestSpO2Value: 88, sleepTimeSeconds: 25260, extra: 1 }, sleepLevels: [{ x: 2 }] }, existing)).toBe(false);
+    // 부모 객체 자체가 사라지면 trimmed
+    expect(isTrimmedResponse({ dailySleepDTO: null, sleepLevels: [{ x: 1 }] }, existing)).toBe(true);
+  });
+
   // 사전 리뷰 info 1: 0 아닌 수치 → 0 도 trimmed (rawData 만 유지 · 컬럼은 갱신) — 의도를 고정
   it("0 아닌 수치가 0 으로 바뀌면 trimmed", () => {
     expect(isTrimmedResponse({ restlessMomentsCount: 0 }, { restlessMomentsCount: 5 })).toBe(true);
