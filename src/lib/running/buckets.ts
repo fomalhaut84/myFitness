@@ -3,13 +3,20 @@
 
 export type Bucket = "5k" | "10k" | "HM" | "FM";
 
+/** 버킷 경계 (m, [min, max)). #440: DB 조회 (거리 버킷 개인 최고) 도 같은 경계를 쓴다. */
+export const BUCKET_RANGES_M: Readonly<Record<Bucket, { min: number; max: number }>> = {
+  "5k": { min: 4500, max: 5500 },
+  "10k": { min: 9000, max: 11000 },
+  HM: { min: 20000, max: 22000 },
+  FM: { min: 40000, max: 44000 },
+};
+
 /** 활동 거리(m) → bucket. 5k [4.5,5.5), 10k [9,11), HM [20,22), FM [40,44). */
 export function bucketOf(distanceM: number): Bucket | null {
-  const km = distanceM / 1000;
-  if (km >= 4.5 && km < 5.5) return "5k";
-  if (km >= 9.0 && km < 11.0) return "10k";
-  if (km >= 20.0 && km < 22.0) return "HM";
-  if (km >= 40.0 && km < 44.0) return "FM";
+  for (const bucket of ["5k", "10k", "HM", "FM"] as const) {
+    const r = BUCKET_RANGES_M[bucket];
+    if (distanceM >= r.min && distanceM < r.max) return bucket;
+  }
   return null;
 }
 

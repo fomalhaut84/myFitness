@@ -3,14 +3,14 @@
 import { useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
-import DOMPurify from "dompurify";
-import { marked } from "marked";
 import ActivityDetail from "@/components/activity/ActivityDetail";
 import SplitChart from "@/components/activity/SplitChart";
 import RecoverySection from "@/components/activity/RecoverySection";
+import AiEvalCard from "@/components/activity/AiEvalCard";
 import type { RecoveryDTO } from "@/lib/heart/load-recovery";
 import { formatPace } from "@/lib/format";
 import { isRunningType } from "@/lib/activity/running-types";
+import { wmoLabel } from "@/lib/weather/wmo-label";
 
 interface ActivityData {
   id: string;
@@ -90,37 +90,8 @@ export default function ActivityDetailClient({
   recovery = null,
   similarActivities = [],
 }: Props) {
-  const [aiEval, setAiEval] = useState<string | null>(null);
-  const [aiLoading, setAiLoading] = useState(false);
-
   const hasDynamics = activity.avgCadence != null || activity.avgStrideLength != null ||
     activity.avgVerticalOscillation != null || activity.avgGroundContactTime != null;
-
-  async function requestAiEval() {
-    setAiLoading(true);
-    try {
-      const res = await fetch("/api/ai", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          prompt: `다음 운동을 평가해줘: ${activity.name} (${activity.activityType}), ` +
-            `거리 ${activity.distance ? (activity.distance / 1000).toFixed(2) : 0}km, ` +
-            `시간 ${Math.round(activity.duration / 60)}분, ` +
-            `평균HR ${activity.avgHR ?? "없음"}, 최대HR ${activity.maxHR ?? "없음"}, ` +
-            `유산소TE ${activity.aerobicTE?.toFixed(1) ?? "없음"}, ` +
-            `케이던스 ${activity.avgCadence ?? "없음"}spm. ` +
-            `간단히 3줄 이내로 평가해줘.`,
-          category: "exercise",
-        }),
-      });
-      const data = await res.json();
-      setAiEval(data.result ?? data.error);
-    } catch {
-      setAiEval("AI 평가를 불러올 수 없습니다.");
-    } finally {
-      setAiLoading(false);
-    }
-  }
 
   const hasIntensity = activity.zoneDistribution !== null && activity.intensityLabel !== null;
 
@@ -199,30 +170,8 @@ export default function ActivityDetailClient({
         <SameCourseComparison current={activity} similar={similarActivities} />
       )}
 
-      {/* AI 평가 */}
-      <div className="mt-6">
-        {aiEval ? (
-          <div className="bg-card border border-border rounded-xl p-5">
-            <div className="text-[11px] text-dim tracking-wider uppercase mb-3">AI 평가</div>
-            <div
-              className="prose prose-invert prose-sm max-w-none"
-              dangerouslySetInnerHTML={{
-                __html: DOMPurify.sanitize(
-                  marked.parse(aiEval, { async: false }) as string
-                ),
-              }}
-            />
-          </div>
-        ) : (
-          <button
-            onClick={requestAiEval}
-            disabled={aiLoading}
-            className="px-4 py-2 rounded-lg text-[13px] border border-border text-sub hover:text-bright hover:border-border-hover transition-colors disabled:opacity-50"
-          >
-            {aiLoading ? "분석 중..." : "🤖 AI 평가 요청"}
-          </button>
-        )}
-      </div>
+      {/* #440: AI 평가 — 서버 조립 컨텍스트 (activityId 만 보낸다) */}
+      <AiEvalCard activityId={activity.id} />
     </div>
   );
 }
@@ -631,20 +580,6 @@ function RouteTagEditor({
 
 // #269: WMO weather interpretation code → 한글 라벨 요약.
 // https://open-meteo.com/en/docs 참조. 세부 분류는 묶어서 간결하게.
-function wmoLabel(code: number | null): string | null {
-  if (code === null) return null;
-  if (code === 0) return "맑음";
-  if (code >= 1 && code <= 3) return "구름";
-  if (code === 45 || code === 48) return "안개";
-  if (code >= 51 && code <= 57) return "이슬비";
-  if (code >= 61 && code <= 67) return "비";
-  if (code >= 71 && code <= 77) return "눈";
-  if (code >= 80 && code <= 82) return "소나기";
-  if (code >= 85 && code <= 86) return "눈 소나기";
-  if (code >= 95 && code <= 99) return "뇌우";
-  return null;
-}
-
 function EnvironmentSection({ activity }: { activity: ActivityData }) {
   const hasWeather =
     activity.weatherTempC !== null ||
