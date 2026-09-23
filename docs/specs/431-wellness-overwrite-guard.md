@@ -30,6 +30,7 @@ v2.36.0 `backfill:hrr` 에서 발견 (2026-09-23): 프로덕션 `HeartRateRecord
 **가드 (`src/lib/garmin/preserve.ts`, 순수)**
 - [x] F1 `withoutNulls(data)` — update payload 에서 값이 `null` / `undefined` 인 키를 뺀다 (Prisma 에서 `undefined` = 무변경). create 는 그대로 (null 명시)
 - [x] F2 `hasHeartRateDetail(raw)` = `heartRateValues` 가 비지 않은 배열 · `hasSleepDetail(raw)` = `avgOvernightHrv` 가 유한수 **또는** `sleepLevels` 가 비지 않은 배열
+  - ↳ **`avgOvernightHrv` 만** (사전 리뷰 major 1): `sleepLevels` 는 보존 창 밖에서도 올 수 있어 (Garmin Connect 는 수년 전 수면 단계도 보여 준다) OR 이면 HRV 없는 재조회가 rawData 를 덮어써 `avgOvernightHrv` · `hrvData` · `sleepHeartRate` 를 잃는다. 소실이 실측된 필드만 기준
 - [x] F3 `preserveUpdate(data, { incomingDetail, existingDetail })` — `withoutNulls` 적용 후, `!incomingDetail && existingDetail` 이면 `rawData` 도 뺀다 (기존 rawData 유지). 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 F1 이 이미 뺀다
 - [x] F4 회귀 테스트 3 케이스 + null 필드 생략 + `existingDetail` 만 있을 때 rawData 제외 (`src/lib/garmin/__tests__/preserve.test.ts`)
 
@@ -84,6 +85,8 @@ psql "$DATABASE_URL" -Atc "select count(*) filter (where \"hrvOvernight\" is not
 - 4종 검증 · 로컬 실증: 로컬 dev DB 의 04-05 행 (시계열 있음) 에 시계열 없는 응답을 흉내 낸 단위 테스트로 대체 (실 API 호출 없음)
 
 ## 7. 제외 사항
+
+- **알려진 한계 (사전 리뷰 info 3)**: 값이 정당하게 present → absent 로 바뀌는 드문 경우 (Garmin Connect 에서 수면 구간을 편집해 어떤 단계가 0초가 되면 `x ? … : null` 이 null) 는 update 에서 생략돼 옛 값이 남는다. wellness 값의 변화 방향이 거의 항상 "없어짐 = 보존 창" 이라 수용. `hrvBaseline` 은 항상 null 을 보내므로 update 에서 영구 무변경 — 지금 계산하는 코드가 없어 영향 없음 (info 4).
 
 - 2026-04 이전 시계열 · HRV 복구 — 불가.
 - `daily_stats` (스트레스 · 바디배터리 상세) · `fitness_metrics` 의 보존 창 — #431 체크리스트 감사 항목, 이번엔 문서에 미확인으로 남김.

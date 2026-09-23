@@ -1,7 +1,10 @@
 /**
  * #377 F5: Garmin 과거 데이터 backfill.
  *
- *   npm run backfill:history -- --from=2019-06-01 [--to=YYYY-MM-DD] [--types=activities,sleep]
+ *   npm run backfill:history -- --from=2019-06-01 [--to=YYYY-MM-DD] [--types=activities,sleep] [--allow-old-wellness]
+ *
+ * #431: heart_rate · sleep 은 Garmin 이 최근 ~150일만 상세 (심박 시계열 · 야간 HRV) 를 준다. --from 이 그보다 앞이면
+ *   기본 중단 — --types 에서 빼거나, 알고도 돌리려면 --allow-old-wellness (fetcher 가드로 기존 값은 지워지지 않는다).
  *
  * - 청크 365일, **최신 → 과거** 순. #220 의 SyncMetadata 병합 규칙이 "인접/중첩만 병합" 이라
  *   첫 청크의 endDate 를 현재 oldestFetchedDate-1 에 붙여야 oldestFetchedDate 가 과거로 당겨지고
@@ -259,7 +262,7 @@ async function main() {
   const args = process.argv.slice(2);
   const fromRaw = readFlag(args, "from");
   if (!fromRaw) {
-    console.error("사용법: npm run backfill:history -- --from=YYYY-MM-DD [--to=YYYY-MM-DD] [--types=a,b]");
+    console.error("사용법: npm run backfill:history -- --from=YYYY-MM-DD [--to=YYYY-MM-DD] [--types=a,b] [--allow-old-wellness]");
     process.exit(1);
   }
   const types = parseTypes(readFlag(args, "types"));
@@ -323,7 +326,7 @@ async function main() {
     console.log("실패한 타입은 실패 청크부터 --from 까지 다시 돌려야 커버 범위가 이어집니다:");
     for (const f of stopped) {
       console.log(
-        `재개: npm run backfill:history -- --from=${ymdKST(from)} --to=${ymdKST(f.chunk.end)} --types=${f.types.join(",")}`,
+        `재개: npm run backfill:history -- --from=${ymdKST(from)} --to=${ymdKST(f.chunk.end)} --types=${f.types.join(",")}${args.includes("--allow-old-wellness") ? " --allow-old-wellness" : ""}`,
       );
     }
   }

@@ -25,12 +25,14 @@ export function hasHeartRateDetail(raw: unknown): boolean {
   return r !== null && Array.isArray(r.heartRateValues) && r.heartRateValues.length > 0;
 }
 
-/** 수면 응답에 상세가 있는가 — 야간 HRV (`avgOvernightHrv` 유한수) 또는 수면 단계 (`sleepLevels` 비지 않은 배열) */
+/**
+ * 수면 응답에 상세가 있는가 — 야간 HRV (`avgOvernightHrv` 유한수) **만** 본다. `sleepLevels` 는 보존 창 밖에서도 올 수 있어
+ * (Garmin Connect 는 수년 전 수면 단계도 보여 준다) OR 조건에 넣으면 HRV 없는 재조회가 rawData 를 다시 덮어쓴다 (사전 리뷰 major 1).
+ * 소실이 실측된 필드만 기준으로 한다.
+ */
 export function hasSleepDetail(raw: unknown): boolean {
   const r = asRecord(raw);
-  if (r === null) return false;
-  if (typeof r.avgOvernightHrv === "number" && Number.isFinite(r.avgOvernightHrv)) return true;
-  return Array.isArray(r.sleepLevels) && r.sleepLevels.length > 0;
+  return r !== null && typeof r.avgOvernightHrv === "number" && Number.isFinite(r.avgOvernightHrv);
 }
 
 /**

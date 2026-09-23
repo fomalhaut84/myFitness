@@ -22,12 +22,19 @@ describe("hasHeartRateDetail / hasSleepDetail", () => {
     expect(hasHeartRateDetail("x")).toBe(false);
   });
 
-  it("수면: avgOvernightHrv 유한수 또는 sleepLevels 비지 않은 배열", () => {
+  // 회귀: 사전 리뷰 major 1 — sleepLevels 는 보존 창 밖에서도 올 수 있어 상세 판정에 넣지 않는다
+  it("수면: avgOvernightHrv 유한수만 — sleepLevels 가 있어도 HRV 없으면 상세 없음", () => {
     expect(hasSleepDetail({ avgOvernightHrv: 43 })).toBe(true);
-    expect(hasSleepDetail({ avgOvernightHrv: null, sleepLevels: [{ x: 1 }] })).toBe(true);
-    expect(hasSleepDetail({ avgOvernightHrv: null, sleepLevels: [] })).toBe(false);
+    expect(hasSleepDetail({ avgOvernightHrv: null, sleepLevels: [{ x: 1 }] })).toBe(false);
     expect(hasSleepDetail({ avgOvernightHrv: Number.NaN })).toBe(false);
     expect(hasSleepDetail(undefined)).toBe(false);
+  });
+
+  it("회귀: 기존 rawData 에 HRV 있음 + 응답은 sleepLevels 만 → update 에서 rawData 제외", () => {
+    const existingRaw = { avgOvernightHrv: 43, sleepLevels: [{ x: 1 }] };
+    const incoming = { hrvOvernight: null, totalSleep: 420, rawData: { avgOvernightHrv: null, sleepLevels: [{ x: 1 }] } };
+    const update = preserveUpdate(incoming, { incomingDetail: hasSleepDetail(incoming.rawData), existingDetail: hasSleepDetail(existingRaw) });
+    expect(update).toEqual({ totalSleep: 420 });
   });
 });
 
