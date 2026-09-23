@@ -393,11 +393,16 @@
 - [x] 활동 상세 "종료 후 회복" 섹션 — 곡선 −4 … +10 분 · 2분 HRR · 10분 낙차 · 빈 상태 3구분 · "2분 해상도" 표기
 - 이슈: #418 · PR #423 · **v2.35.0** (2026-09-23). 스펙 `docs/specs/418-hr-recovery.md` · 시안 `docs/designs/418-hr-recovery/`. 후속: #425 (`/insights` 연도별 HRR — `Activity.hrr2` 승격 + 백필)
 
-## M16-2: `/insights` 연도별 HRR 추이 — `Activity.hrr2` 승격 + 백필 — 우선순위 ★★
+## M16-2: `/insights` 연도별 HRR 추이 — `Activity.hrr2` 승격 + 백필 — 우선순위 ★★ ✅
 
-- [ ] `Activity.hrr2` · `hrrDrop10` 컬럼 (수동 SQL) · `syncAll` 후처리 · `backfill:hrr`
-- [ ] `/insights` 패널 E "회복이 빨라졌나?" — 연도별 중앙값
-- 이슈: #425 · 스펙 `docs/specs/425-hrr-trend.md`
+- [x] `Activity.hrr2` · `hrrDrop10` 컬럼 (수동 SQL) · `syncAll` 후처리 · `backfill:hrr`
+- [x] `/insights` 패널 E "회복이 빨라졌나?" — 연도별 중앙값
+- 이슈: #425 · PR #428 · **v2.36.0** (2026-09-23). 프로덕션 백필 갱신 111 / 2,157 — 심박 시계열이 2026-04-20 이후만 존재 (Garmin 보존 창 · 09-17 백필 덮어쓰기 → **#431** P1). 후속: #429 (캡션 시작일 · `--dry-run` 이어가기 · 중앙값 토글) · #431
+
+## M16-3: 심박 · 수면 재싱크 덮어쓰기 가드 — 우선순위 ★★★
+
+- [ ] fetcher 가 응답 상세 (`heartRateValues` · `avgOvernightHrv`) null 이면 기존 값 유지 · `backfill:history` 보존 창 밖 wellness 재조회 차단
+- 이슈: #431 (P1 · 데이터 손실 재발 방지). 2026-04 이전 시계열 · HRV 는 복구 불가
 
 ---
 

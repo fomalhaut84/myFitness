@@ -70,7 +70,7 @@ async function main() {
     `[backfill:hrr] 완료 (${((Date.now() - started) / 1000).toFixed(1)}s) — 대상 ${result.candidates} · 갱신 ${result.updated} · 레코드 없음 ${result.missing} · 결측 ${result.skipped}${dryRun ? " (dry-run: 저장 안 함)" : ""}`,
   );
   if (limit !== undefined && result.candidates >= limit && result.lastCursor) {
-    console.log(`[backfill:hrr] limit 도달 — 이어가려면: npm run backfill:hrr -- --from ${from} --to ${to} --limit ${limit} --after-id ${result.lastCursor.id}${force ? " --force" : ""}`);
+    console.log(`[backfill:hrr] limit 도달 — 이어가려면: npm run backfill:hrr -- --from ${from} --to ${to} --limit ${limit} --after-id ${result.lastCursor.id}${force ? " --force" : ""}${dryRun ? " --dry-run" : ""}`);
   }
   if (!dryRun && result.updated > 0) console.log("[backfill:hrr] 웹 캐시는 별 프로세스 — `pm2 restart` 또는 10분 뒤 반영");
 }

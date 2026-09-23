@@ -3,6 +3,7 @@ import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
 import { isEmptyHeartRate } from "../empty-day";
+import { isTrimmedResponse, preserveUpdate } from "../preserve";
 
 export async function syncHeartRate(
   client: GarminConnect,
@@ -49,9 +50,12 @@ export async function syncHeartRate(
           rawData: raw as Prisma.InputJsonValue,
         };
 
+        // #431 · #435: 보존 창 (~150일) 밖 재싱크는 시계열 · HRV 가 null 로 온다 — 기존 값을 지우지 않는다.
+        // 기존 행의 rawData 와 비교해 (하루 1회 조회) 값 있던 키가 사라진 응답이면 rawData 를 유지한다.
+        const existing = await prisma.heartRateRecord.findUnique({ where: { date: dayDate }, select: { rawData: true } });
         await prisma.heartRateRecord.upsert({
           where: { date: dayDate },
-          update: data,
+          update: preserveUpdate(data, { trimmed: isTrimmedResponse(raw, existing?.rawData) }),
           create: { date: dayDate, ...data },
         });
 
