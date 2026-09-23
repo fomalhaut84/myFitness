@@ -37,24 +37,28 @@ DB 에는 이미 하루치 심박 시계열 (`HeartRateRecord.rawData.heartRateV
 
 ## 3. 요구사항
 
+> **구현 (feat/418-1, 2026-09-23).** 순수 로직 vitest 14건 · 로컬 `next dev` 로 04-05 트랙 러닝 실화면 확인 (데스크톱 1040 · 폰 360, 가로 넘침 없음). 달라진 항목은 ↳.
+
 **순수 로직 (`src/lib/heart/recovery.ts`)**
-- [ ] F1 `nearestSample(series, targetMs, toleranceMs)` — `[epochMs, bpm|null][]` 에서 목표 시각과 가장 가까운 샘플. 허용 오차 (±60초) 밖이거나 `bpm` 이 null · 0 이하면 `null`. 정렬을 가정하지 않는다 (하루 ~700개, 선형 탐색)
-- [ ] F2 `recoveryCurve(series, endMs)` → `{ endMs, points: { offsetMin, bpm, sampledAtMs }[], hrr2, samples }`. 오프셋은 **−4 · −2 · 0 · +2 · +4 · +6 · +10 분** (음수는 곡선의 맥락 — 달리던 심박). `hrr2 = bpm(0) − bpm(+2)`, 둘 중 하나라도 결측이면 `null`. `samples` = 유효 점 개수
-- [ ] F3 `parseHeartRateValues(raw)` — `rawData.heartRateValues` 검증 파서. 배열이 아니거나 원소가 `[number, number|null]` 꼴이 아니면 그 원소는 버린다 (memory: 필드 casing · 타입 없는 rawData 는 조용히 null 이 된다 — 여기서는 형태를 검사한다)
-- [ ] F4 `activityEndMs(startTime, durationSec, rawData)` — `rawData.elapsedDuration` 이 양수 유한값이면 그것, 아니면 `durationSec`
+- [x] F1 `nearestSample(series, targetMs, toleranceMs)` — `[epochMs, bpm|null][]` 에서 목표 시각과 가장 가까운 샘플. 허용 오차 (±60초) 밖이거나 `bpm` 이 null · 0 이하면 `null`. 정렬을 가정하지 않는다 (하루 ~700개, 선형 탐색)
+- [x] F2 `recoveryCurve(series, endMs)` → `{ endMs, points: { offsetMin, bpm, sampledAtMs }[], hrr2, samples }`. 오프셋은 **−4 · −2 · 0 · +2 · +4 · +6 · +10 분** (음수는 곡선의 맥락 — 달리던 심박). `hrr2 = bpm(0) − bpm(+2)`, 둘 중 하나라도 결측이면 `null`. `samples` = 유효 점 개수
+- [x] F3 `parseHeartRateValues(raw)` — `rawData.heartRateValues` 검증 파서. 배열이 아니거나 원소가 `[number, number|null]` 꼴이 아니면 그 원소는 버린다 (memory: 필드 casing · 타입 없는 rawData 는 조용히 null 이 된다 — 여기서는 형태를 검사한다)
+- [x] F4 `activityEndMs(startTime, durationSec, rawData)` — `rawData.elapsedDuration` 이 양수 유한값이면 그것, 아니면 `durationSec`
 
 **서버 로딩 (`src/lib/heart/load-recovery.ts`, prisma)**
-- [ ] F5 `loadActivityRecovery(activityId)` — 활동 `startTime · duration · rawData` 조회 → 종료 시각 → 종료일 KST 와 (종료 + 11분) 의 KST 일자가 다르면 두 날 → `HeartRateRecord` `date in [...]` `select rawData` → 파싱 · 합치기 → `recoveryCurve`. 레코드가 없으면 `{ hasRecord: false }`
-- [ ] F6 러닝 계열 (`isRunningType`) 만 호출. 페이지의 기존 select 는 건드리지 않고 별도 조회 1회 (rawData 를 클라이언트로 흘리지 않기 위해 분리)
+- [x] F5 `loadActivityRecovery(activityId)` — 활동 `startTime · duration · rawData` 조회 → 종료 시각 → 종료일 KST 와 (종료 + 11분) 의 KST 일자가 다르면 두 날 → `HeartRateRecord` `date in [...]` `select rawData` → 파싱 · 합치기 → `recoveryCurve`. 레코드가 없으면 `{ hasRecord: false }`
+- [x] F6 러닝 계열 (`isRunningType`) 만 호출. 페이지의 기존 select 는 건드리지 않고 별도 조회 1회 (rawData 를 클라이언트로 흘리지 않기 위해 분리)
 
 **UI (`src/components/activity/RecoverySection.tsx`, 활동 상세 강도 분석 아래)**
-- [ ] F7 카드 제목 "종료 후 회복" + 작은 곡선 (x = 종료 기준 분, −4~+10 · y = bpm). 종료 시점 세로 점선, 결측 점은 끊긴 선 (`connectNulls=false`). 심박 색 `#f87171`
-- [ ] F8 판독값 2개: **2분 HRR** (`hrr2` bpm · 큰 숫자) · **10분 후** (`bpm(0) − bpm(10)`). 캡션에 종료 시각 (KST) 과 "2분 해상도 · 워치의 1분 HRR 과 다릅니다"
-- [ ] F9 빈 상태 3구분 — (a) 그 날 심박 레코드 없음 → "이 날 심박 기록이 없습니다" (b) 레코드는 있으나 유효 점 2개 미만 → "종료 후 샘플이 부족합니다 (워치 미착용?)" (c) 유효 점은 있으나 `hrr2` 결측 → 곡선은 그리고 숫자 자리에 "—"
-- [ ] F10 `hrr2` 가 음수면 (종료 후 심박이 오히려 오름) 부호 그대로 보이고 캡션 "종료 뒤에도 심박이 올랐어요 — 쿨다운 없이 멈췄거나 종료 시각이 어긋났을 수 있음"
+- [x] F7 카드 제목 "종료 후 회복" + 작은 곡선 (x = 종료 기준 분, −4~+10 · y = bpm). 종료 시점 세로 점선, 결측 점은 끊긴 선 (`connectNulls=false`). 심박 색 `#f87171`
+  - ↳ 결측 점은 자리를 비우지 않고 **점선 빈 원** (y 중앙 · 보조 계열 `missY`). 종료 전 점은 회색, 0 → +2 낙차 브래킷 `↓16` (시안 결정). Y 눈금은 10 단위 · 최대 5개 (`yScale`)
+- [x] F8 판독값 2개: **2분 HRR** (`hrr2` bpm · 큰 숫자) · **10분 후** (`bpm(0) − bpm(10)`). 캡션에 종료 시각 (KST) 과 "2분 해상도 · 워치의 1분 HRR 과 다릅니다"
+  - ↳ 라벨 "10분 낙차". 캡션은 원값 `125 → 109 bpm`. 종료 시각은 곡선의 세로 점선 라벨 (`종료 22:44`), 해상도 표기는 제목 오른쪽 `2분 해상도` + 각주
+- [x] F9 빈 상태 3구분 — (a) 그 날 심박 레코드 없음 → "이 날 심박 기록이 없습니다" (b) 레코드는 있으나 유효 점 2개 미만 → "종료 후 샘플이 부족합니다 (워치 미착용?)" (c) 유효 점은 있으나 `hrr2` 결측 → 곡선은 그리고 숫자 자리에 "—"
+- [x] F10 `hrr2` 가 음수면 (종료 후 심박이 오히려 오름) 부호 그대로 보이고 캡션 "종료 뒤에도 심박이 올랐어요 — 쿨다운 없이 멈췄거나 종료 시각이 어긋났을 수 있음"
 
 **디자인 · 문서**
-- [ ] F11 시안 `docs/designs/418-hr-recovery/` (preview.html · design-notes.md · screenshots) — 활동 상세 카드 언어 그대로
+- [x] F11 시안 `docs/designs/418-hr-recovery/` (preview.html · design-notes.md · screenshots) — 활동 상세 카드 언어 그대로
 - [ ] F12 `docs/specs/m15-overview.md` D8 표 · 로드맵은 PR 머지 후 문서 PR 에서
 
 ## 4. 기술 설계
