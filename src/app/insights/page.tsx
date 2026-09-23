@@ -22,7 +22,11 @@ import {
   lagCorrelations,
   lagPairs,
   paceByTempBin,
+  recoveryByYear,
+  recoveryDelta,
+  recoveryPoints,
   usableRuns,
+  yearFraction,
   weatherPoints,
   zoneShareByMonth,
   zoneShareCompare,
@@ -47,6 +51,8 @@ const signed = (v: number, digits = 0) => {
 };
 const n = (v: number) => v.toLocaleString("ko-KR");
 const activityHref = (id: string) => `/activities/${id}`;
+/** #425: 연도 중앙값 계열 색 (밝은 색 · 큰 속 빈 점) */
+const MEDIAN_COLOR = "#ededed";
 
 function yearSeries<T extends { year: number }>(
   items: readonly T[],
@@ -128,6 +134,29 @@ export default async function InsightsPage() {
     href: null,
   }));
   const kmBands = kmBandTable(pairs1);
+
+  // E — 필터 전 러닝 (HRR 은 거리와 무관 · 트레드밀 포함)
+  const hrrPoints = recoveryPoints(allRuns);
+  const hrrYears = [...new Set(allRuns.map((r) => r.year))].sort((a, b) => a - b);
+  const hrrByYear = recoveryByYear(hrrPoints, hrrYears);
+  const hrrDelta = recoveryDelta(hrrByYear);
+  const hrrSeries: ScatterSeries[] = [
+    ...yearSeries(
+      hrrPoints,
+      hrrYears,
+      currentYear,
+      (p) => ({ x: yearFraction(p.ymd), y: p.hrr2, lines: [p.ymd, `2분 HRR ${signed(p.hrr2)} bpm${p.distanceM !== null ? ` · ${km1(p.distanceM)}` : ""}${p.race ? " · 레이스" : ""}`], href: activityHref(p.id) }),
+      (p) => p.race,
+    ),
+    {
+      id: "median",
+      label: "연도 중앙값",
+      color: MEDIAN_COLOR,
+      emphasis: true,
+      points: hrrByYear.flatMap((y) => (y.medianHrr2 === null ? [] : [{ x: y.year + 0.5, y: y.medianHrr2, lines: [String(y.year), `중앙값 ${Math.round(y.medianHrr2)} bpm · n=${y.n}`], href: null }])),
+    },
+  ];
+  const hrrMissing = allRuns.length - hrrPoints.length;
 
   return (
     <div>
@@ -251,6 +280,34 @@ export default async function InsightsPage() {
         <div className="mt-3.5">
           <ValueTable corner="주간 km" headers={kmBands.map((b) => b.label)} rowLabel="다음 주 평균 심박" cells={kmBands.map((b) => ({ text: b.avgRhr === null ? null : b.avgRhr.toFixed(1), n: b.n }))} />
         </div>
+      </InsightPanel>
+
+      {/* #425 E — 시간 축 (소수 연도) · 연도 중앙값은 강조 계열 · 0 선 */}
+      <InsightPanel
+        question="회복이 빨라졌나?"
+        how="점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값, 작은 속 빈 점 = 레이스"
+        foot={`중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없거나 종료 후 샘플이 빠진 러닝 ${n(hrrMissing)}건은 뺐습니다. 5건 미만인 해는 —. 0 아래는 종료 뒤 심박이 오히려 오른 러닝.`}
+      >
+        {hrrPoints.length > 0 ? (
+          <InsightScatter
+            series={hrrSeries}
+            x={{ label: "연도", format: "year", ticks: hrrYears, domain: [hrrYears[0], hrrYears[hrrYears.length - 1] + 1] }}
+            y={{ label: "2분 HRR bpm", format: "int", zeroLine: true }}
+            ariaLabel="연도별 종료 후 2분 심박 회복 산점도"
+            toggle
+          />
+        ) : (
+          <p className="py-10 text-center text-[13px] text-dim">종료 후 심박이 계산된 러닝이 없습니다 — backfill:hrr 실행 후 보입니다.</p>
+        )}
+        <Answer>
+          <BigNumber
+            label={`중앙값 · ${hrrDelta ? (hrrDelta.lastYear === currentYear ? "올해" : hrrDelta.lastYear) : "올해"} vs ${hrrDelta?.firstYear ?? "첫 해"}`}
+            text={hrrDelta ? signed(hrrDelta.delta) : null}
+            unit="bpm"
+            caption={hrrDelta ? `${hrrDelta.firstYear} ${Math.round(hrrDelta.from)} → ${hrrDelta.lastYear} ${Math.round(hrrDelta.to)} bpm · 2분 뒤 낙차` : "5건 이상인 해가 둘 이상 필요"}
+          />
+          <ValueTable corner="해" headers={hrrByYear.map((y) => String(y.year))} rowLabel="중앙값 HRR" cells={hrrByYear.map((y) => ({ text: y.medianHrr2 === null ? null : String(Math.round(y.medianHrr2)), n: y.n }))} />
+        </Answer>
       </InsightPanel>
     </div>
   );
