@@ -30,20 +30,22 @@ HRR 추이는 `/insights` 패널 E (연도별 산점도 + 중앙값) 에만 있�
 
 ## 3. 요구사항
 
+> **구현 (feat/442-1, 2026-09-23).** vitest 246 → 257 · 로컬 `next dev` 로 `/trends?metric=hrr2` 5개 뷰 + `/history` 스모크 (전부 200 · 캡션 "종료 후 심박은 2026-03 부터" · 개인 기록 행) · 캡처 `docs/designs/442-trends-hrr-metric/screenshots/`. 달라진 항목은 ↳.
+
 **레지스트리 · 집계**
-- [ ] F1 `HistoryAggregate` 에 `"median"` 추가. `rollup.ts` `aggregateValue` 에 `case "median"` (`median` 재사용 · 빈 배열 null · 짝수 개 .5 → `decimals` 반올림)
-- [ ] F2 activity 소스 `kind: "hrr2"` 추가. `ActivityRow.hrr2` · `loadActivity` select 에 `hrr2` · `activityPoints`: 러닝 계열 · `hrr2 !== null` 인 활동만 `{ ymd, value: hrr2 }` (한 날 두 러닝이면 점 2개 — 버킷 중앙값에 둘 다 들어간다)
-- [ ] F3 지표 정의: `{ id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", sparse: true, withMinMax: true }` — 띠 (최저~최고) 로 버킷 안 퍼짐을 보인다 (인터벌 · 레이스가 큰 값). `selectable: true` 라 `/history` 선택기 "추가" 그룹에도 나온다
-- [ ] F4 aggregate 분기 보강: `WHOLE_LABELS.median = "중앙값"` · `SEASON_CAPTIONS.median = "굵은 선 = 그 달의 중앙값들의 평균"` · `aggregateCaption`: `"선 = 기간 중앙값, 띠 = 최저~최고"` · `showBand` 를 `(avg || median) && withMinMax` · `seasonality` 는 mean 그대로 (중앙값들의 평균 — 캡션이 말한다). 객체 인덱스 둘은 `Record<HistoryAggregate, string>` 으로 타입을 조여 **키 누락이 컴파일 에러**가 되게 한다
+- [x] F1 `HistoryAggregate` 에 `"median"` 추가. `rollup.ts` `aggregateValue` 에 `case "median"` (`median` 재사용 · 빈 배열 null · 짝수 개 .5 → `decimals` 반올림)
+- [x] F2 activity 소스 `kind: "hrr2"` 추가. `ActivityRow.hrr2` · `loadActivity` select 에 `hrr2` · `activityPoints`: 러닝 계열 · `hrr2 !== null` 인 활동만 `{ ymd, value: hrr2 }` (한 날 두 러닝이면 점 2개 — 버킷 중앙값에 둘 다 들어간다)
+- [x] F3 지표 정의: `{ id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", sparse: true, withMinMax: true }` — 띠 (최저~최고) 로 버킷 안 퍼짐을 보인다 (인터벌 · 레이스가 큰 값). `selectable: true` 라 `/history` 선택기 "추가" 그룹에도 나온다
+- [x] F4 aggregate 분기 보강 (`SEASON_CAPTIONS.median` 은 "굵은 선 = 그 달 중앙값들의 평균"): `WHOLE_LABELS.median = "중앙값"` · `SEASON_CAPTIONS.median = "굵은 선 = 그 달의 중앙값들의 평균"` · `aggregateCaption`: `"선 = 기간 중앙값, 띠 = 최저~최고"` · `showBand` 를 `(avg || median) && withMinMax` · `seasonality` 는 mean 그대로 (중앙값들의 평균 — 캡션이 말한다). 객체 인덱스 둘은 `Record<HistoryAggregate, string>` 으로 타입을 조여 **키 누락이 컴파일 에러**가 되게 한다
 
 **캡션 · 개인 기록**
-- [ ] F5 데이터 시작일: `src/lib/history/data-start.ts` — `loadMetricDataStart(def)`: `kind === "hrr2"` 면 `activity.findFirst({ where: 러닝 AND hrr2 not null, orderBy startTime asc })` 의 KST `YYYY-MM`, 그 외 null. `/trends` 시계열 · 전년 동기 · 계절성 뷰의 `Keys` 에 `종료 후 심박은 ${from} 부터 있습니다` 추가 (null 이면 생략). 문구는 `metrics.ts` 의 `startNote?: string` (`{from}` 치환) 로 정의 — 다른 sparse 지표에도 열어 둔다
-- [ ] F6 개인 기록: `PersonalRecords.bestHrr2: DatedValue | null` — 러닝 · 하한~오늘 · `hrr2` 최대 · 동률이면 먼저 달성한 날 (`orderBy [{ hrr2: desc }, { startTime: asc }]`). `RecordsPanel` 행 "가장 큰 2분 HRR" (값 bpm · 부제 "처음 도달한 날" · 날짜 → `historyDayPath` + `historyMetricQuery("hrr2")`). 빈 상태 "종료 후 심박이 계산된 러닝이 없습니다"
-- [ ] F7 `hrrDrop10` 은 지표로 두지 않는다 (이슈 기본안). 필요 시 `kind: "hrrDrop10"` 1줄 추가로 열린다
+- [x] F5 데이터 시작일 (시계열 · 전년 동기 · 계절성 `Keys` 에 한 줄): `src/lib/history/data-start.ts` — `loadMetricDataStart(def)`: `kind === "hrr2"` 면 `activity.findFirst({ where: 러닝 AND hrr2 not null, orderBy startTime asc })` 의 KST `YYYY-MM`, 그 외 null. `/trends` 시계열 · 전년 동기 · 계절성 뷰의 `Keys` 에 `종료 후 심박은 ${from} 부터 있습니다` 추가 (null 이면 생략). 문구는 `metrics.ts` 의 `startNote?: string` (`{from}` 치환) 로 정의 — 다른 sparse 지표에도 열어 둔다
+- [x] F6 개인 기록: `PersonalRecords.bestHrr2: DatedValue | null` — 러닝 · 하한~오늘 · `hrr2` 최대 · 동률이면 먼저 달성한 날 (`orderBy [{ hrr2: desc }, { startTime: asc }]`). `RecordsPanel` 행 "가장 큰 2분 HRR" (값 bpm · 부제 "처음 도달한 날" · 날짜 → `historyDayPath` + `historyMetricQuery("hrr2")`). 빈 상태 "종료 후 심박이 계산된 러닝이 없습니다"
+- [x] F7 `hrrDrop10` 은 지표로 두지 않는다 (이슈 기본안). 필요 시 `kind: "hrrDrop10"` 1줄 추가로 열린다
 
 **테스트 · 문서**
-- [ ] F8 vitest — §6
-- [ ] F9 `docs/roadmap.md` M17-3 · `docs/specs/M14-followup.md`
+- [x] F8 vitest — §6
+- [x] F9 `docs/roadmap.md` M17-3 · `docs/specs/M14-followup.md`
 
 ## 4. 기술 설계
 
