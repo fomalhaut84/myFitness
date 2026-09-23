@@ -30,6 +30,7 @@
 
 ## 3. 요구사항
 
+> **릴리즈 v2.37.1 (2026-09-24, PR #452 → 릴리즈 PR).** Codex 봇은 머지 시점까지 미도착 — 사전 리뷰가 완료 판정 (8-3).
 > **사전 리뷰 (2026-09-24):** critical 0 / major 0 / info 2 (구현으로 낡아진 주석 — `month-cells.ts` 헤더 · `MonthGrid` 헤더) → 반영. TZ=America/Los_Angeles 에서도 테스트 통과 확인 (리뷰 에이전트).
 > **구현 (fix/445-1, 2026-09-24).** vitest 288 → 290 · 로컬 `next dev` 3화면 (`/history/2026/09` · `/history/2026` · `/lifestyle`) 캡처 `docs/designs/445-monday-start-grids/screenshots/`. 달라진 항목은 ↳.
 
