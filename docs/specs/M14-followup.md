@@ -5,7 +5,7 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-23 저녁, M16-3 덮어쓰기 가드 · v2.36.1 배포 시점)
+## 현재 상태 (2026-09-23 밤, v2.36.1 배포 후 확인 · 보존 창 감사 완료)
 
 **최근 릴리즈:** **v2.36.1** — 심박 · 수면 재싱크 덮어쓰기 가드 (#431 · #435, PR #433 · #436) + 패널 E 후속 (#429). 릴리즈 PR #434. main = `v2.36.1`, migration 없음. dev 는 이 문서 PR 만 앞섬. **M16 마일스톤 (HRR) 완료** — M16-1 활동 상세 · M16-2 `/insights` 추이 · M16-3 가드.
 
@@ -15,10 +15,13 @@
 
 | 후보 | 내용 | 비고 |
 |---|---|---|
-| **배포 후 확인** | 다음 cron 싱크 뒤 보존 확인 쿼리 (스펙 431 §4) — `heartRateValues` array 일수 · `hrvOvernight` 일수가 줄지 않았는지 | 사용자 실행 · 결과를 431 스펙에 기록 |
 | **#437 가드 후속** (chore · P2) | `isPresent` 숫자 문자열 · trimmed 시 `sleepScoreDetails` spread 생략 (한 줄 ×2) — fetcher payload 조립을 순수 함수로 빼면 회귀 테스트 가능 | 작음 |
-| 보존 창 감사 (이슈 없음) | `daily_stats` (stress · bodyBattery 상세) · `fitness_metrics` 에 같은 150일 창이 있는지 `jsonb_typeof` 로 기간별 분포 확인 | 다음 백필 전 필수. 없으면 이슈 생성 |
 | #414 · #419 · D8 잔여 · 독립 후속 | 이전 상태 표 그대로 | — |
+
+**완료 (2026-09-23 밤, 사용자 실행 · 431 스펙 §4 에 기록):**
+- **배포 후 확인** — 14:11 KST 재기동 → 15:00 cron (21건 · 실패 0) 뒤 `heartRateValues` array 156 (04-20 ~ 09-22) · `hrvOvernight` 156 (04-20 ~) — 기준과 동일, 손실 없음.
+- **보존 창 감사** — `DailySummary.rawData` 의 bodyBattery · stress 는 2020-06 ~ 2026-09 전 기간 존재 → **창 없음**, daily_stats 가드 불필요, 이슈 미생성. `fitness_metrics` 는 fetcher 병합으로 덮어쓰기 위험 없음.
+- 관찰: `SyncMetadata.lastSyncAt` 은 naive UTC (`timestamp(3)`) — psql 에서 KST 로 보려면 `("lastSyncAt" at time zone 'UTC') at time zone 'Asia/Seoul'` (단일 `at time zone` 은 UTC 값을 그대로 보여준다).
 
 **이번 세션 결과 (2026-09-23 저녁):**
 - **#431 · #435 완료 (v2.36.1)** — `preserve.ts` (`withoutNulls` · `isTrimmedResponse` 재귀 · `preserveUpdate`) · fetcher 2개 · `backfill:history --allow-old-wellness`. 사전 리뷰 major 1 (sleepLevels OR 조건이 덮어쓰기 재개) 반영. Codex 가 세 PR 에서 P2 5건 — 반영 2 (중첩 재귀 · #435 자체), #437 로 2, 게이트 통과.
