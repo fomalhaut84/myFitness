@@ -137,13 +137,15 @@ export default async function InsightsPage() {
 
   // E — 필터 전 러닝 (HRR 은 거리와 무관 · 트레드밀 포함)
   const hrrPoints = recoveryPoints(allRuns);
+  // 표의 열은 러닝이 있는 해 전부 (n=0 도 보이게), 차트의 축 · 범례는 HRR 이 있는 해만 (사전 리뷰 info 2 — 심박 시작 전 해로 축이 비지 않게)
   const hrrYears = [...new Set(allRuns.map((r) => r.year))].sort((a, b) => a - b);
+  const hrrChartYears = [...new Set(hrrPoints.map((p) => p.year))].sort((a, b) => a - b);
   const hrrByYear = recoveryByYear(hrrPoints, hrrYears);
   const hrrDelta = recoveryDelta(hrrByYear);
   const hrrSeries: ScatterSeries[] = [
     ...yearSeries(
       hrrPoints,
-      hrrYears,
+      hrrChartYears,
       currentYear,
       (p) => ({ x: yearFraction(p.ymd), y: p.hrr2, lines: [p.ymd, `2분 HRR ${signed(p.hrr2)} bpm${p.distanceM !== null ? ` · ${km1(p.distanceM)}` : ""}${p.race ? " · 레이스" : ""}`], href: activityHref(p.id) }),
       (p) => p.race,
@@ -291,7 +293,7 @@ export default async function InsightsPage() {
         {hrrPoints.length > 0 ? (
           <InsightScatter
             series={hrrSeries}
-            x={{ label: "연도", format: "year", ticks: hrrYears, domain: [hrrYears[0], hrrYears[hrrYears.length - 1] + 1] }}
+            x={{ label: "연도", format: "year", ticks: hrrChartYears, domain: [hrrChartYears[0], hrrChartYears[hrrChartYears.length - 1] + 1] }}
             y={{ label: "2분 HRR bpm", format: "int", zeroLine: true }}
             ariaLabel="연도별 종료 후 2분 심박 회복 산점도"
             toggle

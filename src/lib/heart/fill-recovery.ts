@@ -11,7 +11,7 @@ export interface FillRecoveryOptions {
   /** `startTime` ∈ [from, to) */
   from: Date;
   to: Date;
-  /** true 면 이미 채워진 행도 다시 계산 */
+  /** true 면 이미 채워진 행도 다시 계산 (기본은 `hrr2` 또는 `hrrDrop10` 이 null 인 행만) */
   force?: boolean;
   /** true 면 update 만 생략 (집계는 그대로) */
   dryRun?: boolean;
@@ -46,7 +46,9 @@ export async function fillRecoveryColumns(opts: FillRecoveryOptions): Promise<Fi
         AND: [
           RUNNING_ACTIVITY_WHERE,
           { startTime: { gte: opts.from, lt: opts.to } },
-          ...(opts.force ? [] : [{ hrr2: null }]),
+          // 사전 리뷰 info 1: 부분 싱크 (종료 2~10분 뒤) 는 hrr2 만 채우고 hrrDrop10 이 null 로 남는다 — 그 행도 다시 시도한다.
+          // 영구 결측 (10분 샘플 없음) 행은 창 안에서 매번 다시 계산되지만 창이 며칠이라 비용은 미미하다
+          ...(opts.force ? [] : [{ OR: [{ hrr2: null }, { hrrDrop10: null }] }]),
           // composite cursor (startTime, id) — startTime 은 unique 가 아니다 (backfill-event-type 선례)
           ...(cursor ? [{ OR: [{ startTime: { gt: cursor.startTime } }, { AND: [{ startTime: cursor.startTime }, { id: { gt: cursor.id } }] }] }] : []),
         ],

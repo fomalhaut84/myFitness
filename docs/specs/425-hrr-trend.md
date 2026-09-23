@@ -47,6 +47,7 @@
 - [x] F2 `fillRecoveryColumns({ from, to, force?, dryRun?, batchSize? })` — 러닝 (`RUNNING_ACTIVITY_WHERE`) · `startTime ∈ [from, to)` · `force` 아니면 `hrr2 IS NULL` 만. 청크 (200) 커서 `(startTime, id)`. 청크마다 필요한 KST 일자 (`recoveryDayKeys`) 를 모아 `HeartRateRecord` 를 한 번에 읽고 (`date in [...]`) 활동별로 합쳐 `recoveryCurve`. 반환 `{ candidates, updated, missing (레코드 없음), skipped (곡선 결측) }`
   - 레코드가 없거나 0 · +2 분이 결측이면 **null 그대로 둔다** (다음 싱크가 다시 시도) — 부분 데이터로 0 을 쓰지 않는다
   - `hrrDrop10` 은 `hrr2` 와 독립 (10 분 샘플만 결측이면 `hrr2` 는 쓰고 `hrrDrop10` 은 null)
+  - ↳ 기본 대상은 `hrr2` **또는** `hrrDrop10` 이 null 인 행 — 종료 2~10분 뒤 부분 싱크로 `hrrDrop10` 만 비면 다음 싱크 창에서 채운다 (사전 리뷰 info 1). 영구 결측 행은 창 안에서 매번 재계산되지만 창이 며칠이라 미미
 - [x] F3 `syncAll` 후처리 — 루프에서 `activities` · `heart_rate` 가 실제로 돈 최소 `startDate` 를 기억해, 루프 뒤 `fillRecoveryColumns({ from: min − 2일, to: endDate + 1일 })` 를 **await** (DB 만 · 수 건). 갱신 > 0 이면 `bumpHistoryCacheVersion()`. 실패는 로그만 (싱크 결과에 영향 X)
 - [x] F4 `scripts/backfill-hrr.ts` (`npm run backfill:hrr`) — `--from YYYY-MM-DD` (기본 하한) · `--to` (기본 오늘) · `--force` · `--dry-run` · `--limit N`. 종료 시 집계 출력. 프로덕션 실행 후 `pm2 restart` (캐시)
 
