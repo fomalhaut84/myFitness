@@ -8,7 +8,7 @@ import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { addDaysYmd, isValidYmd } from "@/lib/history/buckets";
 import type { HistoryMetricId } from "@/lib/history/metrics";
-import { addMonthsYm, dayOfWeekYmd, isValidYm } from "@/lib/history/month-cells";
+import { WEEKDAY_LABELS, addMonthsYm, isValidYm, weekdayIndexMon } from "@/lib/history/month-cells";
 import {
   historyDayPath,
   historyMetricQuery,
@@ -24,7 +24,6 @@ interface HistoryNavProps {
   metric: HistoryMetricId;
 }
 
-const DAY_NAMES = ["일", "월", "화", "수", "목", "금", "토"];
 const STEP_BASE = "rounded-lg border px-2.5 py-1.5 text-[13px] transition-colors";
 const STEP_ON = `${STEP_BASE} border-border text-muted hover:border-border-hover hover:text-bright`;
 const STEP_OFF = `${STEP_BASE} cursor-not-allowed border-[#1c1c1c] text-dim`;
@@ -97,7 +96,7 @@ export default function HistoryNav({ route, today, lowerBound, metric }: History
           {route.level === "month" && `${route.month}월`}
           {route.level === "day" && (
             <>
-              {route.day}일<span className="ml-1.5 text-[14px] font-normal text-sub">{DAY_NAMES[dayOfWeekYmd(route.ymd)]}요일</span>
+              {route.day}일<span className="ml-1.5 text-[14px] font-normal text-sub">{WEEKDAY_LABELS[weekdayIndexMon(route.ymd)]}요일</span>
             </>
           )}
         </h1>
