@@ -37,6 +37,8 @@
 
 ## 3. 요구사항
 
+> **릴리즈 v2.36.0 (2026-09-23, PR #428 → 릴리즈 PR #430).** 사전 리뷰 critical 0 / major 0 / info 2 반영 · Codex P2 3 (반영 1 · #429 2). 배포 후 `backfill:hrr`: **대상 2,157 · 갱신 111 · 레코드 없음 0 · 결측 2,046** (1.9s) — 프로덕션 `heartRateValues` 가 2026-04-19 이전 전부 `null` (Garmin 보존 창 ~150일 + 09-17 히스토리 백필의 덮어쓰기 → **#431** P1). 채워진 구간 2026-04-22 ~ 09-22. 패널 E 는 올해 111건으로만 그려져 답은 "아직 답할 수 없음" — 캡션 시작일 표기는 #429. **§1 의 "2020-06-18 부터 2,288일" 은 키 존재 기준이라 틀렸다** — 배열 존재 (`jsonb_typeof = 'array'`) 는 156일.
+>
 > **구현 (feat/425-1, 2026-09-23).** 순수 로직 vitest 12건 추가 (230건) · 로컬 마이그레이션 apply → `backfill:hrr` (러닝 5건 · 활동 상세 곡선과 값 일치: 04-05 hrr2 16 · 10분 낙차 48) → `/insights` 패널 E 실화면 확인 (데스크톱 1040 · 폰 360). 달라진 항목은 ↳.
 
 **스키마**
@@ -123,5 +125,6 @@ src/app/insights/page.tsx   패널 E
   psql "$DATABASE_URL" -Atc "select extract(year from date)::int, round(avg(jsonb_array_length(\"rawData\"->'heartRateValues'))), count(*) from \"HeartRateRecord\" where \"rawData\" ? 'heartRateValues' group by 1 order by 1;"
   ```
 - **배포 후**: `npm run backfill:hrr` (러닝 2,157건 · HeartRateRecord ~2,100일 로드 · 1~2분 예상) → `pm2 restart` → `/insights` 패널 확인 · 활동 상세 곡선과 컬럼 값 일치 확인 1건
+  - ↳ 실행 결과 (2026-09-23): 갱신 111 · 결측 2,046 — 위 릴리즈 기록 · #431 참조. `--limit` 없이 한 번에 1.9s
 - 강도별 분리 (이지 · 인터벌) 패널 · `hrrDrop10` 의 별도 패널 — 후속 (컬럼은 이번에 채워 둔다)
 - 러닝 외 활동의 HRR — 러닝 중심 원칙
