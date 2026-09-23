@@ -101,5 +101,5 @@ psql "$DATABASE_URL" -Atc "select to_char(date,'YYYY-MM') m, count(*) n, count(*
 - **알려진 한계 (사전 리뷰 info 3)**: 값이 정당하게 present → absent 로 바뀌는 드문 경우 (Garmin Connect 에서 수면 구간을 편집해 어떤 단계가 0초가 되면 `x ? … : null` 이 null) 는 update 에서 생략돼 옛 값이 남는다. wellness 값의 변화 방향이 거의 항상 "없어짐 = 보존 창" 이라 수용. `hrvBaseline` 은 항상 null 을 보내므로 update 에서 영구 무변경 — 지금 계산하는 코드가 없어 영향 없음 (info 4).
 
 - 2026-04 이전 시계열 · HRV 복구 — 불가.
-- `daily_stats` (스트레스 · 바디배터리 상세) · `fitness_metrics` 의 보존 창 — 릴리즈 시점엔 미확인으로 남겼고, 배포 후 감사 (§4) 로 **창 없음** 확인.
+- `daily_stats` (스트레스 · 바디배터리 상세) 의 보존 창 — 릴리즈 시점엔 미확인으로 남겼고, 배포 후 감사 (§4) 로 **창 없음** 확인. `fitness_metrics` 의 보존 창은 **여전히 미측정** — fetcher 의 소스 키 병합은 잘린 응답이 기존 원본을 덮어쓰지 못한다는 것만 보장하고, 엔드포인트가 옛 날짜를 주는지는 별개 (다음 백필 전 감사).
 - `body_composition` · `blood_pressure` 는 수동/기기 기록이라 보존 창 무관 (가정).
