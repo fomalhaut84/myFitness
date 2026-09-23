@@ -22,7 +22,7 @@ interface TrendSeriesChartProps {
   points: readonly TrendPoint[];
   metric: ChartMetric;
   color: string;
-  /** min~max 띠 표시 (avg + withMinMax 지표) */
+  /** min~max 띠 표시 (avg · median + withMinMax 지표 — #442) */
   showBand: boolean;
   unitLabel: string;
   /** #396: 이벤트 마커 (레이스 · 지표 변경 = 세로선, 플랜 = 밴드). 없으면 안 그린다 */

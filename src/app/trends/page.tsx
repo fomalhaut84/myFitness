@@ -206,7 +206,12 @@ async function YoyView({ ctx, def, color }: ViewProps) {
       )}
       <Keys
         items={[
-          def.aggregate === "sum" ? "점선과 속 빈 점 = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림)" : "선이 끊긴 곳 = 기록이 없거나 절반 미만인 달",
+          def.aggregate === "sum"
+            ? "점선과 속 빈 점 = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림)"
+            : // sparse 지표 (체중 · 젖산역치 · 2분 HRR) 는 "절반 미만" 제외 규칙이 없다 (사전 리뷰 info 1)
+              def.sparse
+              ? "선이 끊긴 곳 = 기록이 없는 달"
+              : "선이 끊긴 곳 = 기록이 없거나 절반 미만인 달",
           ...(startNote ? [startNote] : []),
         ]}
       />
@@ -219,7 +224,7 @@ const SEASON_CAPTIONS: Record<HistoryAggregate, string> = {
   avg: "굵은 선 = 그 달의 평균 (기록 일수 가중)",
   max: "굵은 선 = 그 달의 역대 최고",
   last: "굵은 선 = 그 달 값의 평균",
-  median: "굵은 선 = 그 달 중앙값들의 평균",
+  median: "굵은 선 = 그 달의 중앙값들의 평균",
 };
 
 async function SeasonView({ ctx, def, color }: ViewProps) {

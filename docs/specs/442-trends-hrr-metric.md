@@ -30,13 +30,14 @@ HRR 추이는 `/insights` 패널 E (연도별 산점도 + 중앙값) 에만 있�
 
 ## 3. 요구사항
 
+> **사전 리뷰 (2026-09-23):** critical 0 / major 0 / info 4 → 3 반영 (sparse 지표의 전년 동기 문구 "기록이 없는 달" · `TrendSeriesChart` 주석 · 캡션 문구 정합), 1 유지 (sparse 라 인터벌 1건인 주가 "가장 높은 주" 가 될 수 있음 — 스펙 §4 의 의도).
 > **구현 (feat/442-1, 2026-09-23).** vitest 246 → 257 · 로컬 `next dev` 로 `/trends?metric=hrr2` 5개 뷰 + `/history` 스모크 (전부 200 · 캡션 "종료 후 심박은 2026-03 부터" · 개인 기록 행) · 캡처 `docs/designs/442-trends-hrr-metric/screenshots/`. 달라진 항목은 ↳.
 
 **레지스트리 · 집계**
 - [x] F1 `HistoryAggregate` 에 `"median"` 추가. `rollup.ts` `aggregateValue` 에 `case "median"` (`median` 재사용 · 빈 배열 null · 짝수 개 .5 → `decimals` 반올림)
 - [x] F2 activity 소스 `kind: "hrr2"` 추가. `ActivityRow.hrr2` · `loadActivity` select 에 `hrr2` · `activityPoints`: 러닝 계열 · `hrr2 !== null` 인 활동만 `{ ymd, value: hrr2 }` (한 날 두 러닝이면 점 2개 — 버킷 중앙값에 둘 다 들어간다)
 - [x] F3 지표 정의: `{ id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", sparse: true, withMinMax: true }` — 띠 (최저~최고) 로 버킷 안 퍼짐을 보인다 (인터벌 · 레이스가 큰 값). `selectable: true` 라 `/history` 선택기 "추가" 그룹에도 나온다
-- [x] F4 aggregate 분기 보강 (`SEASON_CAPTIONS.median` 은 "굵은 선 = 그 달 중앙값들의 평균"): `WHOLE_LABELS.median = "중앙값"` · `SEASON_CAPTIONS.median = "굵은 선 = 그 달의 중앙값들의 평균"` · `aggregateCaption`: `"선 = 기간 중앙값, 띠 = 최저~최고"` · `showBand` 를 `(avg || median) && withMinMax` · `seasonality` 는 mean 그대로 (중앙값들의 평균 — 캡션이 말한다). 객체 인덱스 둘은 `Record<HistoryAggregate, string>` 으로 타입을 조여 **키 누락이 컴파일 에러**가 되게 한다
+- [x] F4 aggregate 분기 보강: `WHOLE_LABELS.median = "중앙값"` · `SEASON_CAPTIONS.median = "굵은 선 = 그 달의 중앙값들의 평균"` · `aggregateCaption`: `"선 = 기간 중앙값, 띠 = 최저~최고"` · `showBand` 를 `(avg || median) && withMinMax` · `seasonality` 는 mean 그대로 (중앙값들의 평균 — 캡션이 말한다). 객체 인덱스 둘은 `Record<HistoryAggregate, string>` 으로 타입을 조여 **키 누락이 컴파일 에러**가 되게 한다
 
 **캡션 · 개인 기록**
 - [x] F5 데이터 시작일 (시계열 · 전년 동기 · 계절성 `Keys` 에 한 줄): `src/lib/history/data-start.ts` — `loadMetricDataStart(def)`: `kind === "hrr2"` 면 `activity.findFirst({ where: 러닝 AND hrr2 not null, orderBy startTime asc })` 의 KST `YYYY-MM`, 그 외 null. `/trends` 시계열 · 전년 동기 · 계절성 뷰의 `Keys` 에 `종료 후 심박은 ${from} 부터 있습니다` 추가 (null 이면 생략). 문구는 `metrics.ts` 의 `startNote?: string` (`{from}` 치환) 로 정의 — 다른 sparse 지표에도 열어 둔다
