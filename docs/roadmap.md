@@ -383,6 +383,12 @@
 
 **M15 완료 (2026-09-22, v2.30.0 ~ v2.34.0)** — `/history` · `/trends` · `/insights` + 집계 계층 · 하이라이트 · `Activity.eventType`.
 
+## M16-1: 러닝 종료 후 심박 회복 (HRR) — 활동 상세 — 우선순위 ★★ ✅
+
+- [x] `src/lib/heart/recovery.ts` 순수 로직 (2분 격자 최근접 샘플 · 보간 없음 · `elapsedDuration` 벽시계 종료 · 자정 앞뒤 날) + vitest 16건
+- [x] 활동 상세 "종료 후 회복" 섹션 — 곡선 −4 … +10 분 · 2분 HRR · 10분 낙차 · 빈 상태 3구분 · "2분 해상도" 표기
+- 이슈: #418 · PR #423 · **v2.35.0** (2026-09-23). 스펙 `docs/specs/418-hr-recovery.md` · 시안 `docs/designs/418-hr-recovery/`. 후속: #425 (`/insights` 연도별 HRR — `Activity.hrr2` 승격 + 백필)
+
 ---
 
 # 유지보수 / 보안

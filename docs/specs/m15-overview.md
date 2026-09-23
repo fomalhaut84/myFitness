@@ -142,7 +142,7 @@ B 는 기존 페이지가 고정창이라 성립하지 않는다. A 로 가되 *
 | 일상 | 스트레스 고·중·저 시간 스택 · 바디배터리 충전/소모 | stress*Duration, bodyBattery* |
 | 체중 | 전체 이력 + 목표선 · 월별 칼로리 밸런스 vs 체중 변화 | weight, targetWeight, calorieBalance |
 | 교차 | ✅ 주간 km 와 다음 주 RHR 지연 상관 — `/insights` D (#397) · 수면 점수와 다음날 페이스 (미선별) | 조인 |
-| 심박 | 러닝 종료 후 심박 회복 (HRR) — 활동 상세 곡선 + 연도별 추이 → **#418** (2026-09-22 추가) | HeartRateRecord.rawData.heartRateValues (2분 간격) |
+| 심박 | ✅ 러닝 종료 후 심박 회복 (HRR) — 활동 상세 곡선 · 2분 HRR (#418 · v2.35.0) · 연도별 추이는 **#425** (`Activity.hrr2` 승격 + 백필) | HeartRateRecord.rawData.heartRateValues (2분 간격) |
 
 **SpO2 는 절대 임계 경고 금지** (memory `project_user_spo2_baseline`: 사용자 야간 최저 83~88 이 정상 범위). 개인 baseline 대비로만 표현.
 
