@@ -35,7 +35,7 @@
 
 ## 구현 시 시안과 달라지는 것
 
-- `InsightScatter` 재사용 — x 는 소수 연도 (`yearFraction(ymd)`), `AxisFormat "year"` + 명시 눈금 (`x.ticks` 신설). 중앙값은 계열 하나 (`id: "median"`, 밝은 색, `hollow`, 반지름은 컴포넌트에 `size` 옵션 추가 또는 hollow 클래스 재사용 — 구현 시 판단). 중앙값 점은 클릭 대상이 아니다 (`href: null`).
+- `InsightScatter` 재사용 — x 는 소수 연도 (`yearFraction(ymd)`), `AxisFormat "year"` + 명시 눈금 (`x.ticks`) + 명시 도메인 (`x.domain = [첫 해, 마지막 해 + 1]`). 중앙값은 계열 하나 (`id: "median"`, 밝은 색, `emphasis` — r 6 속 빈 점, 범례는 링). 중앙값 점은 클릭 대상이 아니다 (`href: null`). (구현 2026-09-23)
 - 0 기준선은 `ReferenceLine y={0}` (`pointerEvents: none`).
 - 차트 높이 고정 (데스크톱 320 · 모바일 220). 시안 SVG 는 viewBox 축소라 폰에서 글자가 작다 — 구현에서는 해당 없음.
 - 툴팁: 날짜 · `hrr2` · 거리 · 레이스 → 클릭 → 활동 상세 (기존 산점도 규칙).

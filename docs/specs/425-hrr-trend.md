@@ -37,28 +37,31 @@
 
 ## 3. 요구사항
 
+> **구현 (feat/425-1, 2026-09-23).** 순수 로직 vitest 12건 추가 (230건) · 로컬 마이그레이션 apply → `backfill:hrr` (러닝 5건 · 활동 상세 곡선과 값 일치: 04-05 hrr2 16 · 10분 낙차 48) → `/insights` 패널 E 실화면 확인 (데스크톱 1040 · 폰 360). 달라진 항목은 ↳.
+
 **스키마**
-- [ ] F1 `Activity.hrr2 Int?` · `Activity.hrrDrop10 Int?` — nullable · additive · 인덱스 없음 (러닝 + 기간 필터만). 수동 SQL migration (`prisma-drift-fix`) · `prisma generate`
+- [x] F1 `Activity.hrr2 Int?` · `Activity.hrrDrop10 Int?` — nullable · additive · 인덱스 없음 (러닝 + 기간 필터만). 수동 SQL migration (`prisma-drift-fix`) · `prisma generate`
   - `hrr2` = 종료 − 2분 후 (양수 = 회복 · 음수 허용). `hrrDrop10` = 종료 − 10분 후. 둘 다 `recoveryCurve` 의 값 그대로
 
 **채움 (`src/lib/heart/fill-recovery.ts`, prisma)**
-- [ ] F2 `fillRecoveryColumns({ from, to, force?, dryRun?, batchSize? })` — 러닝 (`RUNNING_ACTIVITY_WHERE`) · `startTime ∈ [from, to)` · `force` 아니면 `hrr2 IS NULL` 만. 청크 (200) 커서 `(startTime, id)`. 청크마다 필요한 KST 일자 (`recoveryDayKeys`) 를 모아 `HeartRateRecord` 를 한 번에 읽고 (`date in [...]`) 활동별로 합쳐 `recoveryCurve`. 반환 `{ candidates, updated, missing (레코드 없음), skipped (곡선 결측) }`
+- [x] F2 `fillRecoveryColumns({ from, to, force?, dryRun?, batchSize? })` — 러닝 (`RUNNING_ACTIVITY_WHERE`) · `startTime ∈ [from, to)` · `force` 아니면 `hrr2 IS NULL` 만. 청크 (200) 커서 `(startTime, id)`. 청크마다 필요한 KST 일자 (`recoveryDayKeys`) 를 모아 `HeartRateRecord` 를 한 번에 읽고 (`date in [...]`) 활동별로 합쳐 `recoveryCurve`. 반환 `{ candidates, updated, missing (레코드 없음), skipped (곡선 결측) }`
   - 레코드가 없거나 0 · +2 분이 결측이면 **null 그대로 둔다** (다음 싱크가 다시 시도) — 부분 데이터로 0 을 쓰지 않는다
   - `hrrDrop10` 은 `hrr2` 와 독립 (10 분 샘플만 결측이면 `hrr2` 는 쓰고 `hrrDrop10` 은 null)
-- [ ] F3 `syncAll` 후처리 — 루프에서 `activities` · `heart_rate` 가 실제로 돈 최소 `startDate` 를 기억해, 루프 뒤 `fillRecoveryColumns({ from: min − 2일, to: endDate + 1일 })` 를 **await** (DB 만 · 수 건). 갱신 > 0 이면 `bumpHistoryCacheVersion()`. 실패는 로그만 (싱크 결과에 영향 X)
-- [ ] F4 `scripts/backfill-hrr.ts` (`npm run backfill:hrr`) — `--from YYYY-MM-DD` (기본 하한) · `--to` (기본 오늘) · `--force` · `--dry-run` · `--limit N`. 종료 시 집계 출력. 프로덕션 실행 후 `pm2 restart` (캐시)
+- [x] F3 `syncAll` 후처리 — 루프에서 `activities` · `heart_rate` 가 실제로 돈 최소 `startDate` 를 기억해, 루프 뒤 `fillRecoveryColumns({ from: min − 2일, to: endDate + 1일 })` 를 **await** (DB 만 · 수 건). 갱신 > 0 이면 `bumpHistoryCacheVersion()`. 실패는 로그만 (싱크 결과에 영향 X)
+- [x] F4 `scripts/backfill-hrr.ts` (`npm run backfill:hrr`) — `--from YYYY-MM-DD` (기본 하한) · `--to` (기본 오늘) · `--force` · `--dry-run` · `--limit N`. 종료 시 집계 출력. 프로덕션 실행 후 `pm2 restart` (캐시)
 
 **`/insights` 패널 E — "회복이 빨라졌나?"**
-- [ ] F5 `InsightRun` 에 `hrr2: number | null` 추가 (`loadInsightRuns` select 1개 추가 · 조회 1회 유지)
-- [ ] F6 순수 `src/lib/insights/recovery.ts`: `recoveryPoints(runs)` (hrr2 있는 러닝 · 거리 필터 없음 — 트레드밀도 HRR 은 유효) · `recoveryByYear(points, years)` → `{ year, n, medianHrr2 }` (5건 미만 해 null · `MIN_YEAR_RUNS` 상수 공유) · `recoveryDelta(years)` (첫 유효 해 vs 마지막 유효 해 중앙값 차)
-- [ ] F7 차트: `InsightScatter` — x = 소수 연도 (`year + dayOfYear/365`), y = `hrr2` bpm, 계열 = 연도 (YoY 규칙 · 심박 색), 레이스는 속 빈 점 (A 패널과 동일), **연도 중앙값** 은 계열 하나 `중앙값` (밝은 색 · 큰 속 빈 점 · x = 연도 + 0.5). x 축 눈금 = 정수 연도 (`AxisFormat "year"` · `x.ticks`)
-- [ ] F8 판독값: `BigNumber` "올해 vs 첫 해 중앙값 +N bpm" (효율 패널의 `effDelta` 문구 규칙 — 마지막 유효 해가 올해가 아닐 수 있다) + `ValueTable` 연도별 중앙값 (n 병기 · 5건 미만 `—`)
-- [ ] F9 `how`/`foot` 문구: "점 = 러닝 1건. 세로 = 종료 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복)". foot: "중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없는 날의 러닝은 빠집니다 (n 참조)"
-- [ ] F10 빈 상태: hrr2 있는 러닝 0건 → "종료 후 심박이 계산된 러닝이 없습니다 — `backfill:hrr` 실행 후 보입니다"
+- [x] F5 `InsightRun` 에 `hrr2: number | null` 추가 (`loadInsightRuns` select 1개 추가 · 조회 1회 유지)
+- [x] F6 순수 `src/lib/insights/recovery.ts`: `recoveryPoints(runs)` (hrr2 있는 러닝 · 거리 필터 없음 — 트레드밀도 HRR 은 유효) · `recoveryByYear(points, years)` → `{ year, n, medianHrr2 }` (5건 미만 해 null · `MIN_YEAR_RUNS` 상수 공유) · `recoveryDelta(years)` (첫 유효 해 vs 마지막 유효 해 중앙값 차)
+- [x] F7 차트: `InsightScatter` — x = 소수 연도 (`year + dayOfYear/365`), y = `hrr2` bpm, 계열 = 연도 (YoY 규칙 · 심박 색), 레이스는 속 빈 점 (A 패널과 동일), **연도 중앙값** 은 계열 하나 `중앙값` (밝은 색 · 큰 속 빈 점 · x = 연도 + 0.5). x 축 눈금 = 정수 연도 (`AxisFormat "year"` · `x.ticks`)
+  - ↳ `ScatterSeries.emphasis` (큰 속 빈 점 r 6 · 범례 링) · `ScatterAxis.ticks` · `ScatterAxis.domain` (시간 축은 `[첫 해, 마지막 해 + 1]` — 한 해뿐이면 자동 도메인이 너무 좁아 눈금이 사라진다) · `ScatterAxis.zeroLine` (`ReferenceLine y=0`, 범위 밖이면 안 그려짐)
+- [x] F8 판독값: `BigNumber` "올해 vs 첫 해 중앙값 +N bpm" (효율 패널의 `effDelta` 문구 규칙 — 마지막 유효 해가 올해가 아닐 수 있다) + `ValueTable` 연도별 중앙값 (n 병기 · 5건 미만 `—`)
+- [x] F9 `how`/`foot` 문구: "점 = 러닝 1건. 세로 = 종료 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복)". foot: "중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없는 날의 러닝은 빠집니다 (n 참조)"
+- [x] F10 빈 상태: hrr2 있는 러닝 0건 → "종료 후 심박이 계산된 러닝이 없습니다 — `backfill:hrr` 실행 후 보입니다"
 
 **디자인 · 문서**
-- [ ] F11 시안 `docs/designs/425-hrr-trend/` — 397 패널 언어 (질문 → 차트 → 답), 패널 1개
-- [ ] F12 #427 반영 (로드맵 `# 마일스톤 16` 헤딩 · 인계 문서 후보 표 문구) — 이 브랜치의 문서 커밋에서
+- [x] F11 시안 `docs/designs/425-hrr-trend/` — 397 패널 언어 (질문 → 차트 → 답), 패널 1개
+- [x] F12 #427 반영 (로드맵 `# 마일스톤 16` 헤딩 · 인계 문서 후보 표 문구) — 이 브랜치의 문서 커밋에서
 
 ## 4. 기술 설계
 
