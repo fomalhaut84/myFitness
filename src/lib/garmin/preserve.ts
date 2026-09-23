@@ -35,12 +35,35 @@ export function hasSleepDetail(raw: unknown): boolean {
   return r !== null && typeof r.avgOvernightHrv === "number" && Number.isFinite(r.avgOvernightHrv);
 }
 
+/** "값 있음" — 비지 않은 배열 · 0 이 아닌 유한수 · 비지 않은 객체. 문자열 · 불리언 · 0 · 빈 컨테이너는 요약/플래그라 세지 않는다 */
+function isPresent(v: unknown): boolean {
+  if (Array.isArray(v)) return v.length > 0;
+  if (typeof v === "number") return Number.isFinite(v) && v !== 0;
+  if (v !== null && typeof v === "object") return Object.keys(v as object).length > 0;
+  return false;
+}
+
 /**
- * upsert 의 `update` payload. null 필드는 생략하고, 응답에 상세가 없는데 기존 행에는 있으면 `rawData` 도 생략한다 (기존 유지).
- * 둘 다 상세가 없으면 rawData 는 갱신한다 — 요약이라도 최신으로. 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 첫 규칙이 뺀다.
+ * #435: 응답이 기존 rawData 보다 빈약한가 — 기존의 "값 있음" 최상위 키 중 하나라도 응답에서 사라졌으면 (null · 없음 · 빈 배열)
+ * 보존 창 밖 재조회로 본다. 특정 필드 (`heartRateValues` · `avgOvernightHrv`) 만 보면 HRV 없는 밤의 SpO2 epochs · `sleepHeartRate`
+ * 타임라인을 놓친다 (릴리즈 PR #434 Codex P2). 값 변경 · 새 키 추가 · 요약 갱신은 trimmed 가 아니다.
  */
-export function preserveUpdate<T extends Record<string, unknown>>(data: T, ctx: { incomingDetail: boolean; existingDetail: boolean }): Partial<T> {
+export function isTrimmedResponse(incoming: unknown, existing: unknown): boolean {
+  const prev = asRecord(existing);
+  if (prev === null) return false;
+  const presentKeys = Object.keys(prev).filter((k) => isPresent(prev[k]));
+  if (presentKeys.length === 0) return false;
+  const next = asRecord(incoming);
+  if (next === null) return true;
+  return presentKeys.some((k) => !isPresent(next[k]));
+}
+
+/**
+ * upsert 의 `update` payload. null 필드는 생략하고, 응답이 기존보다 빈약하면 (`trimmed`) `rawData` 도 생략한다 (기존 유지).
+ * 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 첫 규칙이 뺀다.
+ */
+export function preserveUpdate<T extends Record<string, unknown>>(data: T, ctx: { trimmed: boolean }): Partial<T> {
   const out = withoutNulls(data);
-  if (!ctx.incomingDetail && ctx.existingDetail) delete out.rawData;
+  if (ctx.trimmed) delete out.rawData;
   return out;
 }

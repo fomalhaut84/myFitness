@@ -3,7 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, todayKSTString, withRateLimit } from "../utils";
 import { extractSleepSpO2 } from "./sleep-spo2";
-import { hasSleepDetail, preserveUpdate } from "../preserve";
+import { isTrimmedResponse, preserveUpdate } from "../preserve";
 
 export async function syncSleep(
   client: GarminConnect,
@@ -90,12 +90,12 @@ export async function syncSleep(
       // #431: sleepScoreDetails 는 update 에서 null 이면 생략 (기존 유지) — DbNull 은 create 에서만 (Prisma 타입이 null 을 받지 않는다)
       const scoreDetails = sleepScoreDetails ? { sleepScoreDetails: sleepScoreDetails as Prisma.InputJsonValue } : {};
 
-      // #431: 보존 창 (~150일) 밖 재싱크는 야간 HRV · 수면 단계가 빠진 채 온다 — 기존 값을 지우지 않는다.
-      const incomingDetail = hasSleepDetail(sleepData);
-      const existing = incomingDetail ? null : await prisma.sleepRecord.findUnique({ where: { date: dayDate }, select: { rawData: true } });
+      // #431 · #435: 보존 창 (~150일) 밖 재싱크는 야간 HRV · SpO2 epochs · 수면 심박 타임라인이 빠진 채 온다 — 기존 값을 지우지 않는다.
+      // 기존 행의 rawData 와 비교해 (하루 1회 조회) 값 있던 키가 사라진 응답이면 rawData 를 유지한다.
+      const existing = await prisma.sleepRecord.findUnique({ where: { date: dayDate }, select: { rawData: true } });
       await prisma.sleepRecord.upsert({
         where: { date: dayDate },
-        update: { ...preserveUpdate(data, { incomingDetail, existingDetail: hasSleepDetail(existing?.rawData) }), ...scoreDetails },
+        update: { ...preserveUpdate(data, { trimmed: isTrimmedResponse(sleepData, existing?.rawData) }), ...scoreDetails },
         create: { date: dayDate, ...data, sleepScoreDetails: sleepScoreDetails ? (sleepScoreDetails as Prisma.InputJsonValue) : Prisma.DbNull },
       });
 

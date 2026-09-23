@@ -30,8 +30,10 @@ v2.36.0 `backfill:hrr` 에서 발견 (2026-09-23): 프로덕션 `HeartRateRecord
 **가드 (`src/lib/garmin/preserve.ts`, 순수)**
 - [x] F1 `withoutNulls(data)` — update payload 에서 값이 `null` / `undefined` 인 키를 뺀다 (Prisma 에서 `undefined` = 무변경). create 는 그대로 (null 명시)
 - [x] F2 `hasHeartRateDetail(raw)` = `heartRateValues` 가 비지 않은 배열 · `hasSleepDetail(raw)` = `avgOvernightHrv` 가 유한수 **또는** `sleepLevels` 가 비지 않은 배열
+  - ↳↳ **#435 (릴리즈 PR #434 Codex P2)**: 특정 필드 판정을 버리고 `isTrimmedResponse(incoming, existing)` — 기존 rawData 의 "값 있음" 최상위 키 (비지 않은 배열 · 0 아닌 유한수 · 비지 않은 객체) 가 응답에서 사라졌으면 trimmed → rawData 유지. HRV 없는 밤의 SpO2 epochs · `sleepHeartRate` 도 보존. fetcher 는 응답과 무관하게 기존 행을 하루 1회 읽는다. `hasHeartRateDetail` · `hasSleepDetail` 은 헬퍼로만 남음
   - ↳ **`avgOvernightHrv` 만** (사전 리뷰 major 1): `sleepLevels` 는 보존 창 밖에서도 올 수 있어 (Garmin Connect 는 수년 전 수면 단계도 보여 준다) OR 이면 HRV 없는 재조회가 rawData 를 덮어써 `avgOvernightHrv` · `hrvData` · `sleepHeartRate` 를 잃는다. 소실이 실측된 필드만 기준
 - [x] F3 `preserveUpdate(data, { incomingDetail, existingDetail })` — `withoutNulls` 적용 후, `!incomingDetail && existingDetail` 이면 `rawData` 도 뺀다 (기존 rawData 유지). 파생 컬럼 (`avgHR` · `hrvOvernight`) 은 null 이라 F1 이 이미 뺀다
+  - ↳ #435: 시그니처 `preserveUpdate(data, { trimmed })` · `trimmed = isTrimmedResponse(raw, existing?.rawData)`
 - [x] F4 회귀 테스트 3 케이스 + null 필드 생략 + `existingDetail` 만 있을 때 rawData 제외 (`src/lib/garmin/__tests__/preserve.test.ts`)
 
 **fetcher**
