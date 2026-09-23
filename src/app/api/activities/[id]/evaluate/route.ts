@@ -30,9 +30,14 @@ export async function POST(_request: Request, { params }: Params) {
       throw new Error("어드바이저가 빈 응답을 돌려줬습니다");
     }
 
-    await prisma.aIAdvice.create({
-      data: { category: ACTIVITY_EVAL_CATEGORY, reportDate: input.activity.ymd, prompt: ctx.prompt, response: result },
-    });
+    // 이력 저장은 부차적 — 30~90초짜리 평가를 DB 오류로 버리지 않는다 (사전 리뷰 info 4)
+    try {
+      await prisma.aIAdvice.create({
+        data: { category: ACTIVITY_EVAL_CATEGORY, reportDate: input.activity.ymd, prompt: ctx.prompt, response: result },
+      });
+    } catch (error) {
+      console.error("[activity-eval] AIAdvice 저장 실패 (결과는 반환):", error instanceof Error ? error.message : error);
+    }
 
     return NextResponse.json({
       result,

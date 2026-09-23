@@ -131,6 +131,21 @@ describe("buildEvalContext — 전체 모드", () => {
     expect(buildEvalContext(legacy).sections.find((s) => s.id === "dynamics")!.lines.join("\n")).toContain("보폭 79cm");
   });
 
+  it("기본 지표에 케이던스는 없다 (다이나믹스와 중복 — 사전 리뷰 info 6)", () => {
+    const basic = buildEvalContext(fullInput()).sections.find((s) => s.id === "basic")!;
+    expect(basic.lines.some((l) => l.includes("케이던스"))).toBe(false);
+  });
+
+  it("비교 델타는 반올림 뒤 부호 — -0 이 나오지 않는다 (사전 리뷰 info 5)", () => {
+    const tiny = fullInput();
+    tiny.sameCourse = [{ ...tiny.sameCourse[0], avgPace: 315.3, avgHR: 123 }];
+    tiny.similarDistance = [];
+    const text = buildEvalContext(tiny).sections.find((s) => s.id === "comparison")!.lines.join("\n");
+    expect(text).toContain("페이스 +0초/km");
+    // 날짜 (`2026-03-29`) 의 `-0` 은 제외하고 델타만 본다
+    expect(text).not.toMatch(/페이스 -0초|심박 -0bpm/);
+  });
+
   it("스플릿 — 파생값 줄과 km 표", () => {
     const splits = buildEvalContext(fullInput()).sections.find((s) => s.id === "splits")!;
     const text = splits.lines.join("\n");
@@ -221,5 +236,7 @@ describe("buildEvalContext — 요약 모드 (러닝 외)", () => {
     expect(ctx.omitted).toEqual([]);
     expect(ctx.prompt).toContain("3줄 이내");
     expect(ctx.prompt).not.toContain("### 종합");
+    // 분/km 페이스는 러닝 외에 뜻이 없다 (사전 리뷰 info 6)
+    expect(ctx.prompt).not.toContain("평균 페이스");
   });
 });

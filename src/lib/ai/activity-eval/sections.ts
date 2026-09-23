@@ -1,5 +1,6 @@
 // #440: 섹션별 근거 줄 — 순수. 값이 null 인 항목은 줄 자체를 내지 않는다 (프롬프트에 "없음" 을 쓰지 않는다 — 모델이 결측을 언급하지 않게).
 // 각 함수는 `string[]` 을 돌려주고, 빈 배열이면 빌더가 섹션을 뺀다.
+import { isRunningType } from "@/lib/activity/running-types";
 import { formatClock, formatDurationShort, formatEpochKST, formatPace } from "@/lib/format";
 import { median } from "@/lib/insights/stats";
 import { wmoLabel } from "@/lib/weather/wmo-label";
@@ -22,7 +23,11 @@ const INTENSITY_LABEL_KO: Record<string, string> = {
 };
 
 const pace = (secPerKm: number) => `${formatPace(secPerKm)}/km`;
-const signed = (n: number) => `${n < 0 ? "-" : "+"}${Math.abs(Math.round(n))}`;
+/** 반올림 뒤 부호 — `-0.3` 이 `-0` 으로 찍히지 않게 (사전 리뷰 info 5) */
+const signed = (n: number) => {
+  const r = Math.round(n);
+  return `${r < 0 ? "-" : "+"}${Math.abs(r)}`;
+};
 const km = (m: number) => `${(m / 1000).toFixed(2)}km`;
 /** UTC ISO → KST HH:MM. `formatEpochKST` 는 숫자 문자열만 받아 ISO 는 먼저 파싱한다 (실데이터 검증에서 "-" 로 나왔다) */
 const kstTime = (iso: string) => formatEpochKST(Date.parse(iso));
@@ -43,11 +48,11 @@ export function basicLines(input: EvalInput): string[] {
     ...(a.distanceM !== null && a.distanceM > 0 ? [`거리 ${km(a.distanceM)}`] : []),
     `시간 ${formatClock(a.durationSec)}`,
     ...(stopSec !== null && stopSec >= MIN_STOP_SEC ? [`정지 ${formatDurationShort(stopSec)} (이동 ${formatClock(a.durationSec - stopSec)})`] : []),
-    ...maybe(a.avgPace, (p: number) => `평균 페이스 ${pace(p)}`),
+    // 페이스 (분/km) 는 러닝에서만 뜻이 있다 — 요약 모드 (사이클 등) 의 이전 프롬프트에도 없었다 (사전 리뷰 info 6)
+    ...(a.avgPace !== null && isRunningType(a.activityType) ? [`평균 페이스 ${pace(a.avgPace)}`] : []),
     ...(a.elevationGainM !== null && a.elevationGainM > 0 ? [`고도 상승 ${Math.round(a.elevationGainM)}m`] : []),
     ...maybe(a.calories, (c: number) => `칼로리 ${c}kcal`),
     ...(a.avgHR !== null ? [`평균 심박 ${a.avgHR}bpm${a.maxHR !== null ? ` · 최대 ${a.maxHR}bpm` : ""}`] : []),
-    ...maybe(a.avgCadence, (c: number) => `케이던스 ${c}spm`),
   ];
 }
 

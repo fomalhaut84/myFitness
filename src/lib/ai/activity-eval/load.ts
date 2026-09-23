@@ -225,7 +225,8 @@ export async function loadActivityEvalInput(id: string): Promise<EvalInput | nul
     loadBucketBest(row),
     loadLaps(row),
   ]);
-  const sameCourse = sameRaw.map(toComparisonRun);
+  // 사전 리뷰 info 1: `findSimilarActivities` 는 활동 앞뒤 2년 (태그는 기간 없음) 을 본다 — 평가 기준선은 **이전** 기록만 (비슷한 거리와 같은 방향)
+  const sameCourse = sameRaw.filter((a) => a.startTime.getTime() < row.startTime.getTime()).map(toComparisonRun);
   const sameIds = new Set(sameCourse.map((r) => r.id));
   const similarDistance = similarRaw.filter((r) => !sameIds.has(r.id)).slice(0, SIMILAR_LIMIT);
   return { ...base, recovery, laps, sameCourse, similarDistance, hrrBaseline, bucketBest };

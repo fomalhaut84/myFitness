@@ -4,7 +4,7 @@
 // 시안 `docs/designs/440-activity-ai-eval/`.
 import { useEffect, useState } from "react";
 import DOMPurify from "dompurify";
-import { marked } from "marked";
+import { Marked } from "marked";
 import { formatEpochKST } from "@/lib/format";
 
 interface EvalSectionRef {
@@ -31,23 +31,25 @@ type State =
   | { status: "done"; data: EvalResponse; finishedAt: number }
   | { status: "error"; message: string };
 
-const SUMMARY_HEADING = "### 종합";
+/** 줄 단위 — `#### 종합` 같은 변형에 걸리지 않게 (사전 리뷰 info 3) */
+const SUMMARY_HEADING = /^###\s+종합\s*$/m;
 const TYPICAL_RANGE = "보통 30~90초";
 
 /** 모델 마크다운 → 안전한 HTML. `### 종합` 앞뒤를 나눠 종합 문단만 강조한다 */
 function splitSummary(markdown: string): { body: string; summary: string | null } {
-  const at = markdown.indexOf(SUMMARY_HEADING);
+  const at = markdown.search(SUMMARY_HEADING);
   if (at < 0) return { body: markdown, summary: null };
   return { body: markdown.slice(0, at), summary: markdown.slice(at) };
 }
 
-/** 모델이 범위를 `120~130bpm` 처럼 쓰면 GFM 이 `~…~` 를 취소선으로 읽는다 (실화면 검증에서 발견) — 물결표는 글자 그대로 */
-function escapeTilde(markdown: string): string {
-  return markdown.replace(/~/g, "\\~");
-}
+/**
+ * 취소선 토크나이저를 끈 파서 — 모델이 범위를 `120~130bpm` 처럼 쓰면 GFM 이 `~…~` 를 취소선으로 읽는다 (실화면 검증에서 발견).
+ * 텍스트를 고쳐 쓰지 않고 (코드 안 물결표 · 이미 이스케이프된 물결표가 깨진다 — 사전 리뷰 info 2) 토크나이저에서 뺀다.
+ */
+const parser = new Marked({ tokenizer: { del: () => undefined } });
 
 function toHtml(markdown: string): string {
-  return DOMPurify.sanitize(marked.parse(escapeTilde(markdown), { async: false }) as string);
+  return DOMPurify.sanitize(parser.parse(markdown, { async: false }) as string);
 }
 
 const PROSE =
