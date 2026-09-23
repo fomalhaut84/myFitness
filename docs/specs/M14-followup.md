@@ -5,7 +5,36 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-23, M16-1 HRR · v2.35.0 배포 시점)
+## 현재 상태 (2026-09-23 오후, M16-2 HRR 추이 · v2.36.0 배포 시점)
+
+**최근 릴리즈:** **v2.36.0** — `/insights` 연도별 HRR 추이 (#425, PR #428 · 릴리즈 PR #430 · migration `activity_hrr` additive). main = `v2.36.0`, 배포 success · 프로덕션 `backfill:hrr` 실행 완료 (갱신 111 / 2,157). dev 는 이 문서 PR 만 앞섬 — 런타임 동일.
+
+**⚠️ 발견 (P1 · #431):** 프로덕션 심박 시계열 (`heartRateValues`) · 야간 HRV 가 **2026-04-20 이전 전부 null** — Garmin 이 일별 wellness 상세를 최근 ~150일만 주고, 09-17 `backfill:history` 가 그 밖의 날짜를 재조회하며 심박 · 수면 fetcher 의 무조건 upsert 가 기존 값을 null 로 덮어씀. 최초 싱크 (04-07) 때 있던 2025-11 ~ 2026-04-19 는 **복구 불가**. memory `project_hrv_data_start` 정정 · `project_garmin_wellness_retention` 신설. **#431 가드 전에는 `backfill:history --types=heart_rate,sleep` 금지.**
+
+### 인계 (다음 세션에서 이어갈 것)
+
+**오픈 PR 없음.** 다음 착수 (우선순위 순):
+
+| 후보 | 내용 | 비고 |
+|---|---|---|
+| **#431 덮어쓰기 가드** (bug · **P1**) | fetcher: 응답 상세 null + 기존 행 값 있음 → 유지 (기존 행 select 1회 · `isEmptyHeartRate` 와 충돌 X) · `backfill:history` 보존 창 밖 wellness 경고/skip · 회귀 3케이스 · 다른 일별 타입 감사 | 재발 방지. 5개월 뒤 지금 데이터가 지워지지 않게. 에이전트 필수 경로 |
+| **#429 패널 E 후속** (chore · P2) | `--dry-run` 이어가기 명령 · 연도 토글 시 중앙값 점 숨김 · **캡션 시작일** (`종료 후 심박은 2026-04 부터`, 데이터에서) | 한 줄 ×3. #431 과 같은 PR 로 묶어도 됨 |
+| #414 · #419 · D8 잔여 · 독립 후속 | 이전 상태 표 그대로 | — |
+
+**이번 세션 결과 (2026-09-23 오후):**
+- **#425 완료 (v2.36.0, PR #428)** — `hrr2` · `hrrDrop10` 승격 · `fillRecoveryColumns` (청크 커서 · 일자별 레코드 1회 · 결측 null 유지 · `--after-id`) · `syncAll` 후처리 (창 −2일 · 캐시 bump) · 패널 E (시간 축 · 중앙값 강조 · 0 선 · `InsightScatter` ticks/domain/zeroLine/emphasis). 사전 리뷰 info 2 · Codex P2 3 (반영 1 · #429 2) · 릴리즈 PR P2 2 (= #429). vitest 218 → 230.
+- **#427 완료** (PR #428 문서 커밋).
+- 프로덕션 진단 (사용자 실행 쿼리): `jsonb_typeof(heartRateValues)` null 2,132일 / array 156일 · null 행 중 385건은 04-07 최초 싱크분 · 로컬 dev DB 의 같은 날짜엔 시계열 · HRV 존재 → #431.
+
+**세션 관찰:**
+- **"키 존재" 와 "값 존재" 는 다르다** — `rawData ? 'heartRateValues'` 는 null 값도 센다. 새 rawData 필드를 승격하기 전엔 `jsonb_typeof` 로 기간별 분포를 먼저 본다 (#418 이슈의 확인 쿼리가 이 함정에 걸렸다).
+- 로컬 dev DB (2026-04-07 싱크 7일) 가 프로덕션 손실을 증명하는 증거가 됐다 — dev DB 를 함부로 재싱크하지 말 것.
+- `gh pr create --base dev` 의 `Closes #N` 은 기본 브랜치 (main) 머지에만 작동 — dev PR 은 이슈를 직접 닫는다.
+- Codex 종료 규칙 2회 적용 (PR #426 → #427 · PR #428 → #429). 릴리즈 PR 에 같은 P2 가 다시 붙으면 트래킹 이슈 번호로 답하고 게이트 통과 처리.
+
+---
+
+## 이전 상태 (2026-09-23, M16-1 HRR · v2.35.0 배포 시점)
 
 **최근 릴리즈:** **v2.35.0** — 러닝 종료 후 심박 회복 (HRR) 활동 상세 섹션 (#418, PR #423 · 릴리즈 PR #424). main = `v2.35.0`, 배포 success (migration 없음 · 패키지 변경 없음). dev 는 문서 PR #426 (로드맵 M16-1 · D8 표 · 418 스펙 마감 · 이 절) 만 앞섬 — 런타임 동일. **다음 마일스톤은 M16** 으로 시작 (M16-1 = #418).
 
