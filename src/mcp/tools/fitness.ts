@@ -11,6 +11,9 @@ import {
 } from "./aggregate";
 import { MAX_DAILY_ROWS } from "./constants";
 import { activityTypeWhere } from "./activity-filter";
+// #455: 일별 창 합계 (강도 분 · 층수) · 수면 규칙성 — daily envelope 에만
+import { summarizeDailyWindow } from "@/lib/fitness/daily-window";
+import { sleepRegularity } from "@/lib/sleep/regularity";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
 
@@ -96,7 +99,7 @@ const ACTIVITY_DAILY_NOTES = {
   hrr2: "종료 후 2분 심박 회복 = 종료 심박 − 2분 후 심박 (bpm, 양수 = 회복 · 클수록 좋음). hrrDrop10 은 같은 방식의 10분 후 값 (bpm). null 은 종료 후 시계열 없음 (2026-04 이전 · 미착용) 또는 그 시점 샘플 부족.",
   zones: "zones 는 존별 초 (개인 HR 존), zonePct 는 존 시간 합 기준 % (존마다 반올림이라 합이 99~101 일 수 있음 — 언급하지 말 것). 둘 다 null 이면 그 활동에 존 분포 없음.",
   runningSummary:
-    "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
+    "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. dynamics 는 창 안 러닝의 중앙값 (cadence spm · strideLengthM m (옛 cm 행 정규화) · groundContactTimeMs · verticalOscillationCm), 각 n 건 — 값 없는 활동은 제외. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
 };
 
 /** M2: daily 요청이 행 상한을 넘어 집계로 승격됐을 때 _context 에 붙일 안내. */
@@ -259,7 +262,13 @@ export async function getSleep(args: RangeArgs) {
       sleepEnd: r.sleepEnd.toISOString(),
       totalSleepHours: (r.totalSleep / 60).toFixed(1),
     })),
-    context,
+    {
+      ...context,
+      regularity:
+        "daily 응답에만 — 창 안 취침 · 기상 시각 (KST) 의 평균과 표준편차 (시간). label 은 취침 표준편차 기준 (0.5 / 1.0 / 1.5 시간 → 매우 규칙적 / 규칙적 / 보통 / 불규칙 — /lifestyle 과 같은 임계). 2건 미만이면 null.",
+    },
+    // #455 F5: 수면 규칙성
+    { regularity: sleepRegularity(records) },
   );
 }
 
@@ -323,10 +332,11 @@ export async function getDailyStats(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
   const { since, until, to } = resolveWindow(days, args.endDate);
+  // PR #462 Codex P1: 가중 강도 분 (moderate + 2×vigorous) 은 rawData 의 두 성분에서 — 행 응답에는 싣지 않는다 (아래 destructure)
   const records = await prisma.dailySummary.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: DAILY_SELECT,
+    select: { ...DAILY_SELECT, rawData: true },
   });
 
   const dailyContext = {
@@ -346,8 +356,14 @@ export async function getDailyStats(args: RangeArgs) {
   }
 
   return envelope(days, fmt(since), to, granularity,
-    records.map((r) => ({ ...r, date: fmt(r.date) })),
-    context,
+    records.map(({ rawData: _rawData, ...r }) => ({ ...r, date: fmt(r.date) })),
+    {
+      ...context,
+      totals:
+        "daily 응답에만 — 창 안 합계. WHO 권고 (주 150분) · Garmin 주간 목표와 비교할 값은 weightedIntensityMinTotal (moderate + 2×vigorous). intensityMinTotal 은 저장 컬럼 (moderate + vigorous 단순합) 의 합이라 150 과 직접 비교하지 말 것 — weighted 가 null 이면 '비가중 최소 N분' 으로만. null 은 값 있는 날이 없음 (0 이 아님). rowCount 는 창 안 DailySummary 행 수 (envelope days 와 다름 — days=6 은 7일) · daysWithIntensity 가 rowCount 보다 작으면 미착용 날, rowCount 가 창 길이보다 작으면 싱크 안 된 날이 있다.",
+    },
+    // #455 F3: 강도 분 (가중 · 비가중) · 층수 합계
+    { totals: summarizeDailyWindow(records) },
   );
 }
 

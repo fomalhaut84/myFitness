@@ -14,6 +14,10 @@ describe("EVENING_PROMPT", () => {
     expect(EVENING_PROMPT).toContain("get_activity_context(activityId)");
     expect(EVENING_PROMPT).toMatch(/기상|환경/);
   });
+  it("#455 A5: 오늘 러닝이 신기록인지 get_personal_records 로 본다", () => {
+    expect(EVENING_PROMPT).toContain("get_personal_records()");
+    expect(EVENING_PROMPT).toMatch(/신기록/);
+  });
 });
 
 describe("buildWeeklyReportPrompt", () => {
@@ -38,6 +42,17 @@ describe("buildWeeklyReportPrompt", () => {
     expect(prompt).toMatch(/HRR/);
     expect(prompt).toMatch(/VO2max/);
     expect(prompt).toMatch(/준수율/);
+  });
+
+  it("#455: 신기록 · 체지방/근육량 · 강도 분 · 수면 규칙성 · 다이나믹스 도구와 항목", () => {
+    expect(prompt).toContain("get_personal_records()");
+    expect(prompt).toContain("get_body_composition(days=27)");
+    // 회귀: PR #462 Codex P1 — 150분 비교는 가중 합으로
+    expect(prompt).toContain("totals.weightedIntensityMinTotal");
+    expect(prompt).toMatch(/150분/);
+    expect(prompt).toContain("regularity");
+    expect(prompt).toContain("runningSummary.dynamics");
+    expect(prompt).toMatch(/신기록/);
   });
 
   it("weeklyBaselineEndDate 는 오늘(KST) − 7일", () => {

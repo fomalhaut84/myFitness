@@ -3,12 +3,31 @@
 import { isRunningType } from "@/lib/activity/running-types";
 import { parseZoneDistribution, type ZoneDistribution } from "@/lib/fitness/intensity";
 import { median } from "@/lib/insights/stats";
+import { strideMeters } from "./stride";
 
 export interface RunningWindowRow {
   activityType: string;
   /** Prisma Json — `parseZoneDistribution` 으로 읽는다 */
   zoneDistribution: unknown;
   hrr2: number | null;
+  // #455 F6: 러닝 다이나믹스 (없는 호출자는 생략 가능)
+  avgCadence?: number | null;
+  avgStrideLength?: number | null;
+  avgGroundContactTime?: number | null;
+  avgVerticalOscillation?: number | null;
+}
+
+export interface MedianStat {
+  median: number;
+  n: number;
+}
+
+/** 창 안 러닝 다이나믹스 중앙값 — 주간 리포트가 이번 주 vs 직전 4주를 비교 (케이던스 하락 · GCT 상승 = 피로/부상 신호) */
+export interface DynamicsSummary {
+  cadence: MedianStat | null;
+  strideLengthM: MedianStat | null;
+  groundContactTimeMs: MedianStat | null;
+  verticalOscillationCm: MedianStat | null;
 }
 
 export type ZonePct = ZoneDistribution;
@@ -23,7 +42,8 @@ export interface RunningWindowSummary {
   easyPct: number | null;
   /** 하드 (Z4+Z5) 시간 비율 % — Z3 은 어느 쪽에도 안 들어간다 */
   hardPct: number | null;
-  hrr2: { median: number; n: number } | null;
+  hrr2: MedianStat | null;
+  dynamics: DynamicsSummary;
 }
 
 const EMPTY_ZONES: ZoneDistribution = { z1: 0, z2: 0, z3: 0, z4: 0, z5: 0 };
@@ -66,6 +86,22 @@ function usableZones(value: unknown): ZoneDistribution | null {
   return z !== null && zoneTotal(z) > 0 ? z : null;
 }
 
+function medianStat(values: readonly (number | null | undefined)[], decimals: number): MedianStat | null {
+  const present = values.flatMap((v) => (v === null || v === undefined ? [] : [v]));
+  const m = median(present);
+  return m === null ? null : { median: Number(m.toFixed(decimals)), n: present.length };
+}
+
+function summarizeDynamics(runs: readonly RunningWindowRow[]): DynamicsSummary {
+  return {
+    cadence: medianStat(runs.map((r) => r.avgCadence), 0),
+    // cm 혼재 행 (파서 정정 이전) 을 m 로 — 활동 평가와 같은 규칙
+    strideLengthM: medianStat(runs.map((r) => (r.avgStrideLength == null ? null : strideMeters(r.avgStrideLength))), 2),
+    groundContactTimeMs: medianStat(runs.map((r) => r.avgGroundContactTime), 0),
+    verticalOscillationCm: medianStat(runs.map((r) => r.avgVerticalOscillation), 1),
+  };
+}
+
 export function summarizeRunningWindow(rows: readonly RunningWindowRow[]): RunningWindowSummary {
   const runs = rows.filter((r) => isRunningType(r.activityType));
   const zones = runs.flatMap((r) => {
@@ -83,5 +119,6 @@ export function summarizeRunningWindow(rows: readonly RunningWindowRow[]): Runni
     easyPct: totals === null ? null : pct(totals.z1 + totals.z2, total),
     hardPct: totals === null ? null : pct(totals.z4 + totals.z5, total),
     hrr2: hrrMedian === null ? null : { median: Math.round(hrrMedian), n: hrrValues.length },
+    dynamics: summarizeDynamics(runs),
   };
 }

@@ -24,6 +24,7 @@ export const EVENING_PROMPT = `이브닝 리포트를 작성해줘.
 오늘 하루의 활동 데이터를 정리하고, 강도 분석과 칼로리 밸런스를 포함해줘:
 - 오늘 운동 기록이 있으면 분석 (거리, 페이스, HR, TE, intensityLabel, Zone 분포)
 - 오늘 러닝이 있으면 활동마다 mcp__myfitness__get_activity_context(activityId) 를 호출해 (activityId 는 get_activities 응답의 id 또는 garminId) km 스플릿 · 종료 후 회복 (2분 HRR) · 같은 코스/비슷한 거리 비교까지 근거로 분석. 환경 섹션의 기상 (기온 · 습도 · 바람) 이 페이스/심박에 준 영향을 한 줄로
+- 오늘 러닝이 있으면 mcp__myfitness__get_personal_records() 를 호출해 오늘 활동의 id/ymd 가 byBucket · longest · bestHrr2 와 같으면 신기록 축하 한 줄 (아니면 항목 생략)
 - 걸음 수, 활동 칼로리
 - 오늘 칼로리 밸런스 (결손/잉여, 섭취 vs 섭취가능) — get_weight_loss_status로 조회
 - 스트레스 분포 (고/중/저 비율)
@@ -73,6 +74,8 @@ endDate 없는 창은 오늘을 포함하므로, 직전 4주 기준선은 반드
 - mcp__myfitness__get_blood_pressure(days=7) — 최근 7일 혈압 (시스템 프롬프트 주간 BP 경고 규칙 필수)
 - mcp__myfitness__get_fitness_metric_trend(days=13, granularity="daily") — 최근 2주 VO2max 일별 · 젖산역치 감지 (이번 주 변화 판단)
 - mcp__myfitness__get_active_training_plan() — 활성 훈련 플랜 (없으면 플랜 항목 생략)
+- mcp__myfitness__get_personal_records() — 전 기간 개인 기록 (이번 주 날짜의 신기록 판단)
+- mcp__myfitness__get_body_composition(days=27) — 체지방 · 근육량 (값이 있는 주만)
 
 기억이나 추측이 아닌 위 도구 결과의 실제 수치만 인용.
 
@@ -83,11 +86,14 @@ endDate 없는 창은 오늘을 포함하므로, 직전 4주 기준선은 반드
 3. 2분 HRR: 이번 주 runningSummary.hrr2.median vs 직전 4주 (양수 = 회복 · 클수록 좋음). 둘 중 하나라도 null 이면 비교 대신 "측정 없음"
 4. VO2max 변화 · 젖산역치 감지 (get_fitness_metric_trend): 이번 주 값이 바뀌었으면 언급, 아니면 한 줄로 "변화 없음"
 5. 플랜 준수율 (활성 플랜이 있을 때만): 이번 주 completed / missed 와 준수율 %
-6. 수면 분석 (평균 수면 시간, 수면 점수 추세)
-7. 심박/HRV 트렌드 (피로도 판단)
-8. 컨디션 종합 평가 (바디배터리, 스트레스)
-9. 칼로리 밸런스 주간 요약: 평균 결손/잉여, 감량 페이스 평가, 체중 변화 (7일 이동평균)
-10. 경고 사항 (시스템 프롬프트의 경고 규칙에 해당하면 반드시 포함)
-11. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)
-12. **개인 목표 진행 상황** (컨텍스트에 "개인 목표" 섹션이 있을 때만): 이번 주 진행도 (평균 페이스/주간 거리/체중 등) + 다음 주 목표 접근 전략`;
+6. 신기록 (get_personal_records 의 byBucket · longest · bestHrr2 · bestVo2max 의 ymd 가 이번 주면): 항목별 한 줄 축하. 없으면 항목 생략
+7. 러닝 다이나믹스 추세: 이번 주 vs 직전 4주 runningSummary.dynamics (케이던스 · 접지시간 GCT · 보폭 · 수직진동) — 케이던스 하락 · GCT 상승은 피로/부상 신호. n 이 적으면 그렇다고 명시
+8. 활동 강도 분: get_daily_stats totals.weightedIntensityMinTotal (중강도 + 고강도×2) vs WHO 권고 150분/주 — 중강도 · 고강도 분을 함께 적는다. weighted 가 null 이면 totals.intensityMinTotal (단순합) 을 "최소" 로만 언급하고 150 과 비교하지 않는다. 오른 층수 합 한 줄
+9. 수면 분석 (평균 수면 시간, 수면 점수 추세) + 수면 규칙성: get_sleep regularity (취침 평균 시각 · 표준편차 · label)
+10. 심박/HRV 트렌드 (피로도 판단)
+11. 컨디션 종합 평가 (바디배터리, 스트레스)
+12. 칼로리 밸런스 주간 요약: 평균 결손/잉여, 감량 페이스 평가, 체중 변화 (7일 이동평균). 체지방 · 근육량은 get_body_composition 에 값이 있는 주만 추세 한 줄 (없으면 생략)
+13. 경고 사항 (시스템 프롬프트의 경고 규칙에 해당하면 반드시 포함)
+14. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)
+15. **개인 목표 진행 상황** (컨텍스트에 "개인 목표" 섹션이 있을 때만): 이번 주 진행도 (평균 페이스/주간 거리/체중 등) + 다음 주 목표 접근 전략`;
 }
