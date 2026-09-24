@@ -113,8 +113,11 @@ describe("buildCompareRows", () => {
 // 회귀: PR #447 Codex P2 (#449) — 푸터 "심박과 페이스는 낮을수록" 이 2분 HRR (클수록 좋음) 에서 반대로 읽혔다.
 describe("compareDirectionNote", () => {
   it("선택 지표의 방향 한 줄 — higher · lower · none", () => {
-    expect(compareDirectionNote("hrr2")).toBe("「2분 HRR」 지표는 클수록 좋습니다.");
-    expect(compareDirectionNote("restingHR")).toBe("「안정시 심박」 지표는 낮을수록 좋습니다.");
+    expect(compareDirectionNote("hrr2")).toBe("「2분 HRR」 지표는 높을수록 좋습니다.");
+    // 사전 리뷰 info 2: KPI 행이면 표의 행 제목으로
+    expect(compareDirectionNote("restingHR")).toBe("「평균 안정시 심박」 지표는 낮을수록 좋습니다.");
+    expect(compareDirectionNote("runningKm")).toBe("「총 거리」 지표는 높을수록 좋습니다.");
+    expect(compareDirectionNote("weight")).toBe("「기간 말 체중」 지표는 낮을수록 좋습니다.");
     expect(compareDirectionNote("ltPace")).toBe("「젖산역치 페이스」 지표는 낮을수록 좋습니다.");
     expect(compareDirectionNote("steps")).toBe("「걸음」 지표는 높고 낮음에 좋고 나쁨이 없습니다.");
   });

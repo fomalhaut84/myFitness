@@ -129,7 +129,9 @@ export function buildCompareRows(a: ComparePeriod, b: ComparePeriod, selected: H
  */
 export function compareDirectionNote(selected: HistoryMetricId): string {
   const def = getHistoryMetric(selected);
+  // 사전 리뷰 info 2: 선택 지표가 KPI 행이면 표의 행 제목 ("총 거리" · "기간 말 체중") 으로 부른다
+  const label = KPI_ROWS.find((r) => r.metricId === selected)?.label ?? def.label;
   const tail =
-    def.betterWhen === "higher" ? "클수록 좋습니다." : def.betterWhen === "lower" ? "낮을수록 좋습니다." : "높고 낮음에 좋고 나쁨이 없습니다.";
-  return `「${def.label}」 지표는 ${tail}`;
+    def.betterWhen === "higher" ? "높을수록 좋습니다." : def.betterWhen === "lower" ? "낮을수록 좋습니다." : "높고 낮음에 좋고 나쁨이 없습니다.";
+  return `「${label}」 지표는 ${tail}`;
 }
