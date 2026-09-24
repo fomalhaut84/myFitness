@@ -33,7 +33,9 @@ export interface LapSummary {
   fastest: LapExtreme;
   slowest: LapExtreme;
   meanPaceSecPerKm: number;
-  /** 첫 km 페이스 − 평균 (음수 = 첫 km 가 빠름 = 오버페이스). 랩 2개 미만이면 null */
+  /** 1km 랩 (`kmIndex 1`) 의 페이스 — 그 랩에 페이스가 없으면 null (PR #446 Codex P2: 첫 "페이스 있는" 랩을 첫 km 로 말하지 않는다) */
+  firstKmPaceSecPerKm: number | null;
+  /** 첫 km 페이스 − 평균 (음수 = 첫 km 가 빠름 = 오버페이스). 1km 랩 페이스 없음 · 랩 2개 미만이면 null */
   firstKmDeltaSec: number | null;
   /** 후반 평균 − 전반 평균 (양수 = positive split). 홀수면 가운데 랩 제외. 랩 2개 미만이면 null */
   halfSplitSec: number | null;
@@ -130,12 +132,14 @@ export function summarizeLaps(laps: readonly EvalLap[]): LapSummary | null {
   const firstHr = meanOrNull(first.flatMap((l) => (l.avgHR === null ? [] : [l.avgHR])));
   const secondHr = meanOrNull(second.flatMap((l) => (l.avgHR === null ? [] : [l.avgHR])));
   const variance = mean(paces.map((p) => (p - meanPace) ** 2));
+  const firstKm = paced[0].kmIndex === 1 ? paced[0].paceSecPerKm : null;
   return {
     count: paced.length,
     fastest: extreme(paced, "min"),
     slowest: extreme(paced, "max"),
     meanPaceSecPerKm: meanPace,
-    firstKmDeltaSec: single ? null : Math.round(paced[0].paceSecPerKm - meanPace),
+    firstKmPaceSecPerKm: firstKm,
+    firstKmDeltaSec: single || firstKm === null ? null : Math.round(firstKm - meanPace),
     halfSplitSec: firstPace !== null && secondPace !== null ? Math.round(secondPace - firstPace) : null,
     firstHalfPaceSecPerKm: firstPace,
     secondHalfPaceSecPerKm: secondPace,

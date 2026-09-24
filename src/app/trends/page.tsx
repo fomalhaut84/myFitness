@@ -19,7 +19,7 @@ import { addDaysYmd, type HistoryGranularity } from "@/lib/history/buckets";
 import { getCachedHistorySummary, getCachedLowerBound, getCachedPersonalRecords, getCachedRangeTotals } from "@/lib/history/cache";
 import { loadHistoryEvents } from "@/lib/history/events";
 import { toChartMarkers } from "@/lib/history/markers";
-import { buildCompareRows, compareMetricIds, needsPerMonth } from "@/lib/history/compare";
+import { buildCompareRows, compareDirectionNote, compareMetricIds, needsPerMonth } from "@/lib/history/compare";
 import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import { loadMetricDataStart, dataStartNote } from "@/lib/history/data-start";
 import { getHistoryMetric, type HistoryAggregate, type HistoryMetricDef } from "@/lib/history/metrics";
@@ -285,7 +285,7 @@ async function CompareView({ query, ctx, def, color }: ViewProps) {
   return (
     <>
       <ComparePeriodForm query={query} ctx={ctx} color={color} />
-      <CompareTable rows={rows} color={color} perMonthShown={needsPerMonth(periodA, periodB)} />
+      <CompareTable rows={rows} color={color} perMonthShown={needsPerMonth(periodA, periodB)} directionNote={compareDirectionNote(def.id)} />
     </>
   );
 }
