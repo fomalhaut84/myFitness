@@ -88,7 +88,7 @@ endDate 없는 창은 오늘을 포함하므로, 직전 4주 기준선은 반드
 5. 플랜 준수율 (활성 플랜이 있을 때만): 이번 주 completed / missed 와 준수율 %
 6. 신기록 (get_personal_records 의 byBucket · longest · bestHrr2 · bestVo2max 의 ymd 가 이번 주면): 항목별 한 줄 축하. 없으면 항목 생략
 7. 러닝 다이나믹스 추세: 이번 주 vs 직전 4주 runningSummary.dynamics (케이던스 · 접지시간 GCT · 보폭 · 수직진동) — 케이던스 하락 · GCT 상승은 피로/부상 신호. n 이 적으면 그렇다고 명시
-8. 활동 강도 분: get_daily_stats totals.intensityMinTotal vs WHO 권고 150분/주 (Garmin 강도 분은 고강도 2배 가중). 오른 층수 합 한 줄
+8. 활동 강도 분: get_daily_stats totals.weightedIntensityMinTotal (중강도 + 고강도×2) vs WHO 권고 150분/주 — 중강도 · 고강도 분을 함께 적는다. weighted 가 null 이면 totals.intensityMinTotal (단순합) 을 "최소" 로만 언급하고 150 과 비교하지 않는다. 오른 층수 합 한 줄
 9. 수면 분석 (평균 수면 시간, 수면 점수 추세) + 수면 규칙성: get_sleep regularity (취침 평균 시각 · 표준편차 · label)
 10. 심박/HRV 트렌드 (피로도 판단)
 11. 컨디션 종합 평가 (바디배터리, 스트레스)

@@ -332,10 +332,11 @@ export async function getDailyStats(args: RangeArgs) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
   const { since, until, to } = resolveWindow(days, args.endDate);
+  // PR #462 Codex P1: 가중 강도 분 (moderate + 2×vigorous) 은 rawData 의 두 성분에서 — 행 응답에는 싣지 않는다 (아래 destructure)
   const records = await prisma.dailySummary.findMany({
     where: { date: dateFilter(since, until) },
     orderBy: { date: "desc" },
-    select: DAILY_SELECT,
+    select: { ...DAILY_SELECT, rawData: true },
   });
 
   const dailyContext = {
@@ -355,13 +356,13 @@ export async function getDailyStats(args: RangeArgs) {
   }
 
   return envelope(days, fmt(since), to, granularity,
-    records.map((r) => ({ ...r, date: fmt(r.date) })),
+    records.map(({ rawData: _rawData, ...r }) => ({ ...r, date: fmt(r.date) })),
     {
       ...context,
       totals:
-        "daily 응답에만 — 창 안 합계. intensityMinTotal 은 Garmin 강도 분 (중강도 1배 · 고강도 2배 가중) 합 — WHO 권고는 주 150분. null 은 값 있는 날이 없음 (0 이 아님). rowCount 는 창 안 DailySummary 행 수 (envelope days 와 다름 — days=6 은 7일) · daysWithIntensity 가 rowCount 보다 작으면 미착용 날, rowCount 가 창 길이보다 작으면 싱크 안 된 날이 있다.",
+        "daily 응답에만 — 창 안 합계. WHO 권고 (주 150분) · Garmin 주간 목표와 비교할 값은 weightedIntensityMinTotal (moderate + 2×vigorous). intensityMinTotal 은 저장 컬럼 (moderate + vigorous 단순합) 의 합이라 150 과 직접 비교하지 말 것 — weighted 가 null 이면 '비가중 최소 N분' 으로만. null 은 값 있는 날이 없음 (0 이 아님). rowCount 는 창 안 DailySummary 행 수 (envelope days 와 다름 — days=6 은 7일) · daysWithIntensity 가 rowCount 보다 작으면 미착용 날, rowCount 가 창 길이보다 작으면 싱크 안 된 날이 있다.",
     },
-    // #455 F3: 강도 분 · 층수 합계
+    // #455 F3: 강도 분 (가중 · 비가중) · 층수 합계
     { totals: summarizeDailyWindow(records) },
   );
 }

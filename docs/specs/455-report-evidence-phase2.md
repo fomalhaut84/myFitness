@@ -76,4 +76,5 @@ prompts  report-prompts.ts 이브닝 · 주간
 | F10 | vitest 312 → 325 · `verify-mcp-long-history [7]` 통과 (등록 25) |
 | F11 | 로컬 `next dev`: `/api/history/records` 200 · `get_personal_records` (5k 기록 · paceMinKm) · `get_sleep` regularity (로컬 DB 의 옛 행은 KST-as-UTC 라 값은 무의미 — 계산은 단위 테스트) · `get_daily_stats` totals 는 로컬 DailySummary 0행이라 단위 테스트만 · `runningSummary.dynamics` (cadence 182 · GCT 271) |
 | 사전 리뷰 | code-reviewer 1회: critical 0 · major 0 · **info 4 전부 반영** (strideCm 원식 · withPace 타이핑/가드 · dynamics 안내 · `rowCount`) |
+| 봇 1회차 | Codex **P1**: `intensityMin` 은 moderate + vigorous 단순합 (endpoint audit A10) 인데 150분 (vigorous ×2 가중) 과 비교 → rawData 성분으로 `weightedIntensityMinTotal` · `moderateMinTotal` · `vigorousMinTotal` · `daysWithComponents` 를 따로 노출, 프롬프트는 가중 합으로 비교 (null 이면 단순합을 "최소" 로만). 회귀 `daily-window.test.ts` |
 | 미실행 | 리포트 실생성 (Claude CLI 쿼터). 배포 후 이브닝 (러닝 있는 날) · 주간 리포트에서 `get_personal_records` 호출 · 규칙성 · 강도 분 항목 확인 |

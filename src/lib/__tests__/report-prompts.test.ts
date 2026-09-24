@@ -47,7 +47,8 @@ describe("buildWeeklyReportPrompt", () => {
   it("#455: 신기록 · 체지방/근육량 · 강도 분 · 수면 규칙성 · 다이나믹스 도구와 항목", () => {
     expect(prompt).toContain("get_personal_records()");
     expect(prompt).toContain("get_body_composition(days=27)");
-    expect(prompt).toContain("totals.intensityMinTotal");
+    // 회귀: PR #462 Codex P1 — 150분 비교는 가중 합으로
+    expect(prompt).toContain("totals.weightedIntensityMinTotal");
     expect(prompt).toMatch(/150분/);
     expect(prompt).toContain("regularity");
     expect(prompt).toContain("runningSummary.dynamics");
