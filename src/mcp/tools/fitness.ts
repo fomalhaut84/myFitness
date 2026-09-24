@@ -10,6 +10,9 @@ import {
   type Granularity,
 } from "./aggregate";
 import { MAX_DAILY_ROWS } from "./constants";
+import { activityTypeWhere } from "./activity-filter";
+// #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
+import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
 
 // #377: 장기 조회 공통 인자. granularity 생략 시 days 기준 자동 (aggregate.ts).
 // endDate (Codex P1 PR #379): 과거 특정 시기를 daily 로 재조회할 때의 종료일 (KST, 포함). 생략 시 오늘.
@@ -59,6 +62,7 @@ function envelope(
   granularity: Granularity,
   records: readonly unknown[],
   context?: Record<string, string>,
+  extra?: Record<string, unknown>,
 ) {
   return {
     content: [
@@ -72,6 +76,7 @@ function envelope(
             days,
             count: records.length,
             records,
+            ...(extra ?? {}),
             ...(context ? { _context: context } : {}),
           },
           null,
@@ -84,6 +89,14 @@ function envelope(
 
 const GRANULARITY_NOTE =
   "weekly/monthly 는 버킷(KST 기준 ISO 주/월) 집계: 숫자 필드는 null 제외 평균. 최상위 count 는 버킷 수, 각 버킷의 count 는 그 구간의 레코드 수. weekly 의 weekStart 는 ISO 주 월요일(from 은 실제 첫 레코드 날짜). 아래 항목별 임계(7일 평균 대비 5bpm 등)는 daily 값 기준이므로 집계값에는 추세 판단용으로만 적용. 특정 구간을 자세히 보려면 endDate=<그 시기 끝> 과 days=<폭> 으로 granularity=daily 재조회 (과거 시기도 endDate 로 정확히 지정 가능).";
+
+/** #444: daily 활동 응답의 존 · HRR · runningSummary 해석 안내 */
+const ACTIVITY_DAILY_NOTES = {
+  hrr2: "종료 후 2분 심박 회복 (bpm, 양수 = 회복 · 클수록 좋음). hrrDrop10 은 10bpm 떨어지는 데 걸린 초. null 은 종료 후 시계열 없음 (2026-04 이전 · 미착용).",
+  zones: "zones 는 존별 초 (개인 HR 존), zonePct 는 존 시간 합 기준 % (존마다 반올림이라 합이 99~101 일 수 있음 — 언급하지 말 것). 둘 다 null 이면 그 활동에 존 분포 없음.",
+  runningSummary:
+    "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
+};
 
 /** M2: daily 요청이 행 상한을 넘어 집계로 승격됐을 때 _context 에 붙일 안내. */
 function promotedNote(granularity: Granularity): string {
@@ -106,9 +119,9 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
   const { since, until, to } = resolveWindow(days, args.endDate);
-  const where = args.type
-    ? { startTime: dateFilter(since, until), activityType: { contains: args.type } }
-    : { startTime: dateFilter(since, until) };
+  // PR #456 Codex P2: "running" 은 공용 러닝 판정 (virtual_run · obstacle_run 포함)
+  const typeWhere = activityTypeWhere(args.type);
+  const where = typeWhere ? { AND: [{ startTime: dateFilter(since, until) }, typeWhere] } : { startTime: dateFilter(since, until) };
 
   const activities = await prisma.activity.findMany({
     where,
@@ -151,6 +164,10 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
       weatherWindMs: true,
       weatherPrecipMm: true,
       weatherCode: true,
+      // #444 (A1 · A2): 2분 HRR (#425) · 존 분포 (M4-5) — 리포트가 볼 수 있게. daily 행 + runningSummary 에만 (집계 경로는 Phase 2 제외)
+      hrr2: true,
+      hrrDrop10: true,
+      zoneDistribution: true,
     },
   });
 
@@ -163,15 +180,22 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
   }
 
   return envelope(days, fmt(since), to, granularity,
-    activities.map((a) => ({
+    activities.map(({ zoneDistribution, ...a }) => ({
       ...a,
-      // get_activity_splits 호출 시 사용할 ID (cuid 또는 garminId 문자열)
+      // get_activity_splits · get_activity_context 호출 시 사용할 ID (cuid 또는 garminId 문자열)
       garminId: a.garminId.toString(),
       startTime: a.startTime.toISOString(),
       distanceKm: a.distance ? (a.distance / 1000).toFixed(2) : null,
       paceMinKm: a.avgPace ? formatPaceMinKm(a.avgPace) : null,
       durationMin: Math.round(a.duration / 60),
+      // #444 F1: 존별 초 · % (합 0 이거나 없으면 null)
+      zones: toZoneSec(zoneDistribution),
+      zonePct: toZonePct(zoneDistribution),
     })),
+    // 사전 리뷰 info 1: daily 에는 필드 설명만 (버킷 설명은 집계 응답에만), 승격 안내는 finalizeGranularity 가 준 것 유지
+    { ...ACTIVITY_DAILY_NOTES, ...(context?.promoted ? { promoted: context.promoted } : {}) },
+    // #444 F2: 창 안 러닝 계열 요약 (러닝 아닌 type 필터여도 러닝만 센다 → n=0)
+    { runningSummary: summarizeRunningWindow(activities) },
   );
 }
 
