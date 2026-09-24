@@ -5,6 +5,7 @@ import { formatClock, formatDurationShort, formatEpochKST, formatPace } from "@/
 import { median } from "@/lib/insights/stats";
 import { wmoLabel } from "@/lib/weather/wmo-label";
 import { kmLaps, lapTableLines, summarizeLaps, type EvalLap } from "./splits";
+import { strideCm } from "@/lib/fitness/stride";
 import type { ComparisonRun, EvalInput } from "./types";
 
 /** 정지 시간이 이보다 짧으면 언급하지 않는다 (신호 대기 수준) */
@@ -31,12 +32,6 @@ const signed = (n: number) => {
 const km = (m: number) => `${(m / 1000).toFixed(2)}km`;
 /** UTC ISO → KST HH:MM. `formatEpochKST` 는 숫자 문자열만 받아 ISO 는 먼저 파싱한다 (실데이터 검증에서 "-" 로 나왔다) */
 const kstTime = (iso: string) => formatEpochKST(Date.parse(iso));
-/**
- * 보폭 (cm). 스키마는 m (#278 파서가 Garmin cm ÷ 100) 이지만 파서 정정 이전 행은 cm 그대로 남아 있을 수 있다 (로컬 실측 78.87) —
- * 10 이상이면 이미 cm 로 본다 (사람 보폭이 10m 를 넘지 않는다).
- */
-const STRIDE_CM_THRESHOLD = 10;
-const strideCm = (v: number) => Math.round(v >= STRIDE_CM_THRESHOLD ? v : v * 100);
 /** 값이 있을 때만 줄 */
 const maybe = (value: number | string | null, render: (v: never) => string): string[] => (value === null ? [] : [render(value as never)]);
 

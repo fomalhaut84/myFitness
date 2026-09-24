@@ -34,6 +34,7 @@ import {
 } from "./tools/fitness";
 import { getActivitySplits } from "./tools/splits";
 import { getActivityContext } from "./tools/activity-context";
+import { getPersonalRecords } from "./tools/personal-records";
 import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
@@ -475,6 +476,14 @@ server.tool(
       .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열 (get_activities 응답의 id / garminId)"),
   },
   async (args) => getActivityContext(args)
+);
+
+// #455: 전 기간 개인 기록 — 리포트가 "오늘/이번 주 신기록" 을 말할 수 있게 (웹 API 경유)
+server.tool(
+  "get_personal_records",
+  "전 기간 개인 기록 (거리 버킷 5k/10k/HM/FM 별 최저 페이스 · 최장 거리 · 최다 km 월 · 최고 VO2max · 최저 안정시 심박 · 가장 큰 2분 HRR · 레이스 목록). 오늘/이번 주 러닝이 신기록인지 판단할 때 — 기록의 id/ymd 와 비교.",
+  {},
+  async () => getPersonalRecords()
 );
 
 server.tool(

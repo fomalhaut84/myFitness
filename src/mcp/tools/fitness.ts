@@ -11,6 +11,9 @@ import {
 } from "./aggregate";
 import { MAX_DAILY_ROWS } from "./constants";
 import { activityTypeWhere } from "./activity-filter";
+// #455: 일별 창 합계 (강도 분 · 층수) · 수면 규칙성 — daily envelope 에만
+import { summarizeDailyWindow } from "@/lib/fitness/daily-window";
+import { sleepRegularity } from "@/lib/sleep/regularity";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
 
@@ -259,7 +262,13 @@ export async function getSleep(args: RangeArgs) {
       sleepEnd: r.sleepEnd.toISOString(),
       totalSleepHours: (r.totalSleep / 60).toFixed(1),
     })),
-    context,
+    {
+      ...context,
+      regularity:
+        "daily 응답에만 — 창 안 취침 · 기상 시각 (KST) 의 평균과 표준편차 (시간). label 은 취침 표준편차 기준 (0.5 / 1.0 / 1.5 시간 → 매우 규칙적 / 규칙적 / 보통 / 불규칙 — /lifestyle 과 같은 임계). 2건 미만이면 null.",
+    },
+    // #455 F5: 수면 규칙성
+    { regularity: sleepRegularity(records) },
   );
 }
 
@@ -347,7 +356,13 @@ export async function getDailyStats(args: RangeArgs) {
 
   return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
-    context,
+    {
+      ...context,
+      totals:
+        "daily 응답에만 — 창 안 합계. intensityMinTotal 은 Garmin 강도 분 (중강도 1배 · 고강도 2배 가중) 합 — WHO 권고는 주 150분. null 은 값 있는 날이 없음 (0 이 아님). daysWithIntensity 가 days 보다 작으면 미착용 날이 있다.",
+    },
+    // #455 F3: 강도 분 · 층수 합계
+    { totals: summarizeDailyWindow(records) },
   );
 }
 

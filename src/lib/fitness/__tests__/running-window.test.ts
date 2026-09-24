@@ -74,6 +74,24 @@ describe("summarizeRunningWindow", () => {
       run({ activityType: "cycling", zoneDistribution: z(0, 0, 0, 6000, 0), hrr2: 99 }),
     ]);
     expect(s).toMatchObject({ n: 1, withZones: 1, easyPct: 100, hardPct: 0, hrr2: { median: 25, n: 1 } });
-    expect(summarizeRunningWindow([])).toEqual({ n: 0, withZones: 0, zoneTotalsSec: null, easyPct: null, hardPct: null, hrr2: null });
+    expect(summarizeRunningWindow([])).toMatchObject({ n: 0, withZones: 0, zoneTotalsSec: null, easyPct: null, hardPct: null, hrr2: null });
+  });
+});
+
+// #455 F6: 러닝 다이나믹스 중앙값 — 주간 리포트가 이번 주 vs 직전 4주 케이던스 · GCT 를 비교한다.
+describe("summarizeRunningWindow · dynamics", () => {
+  it("네 지표 중앙값 (반올림 자리) · 값 없는 지표는 null", () => {
+    const s = summarizeRunningWindow([
+      run({ avgCadence: 170, avgStrideLength: 1.234, avgGroundContactTime: 250, avgVerticalOscillation: 8.25 }),
+      run({ avgCadence: 176, avgStrideLength: 111.1, avgGroundContactTime: 240, avgVerticalOscillation: null }), // cm 혼재 행 → 1.111m
+      run({ avgCadence: null, avgStrideLength: null, avgGroundContactTime: 236, avgVerticalOscillation: null }),
+    ]);
+    expect(s.dynamics).toEqual({
+      cadence: { median: 173, n: 2 },
+      strideLengthM: { median: 1.17, n: 2 },
+      groundContactTimeMs: { median: 240, n: 3 },
+      verticalOscillationCm: { median: 8.3, n: 1 },
+    });
+    expect(summarizeRunningWindow([run()]).dynamics).toEqual({ cadence: null, strideLengthM: null, groundContactTimeMs: null, verticalOscillationCm: null });
   });
 });
