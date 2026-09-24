@@ -6,6 +6,8 @@ import {
   daysAgoKST,
 } from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
+// #444: 프롬프트 정본은 report-prompts.ts — 직전 4주 창의 endDate 를 생성 시점에 박는다
+import { buildWeeklyReportPrompt, weeklyBaselineEndDate } from "@/lib/report-prompts";
 import {
   createOrGetReportJob,
   runReportJob,
@@ -13,43 +15,6 @@ import {
   waitForJobCompletion,
 } from "@/lib/report-job";
 import type { ReportJob } from "@/generated/prisma/client";
-
-/**
- * #203: Sonnet 이 tool 호출 skip 하지 않도록 필요한 MCP 도구를 명시적으로 나열.
- * Daily prompt 와 비교해 자연어 지시만 있어 Sonnet 이 "기억으로 답변 가능" 이라
- * 오판하는 것으로 추정 → 도구 이름 + 인자 명시로 필수 호출 유도.
- */
-const WEEKLY_REPORT_PROMPT = `이번 주 피트니스 데이터를 종합 분석해서 주간 리포트를 작성해줘.
-
-## 반드시 아래 MCP 도구를 먼저 호출해 최신 데이터를 수집한 후 리포트 작성
-
-(주의: 대부분 도구는 내부에서 \`since = daysAgo(days)\` + inclusive \`gte\` 로 계산되어
-"오늘 포함 (days+1) 일" window. 정확한 7일 window 는 \`days=6\`. 예외: get_blood_pressure
-는 \`days\` 를 display window length 로 그대로 사용 → 7일 원하면 \`days=7\`.)
-
-- mcp__myfitness__get_activities(days=6, type="running") — 최근 7일 러닝 활동 목록
-- mcp__myfitness__get_sleep(days=6) — 최근 7일 수면 추세 (점수, 시간)
-- mcp__myfitness__get_heart_rate(days=6) — 최근 7일 심박/HRV 추세
-- mcp__myfitness__get_daily_stats(days=6) — 최근 7일 걸음, 활동 칼로리, 스트레스
-- mcp__myfitness__get_trends(period="week") — 전반 트렌드
-- mcp__myfitness__get_training_load_trend() — 훈련 부하 추세
-- mcp__myfitness__get_weight_loss_status() — 칼로리 밸런스 주간 요약
-- mcp__myfitness__get_pace_progression() — 페이스 발전 추세
-- mcp__myfitness__get_injury_risk_score() — 부상 위험도
-- mcp__myfitness__get_blood_pressure(days=7) — 최근 7일 혈압 (시스템 프롬프트 주간 BP 경고 규칙 필수)
-
-기억이나 추측이 아닌 위 도구 결과의 실제 수치만 인용.
-
-## 리포트 항목 (마크다운, 간결하게)
-
-1. 주간 운동 요약 (러닝 횟수, 총 거리, 평균 페이스, 강도 분류별 횟수)
-2. 수면 분석 (평균 수면 시간, 수면 점수 추세)
-3. 심박/HRV 트렌드 (피로도 판단)
-4. 컨디션 종합 평가 (바디배터리, 스트레스)
-5. 칼로리 밸런스 주간 요약: 평균 결손/잉여, 감량 페이스 평가, 체중 변화 (7일 이동평균)
-6. 경고 사항 (시스템 프롬프트의 경고 규칙에 해당하면 반드시 포함)
-7. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)
-8. **개인 목표 진행 상황** (컨텍스트에 "개인 목표" 섹션이 있을 때만): 이번 주 진행도 (평균 페이스/주간 거리/체중 등) + 다음 주 목표 접근 전략`;
 
 /**
  * #203: 주간 리포트 전 데이터 sync. Prompt 가 요구하는 모든 도구의 데이터를
@@ -175,7 +140,8 @@ async function generateAndSaveWeekly(
   resetSession("cron-weekly");
   // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
   // num_turns=1 만 확실한 hallucination (tool 없이 답변).
-  const { result } = await askAdvisor(WEEKLY_REPORT_PROMPT, {
+  const prompt = buildWeeklyReportPrompt(weeklyBaselineEndDate());
+  const { result } = await askAdvisor(prompt, {
     channel: "cron-weekly",
     minTurns: 2,
   });
@@ -191,7 +157,7 @@ async function generateAndSaveWeekly(
       data: {
         category: "weekly_report",
         reportDate,
-        prompt: WEEKLY_REPORT_PROMPT,
+        prompt,
         response: result,
       },
     }),
