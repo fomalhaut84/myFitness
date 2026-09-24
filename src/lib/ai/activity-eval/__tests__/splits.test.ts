@@ -1,6 +1,7 @@
 // #440: km 스플릿 파생값 — 모델이 42행 표에서 직접 계산하지 않도록 서버가 미리 센다.
 import { describe, expect, it } from "vitest";
 import { KM_LAP_MAX_M, KM_LAP_MIN_M, LAP_TABLE_MAX_ROWS, kmLaps, lapTableLines, summarizeLaps, toEvalLaps } from "../splits";
+import { splitLines } from "../sections";
 
 /** 페이스 (초/km) 목록 → 1km 랩. `averageSpeed` 는 m/s */
 function lap(paceSec: number, extra: Partial<{ distance: number; averageHR: number; averageRunCadence: number; elevationGain: number }> = {}) {
@@ -121,6 +122,8 @@ describe("summarizeLaps · 첫 km 는 1km 랩에 페이스가 있을 때만", ()
     expect(s?.firstKmDeltaSec).toBeNull();
     expect(s?.fastest.index).toBe(4);
     expect(s?.halfSplitSec).not.toBeNull();
+    // 사전 리뷰: 문장 자체가 없어야 한다 (2km 를 "첫 km" 로 말하지 않는다)
+    expect(splitLines(laps).some((l) => l.startsWith("첫 km"))).toBe(false);
   });
 
   it("1km 랩 페이스 있음 → 그 값 · 평균 대비 델타", () => {

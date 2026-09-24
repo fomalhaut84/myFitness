@@ -4,7 +4,7 @@ import { isRunningType } from "@/lib/activity/running-types";
 import { formatClock, formatDurationShort, formatEpochKST, formatPace } from "@/lib/format";
 import { median } from "@/lib/insights/stats";
 import { wmoLabel } from "@/lib/weather/wmo-label";
-import { kmLaps, lapTableLines, summarizeLaps, type EvalLap } from "./splits";
+import { lapTableLines, summarizeLaps, type EvalLap } from "./splits";
 import type { ComparisonRun, EvalInput } from "./types";
 
 /** 정지 시간이 이보다 짧으면 언급하지 않는다 (신호 대기 수준) */
