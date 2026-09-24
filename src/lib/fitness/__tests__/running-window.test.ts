@@ -1,6 +1,7 @@
 // #444 F2 · F9: 러닝 창 요약 — 존 합 · 80/20 · 2분 HRR 중앙값. 순수 함수.
 import { describe, expect, it } from "vitest";
 import { summarizeRunningWindow, toZonePct, toZoneSec, type RunningWindowRow } from "../running-window";
+import { strideCm, strideMeters } from "../stride";
 
 const z = (z1: number, z2: number, z3: number, z4: number, z5: number) => ({ z1, z2, z3, z4, z5 });
 const run = (over: Partial<RunningWindowRow> = {}): RunningWindowRow => ({
@@ -93,5 +94,16 @@ describe("summarizeRunningWindow · dynamics", () => {
       verticalOscillationCm: { median: 8.3, n: 1 },
     });
     expect(summarizeRunningWindow([run()]).dynamics).toEqual({ cadence: null, strideLengthM: null, groundContactTimeMs: null, verticalOscillationCm: null });
+  });
+});
+
+// 사전 리뷰 info 1 (#455): 표시용 cm 는 원식 — `/100 * 100` 은 .5 경계에서 1cm 어긋난다
+describe("stride", () => {
+  it("strideCm 은 활동 평가의 원식과 동일 (56.5 → 57 · 0.785 → 79) · strideMeters 는 cm 행만 나눈다", () => {
+    expect(strideCm(56.5)).toBe(57);
+    expect(strideCm(100.5)).toBe(101);
+    expect(strideCm(0.785)).toBe(79);
+    expect(strideMeters(83.56)).toBeCloseTo(0.8356, 10);
+    expect(strideMeters(1.2)).toBe(1.2);
   });
 });

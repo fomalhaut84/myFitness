@@ -32,12 +32,18 @@ const CONTEXT_NOTE =
 function isRecordsResponse(v: unknown): v is RecordsResponse {
   if (!v || typeof v !== "object") return false;
   const o = v as Record<string, unknown>;
-  return typeof o.lowerBound === "string" && typeof o.today === "string" && !!o.byBucket && typeof o.byBucket === "object" && Array.isArray(o.races);
+  return typeof o.lowerBound === "string" && typeof o.today === "string" && !!o.byBucket && typeof o.byBucket === "object" && "longest" in o && Array.isArray(o.races);
 }
 
-function withPace<T extends RecordRun | null>(run: T): T extends null ? null : RecordRun & { paceMinKm: string | null } {
-  if (run === null) return null as never;
-  return { ...run, paceMinKm: run.avgPace !== null && run.avgPace > 0 ? formatPaceMinKm(run.avgPace) : null } as never;
+type RecordRunWithPace = RecordRun & { paceMinKm: string | null };
+
+function withPace(run: RecordRun): RecordRunWithPace {
+  return { ...run, paceMinKm: run.avgPace !== null && run.avgPace > 0 ? formatPaceMinKm(run.avgPace) : null };
+}
+
+/** null · 결측 (응답에 키가 빠진 경우) 모두 null — 사전 리뷰 info 2 */
+function withPaceOrNull(run: RecordRun | null | undefined): RecordRunWithPace | null {
+  return run == null ? null : withPace(run);
 }
 
 export async function getPersonalRecords() {
@@ -45,18 +51,18 @@ export async function getPersonalRecords() {
   if (!res.ok) return errorPayload(res.error);
   if (!isRecordsResponse(res.body)) return errorPayload("개인 기록 응답 형태가 예상과 다릅니다");
   const r = res.body;
-  const byBucket = Object.fromEntries(Object.entries(r.byBucket).map(([k, v]) => [k, withPace(v)]));
+  const byBucket = Object.fromEntries(Object.entries(r.byBucket).map(([k, v]) => [k, withPaceOrNull(v)]));
   const payload = {
     _context: CONTEXT_NOTE,
     lowerBound: r.lowerBound,
     today: r.today,
     byBucket,
-    longest: withPace(r.longest),
+    longest: withPaceOrNull(r.longest),
     bestMonth: r.bestMonth,
     bestVo2max: r.bestVo2max,
     lowestRestingHR: r.lowestRestingHR,
     bestHrr2: r.bestHrr2,
-    races: r.races.map((x) => withPace(x)),
+    races: r.races.map(withPace),
   };
   return { content: [{ type: "text" as const, text: JSON.stringify(payload, null, 2) }] };
 }

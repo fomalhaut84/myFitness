@@ -10,11 +10,11 @@ describe("summarizeDailyWindow", () => {
       { intensityMin: 0, floorsClimbed: null },
       { intensityMin: 75, floorsClimbed: 12 },
     ]);
-    expect(s).toEqual({ days: 4, intensityMinTotal: 115, daysWithIntensity: 3, floorsClimbedTotal: 27 });
+    expect(s).toEqual({ rowCount: 4, intensityMinTotal: 115, daysWithIntensity: 3, floorsClimbedTotal: 27 });
   });
 
   it("전부 null 이면 합계 null · 빈 창", () => {
-    expect(summarizeDailyWindow([{ intensityMin: null, floorsClimbed: null }])).toEqual({ days: 1, intensityMinTotal: null, daysWithIntensity: 0, floorsClimbedTotal: null });
-    expect(summarizeDailyWindow([])).toEqual({ days: 0, intensityMinTotal: null, daysWithIntensity: 0, floorsClimbedTotal: null });
+    expect(summarizeDailyWindow([{ intensityMin: null, floorsClimbed: null }])).toEqual({ rowCount: 1, intensityMinTotal: null, daysWithIntensity: 0, floorsClimbedTotal: null });
+    expect(summarizeDailyWindow([])).toEqual({ rowCount: 0, intensityMinTotal: null, daysWithIntensity: 0, floorsClimbedTotal: null });
   });
 });

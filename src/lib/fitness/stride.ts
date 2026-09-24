@@ -6,6 +6,7 @@ export function strideMeters(v: number): number {
   return v >= STRIDE_CM_THRESHOLD ? v / 100 : v;
 }
 
+/** 표시용 cm — 원식 그대로 (`/100 * 100` 은 .5 경계에서 부동소수 오차로 1cm 어긋난다 — 사전 리뷰 info 1) */
 export function strideCm(v: number): number {
-  return Math.round(strideMeters(v) * 100);
+  return Math.round(v >= STRIDE_CM_THRESHOLD ? v : v * 100);
 }

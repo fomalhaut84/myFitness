@@ -6,7 +6,8 @@ export interface DailyWindowRow {
 }
 
 export interface DailyWindowTotals {
-  days: number;
+  /** 창 안 DailySummary 행 수 (요청 days 와 다르다 — 사전 리뷰 info 4) */
+  rowCount: number;
   /** 값 있는 날의 합 — 하루도 없으면 null */
   intensityMinTotal: number | null;
   daysWithIntensity: number;
@@ -21,5 +22,5 @@ function sumPresent(values: readonly (number | null)[]): { total: number | null;
 export function summarizeDailyWindow(rows: readonly DailyWindowRow[]): DailyWindowTotals {
   const intensity = sumPresent(rows.map((r) => r.intensityMin));
   const floors = sumPresent(rows.map((r) => r.floorsClimbed));
-  return { days: rows.length, intensityMinTotal: intensity.total, daysWithIntensity: intensity.n, floorsClimbedTotal: floors.total };
+  return { rowCount: rows.length, intensityMinTotal: intensity.total, daysWithIntensity: intensity.n, floorsClimbedTotal: floors.total };
 }
