@@ -71,7 +71,7 @@ export function splitLines(laps: readonly EvalLap[]): string[] {
   if (s === null) return [];
   const derived = [
     `km 랩 ${s.count}개 · 평균 ${pace(s.meanPaceSecPerKm)} · 가장 빠른 ${s.fastest.index}km ${formatPace(s.fastest.paceSecPerKm)} · 가장 느린 ${s.slowest.index}km ${formatPace(s.slowest.paceSecPerKm)}`,
-    ...(s.firstKmDeltaSec !== null ? [`첫 km ${formatPace(firstPace(laps))} (${firstKmText(s.firstKmDeltaSec)})`] : []),
+    ...(s.firstKmDeltaSec !== null && s.firstKmPaceSecPerKm !== null ? [`첫 km ${formatPace(s.firstKmPaceSecPerKm)} (${firstKmText(s.firstKmDeltaSec)})`] : []),
     ...(s.halfSplitSec !== null && s.firstHalfPaceSecPerKm !== null && s.secondHalfPaceSecPerKm !== null
       ? [`전반 ${pace(s.firstHalfPaceSecPerKm)} → 후반 ${pace(s.secondHalfPaceSecPerKm)} (${signed(s.halfSplitSec)}초, ${splitKind(s.halfSplitSec)})`]
       : []),
@@ -79,12 +79,6 @@ export function splitLines(laps: readonly EvalLap[]): string[] {
     ...(s.hrDriftBpm !== null ? [`심박 드리프트 ${signed(s.hrDriftBpm)}bpm (후반 − 전반 평균)`] : []),
   ];
   return [...derived, "km 별 (페이스 · 평균 심박 · 케이던스 · 고도):", ...lapTableLines(laps)];
-}
-
-/** 첫 km 랩 페이스 — `summarizeLaps` 가 null 이 아닐 때만 호출된다 (페이스 있는 km 랩이 최소 1개) */
-function firstPace(laps: readonly EvalLap[]): number {
-  const first = kmLaps(laps).find((l) => l.paceSecPerKm !== null);
-  return first?.paceSecPerKm ?? 0;
 }
 
 const ZONE_NAMES = ["회복", "이지", "에어로빅", "역치", "VO2max"];

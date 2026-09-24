@@ -109,3 +109,23 @@ describe("lapTableLines", () => {
     expect(lines[lines.length - 1]).toMatch(/^61km /);
   });
 });
+
+// 회귀: PR #446 Codex P2 (#448) — 1km 랩 페이스가 결측이면 "첫 km" 가 2km 랩을 가리켰다.
+describe("summarizeLaps · 첫 km 는 1km 랩에 페이스가 있을 때만", () => {
+  it("1km 랩 페이스 결측 → firstKmPaceSecPerKm · firstKmDeltaSec null, 다른 파생값은 유지", () => {
+    const laps = toEvalLaps([{ distance: 1000, duration: 320, averageSpeed: 0 }, lap(300), lap(310), lap(290)]);
+    const s = summarizeLaps(laps);
+    expect(s).not.toBeNull();
+    expect(s?.count).toBe(3);
+    expect(s?.firstKmPaceSecPerKm).toBeNull();
+    expect(s?.firstKmDeltaSec).toBeNull();
+    expect(s?.fastest.index).toBe(4);
+    expect(s?.halfSplitSec).not.toBeNull();
+  });
+
+  it("1km 랩 페이스 있음 → 그 값 · 평균 대비 델타", () => {
+    const s = summarizeLaps(toEvalLaps([lap(280), lap(300), lap(320)]));
+    expect(s?.firstKmPaceSecPerKm).toBe(280);
+    expect(s?.firstKmDeltaSec).toBe(-20);
+  });
+});

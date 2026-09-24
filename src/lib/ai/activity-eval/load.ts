@@ -11,14 +11,15 @@ import { kstDayRange } from "@/lib/history/buckets";
 import { MIN_YEAR_RUNS } from "@/lib/insights/recovery";
 import { median } from "@/lib/insights/stats";
 import { BUCKET_RANGES_M, bucketOf } from "@/lib/running/buckets";
+import { selectComparisons } from "./comparison-pick";
 import { extractRawExtras } from "./raw-extras";
 import { toEvalLaps, type EvalLap } from "./splits";
 import type { BucketBest, ComparisonRun, EvalActivity, EvalInput, HrrBaseline } from "./types";
 
-/** 같은 코스 · 비슷한 거리 각각의 상한 */
+/** 같은 코스 · 비슷한 거리 각각의 표시 상한 */
 const SAME_COURSE_LIMIT = 10;
-/** 같은 코스 후보 — `findSimilarActivities` 는 활동 앞뒤를 보므로 이전 기록만 남긴 뒤에도 상한을 채우도록 넉넉히 (PR #446 Codex P2) */
-const SAME_COURSE_CANDIDATES = SAME_COURSE_LIMIT * 3;
+/** 같은 코스 스캔 상한 — 표시는 10건이지만 비슷한 거리의 제외 집합은 **이전 같은 코스 전부** 여야 한다 (#448). 매처 내부 스캔 상한과 같은 크기 */
+const SAME_COURSE_SCAN = 500;
 const SIMILAR_LIMIT = 10;
 /** 비슷한 거리 후보 — 같은 코스와 겹치는 것을 뺀 뒤에도 상한을 채우도록 넉넉히 */
 const SIMILAR_CANDIDATES = SIMILAR_LIMIT * 2;
@@ -219,21 +220,15 @@ export async function loadActivityEvalInput(id: string): Promise<EvalInput | nul
   if (!isRunningType(row.activityType)) {
     return { ...base, recovery: null, laps: null, sameCourse: [], similarDistance: [], hrrBaseline: null, bucketBest: null };
   }
+  // #448: 평가 기준선은 **이전** 기록만 — 매처가 DB 에서 before 로 자르므로 이후 기록이 상한을 차지하지 않는다 (비슷한 거리와 같은 방향).
   const [recovery, sameRaw, similarRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
     loadActivityRecovery(id),
-    findSimilarActivities(id, { limit: SAME_COURSE_CANDIDATES }),
+    findSimilarActivities(id, { limit: SAME_COURSE_SCAN, before: row.startTime }),
     loadSimilarDistance(row),
     loadHrrBaseline(row),
     loadBucketBest(row),
     loadLaps(row),
   ]);
-  // 사전 리뷰 info 1: `findSimilarActivities` 는 활동 앞뒤 2년 (태그는 기간 없음) 을 본다 — 평가 기준선은 **이전** 기록만 (비슷한 거리와 같은 방향).
-  // PR #446 Codex P2: 상한을 먼저 걸면 이후 기록 10건이 이전 기록을 밀어낸다 → 후보를 넉넉히 받아 거른 뒤 상한
-  const sameCourse = sameRaw
-    .filter((a) => a.startTime.getTime() < row.startTime.getTime())
-    .slice(0, SAME_COURSE_LIMIT)
-    .map(toComparisonRun);
-  const sameIds = new Set(sameCourse.map((r) => r.id));
-  const similarDistance = similarRaw.filter((r) => !sameIds.has(r.id)).slice(0, SIMILAR_LIMIT);
-  return { ...base, recovery, laps, sameCourse, similarDistance, hrrBaseline, bucketBest };
+  const picked = selectComparisons(sameRaw.map(toComparisonRun), similarRaw, { sameCourse: SAME_COURSE_LIMIT, similarDistance: SIMILAR_LIMIT });
+  return { ...base, recovery, laps, ...picked, hrrBaseline, bucketBest };
 }
