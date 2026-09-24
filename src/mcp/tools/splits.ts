@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { activityLookupClauses, errorPayload } from "./activity-id";
 
 interface RawLapDTO {
   distance?: number | null; // meters
@@ -73,22 +74,6 @@ function toLapResponse(lap: RawLapDTO, index: number): LapResponse {
   };
 }
 
-// PostgreSQL bigint 범위 (signed 64-bit)
-const BIGINT_MAX = BigInt("9223372036854775807");
-const BIGINT_ZERO = BigInt(0);
-
-/** activityId 문자열을 BigInt garminId로 안전 변환 (범위 초과/포맷 오류 시 null) */
-function tryParseGarminId(activityId: string): bigint | null {
-  if (!/^\d+$/.test(activityId)) return null;
-  try {
-    const value = BigInt(activityId);
-    if (value > BIGINT_MAX || value < BIGINT_ZERO) return null;
-    return value;
-  } catch {
-    return null;
-  }
-}
-
 /**
  * 특정 활동의 km별(lap별) 상세 데이터 조회.
  * activityId는 DB id(cuid) 또는 Garmin garminId 문자열 허용.
@@ -99,13 +84,8 @@ export async function getActivitySplits(args: { activityId: string }) {
     return errorPayload("activityId가 필요합니다");
   }
 
-  const garminIdCandidate = tryParseGarminId(activityId);
-  const orClauses: Array<{ id: string } | { garminId: bigint }> = [
-    { id: activityId },
-  ];
-  if (garminIdCandidate !== null) {
-    orClauses.push({ garminId: garminIdCandidate });
-  }
+  // #444: id 해석은 activity-id.ts 공용 (get_activity_context 와 동일)
+  const orClauses = activityLookupClauses(activityId);
 
   // DB에서 Activity 조회 (cuid 또는 garminId). Prisma 예외는 errorPayload로 변환.
   let activity;
@@ -236,17 +216,5 @@ export async function getActivitySplits(args: { activityId: string }) {
         text: JSON.stringify(response, null, 2),
       },
     ],
-  };
-}
-
-function errorPayload(message: string) {
-  return {
-    content: [
-      {
-        type: "text" as const,
-        text: JSON.stringify({ error: message }, null, 2),
-      },
-    ],
-    isError: true,
   };
 }

@@ -33,6 +33,7 @@ import {
   getTrends,
 } from "./tools/fitness";
 import { getActivitySplits } from "./tools/splits";
+import { getActivityContext } from "./tools/activity-context";
 import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
@@ -460,6 +461,20 @@ server.tool(
       .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열"),
   },
   async (args) => getActivitySplits(args)
+);
+
+// #444: 활동 상세 AI 평가 (#440) 와 같은 근거 섹션 — 리포트 (이브닝) 가 오늘 러닝을 상세 페이지만큼 깊게 본다
+server.tool(
+  "get_activity_context",
+  "특정 활동의 평가 근거 전체 (기본 · km 스플릿 파생값 · 강도 · 종료 후 회복/2분 HRR · 다이나믹스 · 추가 지표 · 환경 · 같은 코스/비슷한 거리 비교). 오늘/특정 러닝을 평가할 때 get_activity_splits 대신 이것 하나로.",
+  {
+    activityId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열 (get_activities 응답의 id / garminId)"),
+  },
+  async (args) => getActivityContext(args)
 );
 
 server.tool(
