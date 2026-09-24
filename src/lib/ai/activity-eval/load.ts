@@ -21,8 +21,6 @@ const SAME_COURSE_LIMIT = 10;
 /** 같은 코스 스캔 상한 — 표시는 10건이지만 비슷한 거리의 제외 집합은 **이전 같은 코스 전부** 여야 한다 (#448). 매처 내부 스캔 상한과 같은 크기 */
 const SAME_COURSE_SCAN = 500;
 const SIMILAR_LIMIT = 10;
-/** 비슷한 거리 후보 — 같은 코스와 겹치는 것을 뺀 뒤에도 상한을 채우도록 넉넉히 */
-const SIMILAR_CANDIDATES = SIMILAR_LIMIT * 2;
 const SIMILAR_WINDOW_DAYS = 365;
 const SIMILAR_DISTANCE_TOLERANCE = 0.1;
 const DAY_MS = 86_400_000;
@@ -153,22 +151,30 @@ function toComparisonRun(r: {
   };
 }
 
-/** 비슷한 거리 (±10%) · 활동 시작일 기준 직전 365일 · 최근순. 같은 코스와 겹치는 id 는 호출자가 뺀다 */
-async function loadSimilarDistance(row: ActivityRow): Promise<ComparisonRun[]> {
+/**
+ * 비슷한 거리 조회 조건 — 순수 (회귀 테스트 대상). ±10% · 활동 시작일 기준 직전 365일 · 자신과 **같은 코스 전부** 를 DB 에서 제외.
+ * 릴리즈 PR #464 Codex P2: 후보 상한을 먼저 걸고 같은 코스를 나중에 빼면, 최근 20건이 전부 같은 코스일 때 목록이 빈다 → 제외를 쿼리 안으로.
+ */
+export function similarDistanceWhere(row: { id: string; startTime: Date; distance: number }, excludeIds: readonly string[]) {
+  return {
+    AND: [
+      RUNNING_ACTIVITY_WHERE,
+      {
+        id: { notIn: [row.id, ...excludeIds] },
+        startTime: { gte: new Date(row.startTime.getTime() - SIMILAR_WINDOW_DAYS * DAY_MS), lt: row.startTime },
+        distance: { gte: row.distance * (1 - SIMILAR_DISTANCE_TOLERANCE), lte: row.distance * (1 + SIMILAR_DISTANCE_TOLERANCE) },
+      },
+    ],
+  };
+}
+
+/** 비슷한 거리 · 최근순 · 상한. 같은 코스는 쿼리에서 이미 빠져 있으므로 상한이 다른 코스로 채워진다 */
+async function loadSimilarDistance(row: ActivityRow, excludeIds: readonly string[]): Promise<ComparisonRun[]> {
   if (row.distance === null || row.distance <= 0) return [];
   const rows = await prisma.activity.findMany({
-    where: {
-      AND: [
-        RUNNING_ACTIVITY_WHERE,
-        {
-          id: { not: row.id },
-          startTime: { gte: new Date(row.startTime.getTime() - SIMILAR_WINDOW_DAYS * DAY_MS), lt: row.startTime },
-          distance: { gte: row.distance * (1 - SIMILAR_DISTANCE_TOLERANCE), lte: row.distance * (1 + SIMILAR_DISTANCE_TOLERANCE) },
-        },
-      ],
-    },
+    where: similarDistanceWhere({ id: row.id, startTime: row.startTime, distance: row.distance }, excludeIds),
     orderBy: { startTime: "desc" },
-    take: SIMILAR_CANDIDATES,
+    take: SIMILAR_LIMIT,
     select: COMPARISON_SELECT,
   });
   return rows.map(toComparisonRun);
@@ -221,14 +227,16 @@ export async function loadActivityEvalInput(id: string): Promise<EvalInput | nul
     return { ...base, recovery: null, laps: null, sameCourse: [], similarDistance: [], hrrBaseline: null, bucketBest: null };
   }
   // #448: 평가 기준선은 **이전** 기록만 — 매처가 DB 에서 before 로 자르므로 이후 기록이 상한을 차지하지 않는다 (비슷한 거리와 같은 방향).
-  const [recovery, sameRaw, similarRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
+  // 릴리즈 PR #464 Codex P2: 비슷한 거리는 같은 코스 id 를 쿼리에서 빼야 하므로 같은 코스를 먼저 받는다 (병렬은 나머지 넷)
+  const [recovery, sameRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
     loadActivityRecovery(id),
     findSimilarActivities(id, { limit: SAME_COURSE_SCAN, before: row.startTime }),
-    loadSimilarDistance(row),
     loadHrrBaseline(row),
     loadBucketBest(row),
     loadLaps(row),
   ]);
+  const similarRaw = await loadSimilarDistance(row, sameRaw.map((r) => r.id));
+  // 쿼리에서 이미 뺐지만 순수 선별을 그대로 둔다 (표시 상한 · 안전망)
   const picked = selectComparisons(sameRaw.map(toComparisonRun), similarRaw, { sameCourse: SAME_COURSE_LIMIT, similarDistance: SIMILAR_LIMIT });
   return { ...base, recovery, laps, ...picked, hrrBaseline, bucketBest };
 }
