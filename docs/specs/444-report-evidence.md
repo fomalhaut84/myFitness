@@ -1,6 +1,6 @@
 # [M17 #5] 리포트 근거 확장 — Phase 1: 도구 필드 · 활동 컨텍스트 도구 · 프롬프트
 
-> **초안 (2026-09-24) — 사용자 승인 전.** 항목별 채택은 기획 승인 때 확정한다. F7 직전 4주 창은 PR #453 Codex P2 반영본.
+> **승인 (2026-09-24)** — F1~F11 전부 채택. F7 직전 4주 창은 PR #453 Codex P2 반영본. Phase 2 는 **#455**. 구현 결과는 §8.
 
 - **작성일**: 2026-09-24
 - **타입**: feature
@@ -35,24 +35,24 @@
 ## 3. 요구사항
 
 **도구 필드 (A1 · A2)**
-- [ ] F1 `get_activities` daily 응답의 활동 행에 `hrr2` · `hrrDrop10` · `zones: { z1..z5 초 } | null` · `zonePct: { z1..z5 % } | null`.
-- [ ] F2 envelope 에 `runningSummary` (러닝 계열만 · daily 일 때): `{ n, zoneTotalsSec, easyPct (Z1+Z2), hardPct (Z4+Z5), hrr2: { median, n } }` — 순수 함수 `summarizeRunningWindow(rows)` (`src/lib/fitness/running-window.ts`). 존 합이 0 이거나 hrr2 가 없으면 각 필드 null. `_context` 에 "80/20 = 이지 (Z1+Z2) 시간 비율 80% 안팎이 polarized 기준" 한 줄.
+- [x] F1 `get_activities` daily 응답의 활동 행에 `hrr2` · `hrrDrop10` · `zones: { z1..z5 초 } | null` · `zonePct: { z1..z5 % } | null`.
+- [x] F2 envelope 에 `runningSummary` (러닝 계열만 · daily 일 때): `{ n, zoneTotalsSec, easyPct (Z1+Z2), hardPct (Z4+Z5), hrr2: { median, n } }` — 순수 함수 `summarizeRunningWindow(rows)` (`src/lib/fitness/running-window.ts`). 존 합이 0 이거나 hrr2 가 없으면 각 필드 null. `_context` 에 "80/20 = 이지 (Z1+Z2) 시간 비율 80% 안팎이 polarized 기준" 한 줄.
 
 **활동 컨텍스트 (A6 · A11)**
-- [ ] F3 웹 `GET /api/activities/[id]/context` — `loadActivityEvalInput` → `buildEvalContext` → `{ mode, sections, omitted }` (LLM 호출 없음 · 저장 없음). 404 / 500 은 기존 규칙.
-- [ ] F4 MCP `get_activity_context(activityId)` — `get_activity_splits` 와 같은 id 해석 (cuid 또는 garminId) → `APP_BASE_URL` 로 F3 호출 → 그대로 반환. 실패 시 `errorPayload`. `server.ts` 등록 + `claude-advisor.ts` allowlist + `system-prompt.ts` 도구 가이드 한 줄 ("오늘/특정 러닝을 평가할 때 — 스플릿 파생 · 같은 코스 · HRR 기준선까지").
+- [x] F3 웹 `GET /api/activities/[id]/context` — `loadActivityEvalInput` → `buildEvalContext` → `{ mode, sections, omitted }` (LLM 호출 없음 · 저장 없음). 404 / 500 은 기존 규칙.
+- [x] F4 MCP `get_activity_context(activityId)` — `get_activity_splits` 와 같은 id 해석 (cuid 또는 garminId) → `APP_BASE_URL` 로 F3 호출 → 그대로 반환. 실패 시 `errorPayload`. `server.ts` 등록 + `claude-advisor.ts` allowlist + `system-prompt.ts` 도구 가이드 한 줄 ("오늘/특정 러닝을 평가할 때 — 스플릿 파생 · 같은 코스 · HRR 기준선까지").
 
 **프롬프트 (A3 · A4 · A7 · A11)**
-- [ ] F5 모닝: `get_blood_pressure(days=7)` 한 줄 ("측정이 있으면 7일 평균 · 경고 규칙, 없으면 생략") · `recommend_today_workout` 명시 ("오늘의 운동 추천은 이 도구의 결과를 근거로").
-- [ ] F6 이브닝: "오늘 러닝이 있으면 활동마다 `get_activity_context(activityId)` 를 호출해 스플릿 · 회복 · 같은 코스 비교까지 근거로 분석. 기상 (환경 섹션) 이 페이스/심박에 준 영향 한 줄".
-- [ ] F7 주간: 도구 목록에 `get_fitness_metric_trend(days=13, granularity="daily")` · `get_active_training_plan()` 추가. 항목에 (a) 존 분포 80/20 (`runningSummary.easyPct`) 이번 주 vs 직전 4주 (b) HRR 주간 중앙값 vs 직전 4주 (c) VO2max 변화 · LT 감지 (d) 플랜 있으면 준수율 (completed / missed).
+- [x] F5 모닝: `get_blood_pressure(days=7)` 한 줄 ("측정이 있으면 7일 평균 · 경고 규칙, 없으면 생략") · `recommend_today_workout` 명시 ("오늘의 운동 추천은 이 도구의 결과를 근거로").
+- [x] F6 이브닝: "오늘 러닝이 있으면 활동마다 `get_activity_context(activityId)` 를 호출해 스플릿 · 회복 · 같은 코스 비교까지 근거로 분석. 기상 (환경 섹션) 이 페이스/심박에 준 영향 한 줄".
+- [x] F7 주간: 도구 목록에 `get_fitness_metric_trend(days=13, granularity="daily")` · `get_active_training_plan()` 추가. 항목에 (a) 존 분포 80/20 (`runningSummary.easyPct`) 이번 주 vs 직전 4주 (b) HRR 주간 중앙값 vs 직전 4주 (c) VO2max 변화 · LT 감지 (d) 플랜 있으면 준수율 (completed / missed).
   - **직전 4주 창 (PR #453 Codex P2 · 이슈 댓글 2026-09-24):** `days=N` 은 오늘 포함 창이라 `days=27` 만 쓰면 이번 주가 기준선에 섞인다 → `get_activities(days=27, endDate=<오늘 − 7일>)` (= [오늘−34, 오늘−7]) 로 **이번 주를 제외**. 프롬프트가 `days=6` (이번 주) 와 이 호출 둘을 명시하고, `runningSummary._context` 에 "endDate 없는 창은 오늘 포함" 한 줄. 존 80/20 비교도 같은 두 창.
-- [ ] F8 프롬프트 회귀 테스트 `src/lib/__tests__/report-prompts.test.ts` — 세 프롬프트가 요구 도구 이름을 포함하는지 (문자열 검사 · 프롬프트를 export).
+- [x] F8 프롬프트 회귀 테스트 `src/lib/__tests__/report-prompts.test.ts` — 세 프롬프트가 요구 도구 이름을 포함하는지 (문자열 검사 · 프롬프트를 export).
 
 **검증 · 문서**
-- [ ] F9 vitest: `summarizeRunningWindow` (존 합 · 80/20 · hrr2 중앙값 · 빈 창) · `get_activity_context` id 해석 (기존 `tryParseGarminId` 재사용) · 프롬프트 문자열.
-- [ ] F10 `verify-mcp-long-history` 통과 (allowlist 정합). 로컬: MCP 도구 직접 호출 1회 (`npm run mcp:call` 류가 있으면, 없으면 `curl` 로 F3) · 이브닝 리포트 로컬 생성 1회 (Claude CLI 필요).
-- [ ] F11 `docs/roadmap.md` M17-5 · `docs/specs/M14-followup.md` · Phase 2 이슈 생성 (A5 개인 기록 도구 · A8 체지방/근육량 · A9 강도 분 · A10 수면 규칙성 · A12 다이나믹스 추세).
+- [x] F9 vitest: `summarizeRunningWindow` (존 합 · 80/20 · hrr2 중앙값 · 빈 창) · `get_activity_context` id 해석 (기존 `tryParseGarminId` 재사용) · 프롬프트 문자열.
+- [x] F10 `verify-mcp-long-history` 통과 (allowlist 정합). 로컬: MCP 도구 직접 호출 1회 (`npm run mcp:call` 류가 있으면, 없으면 `curl` 로 F3) · 이브닝 리포트 로컬 생성 1회 (Claude CLI 필요).
+- [x] F11 `docs/roadmap.md` M17-5 · `docs/specs/M14-followup.md` · Phase 2 이슈 생성 → **#455** (A5 개인 기록 도구 · A8 체지방/근육량 · A9 강도 분 · A10 수면 규칙성 · A12 다이나믹스 추세).
 
 ## 4. 기술 설계
 
@@ -95,3 +95,15 @@ claude-advisor.ts allowlist += get_activity_context · system-prompt.ts 가이�
 - A5 `get_personal_records` 도구 · "이번 주 신기록" · A8 체지방/근육량 · A9 강도 분 (WHO) · A10 수면 규칙성 · A12 다이나믹스 4주 추세.
 - 리포트 프롬프트 전면 개편 · 리포트 형식 변경.
 - `get_activities` 주/월 집계 경로의 존 · HRR (daily 만).
+
+## 8. 구현 결과 (2026-09-24 · 브랜치 `feat/444-1`)
+
+| 항목 | 결과 |
+|---|---|
+| F1 · F2 | `src/lib/fitness/running-window.ts` — `toZoneSec` (정수 초) · `toZonePct` · `summarizeRunningWindow`. Garmin 존 시간이 소수 초라 합계 · 행 모두 정수로 반올림 (응답에 `220.42299999999997` 이 실리던 것을 로컬 실행으로 발견). `envelope` 에 `extra` 인자 추가 · `runningSummary` 는 daily 에만. 행에서 raw `zoneDistribution` 은 destructure 로 뺀다 |
+| F3 · F4 | `GET /api/activities/[id]/context` · `src/mcp/tools/activity-context.ts`. id 해석 · `errorPayload` 는 `activity-id.ts` 로 빼서 splits 와 공용 (동작 동일). 응답 형태 검증 (`isContextResponse`) — 웹이 HTML 등을 돌려주면 errorPayload |
+| F5~F7 | `src/lib/report-prompts.ts` — 모닝/이브닝 상수 · `buildWeeklyReportPrompt(baselineEndDate)`. **endDate 는 생성 시점에 `weeklyBaselineEndDate()` (오늘 KST − 7일) 로 박는다** — 모델이 날짜 산술을 하지 않게 (스펙 §3 의 `<오늘 − 7일>` 을 실제 값으로) |
+| F8 · F9 | vitest 20건 (`running-window` 8 · `activity-context` 6 · `report-prompts` 6). 전체 288 → 310 (dev 288 + 20 + 사전 리뷰 반영 2) |
+| F10 | `verify-mcp-long-history [7]` 통과 (allowlist 정합). 로컬 `next dev` 로 `GET …/context` 200 (mode full · 섹션 7 · omitted 0) · 404. MCP 도구 직접 호출 (`tsx`): `get_activity_context` 정상 · `get_activities(days=27, endDate, type="running")` → `runningSummary { n 5, easyPct 10, hardPct 13, hrr2 { median 31, n 5 } }` |
+| 이브닝 리포트 로컬 생성 | **미실행** — Claude CLI 실호출 (쿼터). 배포 후 첫 이브닝 리포트에서 `get_activity_context` 호출 여부를 확인한다 (`pm2 logs` 의 tool call 또는 AIAdvice.prompt) |
+| 사전 리뷰 | pr-review-toolkit code-reviewer 1회: critical 0 · major 0 · **info 4 전부 반영** — (1) daily `_context` 에서 버킷 설명 제거 · 집계엔 필드 설명 제거 (2) zonePct 반올림 합 ±1 안내 (3) `get_activities` 도구 설명에 새 필드 (4) 웹 API 경유를 `web-api.ts` (`fetchWebJson` · `errorPayload`) 로 공용화, `activity-id.ts` 는 id 해석만 |

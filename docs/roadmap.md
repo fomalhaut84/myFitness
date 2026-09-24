@@ -432,6 +432,14 @@
 - [x] `metrics.ts` `hrr2` (activity · median 집계 · sparse) · 시작일 캡션 · 개인 기록 "가장 큰 2분 HRR"
 - 이슈: #442 · PR #447 · **v2.37.0** (2026-09-23). 스펙 `docs/specs/442-trends-hrr-metric.md`. 후속: #449 (기간 비교 안내 문구 지표 방향)
 
+## M17-5: 리포트 근거 확장 Phase 1 — 도구 필드 · 활동 컨텍스트 도구 · 프롬프트 — 우선순위 ★★
+
+- [x] `get_activities` daily 행 `hrr2` · `hrrDrop10` · `zones` · `zonePct` + envelope `runningSummary` (`summarizeRunningWindow` 순수 · 80/20 · HRR 중앙값)
+- [x] `GET /api/activities/[id]/context` + MCP `get_activity_context` (HTTP 경유 · #440 조립 재사용) · allowlist · 시스템 프롬프트 가이드
+- [x] 프롬프트 정본 `report-prompts.ts` — 모닝 혈압 · 운동 추천 / 이브닝 활동 컨텍스트 · 기상 영향 / 주간 이번 주 vs 직전 4주 (endDate) · VO2max/LT · 플랜 준수율 — vitest 회귀
+- [ ] 배포 후 첫 이브닝 · 주간 리포트에서 도구 호출 확인
+- 이슈: #444 · 스펙 `docs/specs/444-report-evidence.md`. Phase 2: #455 (개인 기록 도구 · 체지방/근육량 · 강도 분 · 수면 규칙성 · 다이나믹스 추세)
+
 ---
 
 # 유지보수 / 보안
