@@ -1,8 +1,8 @@
 // #444 F4: MCP get_activity_context — 활동 상세 AI 평가 (#440) 와 같은 근거 섹션을 리포트가 도구로 본다.
-// 웹 `GET /api/activities/[id]/context` 를 HTTP 로 경유한다 (splits 선례) — Garmin 세션 (`withReauth`) 은 웹 프로세스에만 두고,
-// MCP 프로세스가 스플릿 조회로 Garmin 로그인을 시도하지 않게.
+// 웹 `GET /api/activities/[id]/context` 를 HTTP 로 경유한다 (`web-api.ts` · splits 선례) — MCP 프로세스가 Garmin 로그인을 시도하지 않게.
 import prisma from "../prisma";
-import { activityLookupClauses, errorPayload } from "./activity-id";
+import { activityLookupClauses } from "./activity-id";
+import { errorPayload, fetchWebJson } from "./web-api";
 
 interface ContextSection {
   id: string;
@@ -26,23 +26,10 @@ function isContextResponse(value: unknown): value is ContextResponse {
   return (v.mode === "full" || v.mode === "brief") && Array.isArray(v.sections) && Array.isArray(v.omitted);
 }
 
-function baseUrl(): string {
-  // claude-advisor 가 MCP env 로 APP_BASE_URL 을 전달 (splits 와 동일)
-  return process.env.APP_BASE_URL ?? "http://localhost:4200";
-}
-
 async function fetchContext(activityId: string): Promise<ContextResponse | { error: string }> {
-  try {
-    const res = await fetch(`${baseUrl()}/api/activities/${activityId}/context`);
-    if (!res.ok) {
-      const body = await res.json().catch(() => ({ error: res.statusText }));
-      return { error: `컨텍스트 조회 실패 (${res.status}): ${body?.error ?? res.statusText}` };
-    }
-    const body: unknown = await res.json();
-    return isContextResponse(body) ? body : { error: "컨텍스트 응답 형태가 예상과 다릅니다" };
-  } catch (err) {
-    return { error: `컨텍스트 API 호출 실패: ${err instanceof Error ? err.message : String(err)}` };
-  }
+  const res = await fetchWebJson(`/api/activities/${activityId}/context`, "컨텍스트");
+  if (!res.ok) return { error: res.error };
+  return isContextResponse(res.body) ? res.body : { error: "컨텍스트 응답 형태가 예상과 다릅니다" };
 }
 
 /** 특정 활동의 평가 근거 전체. activityId 는 DB id(cuid) 또는 Garmin garminId 문자열 */

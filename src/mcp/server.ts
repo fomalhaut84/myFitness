@@ -315,7 +315,7 @@ export function createMyFitnessMcpServer(): McpServer {
 
 server.tool(
   "get_activities",
-  "운동 활동 조회 (거리, 페이스, 심박, 칼로리 등). 장기 조회는 granularity 로 주/월 × 활동타입 집계",
+  "운동 활동 조회 (거리, 페이스, 심박, 칼로리 등). 장기 조회는 granularity 로 주/월 × 활동타입 집계 daily 행은 2분 HRR(hrr2) · 존 분포(zones/zonePct) 포함, envelope 의 runningSummary 가 창 안 러닝의 80/20 · HRR 중앙값.",
   {
     days: z
       .number()

@@ -23,11 +23,3 @@ export function activityLookupClauses(activityId: string): ActivityLookupClause[
   const garminId = tryParseGarminId(activityId);
   return garminId === null ? [{ id: activityId }] : [{ id: activityId }, { garminId }];
 }
-
-/** MCP 도구 오류 응답 (isError) */
-export function errorPayload(message: string) {
-  return {
-    content: [{ type: "text" as const, text: JSON.stringify({ error: message }, null, 2) }],
-    isError: true,
-  };
-}
