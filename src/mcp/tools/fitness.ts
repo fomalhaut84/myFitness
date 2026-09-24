@@ -10,6 +10,7 @@ import {
   type Granularity,
 } from "./aggregate";
 import { MAX_DAILY_ROWS } from "./constants";
+import { activityTypeWhere } from "./activity-filter";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
 
@@ -118,9 +119,9 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
   const days = args.days ?? 14;
   const requested = resolveGranularity(days, args.granularity);
   const { since, until, to } = resolveWindow(days, args.endDate);
-  const where = args.type
-    ? { startTime: dateFilter(since, until), activityType: { contains: args.type } }
-    : { startTime: dateFilter(since, until) };
+  // PR #456 Codex P2: "running" 은 공용 러닝 판정 (virtual_run · obstacle_run 포함)
+  const typeWhere = activityTypeWhere(args.type);
+  const where = typeWhere ? { AND: [{ startTime: dateFilter(since, until) }, typeWhere] } : { startTime: dateFilter(since, until) };
 
   const activities = await prisma.activity.findMany({
     where,
