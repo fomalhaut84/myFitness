@@ -5,7 +5,29 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-24 낮, v2.39.0 배포 완료)
+## 현재 상태 (2026-09-25 새벽, v2.39.0 배포 완료 · 환경 재현 계획 #467 등록 · 세션 종료)
+
+**최근 릴리즈:** **v2.39.0** (2026-09-24 배포 완료 — 아래 이전 상태 참조). 코드 변경 없음. dev = main (이 문서 PR 만 앞섬). 열린 PR 0.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **v2.39.0 배포 후 확인** | 첫 리포트 대기 (변동 없음) | 확인 지점은 이전 상태 표 그대로 — 이브닝 `get_activity_context` · `get_personal_records`, 주간 강도 분(가중) · 규칙성 · 다이나믹스 · 80/20 · HRR, `/trends` 비교 푸터 |
+| **#441 HRR 1분 해상도** (P2) | 워치 "매초" 실험 — **09-25 06:00 cron 뒤** 이슈 댓글의 최근 3일 쿼리 | 60초 다수면 §4 구현, 120초만이면 종료 |
+| **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 스펙 확정 · 이슈 등록 — **착수 예정 2026-11 ~ 2026-12** | 착수 전 자발 진행 금지. 스펙 정본은 이슈 본문 (착수 시 `docs/specs/467-claude-env.md` 로 이동). 착수 순서: claude-env 저장소 생성(하네스 백업 먼저) → link.sh · README → 핀 인계 이슈 전환 → `.mcp.json` → 두 번째 장비 검증 |
+| #437 · #414 · #419 · 독립 후속 | 이전 상태 표 그대로 | — |
+| 리포트 결과 기반 후속 | v2.39.0 첫 리포트들을 보고 프롬프트 미세 조정 이슈 (필요 시) | — |
+
+**이번 세션 결과 (2026-09-25 새벽 · 기획 세션, 코드 변경 없음):**
+- **#467 등록** — 다른 장비에서 같은 Claude Code 환경을 재현하기 위한 스펙. 결정 9건 (D1~D9): 하네스 · 글로벌 rules · 메모리 정본은 `~/workspace/claude-env` **private 저장소** (dev 의 `.claude/`·`CLAUDE.md` ignore 는 유지) · 기기 종속 항목은 README 가이드 · 메모리 위치는 공식 설정 `autoMemoryDirectory` (심볼릭 링크 · 경로 통일 불필요) · **세션 인계는 저장소별 핀 고정 GitHub 이슈 1개** (본문 = 현재 상태 · 코멘트 = 세션별) → 착수 후 이 문서의 "현재 상태" 누적 절과 인계 docs PR 은 **중단**, 이 문서는 백로그 전용 · 동기화는 session-primer 시작 pull · session-handoff 종료 push 두 지점 · MCP 는 `.mcp.json` · 글로벌 rules 정리는 후속 이슈. 멀티 프로젝트 구조 (myFinance · pleiades · myTangerine 은 메모리만 또는 자리만 — 그쪽은 범위 밖).
+- **환경 실측** — 프로젝트 하네스 18파일은 dev 에서 ignore 이고 `integration/pleiades` 브랜치에만 tracked 사본 (#368 · 2026-09-07) 이 있으나 이미 drift (`CLAUDE.md` · `skills/security-audit-fix` 는 로컬에만). 글로벌 `~/.claude/rules/common/agents.md` 가 존재하지 않는 `~/.claude/agents/*` 9개를 지시 (후속 정리 대상, #467 D9). 외부 출처 플러그인은 `extraKnownMarketplaces` 만으로 자동 설치되지 않음 (`claude plugin install` 수동).
+- **회사 VPN 의존 원인** — Claude Code 가 조직 관리 프록시 정책으로 모든 HTTP 를 사내 프록시(사설 IP) 로 보내도록 주입. `api.anthropic.com` 은 NO_PROXY 라 대화는 되지만 npm · gh · WebFetch · MCP 가 VPN 없이 실패. 변경 · 우회 불가 — 가이드에는 "VPN 필수" 로만 적는다 (사내 호스트명은 공개 문서에 적지 않음).
+- 메모리 갱신 2건: `feedback_gitignore_claude` (integration/pleiades 사본 · #467 결정 반영) · `project_multi_device_claude_env` (계획 포인터 · 착수 전 자발 진행 금지).
+
+---
+
+## 이전 상태 (2026-09-24 낮, v2.39.0 배포 완료)
 
 **최근 릴리즈:** **v2.39.0** (릴리즈 PR #464 · merge commit · 태그 · Release · **Deploy on Release success** run 35948351293, 2026-09-24 02:43 UTC 완료 확인). 포함: #455 (PR #462) · #448 (PR #461 · fix PR #465 — 릴리즈 PR Codex P2) · #449 (PR #460). M17-5 · M17-6 완료. dev = main (이 문서 PR 만 앞섬).
 
