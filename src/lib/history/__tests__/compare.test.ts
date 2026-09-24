@@ -1,6 +1,7 @@
 // #395 (M15-3): 기간 비교 표 행.
 import { describe, expect, it } from "vitest";
-import { buildCompareRows, compareMetricIds, needsPerMonth } from "../compare";
+import { buildCompareRows, compareDirectionNote, compareMetricIds, needsPerMonth } from "../compare";
+import { HISTORY_METRICS } from "../metrics";
 
 const peak = {
   months: 5,
@@ -106,5 +107,21 @@ describe("buildCompareRows", () => {
     expect(compareMetricIds("hrv")).toContain("runningDurationSec");
     expect(compareMetricIds("hrv")).toContain("hrv");
     expect(compareMetricIds("weight").filter((id) => id === "weight")).toHaveLength(1);
+  });
+});
+
+// 회귀: PR #447 Codex P2 (#449) — 푸터 "심박과 페이스는 낮을수록" 이 2분 HRR (클수록 좋음) 에서 반대로 읽혔다.
+describe("compareDirectionNote", () => {
+  it("선택 지표의 방향 한 줄 — higher · lower · none", () => {
+    expect(compareDirectionNote("hrr2")).toBe("「2분 HRR」 지표는 클수록 좋습니다.");
+    expect(compareDirectionNote("restingHR")).toBe("「안정시 심박」 지표는 낮을수록 좋습니다.");
+    expect(compareDirectionNote("ltPace")).toBe("「젖산역치 페이스」 지표는 낮을수록 좋습니다.");
+    expect(compareDirectionNote("steps")).toBe("「걸음」 지표는 높고 낮음에 좋고 나쁨이 없습니다.");
+  });
+
+  it("모든 지표에 방향이 정의돼 있다", () => {
+    for (const def of HISTORY_METRICS) expect(["lower", "higher", "none"]).toContain(def.betterWhen);
+    expect(HISTORY_METRICS.find((d) => d.id === "weight")?.betterWhen).toBe("lower");
+    expect(HISTORY_METRICS.find((d) => d.id === "sleepScore")?.betterWhen).toBe("higher");
   });
 });

@@ -122,3 +122,14 @@ export function buildCompareRows(a: ComparePeriod, b: ComparePeriod, selected: H
     : [{ key: selected, label: def.label, metricId: selected, pick: (v) => v[selected]?.value ?? null }];
   return [...KPI_ROWS, ...extra].map((spec) => buildRow(spec, a, b, spec.metricId === selected));
 }
+
+/**
+ * #449 (PR #447 Codex P2): 기간 비교 푸터의 방향 안내 — 선택 지표 한 줄. "심박과 페이스는 낮을수록" 처럼 고정하면 2분 HRR
+ * (클수록 좋음) 에서 반대로 읽힌다. 방향은 지표 정의 (`betterWhen`) 가 정본.
+ */
+export function compareDirectionNote(selected: HistoryMetricId): string {
+  const def = getHistoryMetric(selected);
+  const tail =
+    def.betterWhen === "higher" ? "클수록 좋습니다." : def.betterWhen === "lower" ? "낮을수록 좋습니다." : "높고 낮음에 좋고 나쁨이 없습니다.";
+  return `「${def.label}」 지표는 ${tail}`;
+}
