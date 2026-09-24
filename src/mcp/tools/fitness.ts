@@ -92,7 +92,8 @@ const GRANULARITY_NOTE =
 
 /** #444: daily 활동 응답의 존 · HRR · runningSummary 해석 안내 */
 const ACTIVITY_DAILY_NOTES = {
-  hrr2: "종료 후 2분 심박 회복 (bpm, 양수 = 회복 · 클수록 좋음). hrrDrop10 은 10bpm 떨어지는 데 걸린 초. null 은 종료 후 시계열 없음 (2026-04 이전 · 미착용).",
+  // 릴리즈 PR #457 Codex P2: hrrDrop10 은 "10bpm 까지 걸린 초" 가 아니라 종료 − 10분 후 심박 (bpm) — recoveryCurve().drop10
+  hrr2: "종료 후 2분 심박 회복 = 종료 심박 − 2분 후 심박 (bpm, 양수 = 회복 · 클수록 좋음). hrrDrop10 은 같은 방식의 10분 후 값 (bpm). null 은 종료 후 시계열 없음 (2026-04 이전 · 미착용) 또는 그 시점 샘플 부족.",
   zones: "zones 는 존별 초 (개인 HR 존), zonePct 는 존 시간 합 기준 % (존마다 반올림이라 합이 99~101 일 수 있음 — 언급하지 말 것). 둘 다 null 이면 그 활동에 존 분포 없음.",
   runningSummary:
     "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
