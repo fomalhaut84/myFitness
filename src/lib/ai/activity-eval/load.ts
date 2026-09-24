@@ -227,15 +227,17 @@ export async function loadActivityEvalInput(id: string): Promise<EvalInput | nul
     return { ...base, recovery: null, laps: null, sameCourse: [], similarDistance: [], hrrBaseline: null, bucketBest: null };
   }
   // #448: 평가 기준선은 **이전** 기록만 — 매처가 DB 에서 before 로 자르므로 이후 기록이 상한을 차지하지 않는다 (비슷한 거리와 같은 방향).
-  // 릴리즈 PR #464 Codex P2: 비슷한 거리는 같은 코스 id 를 쿼리에서 빼야 하므로 같은 코스를 먼저 받는다 (병렬은 나머지 넷)
-  const [recovery, sameRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
+  // 릴리즈 PR #464 Codex P2: 비슷한 거리는 같은 코스 id 를 쿼리에서 빼야 하므로 같은 코스 promise 에만 체인한다 —
+  // PR #465 Codex P2: 전체 Promise.all 뒤에 두면 느린 Garmin 스플릿 조회 (loadLaps) 를 기다린 뒤에야 시작한다
+  const sameCoursePromise = findSimilarActivities(id, { limit: SAME_COURSE_SCAN, before: row.startTime });
+  const [recovery, sameRaw, similarRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
     loadActivityRecovery(id),
-    findSimilarActivities(id, { limit: SAME_COURSE_SCAN, before: row.startTime }),
+    sameCoursePromise,
+    sameCoursePromise.then((same) => loadSimilarDistance(row, same.map((r) => r.id))),
     loadHrrBaseline(row),
     loadBucketBest(row),
     loadLaps(row),
   ]);
-  const similarRaw = await loadSimilarDistance(row, sameRaw.map((r) => r.id));
   // 쿼리에서 이미 뺐지만 순수 선별을 그대로 둔다 (표시 상한 · 안전망)
   const picked = selectComparisons(sameRaw.map(toComparisonRun), similarRaw, { sameCourse: SAME_COURSE_LIMIT, similarDistance: SIMILAR_LIMIT });
   return { ...base, recovery, laps, ...picked, hrrBaseline, bucketBest };
