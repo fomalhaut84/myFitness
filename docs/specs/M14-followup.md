@@ -5,7 +5,33 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-24 오전, v2.38.0 배포 · 세션 계속)
+## 현재 상태 (2026-09-24 낮, M17-6 · #448 · #449 dev 머지 · v2.39.0 릴리즈 준비)
+
+**최근 릴리즈:** **v2.38.0** (배포 success). dev 에 **#455 (PR #462) · #448 (PR #461) · #449 (PR #460)** 머지 → 릴리즈 **v2.39.0** (feature · migration 없음) 준비. M17-5 · M17-6 완료.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **v2.39.0 릴리즈** | 이 문서 PR → 릴리즈 PR (dev → main) → 봇 게이트 → 사용자 merge commit → 태그 · Release | 배포 후 확인: 이브닝 (러닝 있는 날) `get_activity_context` · `get_personal_records` 호출, 주간 리포트 강도 분 (가중) · 규칙성 · 다이나믹스 · 80/20 · HRR 항목, `/trends` 비교 푸터 문구 |
+| **#441 HRR 1분 해상도** (P2) | 워치 "매초" 실험 — **09-25 06:00 cron 뒤** 이슈 댓글의 최근 3일 쿼리 | 60초 다수면 §4 구현, 120초만이면 종료 |
+| #437 · #414 · #419 · 독립 후속 | 이전 상태 표 그대로 | — |
+| 리포트 결과 기반 후속 | v2.39.0 배포 후 첫 리포트들을 보고 프롬프트 미세 조정 이슈 (필요 시) | Phase 1 · 2 의 실효는 실제 리포트에서만 확인 가능 (Claude CLI 쿼터라 로컬 미실행) |
+
+**이번 세션 결과 (2026-09-24 낮):**
+- **#455 Phase 2 (PR #462)** — `get_personal_records` (웹 API 경유) · `get_daily_stats` totals (Codex **P1**: `intensityMin` 은 단순합 → rawData 성분으로 가중 합 `weightedIntensityMinTotal`) · `get_sleep` regularity · `runningSummary.dynamics` (보폭 cm 혼재 정규화 공용) · 프롬프트. 사전 리뷰 info 4 반영. vitest 336 (dev 합산).
+- **#448 (PR #461)** — 매처 `before` · `selectComparisons` · `firstKmPaceSecPerKm`. 사전 리뷰 info 1. **#449 (PR #460)** — `betterWhen` · `compareDirectionNote`. 사전 리뷰 info 3 (2 반영). 두 PR 모두 Codex 미도착.
+- 문서 PR #459 Codex P2 (배포 "성공" 기록) 반영.
+- #462 는 #461 과 `sections.ts` import 한 줄 충돌 → dev 머지로 해결.
+
+**세션 관찰:**
+- 같은 세션에서 PR 3~4개를 병행하면 같은 파일의 import 줄에서 충돌이 난다 — 머지 순서를 정해 두고 나중 PR 은 머지 직전에 dev 를 한 번 머지한다.
+- `_context` 안내에 "가중" 같은 계산 규칙을 적을 때는 **저장 컬럼의 실제 정의** (fetcher) 를 먼저 본다 — Codex 가 fetcher 와 대조해 P1 을 냈다.
+- 로컬 dev DB 는 2026-04 초 데이터뿐 (DailySummary 0행 · SleepRecord 옛 행은 KST-as-UTC) — 일별 집계는 단위 테스트로만 검증되고, 실값 확인은 배포 후 리포트에서.
+
+---
+
+## 이전 상태 (2026-09-24 오전, v2.38.0 배포 · 세션 계속)
 
 **최근 릴리즈:** **v2.38.0** (릴리즈 PR #457 · merge commit · 2026-09-24 · Deploy on Release success). #444 Phase 1 (PR #456) + 릴리즈 PR Codex P2 1건 (fix PR #458 · `hrrDrop10` 안내 단위). M17-5 완료. dev = main (이 문서 PR 만 앞섬).
 
