@@ -56,6 +56,11 @@ export type HistoryMetricDef = HistoryMetricSource & {
    * 는 "N일 달림" 이 러닝 일수를 덜 세므로 다른 명사를 쓴다.
    */
   coverageNoun?: string;
+  /**
+   * #449: 값의 방향 — 기간 비교 푸터가 선택 지표에 맞는 안내를 고른다. lower = 낮을수록 좋음 (안정시 심박 · 페이스 · 스트레스 · 체중),
+   * higher = 클수록 좋음 (거리 · HRR · 수면 점수 · VO2max), none = 좋고 나쁨 없음 (걸음 · 칼로리). 차이 셀에 색은 여전히 넣지 않는다 (#395).
+   */
+  betterWhen: "lower" | "higher" | "none";
 };
 
 export const HISTORY_METRIC_IDS = [
@@ -80,24 +85,24 @@ export type HistoryMetricId = (typeof HISTORY_METRIC_IDS)[number];
 const base = { missingAsZero: false, withMinMax: false, withLast: false, selectable: true, format: "number", sparse: false } as const;
 
 export const HISTORY_METRICS: readonly HistoryMetricDef[] = [
-  { ...base, id: "runningKm", label: "러닝 거리", unit: "km", decimals: 2, source: "activity", kind: "km", aggregate: "sum", missingAsZero: true },
-  { ...base, id: "runningCount", label: "러닝 횟수", unit: "회", decimals: 0, source: "activity", kind: "count", aggregate: "sum", missingAsZero: true },
-  { ...base, id: "runningDurationSec", label: "러닝 시간", unit: "초", decimals: 0, source: "activity", kind: "duration", aggregate: "sum", missingAsZero: true, selectable: false },
-  { ...base, id: "steps", label: "걸음", unit: "보", decimals: 0, source: "daily", field: "steps", aggregate: "sum" },
-  { ...base, id: "activeCalories", label: "활성 칼로리", unit: "kcal", decimals: 0, source: "daily", field: "activeCalories", aggregate: "sum" },
-  { ...base, id: "sleepScore", label: "수면 점수", unit: "점", decimals: 0, source: "sleep", field: "sleepScore", aggregate: "avg", withMinMax: true },
-  { ...base, id: "restingHR", label: "안정시 심박", unit: "bpm", decimals: 0, source: "daily", field: "restingHR", aggregate: "avg", withMinMax: true },
-  { ...base, id: "hrv", label: "야간 HRV", unit: "ms", decimals: 1, source: "sleep", field: "hrvOvernight", aggregate: "avg" },
-  { ...base, id: "stress", label: "평균 스트레스", unit: "", decimals: 0, source: "daily", field: "avgStress", aggregate: "avg" },
-  { ...base, id: "weight", label: "체중", unit: "kg", decimals: 1, source: "body", field: "weight", aggregate: "avg", withMinMax: true, withLast: true, sparse: true },
-  { ...base, id: "vo2max", label: "VO2max", unit: "", decimals: 1, source: "fitness", field: "vo2maxRunning", aggregate: "max", withLast: true },
-  { ...base, id: "ltPace", label: "젖산역치 페이스", unit: "sec/km", decimals: 0, source: "fitness", field: "lthrPace", aggregate: "last", format: "pace", sparse: true },
-  { ...base, id: "calorieBalance", label: "칼로리 밸런스", unit: "kcal", decimals: 0, source: "daily", field: "calorieBalance", aggregate: "avg" },
+  { ...base, id: "runningKm", label: "러닝 거리", unit: "km", decimals: 2, betterWhen: "higher", source: "activity", kind: "km", aggregate: "sum", missingAsZero: true },
+  { ...base, id: "runningCount", label: "러닝 횟수", unit: "회", decimals: 0, betterWhen: "higher", source: "activity", kind: "count", aggregate: "sum", missingAsZero: true },
+  { ...base, id: "runningDurationSec", label: "러닝 시간", unit: "초", decimals: 0, betterWhen: "none", source: "activity", kind: "duration", aggregate: "sum", missingAsZero: true, selectable: false },
+  { ...base, id: "steps", label: "걸음", unit: "보", decimals: 0, betterWhen: "none", source: "daily", field: "steps", aggregate: "sum" },
+  { ...base, id: "activeCalories", label: "활성 칼로리", unit: "kcal", decimals: 0, betterWhen: "none", source: "daily", field: "activeCalories", aggregate: "sum" },
+  { ...base, id: "sleepScore", label: "수면 점수", unit: "점", decimals: 0, betterWhen: "higher", source: "sleep", field: "sleepScore", aggregate: "avg", withMinMax: true },
+  { ...base, id: "restingHR", label: "안정시 심박", unit: "bpm", decimals: 0, betterWhen: "lower", source: "daily", field: "restingHR", aggregate: "avg", withMinMax: true },
+  { ...base, id: "hrv", label: "야간 HRV", unit: "ms", decimals: 1, betterWhen: "higher", source: "sleep", field: "hrvOvernight", aggregate: "avg" },
+  { ...base, id: "stress", label: "평균 스트레스", unit: "", decimals: 0, betterWhen: "lower", source: "daily", field: "avgStress", aggregate: "avg" },
+  { ...base, id: "weight", label: "체중", unit: "kg", decimals: 1, betterWhen: "lower", source: "body", field: "weight", aggregate: "avg", withMinMax: true, withLast: true, sparse: true },
+  { ...base, id: "vo2max", label: "VO2max", unit: "", decimals: 1, betterWhen: "higher", source: "fitness", field: "vo2maxRunning", aggregate: "max", withLast: true },
+  { ...base, id: "ltPace", label: "젖산역치 페이스", unit: "sec/km", decimals: 0, betterWhen: "lower", source: "fitness", field: "lthrPace", aggregate: "last", format: "pace", sparse: true },
+  { ...base, id: "calorieBalance", label: "칼로리 밸런스", unit: "kcal", decimals: 0, betterWhen: "none", source: "daily", field: "calorieBalance", aggregate: "avg" },
   // #394: 식단 캘린더 (M14 백로그 B-2) 를 월 그리드 지표로 흡수. FoodLog 는 2026~ 라 그 이전은 전부 결측.
-  { ...base, id: "intakeKcal", label: "섭취 칼로리", unit: "kcal", decimals: 0, source: "daily", field: "estimatedIntakeCalories", aggregate: "avg" },
+  { ...base, id: "intakeKcal", label: "섭취 칼로리", unit: "kcal", decimals: 0, betterWhen: "none", source: "daily", field: "estimatedIntakeCalories", aggregate: "avg" },
   // #442 (M17-3): 러닝 종료 후 2분 HRR (`Activity.hrr2`, #425). 버킷 = 중앙값 (패널 E 와 동일), 띠 = 최저~최고 (인터벌 · 레이스의 큰 값이 보이게).
   // sparse — 주에 러닝 2~3건뿐인 것이 정상이라 커버리지 흐림을 적용하지 않는다. 프로덕션은 2026-04 부터 (Garmin 보존 창 · #431).
-  { ...base, id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, source: "activity", kind: "hrr2", aggregate: "median", withMinMax: true, sparse: true, startNote: "종료 후 심박은 {from} 부터 있습니다", coverageNoun: "회복 기록" },
+  { ...base, id: "hrr2", label: "2분 HRR", unit: "bpm", decimals: 0, betterWhen: "higher", source: "activity", kind: "hrr2", aggregate: "median", withMinMax: true, sparse: true, startNote: "종료 후 심박은 {from} 부터 있습니다", coverageNoun: "회복 기록" },
 ];
 
 /** `/history` 지표 선택기 기본 5개 (m15-overview D3 — 사용자 확정 2026-09-18). 나머지 selectable 지표는 "추가" 그룹. */

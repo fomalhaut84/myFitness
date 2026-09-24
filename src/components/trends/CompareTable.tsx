@@ -1,5 +1,5 @@
 // #395 (M15-3): 기간 비교 표 — A | B | B − A. 차트가 아니라 표: 두 구간 × 지표 8개는 막대 16개보다 숫자가 빨리 읽힌다.
-// 차이에 좋고 나쁨 색을 넣지 않는다 (거리는 높을수록, 심박·페이스는 낮을수록 — 지표마다 방향이 다르다).
+// 차이에 좋고 나쁨 색을 넣지 않는다 (지표마다 방향이 다르다 — 푸터는 선택 지표의 방향만 한 줄로, #449).
 // 모바일은 단위를 셀에서 빼 행 제목 옆으로 옮겨 360px 에 3열이 들어가게 한다.
 import type { CompareCell, CompareRow } from "@/lib/history/compare";
 
@@ -8,6 +8,8 @@ interface CompareTableProps {
   color: string;
   /** 합계 지표에 월평균이 병기됐는가 (구간 길이가 다르거나 한쪽이 이번 달 · 기록 시작일에 잘림) */
   perMonthShown: boolean;
+  /** #449: 선택 지표의 방향 한 줄 (`compareDirectionNote`) — 지표마다 방향이 달라 고정 문구를 쓰지 않는다 */
+  directionNote: string;
 }
 
 function ValueCell({ cell, unit }: { cell: CompareCell; unit: string }) {
@@ -21,7 +23,7 @@ function ValueCell({ cell, unit }: { cell: CompareCell; unit: string }) {
   );
 }
 
-export default function CompareTable({ rows, color, perMonthShown }: CompareTableProps) {
+export default function CompareTable({ rows, color, perMonthShown, directionNote }: CompareTableProps) {
   return (
     <div>
       <div className="overflow-x-auto rounded-xl border border-border bg-card">
@@ -58,7 +60,7 @@ export default function CompareTable({ rows, color, perMonthShown }: CompareTabl
         </table>
       </div>
       <p className="mt-2.5 text-[11px] leading-relaxed text-sub">
-        차이에는 좋고 나쁨 색을 넣지 않습니다. 거리는 높을수록, 심박과 페이스는 낮을수록 좋아서 방향이 지표마다 다릅니다.
+        차이에는 좋고 나쁨 색을 넣지 않습니다 — 방향이 지표마다 다릅니다. {directionNote}
         {perMonthShown && " 두 구간의 실제 일수가 달라 (길이가 다르거나 아직 끝나지 않은 달 포함) 합계 지표는 월평균을 함께 표시합니다."}
       </p>
     </div>
