@@ -21,7 +21,7 @@
 - [x] F1 `src/lib/garmin/weather-backfill-mode.ts` (순수): `WeatherBackfillMode` · `resolveWeatherBackfillMode(mode?)` (기본 background) · `weatherBackfillPlan(mode)` → `{ run, awaitResult }`.
 - [x] F2 `syncAll` 옵션 `weatherBackfill?: WeatherBackfillMode` — plan 에 따라 skip / background / await.
 - [x] F3 `scripts/backfill-history.ts`: 청크 `syncAll` 에 `weatherBackfill: "skip"`. 실행 종료 요약에 활동 타입이 포함됐으면 `npm run backfill:weather` 안내 한 줄.
-- [x] F4 회귀: `weather-backfill-mode.test.ts` (기본 · 세 모드) + `verify-mcp-long-history` 소스 스캔 (스크립트가 `skip` 을 쓴다 · `syncAll` 이 옵션을 받는다).
+- [x] F4 회귀: `weather-backfill-mode.test.ts` (기본 · 세 모드) + `verify-mcp-long-history` 소스 스캔 3건 (스크립트가 `skip` 을 쓴다 · `syncAll` 이 옵션을 받아 plan 으로 실행한다 · `plan.run` 가드 안에서만 `runWeatherBackfill` 호출).
 
 ## 4. 기술 설계
 
@@ -35,7 +35,7 @@
 | `src/lib/garmin/weather-backfill-mode.ts` (+ `__tests__/weather-backfill-mode.test.ts`) | 신규 · 순수 |
 | `src/lib/garmin/sync.ts` | 옵션 · 끝의 fire-and-forget 을 plan 으로 |
 | `scripts/backfill-history.ts` | `skip` · 종료 안내 |
-| `scripts/verify-mcp-long-history.ts` | 소스 스캔 2건 |
+| `scripts/verify-mcp-long-history.ts` | 소스 스캔 3건 ([11b]) |
 
 ## 6. 테스트 계획
 
