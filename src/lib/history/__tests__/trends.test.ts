@@ -233,3 +233,23 @@ describe("bucketHref", () => {
     expect(points[0].href).toBe("/history/2024/03?metric=weight");
   });
 });
+
+// #408-1 회귀 (PR #407 Codex P2): 하한이 걸린 첫 버킷의 커버리지 분모는 달력 전체가 아니라 버킷 ∩ [하한, 오늘]
+describe("첫 버킷 커버리지 분모 (#408)", () => {
+  const clippedCtx = { today: "2026-09-21", lowerBound: "2020-01-20" };
+  it("1/20~31 매일 기록 → 12/12 · 저커버리지 아님 · partial clipped", () => {
+    const b = month("2020-01", "sleepScore", 80, 12, 31);
+    const [p] = toTrendPoints([b], sleep, "month", clippedCtx);
+    expect(p.totalDays).toBe(12);
+    expect(p.coveredDays).toBe(12);
+    expect(p.lowCoverage).toBe(false);
+    expect(p.partial).toBe("clipped");
+    const pivot = pivotByYear([b], sleep, clippedCtx);
+    expect(pivot.cells[2020][0]).toMatchObject({ totalDays: 12, lowCoverage: false, partial: "clipped" });
+  });
+  it("하한 이후 버킷은 분모 그대로", () => {
+    const [p] = toTrendPoints([month("2024-03", "sleepScore", 80, 10, 31)], sleep, "month", clippedCtx);
+    expect(p.totalDays).toBe(31);
+    expect(p.lowCoverage).toBe(true);
+  });
+});

@@ -209,7 +209,9 @@ async function syncTypeInChunk(
   let synced = 0;
   let ok = false;
   try {
-    const results = await syncAll({ startDate: chunk.start, endDate: chunk.end, dataTypes: [dataType] });
+    // #390: weather backfill 은 skip — 청크마다 뜨는 백그라운드 작업이 스크립트 종료 ($disconnect) 뒤 lock 해제에 실패했다.
+    // 기상 보강은 실행 뒤 `npm run backfill:weather` (main 끝의 안내).
+    const results = await syncAll({ startDate: chunk.start, endDate: chunk.end, dataTypes: [dataType], weatherBackfill: "skip" });
     synced = results.reduce((s, r) => s + r.synced, 0);
     ok = failedTypes(results).length === 0;
     if (ok) nextState = { ...state, succeeded: new Set([...state.succeeded, dataType]) };
@@ -338,6 +340,9 @@ async function main() {
     console.log(
       `${m.dataType}: oldestFetched=${m.oldestFetchedDate ? ymdKST(m.oldestFetchedDate) : "null"} coveredThrough=${m.coveredThroughDate ? ymdKST(m.coveredThroughDate) : "null"} lastSyncDate=${ymdKST(m.lastSyncDate)}`,
     );
+  }
+  if (types.includes("activities")) {
+    console.log("\n활동을 백필했으므로 기상 보강은 별도로: npm run backfill:weather  (#390 — 청크 안에서는 weather backfill 을 skip)");
   }
   return stopped.length === 0 ? 0 : 2;
 }

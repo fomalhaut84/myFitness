@@ -147,6 +147,8 @@ export async function getCachedHistorySummary(params, ctx): Promise<HistorySumma
 
 ### 4.6 수동 쓰기 무효화 범위 (F19)
 
+> **처리 (2026-09-28 · #403 · `403-cache-epoch.md`)**: 봇 프로세스의 식단 기록 · 봇 발 재계산 완료는 DB epoch (`SystemAlertState` `history_cache_epoch`) 로 stamp 에 합쳐져 최대 5초 (stamp memo) 뒤 새 키를 쓴다. 아래 "TTL 10분 수용" 은 그 전 상태.
+
 | 경로 | 프로세스 | 영향 지표 | 처리 |
 |---|---|---|---|
 | `POST /api/body-composition` | Next | weight | bump |

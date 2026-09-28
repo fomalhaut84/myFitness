@@ -1,6 +1,6 @@
 // #394 (M15-2): summary 메모리 캐시. 키 = 파라미터 + syncStamp + 수동 쓰기 버전, TTL · 용량 제한.
 import { describe, expect, it, vi } from "vitest";
-import { createHistoryCache, summaryCacheKey } from "../cache-core";
+import { composeSyncStamp, createHistoryCache, runThenBump, summaryCacheKey } from "../cache-core";
 
 function setup(opts?: { ttlMs?: number; maxEntries?: number }) {
   const state = { stamp: "s1", now: 1_000 };
@@ -108,5 +108,46 @@ describe("summaryCacheKey", () => {
     const k = summaryCacheKey({ ...base, metrics: ["weight"] }, ctx);
     expect(summaryCacheKey({ ...base, granularity: "month", metrics: ["weight"] }, ctx)).not.toBe(k);
     expect(summaryCacheKey({ ...base, from: "2021-01-01", metrics: ["weight"] }, ctx)).not.toBe(k);
+  });
+});
+
+// #403: 프로세스 간 무효화 — DB epoch 가 stamp 에 합쳐진다 (봇 식단 기록 · 봇 발 재계산 완료가 웹 캐시 키를 바꾼다)
+describe("composeSyncStamp (#403)", () => {
+  const t1 = new Date("2026-09-28T00:00:00Z");
+  const t2 = new Date("2026-09-28T00:00:01Z");
+  it("lastSyncAt 이 같아도 epoch 가 바뀌면 다른 stamp · null 조합도 구분", () => {
+    expect(composeSyncStamp(t1, t1)).not.toBe(composeSyncStamp(t1, t2));
+    expect(composeSyncStamp(t1, null)).not.toBe(composeSyncStamp(t1, t1));
+    expect(composeSyncStamp(null, null)).toBe(composeSyncStamp(null, null));
+    expect(composeSyncStamp(null, t1)).not.toBe(composeSyncStamp(t1, null));
+  });
+  it("epoch 만 바뀐 stamp 로 캐시를 조회하면 재조회한다", async () => {
+    const state = { stamp: composeSyncStamp(t1, t1), now: 1_000 };
+    const cache = createHistoryCache({ getSyncStamp: async () => state.stamp, now: () => state.now });
+    const load = vi.fn(async () => ({ v: 1 }));
+    await cache.get("k", load);
+    state.stamp = composeSyncStamp(t1, t2);
+    await cache.get("k", load);
+    expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+// 회귀: #403 사전 리뷰 major 2 — bump 가 재계산보다 먼저면 재계산 전 DailySummary 값이 새 키로 캐시된다
+describe("runThenBump (#403)", () => {
+  it("재계산이 끝난 뒤에 bump · 반환값 통과", async () => {
+    const order: string[] = [];
+    const bump = vi.fn(() => order.push("bump"));
+    const result = await runThenBump(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      order.push("recalc");
+      return 42;
+    }, bump);
+    expect(result).toBe(42);
+    expect(order).toEqual(["recalc", "bump"]);
+  });
+  it("재계산이 던져도 bump 는 한다 (성공분 반영 · stale 큐가 이어받음)", async () => {
+    const bump = vi.fn();
+    await expect(runThenBump(async () => { throw new Error("recalc failed"); }, bump)).rejects.toThrow("recalc failed");
+    expect(bump).toHaveBeenCalledTimes(1);
   });
 });

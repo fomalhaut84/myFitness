@@ -4,6 +4,7 @@ import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, startOfDay, withRateLimit } from "../utils";
 import { isEmptyHeartRate } from "../empty-day";
 import { isTrimmedResponse, preserveUpdate } from "../preserve";
+import { fetchDailyHeartRate, fetchDailySleep } from "../daily-endpoints";
 
 export async function syncHeartRate(
   client: GarminConnect,
@@ -17,7 +18,8 @@ export async function syncHeartRate(
   try {
     for (const date of dates) {
       try {
-        const hrData = await withRateLimit(() => client.getHeartRate(date));
+        // #365: 라이브러리 getHeartRate 는 서버 로컬 TZ 로 날짜를 만든다 — KST 문자열로 직접 호출
+        const hrData = await withRateLimit(() => fetchDailyHeartRate(client, date));
 
         if (!hrData) continue;
 
@@ -34,7 +36,7 @@ export async function syncHeartRate(
         // getSleepData에서 HRV 정보 가져옴
         let hrvStatus: number | null = null;
         try {
-          const sleepData = await client.getSleepData(date);
+          const sleepData = await fetchDailySleep(client, date);
           hrvStatus = sleepData?.avgOvernightHrv ?? null;
         } catch {
           // HRV 데이터 없음

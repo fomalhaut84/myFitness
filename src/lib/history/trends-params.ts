@@ -4,6 +4,7 @@
  * 상태는 전부 URL 쿼리에 있다 — 링크 하나로 같은 화면이 재현된다. 잘못된 값은 redirect 없이 **기본값으로 fallback**
  * (쿼리는 정규화하지 않는다). 기본값은 href 에서 생략해 URL 을 짧게 유지한다.
  */
+import { effectiveLowerBound } from "./bounds";
 import { bucketStartYmd } from "./buckets";
 import { DEFAULT_HISTORY_METRIC_ID, getHistoryMetric, isHistoryMetricId, type HistoryMetricId } from "./metrics";
 import { addMonthsYm, daysInYm, isValidYm } from "./month-cells";
@@ -60,8 +61,11 @@ function oneOf<T extends string>(raw: string | undefined, allowed: readonly T[],
   return allowed.includes(raw as T) ? (raw as T) : fallback;
 }
 
+/** #405: 하한 > 오늘 방어 — ctx 를 쓰는 곳은 전부 이걸 거친다 */
+const lowerBoundOf = (ctx: TrendsContext): string => effectiveLowerBound(ctx.lowerBound, ctx.today);
+
 function clampYm(ym: string, ctx: TrendsContext): string {
-  const min = ctx.lowerBound.slice(0, 7);
+  const min = lowerBoundOf(ctx).slice(0, 7);
   const max = ctx.today.slice(0, 7);
   if (ym < min) return min;
   if (ym > max) return max;
@@ -85,7 +89,7 @@ export function parseMonthRange(raw: string | undefined, ctx: TrendsContext): Mo
   if (parts.length !== 2) return null;
   const [fromYm, toYm] = parts;
   if (!isValidYm(fromYm) || !isValidYm(toYm) || fromYm > toYm) return null;
-  if (fromYm < ctx.lowerBound.slice(0, 7) || toYm > ctx.today.slice(0, 7)) return null;
+  if (fromYm < lowerBoundOf(ctx).slice(0, 7) || toYm > ctx.today.slice(0, 7)) return null;
   return { fromYm, toYm };
 }
 
@@ -103,7 +107,8 @@ export function monthRangeLength(range: MonthRange): number {
 export function monthRangeToYmd(range: MonthRange, ctx: TrendsContext): { from: string; to: string } {
   const start = `${range.fromYm}-01`;
   const end = `${range.toYm}-${String(daysInYm(range.toYm)).padStart(2, "0")}`;
-  return { from: start < ctx.lowerBound ? ctx.lowerBound : start, to: end > ctx.today ? ctx.today : end };
+  const lowerBound = lowerBoundOf(ctx);
+  return { from: start < lowerBound ? lowerBound : start, to: end > ctx.today ? ctx.today : end };
 }
 
 /**
@@ -143,10 +148,11 @@ export function effectiveTrendsRange(range: TrendsRange, unit: TrendsUnit): Tren
  */
 export function resolveTrendsRange(range: TrendsRange, unit: TrendsUnit, ctx: TrendsContext): { from: string; to: string } {
   const effective = effectiveTrendsRange(range, unit);
-  if (effective === "all") return { from: ctx.lowerBound, to: ctx.today };
+  const lowerBound = lowerBoundOf(ctx);
+  if (effective === "all") return { from: lowerBound, to: ctx.today };
   const fromYm = addMonthsYm(ctx.today.slice(0, 7), -(RANGE_MONTHS[effective] - 1));
   const from = bucketStartYmd(`${fromYm}-01`, unit);
-  return { from: from < ctx.lowerBound ? ctx.lowerBound : from, to: ctx.today };
+  return { from: from < lowerBound ? lowerBound : from, to: ctx.today };
 }
 
 /** 현재 쿼리 + 변경분 → href. 기본값은 생략. 비교 구간은 비교 뷰에서만, 기본 구간과 다를 때만 싣는다. */

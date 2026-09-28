@@ -43,8 +43,8 @@ export default async function NutritionPage(props: {
   const { start: todayStart, end: todayEnd } = kstDayRange(todayKstYmd);
   // Codex P2 (PR #300 14회차): risk 는 완료된 KST 7일 (today-7..today-1) 필요 → 8일치 fetch.
   // trend/donut UI 는 today 포함 7일 (today-6..today) 유지 — 마지막 7일 slice 로 노출.
-  const eightDaysAgo = new Date(todayStart);
-  eightDaysAgo.setDate(eightDaysAgo.getDate() - 7);
+  // #365: 서버 로컬 일 산술 대신 instant 산술 (KST 는 DST 없음)
+  const eightDaysAgo = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // 병렬 fetch
   const [selectedLogs, macros8d, latestWeight, latestBalances, activities7d, profile] =

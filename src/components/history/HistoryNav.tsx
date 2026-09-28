@@ -6,6 +6,7 @@
 // 하한은 상수(MIN_HISTORY_YMD)가 아니라 실제 최초 기록일 (`getHistoryLowerBound`) 을 서버에서 받는다.
 import Link from "next/link";
 import { useRouter } from "next/navigation";
+import { effectiveLowerBound } from "@/lib/history/bounds";
 import { addDaysYmd, isValidYmd } from "@/lib/history/buckets";
 import type { HistoryMetricId } from "@/lib/history/metrics";
 import { WEEKDAY_LABELS, addMonthsYm, isValidYm, weekdayIndexMon } from "@/lib/history/month-cells";
@@ -43,12 +44,14 @@ function StepLink({ href, label }: { href: string | null; label: string }) {
   );
 }
 
-export default function HistoryNav({ route, today, lowerBound, metric }: HistoryNavProps) {
+export default function HistoryNav({ route, today, lowerBound: rawLowerBound, metric }: HistoryNavProps) {
+  // #405: 하한 > 오늘 (기록 없는 설치 · 자정 넘김) 이면 오늘로 — 탭 · 이전 링크 · picker min 이 전부 이 값을 쓴다 (사전 리뷰 info 1)
+  const lowerBound = effectiveLowerBound(rawLowerBound, today);
   const router = useRouter();
   const query = historyMetricQuery(metric);
   const minYear = Number(lowerBound.slice(0, 4));
   const maxYear = Number(today.slice(0, 4));
-  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i); // 정규화 뒤라 항상 ≥ 1
 
   const crumbs: { href: string; label: string }[] = [{ href: `${historyYearPath(route.year)}${query}`, label: "기록" }];
   if (route.level !== "year") crumbs.push({ href: `${historyYearPath(route.year)}${query}`, label: String(route.year) });

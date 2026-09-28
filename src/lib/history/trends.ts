@@ -7,6 +7,7 @@
  * - **미완결** (`partial`): 달력 범위가 [하한, 오늘] 에 다 들어가지 않는 버킷 (이번 달 · 하한이 걸친 첫 달).
  *   합계형에서만 의미가 있다 — 9월 21일까지의 합계가 "적게 뛴 달" 로 읽히지 않게.
  */
+import { coverableDays } from "./bounds";
 import { addDaysYmd, type HistoryGranularity } from "./buckets";
 import type { HistoryMetricDef } from "./metrics";
 import { historyDayPath, historyMetricQuery, historyMonthPath, historyYearPath } from "./route-params";
@@ -110,6 +111,8 @@ export function toTrendPoints(
   return buckets.map((bucket, i) => {
     const v = bucket.values[def.id];
     const coveredDays = v?.coveredDays ?? 0;
+    // #408-1: 분모는 버킷 ∩ [하한, 오늘] — 하한이 걸린 첫 버킷이 저커버리지로 오분류되지 않게 (`/history` 연 뷰와 같은 헬퍼)
+    const totalDays = coverableDays(bucket, ctx.lowerBound);
     const prev = buckets[i - 1];
     return {
       key: bucket.key,
@@ -119,8 +122,8 @@ export function toTrendPoints(
       min: v?.min ?? null,
       max: v?.max ?? null,
       coveredDays,
-      totalDays: bucket.totalDays,
-      lowCoverage: isLowCoverage(def, coveredDays, bucket.totalDays),
+      totalDays,
+      lowCoverage: isLowCoverage(def, coveredDays, totalDays),
       partial: partialReason(bucket, ctx),
       href: bucketHref(bucket, granularity, def),
     };
@@ -169,11 +172,12 @@ export function pivotByYear(monthBuckets: readonly SummaryBucket[], def: History
     const row = cells[year] ?? Array.from({ length: 12 }, () => null);
     const v = bucket.values[def.id];
     const coveredDays = v?.coveredDays ?? 0;
+    const totalDays = coverableDays(bucket, ctx.lowerBound); // #408-1
     row[month - 1] = {
       value: v?.value ?? null,
       coveredDays,
-      totalDays: bucket.totalDays,
-      lowCoverage: isLowCoverage(def, coveredDays, bucket.totalDays),
+      totalDays,
+      lowCoverage: isLowCoverage(def, coveredDays, totalDays),
       partial: partialReason(bucket, ctx),
     };
     cells[year] = row;

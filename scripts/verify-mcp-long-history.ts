@@ -288,6 +288,16 @@ check("스크립트가 성공 타입을 succeeded 에 누적한다 (소스 확�
 check("청크 안에서 syncAll 은 타입 하나씩 호출한다 (소스 확인)", /dataTypes: \[dataType\]/.test(backfillSrc) && !/dataTypes: \[\.\.\.types\]/.test(backfillSrc));
 check("타입 싱크 직후 그 타입만 즉시 복원한다 (소스 확인)", /finally \{\s*await restoreLastSync\(nextState, \[dataType\]\)/.test(backfillSrc));
 
+// --- 11b. #390 회귀: backfill 스크립트가 청크 syncAll 의 weather backfill 을 skip 한다 — 백그라운드 작업이 $disconnect 뒤
+//     lock 해제를 시도해 "Response from the Engine was empty" 로 실패하던 경로. syncAll 은 옵션을 받는다.
+console.log("\n[11b] weather backfill skip (#390)");
+check("backfill-history 가 청크 syncAll 에 weatherBackfill: \"skip\" 을 넘긴다 (소스 확인)", /weatherBackfill: "skip"/.test(backfillSrc));
+{
+  const syncSrc390 = readFileSync(join(__dirname, "..", "src", "lib", "garmin", "sync.ts"), "utf8");
+  check("syncAll 이 weatherBackfill 옵션을 받고 plan 으로 실행한다 (소스 확인)", /weatherBackfill\?: WeatherBackfillMode/.test(syncSrc390) && /weatherBackfillPlan\(resolveWeatherBackfillMode\(options\?\.weatherBackfill\)\)/.test(syncSrc390));
+  check("skip 이면 runWeatherBackfill 을 호출하지 않는다 (plan.run 가드)", /if \(weatherPlan\.run\) \{[\s\S]*?runWeatherBackfill\(/.test(syncSrc390));
+}
+
 // --- 12. #381 회귀: updateSyncMetadata 가 lastSyncDate 를 무조건 덮어쓰면 backfill 청크가 커서를 수년 뒤로 끌고,
 //     backfill/cron 경쟁 시 cron 전진분이 스냅샷 복원에 지워진다. 단조 증가 predicate + 소스 스캔.
 console.log("\n[12] lastSyncDate 단조 증가 (#381)");

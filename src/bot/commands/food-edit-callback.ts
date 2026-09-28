@@ -12,6 +12,7 @@
 import type { Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
 import prisma from "../prisma";
+import { withHistoryCacheBump } from "../../lib/history/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -199,19 +200,23 @@ export function registerFoodEditCallback(bot: Bot): void {
       }
 
       // 재계산 (실패 시 stale queue 로 위임). UI 응답 이후에 실행 — 지연 있어도 사용자 방해 X.
-      try {
-        await recalculateCalorieBalance(deletedDate, undefined, prisma);
-      } catch (recalcErr) {
-        console.warn(
-          "[food-edit] delete 후 재계산 실패, stale queue 등록:",
-          recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
-        );
+      // #403 (사전 리뷰 major 2): bump 는 재계산 **뒤** — 재계산 전 값이 새 키로 캐시되지 않게
+      await withHistoryCacheBump(async () => {
         try {
-          await markStaleRecalcDate(deletedDate);
-        } catch {
-          // ignore
+          await recalculateCalorieBalance(deletedDate, undefined, prisma);
+        } catch (recalcErr) {
+          console.warn(
+            "[food-edit] delete 후 재계산 실패, stale queue 등록:",
+            recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
+          );
+          try {
+            await markStaleRecalcDate(deletedDate);
+          } catch {
+            // ignore
+          }
         }
-      }
+      });
+
       return;
     }
 
@@ -370,19 +375,23 @@ export async function handleFoodEditInput(ctx: {
       await ctx.reply("이미 삭제된 로그입니다.", CLEAR_REPLY_MARKUP);
       return true;
     }
-    try {
-      await recalculateCalorieBalance(updated.date, undefined, prisma);
-    } catch (recalcErr) {
-      console.warn(
-        "[food-edit] reply 후 재계산 실패, stale queue 등록:",
-        recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
-      );
+    // #403 (사전 리뷰 major 2): bump 는 재계산 **뒤** — 재계산 전 값이 새 키로 캐시되지 않게
+    await withHistoryCacheBump(async () => {
       try {
-        await markStaleRecalcDate(updated.date);
-      } catch {
-        // ignore
+        await recalculateCalorieBalance(updated.date, undefined, prisma);
+      } catch (recalcErr) {
+        console.warn(
+          "[food-edit] reply 후 재계산 실패, stale queue 등록:",
+          recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
+        );
+        try {
+          await markStaleRecalcDate(updated.date);
+        } catch {
+          // ignore
+        }
       }
-    }
+    });
+
     // 성공 → entry 소비.
     deletePendingEdit(chatId);
     // Codex P2 (PR #351): 커밋 이후 전송은 try 밖에서. 여기서 던지면 catch 가 이미 반영된
@@ -478,21 +487,24 @@ async function handleDescReply(
         items: Prisma.DbNull,
       },
     });
-
     // 재계산 — kcal 이 null 로 리셋됐으므로 밸런스 재계산 (다른 로그 반영). 실패 시 stale queue.
-    try {
-      await recalculateCalorieBalance(existing.date, undefined, prisma);
-    } catch (recalcErr) {
-      console.warn(
-        "[food-edit-desc] 재계산 실패, stale queue 등록:",
-        recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
-      );
+    // #403 (사전 리뷰 major 2): bump 는 재계산 **뒤** — 재계산 전 값이 새 키로 캐시되지 않게
+    await withHistoryCacheBump(async () => {
       try {
-        await markStaleRecalcDate(existing.date);
-      } catch {
-        // ignore
+        await recalculateCalorieBalance(existing.date, undefined, prisma);
+      } catch (recalcErr) {
+        console.warn(
+          "[food-edit-desc] 재계산 실패, stale queue 등록:",
+          recalcErr instanceof Error ? recalcErr.message : String(recalcErr),
+        );
+        try {
+          await markStaleRecalcDate(existing.date);
+        } catch {
+          // ignore
+        }
       }
-    }
+    });
+
 
     deletePendingEdit(chatId);
     // 사전 리뷰 P1 (#350): desc 경로는 임의 텍스트가 그대로 description 이 되고 같은 update 로

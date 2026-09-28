@@ -1,3 +1,6 @@
+// #365: "오늘/어제" 는 서버 컴포넌트라 서버 TZ 로 판정되던 것을 KST 공용 `formatRelativeDate` 로 (중복 구현 제거)
+import { formatRelativeDate } from "@/lib/format";
+
 interface Activity {
   id: string;
   name: string;
@@ -27,22 +30,6 @@ function formatPace(secPerKm: number): string {
 
 function formatDistance(meters: number): string {
   return (meters / 1000).toFixed(2);
-}
-
-function formatDate(isoStr: string): string {
-  const d = new Date(isoStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-
-  if (diffDays === 0) return `오늘 ${time}`;
-  if (diffDays === 1) return `어제 ${time}`;
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
 }
 
 const TYPE_COLORS: Record<string, string> = {
@@ -116,7 +103,7 @@ export default function RecentActivities({
                 <div>
                   <div className="text-[13px]">{a.name}</div>
                   <div className="text-[11px] text-dim">
-                    {formatDate(a.startTime)} · {formatDuration(a.duration)}
+                    {formatRelativeDate(a.startTime)} · {formatDuration(a.duration)}
                   </div>
                 </div>
               </div>

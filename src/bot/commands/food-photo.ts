@@ -10,6 +10,7 @@ import path from "path";
 import { pipeline } from "stream/promises";
 import type { Bot, Context } from "grammy";
 import prisma from "../prisma";
+import { withHistoryCacheBump } from "../../lib/history/cache";
 import type { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -175,18 +176,21 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
     });
 
     // 칼로리 밸런스 재계산. 실패 시 stale queue mark (기존 food.ts recalcWithRetry 로직 축약).
-    try {
-      await recalculateCalorieBalance(photoTimestamp, undefined, prisma);
-    } catch (err) {
-      console.warn(
-        `[food-photo] recalc 실패, stale queue 등록: ${err instanceof Error ? err.message : String(err)}`,
-      );
+    // #403 (사전 리뷰 major 2): bump 는 재계산 **뒤** — 재계산 전 값이 새 키로 캐시되지 않게
+    await withHistoryCacheBump(async () => {
       try {
-        await markStaleRecalcDate(photoTimestamp);
-      } catch {
-        // ignore
+        await recalculateCalorieBalance(photoTimestamp, undefined, prisma);
+      } catch (err) {
+        console.warn(
+          `[food-photo] recalc 실패, stale queue 등록: ${err instanceof Error ? err.message : String(err)}`,
+        );
+        try {
+          await markStaleRecalcDate(photoTimestamp);
+        } catch {
+          // ignore
+        }
       }
-    }
+    });
 
     // 응답 조립.
     const mealLabel = MEAL_LABELS[mealType] ?? mealType;

@@ -7,14 +7,16 @@
  */
 import prisma from "@/lib/prisma";
 import { MIN_HISTORY_YMD } from "@/lib/date";
-import { ymdKST } from "@/lib/garmin/utils";
+import { todayKSTString, ymdKST } from "@/lib/garmin/utils";
+import { effectiveLowerBound } from "./bounds";
 
-/** 순수: 최초 기록일 후보(null 허용) → 하한. */
-export function clampLowerBound(earliest: readonly (string | null)[]): string {
+/** 순수: 최초 기록일 후보(null 허용) → 하한. `todayYmd` 를 주면 하한 > 오늘을 오늘로 (#405: 미래 체중 기록만 있는 설치) */
+export function clampLowerBound(earliest: readonly (string | null)[], todayYmd?: string): string {
   const present = earliest.filter((v): v is string => typeof v === "string");
   if (present.length === 0) return MIN_HISTORY_YMD;
   const min = present.reduce((a, b) => (b < a ? b : a));
-  return min < MIN_HISTORY_YMD ? MIN_HISTORY_YMD : min;
+  const floored = min < MIN_HISTORY_YMD ? MIN_HISTORY_YMD : min;
+  return todayYmd === undefined ? floored : effectiveLowerBound(floored, todayYmd);
 }
 
 export async function getHistoryLowerBound(): Promise<string> {
@@ -25,11 +27,14 @@ export async function getHistoryLowerBound(): Promise<string> {
     prisma.bodyComposition.findFirst({ orderBy: { date: "asc" }, select: { date: true } }),
     prisma.fitnessMetricDaily.findFirst({ orderBy: { date: "asc" }, select: { date: true } }),
   ]);
-  return clampLowerBound([
-    activity ? ymdKST(activity.startTime) : null,
-    daily ? ymdKST(daily.date) : null,
-    sleep ? ymdKST(sleep.date) : null,
-    body ? ymdKST(body.date) : null,
-    fitness ? ymdKST(fitness.date) : null,
-  ]);
+  return clampLowerBound(
+    [
+      activity ? ymdKST(activity.startTime) : null,
+      daily ? ymdKST(daily.date) : null,
+      sleep ? ymdKST(sleep.date) : null,
+      body ? ymdKST(body.date) : null,
+      fitness ? ymdKST(fitness.date) : null,
+    ],
+    todayKSTString(),
+  );
 }
