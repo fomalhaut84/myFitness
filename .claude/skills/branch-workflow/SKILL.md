@@ -98,7 +98,7 @@ npm run lint && npm run typecheck && npm run test && npm run build
 ```
 Agent(subagent_type: "pr-review-toolkit:code-reviewer",
       model: "opus",
-      prompt: "Review branch <feat/N-1> vs dev in /Users/sagan/workspace/myFitness.
+      prompt: "Review branch <feat/N-1> vs dev in the repository root (`git rev-parse --show-toplevel`).
 
 ## Context
 <1~3문장으로 이번 변경 요약>

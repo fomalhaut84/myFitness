@@ -24,6 +24,19 @@ gh api "repos/fomalhaut84/myFitness/pulls/<PR>/comments?per_page=100" \
 
 여러 지적일 수 있으니 결과 전부 요약. path/line/body 를 사용자에게 보여줌.
 
+### Step 1-1: 리뷰가 "없음" 으로 보일 때 — 먼저 👍 리액션 확인 (2026-09-28 · 사용자 정정)
+
+Codex 가 **지적 0건이면 리뷰 · 코멘트를 남기지 않고 PR 에 👍 리액션만 단다.** reviews · comments 가 비어 있다고 "미도착 · 미실행" 으로 적으면 오기록이다 (PR #469 · #470 에서 실제로 틀렸음).
+
+```bash
+gh api repos/<owner>/<repo>/issues/<PR>/reactions --jq '.[] | "\(.user.login) \(.content) \(.created_at)"'
+# chatgpt-codex-connector[bot] +1 <시각>  → 봇 1회차 0건 · 클린 통과. body 에 "봇 1회차: 0건 — 클린 통과 (👍 리액션, <UTC 시각>)"
+```
+
+- 👍 있음 → `봇 P0/P1 = 0/0 · P2 0` 로 8-6 섹션 갱신. 재리뷰 요청 불필요.
+- 👍 도 리뷰도 없음 → 오픈 후 ~10분까지 대기. 그 뒤에도 없으면 그때 `봇: 미실행 (사유, YYYY-MM-DD)`.
+- push 마다 자동 재리뷰가 돌므로 (memory `project_codex_auto_rereview`) 라운드마다 리액션 시각이 갱신되는지로 재실행 여부를 판단한다.
+
 ## Step 2: Severity 판단
 
 리뷰 body 에서 P0/P1/P2/P3 뱃지 확인. **봇은 `P0` 를 최고 심각도로 쓴다** (봇 네이티브 척도):

@@ -17,7 +17,7 @@ myFitness 신규 세션 진입 시 컨텍스트 로드. 이전 세션의 상세�
 ## Step 1: 최근 릴리즈 · 태그 상태
 
 ```bash
-cd ~/workspace/myFitness  # or PWD
+cd "$(git rev-parse --show-toplevel)"  # 저장소 루트 (#370: 절대경로 금지)
 git fetch --tags origin 2>/dev/null
 git tag -l 'v*' | sort -V | tail -5
 git log --oneline main..dev 2>/dev/null | head -10

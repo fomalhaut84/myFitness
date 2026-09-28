@@ -116,4 +116,4 @@ or `.claude/agents/*.md` 정의된 에이전트를 참조해 오케스트레이�
 - `.claude/rules/api-routes.md` — API 규칙
 - `.claude/rules/components.md` — 컴포넌트 규칙
 - `CLAUDE.md` — 프로젝트 개요
-- Memory (`~/.claude/projects/-Users-sagan-workspace-myFitness/memory/`)
+- Memory (`~/.claude/projects/<저장소 슬러그>/memory/` — 슬러그 = 저장소 절대경로의 `/` 를 `-` 로 바꾼 것, #370)
