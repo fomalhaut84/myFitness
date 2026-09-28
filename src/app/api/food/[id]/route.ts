@@ -10,6 +10,7 @@ import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
 import { applyKcalCorrection } from "@/lib/nutrition/scale-macros";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 
 const PATCH_SCHEMA = z.object({
   estimatedKcal: z.number().int().min(0).max(10000).nullable().optional(),
@@ -230,6 +231,10 @@ export async function PATCH(request: Request, ctx: Params) {
     }
     console.error(`[api/food/${id}] PATCH error:`, error);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
+  } finally {
+    // #394: 수동 쓰기는 SyncMetadata 를 안 건드린다 → 히스토리 캐시 버전을 올려 즉시 무효화 (PR #401 Codex P2).
+    // finally 라 실패 시에도 올라가지만 캐시 미스 1회일 뿐이고, 커밋 **뒤에** 올라가는 순서를 보장한다.
+    bumpHistoryCacheVersion();
   }
 }
 
@@ -266,5 +271,9 @@ export async function DELETE(_request: Request, ctx: Params) {
     }
     console.error(`[api/food/${id}] DELETE error:`, error);
     return NextResponse.json({ error: "서버 오류" }, { status: 500 });
+  } finally {
+    // #394: 수동 쓰기는 SyncMetadata 를 안 건드린다 → 히스토리 캐시 버전을 올려 즉시 무효화 (PR #401 Codex P2).
+    // finally 라 실패 시에도 올라가지만 캐시 미스 1회일 뿐이고, 커밋 **뒤에** 올라가는 순서를 보장한다.
+    bumpHistoryCacheVersion();
   }
 }

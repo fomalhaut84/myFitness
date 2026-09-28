@@ -1,0 +1,135 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>종료 후 회복 — 활동 상세 섹션 시안 (#418)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --border:#262626; --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed;
+    --hr:#f87171; --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.5 "Geist",system-ui,sans-serif; }
+  .page { max-width:1040px; margin:0 auto; padding:24px 16px 80px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:20px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:28px 0 -14px; }
+
+  /* 활동 상세 섹션 언어: 제목은 카드 밖, 카드는 12px 라운드 · 1px 보더 */
+  .section { margin-top:24px; }
+  .section .head { display:flex; align-items:baseline; justify-content:space-between; margin-bottom:12px; }
+  .section h2 { font-size:18px; font-weight:600; color:var(--bright); letter-spacing:-0.01em; }
+  .section .head small { font-size:11px; color:var(--dim); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+  .body { display:grid; grid-template-columns:1fr 200px; gap:18px; align-items:stretch; }
+
+  svg { display:block; width:100%; height:auto; overflow:visible; }
+  svg text { font:10px var(--mono); fill:var(--dim); }
+  .grid-line { stroke:#1f1f1f; }
+  .end-line { stroke:var(--sub); stroke-dasharray:3 3; }
+  .run-band { fill:var(--hr); opacity:.05; }
+  .curve { fill:none; stroke:var(--hr); stroke-width:1.5; }
+  .pre { fill:var(--dim); }
+  .post { fill:var(--hr); }
+  .miss { fill:none; stroke:var(--dim); stroke-dasharray:2 2; }
+  .drop { stroke:var(--bright); stroke-width:1; }
+  .drop-label { font:500 12px var(--mono); fill:var(--bright); }
+  .end-label { fill:var(--sub); }
+
+  /* 판독값 2칸 — /insights 의 BigNumber 와 같은 톤 */
+  .readouts { display:grid; grid-template-rows:1fr 1fr; gap:10px; }
+  .big { border:1px solid var(--border); border-radius:12px; padding:12px 14px; background:var(--bg); }
+  .big dt { font-size:11px; color:var(--sub); }
+  .big dd { font:500 26px/1.2 var(--mono); color:var(--bright); margin-top:4px; letter-spacing:-0.02em; }
+  .big dd small { font:400 12px var(--mono); color:var(--sub); margin-left:4px; }
+  .big dd span { display:block; font:400 11px "Geist",sans-serif; color:var(--sub); margin-top:4px; }
+  .big dd.na { font:400 13px "Geist",sans-serif; color:var(--dim); }
+  .foot { font-size:11px; color:var(--dim); margin-top:10px; }
+  .foot.warn { color:var(--sub); }
+  .empty { padding:28px 0; text-align:center; font-size:13px; color:var(--dim); }
+
+  @media (max-width:640px) { .card { padding:16px 12px; } .body { grid-template-columns:1fr; } .readouts { grid-template-rows:none; grid-template-columns:1fr 1fr; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 #418 — 활동 상세 (러닝) 의 "강도 분석" 아래에 들어가는 섹션. 데이터는 로컬 실측 (2026-04-05 트랙 러닝, 종료 22:44:39 KST) 과 그 변형.</p>
+  <div id="app"></div>
+</div>
+<script>
+const OFFSETS = [-4, -2, 0, 2, 4, 6, 10];
+const STATES = [
+  { note: "① 정상 — hrr2 16 · 10분 낙차 48", end: "22:44", pts: [124, 125, 125, 109, 92, 82, 77] },
+  { note: "② +4 결측 (null 샘플) — 곡선 끊김, 숫자는 그대로", end: "22:44", pts: [124, 125, 125, 109, null, 82, 77] },
+  { note: "③ 종료 시점 결측 → hrr2 —, 10분 낙차 — (곡선은 그린다)", end: "22:44", pts: [124, 125, null, 109, 92, 82, 77] },
+  { note: "④ 음수 — 종료 후 심박이 오름 (쿨다운 없이 정지 · 종료 시각 어긋남)", end: "22:44", pts: [118, 121, 112, 126, 104, 90, 80] },
+  { note: "⑤ 샘플 부족 — 종료 후 전부 null (워치 벗음)", end: "22:44", pts: [124, 125, null, null, null, null, null] },
+  { note: "⑥ 그 날 심박 레코드 없음", end: null, pts: null },
+];
+
+function chart(pts, endLabel) {
+  const W = 520, H = 170, L = 34, R = 16, T = 18, B = 26;
+  const xs = m => L + ((m + 5) / 16) * (W - L - R);
+  const valid = pts.filter(v => v !== null);
+  const lo = Math.min(...valid) - 8, hi = Math.max(...valid) + 8;
+  const ys = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const ticks = [Math.ceil(lo / 10) * 10, Math.round((lo + hi) / 20) * 10, Math.floor(hi / 10) * 10].filter((v, i, a) => a.indexOf(v) === i);
+  let s = `<svg viewBox="0 0 ${W} ${H}" role="img" aria-label="종료 후 10분 심박 곡선">`;
+  s += `<rect class="run-band" x="${L}" y="${T}" width="${xs(0) - L}" height="${H - T - B}"/>`;
+  for (const t of ticks) s += `<line class="grid-line" x1="${L}" x2="${W - R}" y1="${ys(t)}" y2="${ys(t)}"/><text x="${L - 6}" y="${ys(t) + 3}" text-anchor="end">${t}</text>`;
+  s += `<line class="end-line" x1="${xs(0)}" x2="${xs(0)}" y1="${T - 4}" y2="${H - B}"/>`;
+  s += `<text class="end-label" x="${xs(0)}" y="${T - 8}" text-anchor="middle">종료 ${endLabel}</text>`;
+  // 선: 연속된 유효 점끼리만 (결측에서 끊긴다)
+  let d = "", open = false;
+  OFFSETS.forEach((m, i) => { const v = pts[i]; if (v === null) { open = false; return; } d += `${open ? "L" : "M"}${xs(m)},${ys(v)} `; open = true; });
+  s += `<path class="curve" d="${d}"/>`;
+  OFFSETS.forEach((m, i) => {
+    const v = pts[i];
+    if (v === null) s += `<circle class="miss" cx="${xs(m)}" cy="${(T + H - B) / 2}" r="4"/>`;
+    else s += `<circle class="${m < 0 ? "pre" : "post"}" cx="${xs(m)}" cy="${ys(v)}" r="4"/>`;
+    s += `<text x="${xs(m)}" y="${H - 8}" text-anchor="middle">${m === 0 ? "0" : (m > 0 ? "+" : "−") + Math.abs(m)}</text>`;
+  });
+  s += `<text x="${W - R}" y="${H - 8}" text-anchor="end" class="end-label">분</text>`;
+  // 낙차 표기: 0 → +2 만. 이 시안에서 굵은 표현은 이것 하나
+  const a = pts[2], b = pts[3];
+  if (a !== null && b !== null && a !== b) {
+    const x = xs(2) + 10, y1 = ys(a), y2 = ys(b);
+    s += `<line class="drop" x1="${x}" x2="${x}" y1="${y1}" y2="${y2}"/><line class="drop" x1="${x - 3}" x2="${x + 3}" y1="${y1}" y2="${y1}"/><line class="drop" x1="${x - 3}" x2="${x + 3}" y1="${y2}" y2="${y2}"/>`;
+    s += `<text class="drop-label" x="${x + 7}" y="${(y1 + y2) / 2 + 4}">${a - b > 0 ? "↓" : "↑"}${Math.abs(a - b)}</text>`;
+  }
+  return s + `</svg>`;
+}
+
+function big(label, v, caption) {
+  return `<dl class="big"><dt>${label}</dt>${v === null ? `<dd class="na">—</dd>` : `<dd>${v}<small>bpm</small>${caption ? `<span>${caption}</span>` : ""}</dd>`}</dl>`;
+}
+
+function section(st) {
+  let inner;
+  if (!st.pts) {
+    inner = `<div class="empty">이 날 심박 기록이 없습니다. 하루 심박이 싱크된 날의 러닝에서만 보입니다.</div>`;
+  } else {
+    const valid = st.pts.filter(v => v !== null).length;
+    const post = st.pts.slice(2).filter(v => v !== null).length;
+    if (post < 2) {
+      inner = `<div class="empty">종료 후 샘플이 부족합니다. 워치를 바로 벗었을 수 있어요.</div>`;
+    } else {
+      const e = st.pts[2], p2 = st.pts[3], p10 = st.pts[6];
+      const hrr2 = e !== null && p2 !== null ? e - p2 : null;
+      const d10 = e !== null && p10 !== null ? e - p10 : null;
+      // HRR 은 양수 = 회복 (종료 − 2분 후). 음수는 종료 뒤 심박이 오른 것 — 부호 그대로 보이고 각주로 설명
+      const signed = v => (v < 0 ? "−" : "") + Math.abs(v);
+      inner = `<div class="body">${chart(st.pts, st.end)}<div class="readouts">
+        ${big("2분 HRR", hrr2 === null ? null : signed(hrr2), hrr2 === null ? "" : `${e} → ${p2} bpm`)}
+        ${big("10분 낙차", d10 === null ? null : signed(d10), d10 === null ? "" : `${e} → ${p10} bpm`)}
+      </div></div>
+      <p class="foot${hrr2 !== null && hrr2 < 0 ? " warn" : ""}">${hrr2 !== null && hrr2 < 0 ? "종료 뒤에도 심박이 올랐어요 — 쿨다운 없이 멈췄거나 종료 시각이 어긋났을 수 있습니다. " : ""}하루 심박 기록의 2분 샘플 — 워치의 1분 HRR 과 다릅니다. 점은 ±60초 안의 가장 가까운 샘플.</p>`;
+    }
+  }
+  return `<p class="state">${st.note}</p><section class="section"><div class="head"><h2>종료 후 회복</h2><small>2분 해상도</small></div><div class="card">${inner}</div></section>`;
+}
+
+document.getElementById("app").innerHTML = STATES.map(section).join("");
+</script>
+</body>
+</html>

@@ -340,6 +340,118 @@
 
 ---
 
+# 마일스톤 15: 히스토리 브라우저 + 기간별 추이 분석 ✅
+
+> 시작: 2026-09-18 · 완료: 2026-09-22 (v2.34.0). 6년치 Garmin 데이터를 연 → 월 → 일로 탐색하고 지표별 주/월/연 추이를 비교. 읽기 전용 UI + 집계 API.
+> 스펙: `docs/specs/m15-overview.md` · 추적 이슈 #392
+
+## M15-1: 집계 기반 — KST 버킷 · 지표 레지스트리 · history summary API — 우선순위 ★★★ ✅
+
+- [x] `src/lib/history/` 버킷 헬퍼 (`startOfMonthKST` / `startOfYearKST`) + 지표별 집계 정책 레지스트리
+- [x] `GET /api/history/summary` (granularity · from/to · metrics) — raw query 없이 JS 집계
+- [x] `/api/activities` · `/api/export` `from/to`
+- [x] 인라인 월 시작 · 중복 `kstDayRange` 정리 (#365 흡수)
+- [x] F12 6년 `year` 요청 1s 이내 — summary 메모리 캐시 (#394) 적용 후 **프로덕션 재측정 (v2.31.0, 2026-09-21, 서버 내부 `127.0.0.1:4200` · 전 지표 14개): 콜드 1.65s → 웜 0.090s · 0.003s · 0.003s** (이전 웜 1.09~1.22s)
+- 이슈: #393 (PR #399 · v2.30.0 · F12 는 v2.31.0 에서 닫힘)
+
+## M15-2: `/history` 연 · 월 · 일간 종합 — 우선순위 ★★★ ✅
+
+- [x] 레벨 공용 네비 (이전/다음 + 점프) · 브레드크럼
+- [x] 연 뷰 (12개월 카드 + 지표 선택 + 연 KPI) · 월 뷰 (값 셀 그리드 + 월 KPI + 일별 스트립)
+- [x] 일간 종합 페이지 8 섹션 (활동 · 수면 · 심박 · 체성분 · 혈압 · 걸음/칼로리 · 식단 · AI 리포트)
+- [x] 초기 지표: 러닝 km · 걸음 · 수면 점수 · 안정시 심박 · 체중
+- [x] summary 메모리 캐시 + 수동 쓰기 무효화 (#393 F12 이월분) · 지표 3건 (러닝 시간 합 · 칼로리 밸런스 · 섭취 칼로리 — 식단 캘린더 B-2 흡수)
+- 이슈: #394 (PR #402 · v2.31.0) · 후속 #403 (프로세스 간 캐시 무효화 — 완료 · DB epoch · `403-cache-epoch.md`) · #405 (하한 > 오늘 방어 — 완료 · `405-408-history-bounds.md`)
+
+## M15-3: `/trends` 추이 분석 — 우선순위 ★★ ✅
+
+- [x] 시계열 (합계 막대 / 평균 선+밴드) · 전년 동기 겹침 · 계절성 · 기간 비교
+- [x] 불완전한 데이터 구분 (결측 · 기록 절반 미만 · 다 채워지지 않은 버킷) · 임의 구간 롤업 (`range-totals`) · 레지스트리 `sparse`
+- 이슈: #395 (PR #407 · v2.32.0 · 배포 후 실데이터 확인 2026-09-21) · 후속 #408 (기록 시작일이 걸린 첫 버킷 — 완료 · `405-408-history-bounds.md`) · `/trends` → `/history` 링크의 지표 유지는 #396 에 편입
+
+## M15-4: 하이라이트 — 우선순위 ★★ ✅
+
+- [x] 개인 기록 패널 · 이벤트 마커 (MetricChange · 플랜 · 레이스) · 포인트 → 일 뷰 링크 · 커버리지 띠
+- [x] `/trends` 판독값 · 포인트의 `/history` 링크에 선택 지표 유지 (`bucketHref` — 릴리즈 PR #409 Codex P2)
+- [x] `Activity.eventType` 컬럼 승격 + rawData 백필
+- 이슈: #396 · PR #412 · **v2.33.0** (2026-09-22) · 프로덕션 백필 완료 (race 14). 후속: #413 (포인트 클릭 접근성) · #414 (과거 활동 재조회 — 완료: cron · /sync 활동 30일 되돌아보기 · 스펙 `414-activity-recheck.md`)
+
+## M15-5: 심화 시각화 — 우선순위 ★ ✅
+
+- [x] 효율 산점도 · HR 존 분포 · 기상 vs 페이스 · 교차 상관 (주간 km → 다음 주 RHR) 4개 선별 → `/insights` (수면 규칙성은 `/lifestyle` 에 이미 있어 제외)
+- 이슈: #397 · PR #417 · **v2.34.0** (2026-09-22). 미선별 후보는 #397 체크리스트 · D8 표. 후속: #419 (레이스 점 연도 색 · 제외 사유 — **v2.39.1** 완료 · RSC 페이로드는 배포 후 실측으로 판단) · #418 (HRR)
+
+**M15 완료 (2026-09-22, v2.30.0 ~ v2.34.0)** — `/history` · `/trends` · `/insights` + 집계 계층 · 하이라이트 · `Activity.eventType`.
+
+# 마일스톤 16: 심박 회복 (HRR) — 활동 상세 + 연도별 추이
+
+> 시작: 2026-09-23. #418 의 스코프 분할 — 활동 1건의 회복 곡선 (M16-1) → 컬럼 승격 · 백필 · `/insights` 패널 (M16-2). API 호출 0.
+
+## M16-1: 러닝 종료 후 심박 회복 (HRR) — 활동 상세 — 우선순위 ★★ ✅
+
+- [x] `src/lib/heart/recovery.ts` 순수 로직 (2분 격자 최근접 샘플 · 보간 없음 · `elapsedDuration` 벽시계 종료 · 자정 앞뒤 날) + vitest 16건
+- [x] 활동 상세 "종료 후 회복" 섹션 — 곡선 −4 … +10 분 · 2분 HRR · 10분 낙차 · 빈 상태 3구분 · "2분 해상도" 표기
+- 이슈: #418 · PR #423 · **v2.35.0** (2026-09-23). 스펙 `docs/specs/418-hr-recovery.md` · 시안 `docs/designs/418-hr-recovery/`. 후속: #425 (`/insights` 연도별 HRR — `Activity.hrr2` 승격 + 백필)
+
+## M16-2: `/insights` 연도별 HRR 추이 — `Activity.hrr2` 승격 + 백필 — 우선순위 ★★ ✅
+
+- [x] `Activity.hrr2` · `hrrDrop10` 컬럼 (수동 SQL) · `syncAll` 후처리 · `backfill:hrr`
+- [x] `/insights` 패널 E "회복이 빨라졌나?" — 연도별 중앙값
+- 이슈: #425 · PR #428 · **v2.36.0** (2026-09-23). 프로덕션 백필 갱신 111 / 2,157 — 심박 시계열이 2026-04-20 이후만 존재 (Garmin 보존 창 · 09-17 백필 덮어쓰기 → **#431** P1). 후속: #429 (캡션 시작일 · `--dry-run` 이어가기 · 중앙값 토글) · #431
+
+## M16-3: 심박 · 수면 재싱크 덮어쓰기 가드 — 우선순위 ★★★ ✅
+
+- [x] `preserve.ts` — update 에서 null 필드 생략 · `isTrimmedResponse` (기존 rawData 의 값 있던 키가 응답에서 사라지면 rawData 유지, 중첩 재귀) · `backfill:history` 보존 창 밖 wellness 기본 중단
+- [x] 패널 E 후속 (#429)
+- 이슈: #431 · #435 · #429 · PR #433 · #436 · **v2.36.1** (2026-09-23). 2026-04 이전 시계열 · HRV 는 복구 불가. 후속: #437 (숫자 문자열 · sleepScoreDetails 보존 — **v2.39.1** 완료 · PR #470 · `fetchers/sleep-payload.ts` 순수 분리). 배포 후 확인 (09-23 15:00 cron 뒤 array 156 · HRV 156 유지) · daily_stats 보존 창 감사 **창 없음** (431 스펙 §4)
+
+# 마일스톤 17: 러닝 상세 AI 평가 확장 + HRR 후속
+
+> 시작: 2026-09-23. 세션 인계 후보 3건 (#440 · #441 · #442) — M16 의 HRR 을 `/trends` 로 넓히고, 활동 상세 AI 평가를 페이지 지표 전체 근거로.
+
+## M17-1: 러닝 상세 AI 평가 — 상세 페이지 지표 전체를 근거로 — 우선순위 ★★★ ✅
+
+- [x] `src/lib/ai/activity-eval/` 순수 조립 (섹션 8개 · km 스플릿 파생값 · rawData 보조 지표 · 요약 모드) + vitest 27건
+- [x] `POST /api/activities/[id]/evaluate` — 서버 조립 · 평가 전용 세션 채널 · Garmin 스플릿 공용 fetch
+- [x] `AiEvalCard` — 근거 칩 · 섹션 헤딩 · 종합 강조 · 분석 중/오류/다시 평가
+- 이슈: #440 · PR #446 · **v2.37.0** (2026-09-23). 스펙 `docs/specs/440-activity-ai-eval.md` · 시안 `docs/designs/440-activity-ai-eval/`. 후속: #444 (이브닝 리포트 · MCP `get_activity_context`) · #448 (Codex P2 3건 — 같은 코스 이전 기록 조회를 매처 안으로 · 제외 집합 · 1km 라벨)
+
+## M17-2: HRR 해상도 조사 (2분 → 1분) — 우선순위 ★ ✅ (소스 없음 · 종료)
+
+- [x] 프로덕션 간격 분포 (2026-09-23): 2026-04 ~ 09 전 월 `gap_60s = 0` · 120초 107,630 · 기타 183 (null 구간) — **2분 격자 확인**
+- [x] 워치 "매초" 설정 실험 (사용자 · 2026-09-25): 설정 다음 날 하루 전체 719 샘플 모두 120초 · 60초 0건 → **소스 없음 · 2분 격자 고정** 결론 기록 (418 · 425 · 441 스펙 §7/§5) · 이슈 종료 (문서 PR)
+- 이슈: #441 · 스펙 `docs/specs/441-hrr-1min-resolution.md`
+
+## M17-4: 월별 그리드 월요일 시작 — 우선순위 ★ ✅
+
+- [x] `month-cells.ts` 정본 (`WEEKDAY_LABELS` · `weekdayIndexMon`) · `MonthGrid` · `HistoryNav` · `MonthlyHeatmap` (로컬 TZ 달력 제거 · #365 잔여)
+- 이슈: #445 · PR #452 · **v2.37.1** (2026-09-24). 스펙 `docs/specs/445-monday-start-grids.md`. 대시보드 주간 차트는 롤링 7일이라 대상 아님
+
+## M17-3: `/trends` HRR 지표 — 우선순위 ★★ ✅
+
+- [x] `metrics.ts` `hrr2` (activity · median 집계 · sparse) · 시작일 캡션 · 개인 기록 "가장 큰 2분 HRR"
+- 이슈: #442 · PR #447 · **v2.37.0** (2026-09-23). 스펙 `docs/specs/442-trends-hrr-metric.md`. 후속: #449 (기간 비교 안내 문구 지표 방향)
+
+## M17-5: 리포트 근거 확장 Phase 1 — 도구 필드 · 활동 컨텍스트 도구 · 프롬프트 — 우선순위 ★★ ✅
+
+- [x] `get_activities` daily 행 `hrr2` · `hrrDrop10` · `zones` · `zonePct` + envelope `runningSummary` (`summarizeRunningWindow` 순수 · 80/20 · HRR 중앙값)
+- [x] `GET /api/activities/[id]/context` + MCP `get_activity_context` (HTTP 경유 · #440 조립 재사용) · allowlist · 시스템 프롬프트 가이드
+- [x] 프롬프트 정본 `report-prompts.ts` — 모닝 혈압 · 운동 추천 / 이브닝 활동 컨텍스트 · 기상 영향 / 주간 이번 주 vs 직전 4주 (endDate) · VO2max/LT · 플랜 준수율 — vitest 회귀
+- [ ] 배포 후 첫 이브닝 · 주간 리포트에서 도구 호출 확인
+- 이슈: #444 · PR #456 · fix PR #458 (릴리즈 PR Codex P2 — `hrrDrop10` 안내 단위) · **v2.38.0** (2026-09-24). 스펙 `docs/specs/444-report-evidence.md`. Phase 2: M17-6 (#455)
+
+## M17-6: 리포트 근거 확장 Phase 2 — 개인 기록 도구 · 강도 분 · 수면 규칙성 · 다이나믹스 추세 — 우선순위 ★★ ✅
+
+- [x] `GET /api/history/records` + MCP `get_personal_records` (웹 API 경유 · `paceMinKm`) · allowlist · 시스템 프롬프트
+- [x] `summarizeDailyWindow` → `get_daily_stats` `totals` (가중 강도 분 moderate + 2×vigorous · 성분 · 층수 — Codex P1: 저장 컬럼은 단순합)
+- [x] `lib/sleep/regularity.ts` (KST · 취침만 자정 접기) → `get_sleep` `regularity` · `/lifestyle` 라벨 임계 공유
+- [x] `runningSummary.dynamics` 중앙값 (보폭 cm 혼재 행 정규화 `lib/fitness/stride.ts` — 활동 평가와 공용)
+- [x] 프롬프트: 이브닝 신기록 · 주간 신기록 · 체지방/근육량 · 강도 분 vs 150 · 규칙성 · 다이나믹스 두 창
+- [x] 배포 후 이브닝 (러닝 있는 날) · 주간 리포트에서 항목 확인 — 사용자 확인 2026-09-28: 정상
+- 이슈: #455 · PR #462 · 스펙 `docs/specs/455-report-evidence-phase2.md`. 같은 릴리즈: #448 (PR #461 · 비교 매처 before · 제외 집합 · 1km 라벨) · #449 (PR #460 · `/trends` 비교 푸터 `betterWhen`)
+
+---
+
 # 유지보수 / 보안
 
 ## Dependabot 보안 패치 2026-06 ✅

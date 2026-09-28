@@ -1,0 +1,155 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>AI 평가 — 활동 상세 결과 블록 시안 (#440)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --border:#262626; --border-hover:#333333; --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed;
+    --accent:#22c55e; --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  .page { max-width:1040px; margin:0 auto; padding:24px 16px 80px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:20px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:32px 0 -14px; }
+
+  /* 활동 상세 섹션 언어 — 제목은 카드 밖 h2, 카드는 12px 라운드 · 1px 보더 */
+  .section { margin-top:24px; }
+  .section .head { display:flex; align-items:baseline; justify-content:space-between; gap:12px; margin-bottom:12px; }
+  .section h2 { font-size:18px; font-weight:600; color:var(--bright); letter-spacing:-0.01em; }
+  .section .head small { font:11px var(--mono); color:var(--dim); white-space:nowrap; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:20px; }
+
+  /* 버튼 — 기존 "🤖 AI 평가 요청" 과 동일 (border · text-sub · hover bright) */
+  .btn { display:inline-flex; align-items:center; gap:6px; padding:8px 16px; border-radius:8px; border:1px solid var(--border); background:transparent; color:var(--sub); font:13px "Geist",sans-serif; cursor:pointer; }
+  .btn:hover { color:var(--bright); border-color:var(--border-hover); }
+  .btn.small { padding:5px 10px; font-size:11px; }
+  .btn[disabled] { opacity:.5; cursor:default; }
+
+  /* 근거 칩 — 카드 상단 한 줄. 포함 = 실선 · 생략 = 점선 (흐림) */
+  .chips { display:flex; flex-wrap:wrap; gap:6px; margin-bottom:16px; }
+  .chip { font:11px var(--mono); color:var(--sub); border:1px solid var(--border); border-radius:999px; padding:2px 9px; line-height:18px; }
+  .chip.omitted { color:var(--dim); border-style:dashed; }
+  .chips-label { font-size:11px; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; line-height:24px; margin-right:2px; }
+
+  /* 본문 — 모델 마크다운 (### 제목 + 문단). h3 는 기존 카드 라벨 (11px · dim · uppercase · tracking) 과 같은 급 */
+  .eval h3 { font-size:11px; font-weight:500; color:var(--dim); letter-spacing:.06em; text-transform:uppercase; margin:16px 0 4px; }
+  .eval h3:first-child { margin-top:0; }
+  .eval p { font-size:13px; color:var(--text); }
+  .eval strong { color:var(--bright); font-weight:500; }
+  .eval ul { padding-left:18px; font-size:13px; }
+  /* 종합 — 유일하게 밝은 문단. 왼쪽 1px 액센트 선으로 구분 (색 채움 없음) */
+  .eval .summary { margin-top:18px; padding:2px 0 2px 14px; border-left:1px solid var(--accent); }
+  .eval .summary h3 { color:var(--sub); }
+  .eval .summary p { color:var(--bright); }
+  .eval .next { font-size:13px; color:var(--text); margin-top:8px; }
+  .eval .next b { color:var(--accent); font-weight:500; margin-right:6px; }
+
+  .foot { display:flex; align-items:center; justify-content:space-between; gap:12px; margin-top:18px; padding-top:14px; border-top:1px solid var(--border); font-size:11px; color:var(--dim); }
+  .foot .meta { font:11px var(--mono); }
+
+  /* 분석 중 — 카드 안 한 줄. 점 3개 펄스 + 경과 초 (mono) */
+  .busy { display:flex; align-items:center; gap:12px; font-size:13px; color:var(--sub); }
+  .dots span { display:inline-block; width:5px; height:5px; border-radius:50%; background:var(--sub); margin-right:3px; animation:p 1.2s infinite; }
+  .dots span:nth-child(2){ animation-delay:.2s } .dots span:nth-child(3){ animation-delay:.4s }
+  @keyframes p { 0%,80%,100%{ opacity:.25 } 40%{ opacity:1 } }
+  .busy .t { font:12px var(--mono); color:var(--dim); }
+
+  /* 오류 — 색 경고 없이 문장 + 다시 시도 */
+  .err { display:flex; align-items:center; justify-content:space-between; gap:12px; font-size:13px; color:var(--sub); }
+  .err code { font:12px var(--mono); color:var(--dim); }
+
+  @media (max-width:640px) { .card { padding:16px 12px; } .section .head { flex-direction:column; gap:4px; } .foot { flex-direction:column; align-items:flex-start; } }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 #440 — 활동 상세 (러닝) 맨 아래 "AI 평가" 블록. 데이터는 로컬 2026-04-05 트랙 러닝 (7.32km · 5:15/km · avgHR 123 · hrr2 16) 을 바탕으로 한 예시 응답.</p>
+
+  <p class="state">A · 대기 (현행과 동일 — 버튼 하나)</p>
+  <div class="section">
+    <button class="btn">🤖 AI 평가 요청</button>
+  </div>
+
+  <p class="state">B · 분석 중 (버튼 자리가 카드로 바뀜 · 경과 초)</p>
+  <div class="section">
+    <div class="head"><h2>AI 평가</h2><small>sonnet</small></div>
+    <div class="card">
+      <div class="busy"><span class="dots"><span></span><span></span><span></span></span> 상세 지표 8개 섹션을 근거로 분석하고 있어요 <span class="t">14초 · 보통 30~90초</span></div>
+    </div>
+  </div>
+
+  <p class="state">C · 결과 (전체 모드 · 스플릿 조회 실패로 생략 1)</p>
+  <div class="section">
+    <div class="head"><h2>AI 평가</h2><small>2026-09-23 21:40 · 47초</small></div>
+    <div class="card">
+      <div class="chips">
+        <span class="chips-label">근거</span>
+        <span class="chip">기본 지표</span>
+        <span class="chip omitted" title="Garmin 스플릿 API 응답 없음">km 스플릿 · 조회 실패</span>
+        <span class="chip">강도 분석</span>
+        <span class="chip">종료 후 회복</span>
+        <span class="chip">러닝 다이나믹스</span>
+        <span class="chip">추가 지표</span>
+        <span class="chip">환경</span>
+        <span class="chip">비교</span>
+      </div>
+      <div class="eval">
+        <h3>기본 지표</h3>
+        <p>7.32km 를 5:15/km 로 53분, 평균 심박 123bpm 은 Zone 2 상단이라 <strong>이지 러닝의 교과서적 강도</strong>입니다. 정지 시간 2분 24초는 신호 대기 수준이라 페이스에 영향이 없어요.</p>
+        <h3>강도 분석</h3>
+        <p>Z2 71% · Z3 22% 로 라벨 "이지 런" 과 일치합니다. Z3 22% 는 후반 오르막 구간으로 보이고 걱정할 수준은 아닙니다.</p>
+        <h3>종료 후 회복</h3>
+        <p>2분 HRR 16bpm (125 → 109) 은 <strong>올해 중앙값 14bpm 보다 조금 빠른 회복</strong>이고, 10분 뒤 77bpm 까지 내려온 곡선도 매끄럽습니다.</p>
+        <h3>러닝 다이나믹스</h3>
+        <p>케이던스 172spm · 보폭 1.10m · 지면접촉 262ms — 이 페이스에서 케이던스가 170 위면 착지 부담이 적은 편입니다. 수직 비율 8.9% 도 양호해요.</p>
+        <h3>추가 지표</h3>
+        <p>유산소 TE 2.8 ("유지") · 트레이닝 로드 58 로 회복을 해치지 않는 세션입니다. 바디배터리는 −11 로 소모가 작았습니다.</p>
+        <h3>환경</h3>
+        <p>기온 11.2°C · 습도 48% · 바람 1.8m/s 로 이상적인 조건이었어요. 손목 온도 24°C 는 의류 영향이라 기상과 별개로 보세요.</p>
+        <h3>비교</h3>
+        <p>같은 코스 최근 6회 대비 페이스 −8초/km, 심박 −3bpm — <strong>같은 심박에서 더 빨라지고 있습니다.</strong> 비슷한 거리 최근 10건 중앙값 (5:24/km · 126bpm) 과 비교해도 같은 방향이에요.</p>
+        <div class="summary">
+          <h3>종합</h3>
+          <p>강도 · 회복 · 효율 세 축이 모두 이지 러닝의 목적에 맞게 나온 세션입니다. 유일한 아쉬움은 스플릿을 못 봐서 후반 페이스 흔들림을 확인하지 못한 점이에요.</p>
+          <p class="next"><b>다음 러닝</b>같은 코스에서 마지막 2km 만 Zone 3 (145~155bpm) 로 올려 보세요 — 지금 회복력이면 부담 없이 소화됩니다.</p>
+        </div>
+      </div>
+      <div class="foot">
+        <span class="meta">sonnet · 근거 7 / 8 섹션 · 2분 해상도 HRR</span>
+        <button class="btn small">다시 평가</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="state">D · 오류</p>
+  <div class="section">
+    <div class="head"><h2>AI 평가</h2></div>
+    <div class="card">
+      <div class="err">
+        <span>평가를 불러오지 못했어요. <code>Claude CLI 실패 (subtype=error_max_turns, turns=15)</code></span>
+        <button class="btn small">다시 시도</button>
+      </div>
+    </div>
+  </div>
+
+  <p class="state">E · 요약 모드 (러닝 외 종목 — 현행 3줄 · 칩 없음)</p>
+  <div class="section">
+    <div class="head"><h2>AI 평가</h2><small>2026-09-23 21:41 · 22초</small></div>
+    <div class="card">
+      <div class="eval">
+        <p>45분 실내 사이클 · 평균 심박 118bpm 은 가벼운 유산소 강도예요.</p>
+        <p>유산소 TE 2.1 로 회복에 부담이 없습니다.</p>
+        <p>러닝 사이의 크로스 트레이닝으로 적절한 세션입니다.</p>
+      </div>
+      <div class="foot">
+        <span class="meta">sonnet · 요약</span>
+        <button class="btn small">다시 평가</button>
+      </div>
+    </div>
+  </div>
+</div>
+</body>
+</html>

@@ -1,4 +1,5 @@
 import cron from "node-cron";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { syncAll } from "@/lib/garmin/sync";
 import { runFoodKcalBackfill } from "@/lib/nutrition/backfill";
 import { listStaleRecalcDates, ackStaleRecalcClaim } from "@/lib/nutrition/stale-recalc";
@@ -38,11 +39,14 @@ export function startCronJobs() {
         // #328: 2 → 3일로 window 확장. Garmin API 가 늦게 sync 되는 데이터 (체중 등)
         // margin 확보. upsert 라 중복 저장 없음.
         const { daysAgoKST, todayKST } = await import("@/lib/garmin/utils");
+        const { ACTIVITY_RECHECK_DAYS } = await import("@/lib/garmin/activity-recheck");
         const results = await syncAll({
           startDate: daysAgoKST(3),
           endDate: todayKST(),
           // 신규 타입은 3일 윈도우 대신 365일 초기 히스토리 로드
           bootstrapNewTypes: true,
+          // #414: 활동만 최근 30일 되돌아보기 — 과거 활동의 레이스 표시 · 이름 변경 반영 (페이지 +1~2)
+          activityRecheckDays: ACTIVITY_RECHECK_DAYS,
         });
         const total = results.reduce((sum, r) => sum + r.synced, 0);
         const failed = results.filter((r) => r.error).length;
@@ -92,6 +96,9 @@ export function startCronJobs() {
       } catch (error) {
         console.error("[cron] 싱크 에러:", error);
       } finally {
+        // #394: 위 kcal backfill · stale recalc 는 syncAll 이 lastSyncAt 을 갱신한 **뒤에** DailySummary 를 쓴다 →
+        // stamp 로는 안 잡히므로 버전을 올린다 (사전 리뷰 info 2).
+        bumpHistoryCacheVersion();
         isSyncing = false;
       }
     },

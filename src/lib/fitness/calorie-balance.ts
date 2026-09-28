@@ -1,4 +1,5 @@
 import type { Prisma, PrismaClient } from "@/generated/prisma/client";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import defaultPrisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 
@@ -164,20 +165,27 @@ export async function recalculateAllCalorieBalances(
 
   let processed = 0;
   let failed = 0;
-  for (const s of summaries) {
-    try {
-      await recalculateCalorieBalance(s.date, undefined, db);
-      processed++;
-    } catch (err) {
-      failed++;
-      console.error(
-        // #364: KST 자정 instant 를 UTC 로 찍으면 로그 날짜가 하루 앞으로 밀린다.
-        // 장애 때 실제로 읽는 것은 이 실패 로그다 (cron.ts:70 성공 로그의 쌍둥이).
-        "[calorie-balance] 재계산 실패",
-        ymdKST(s.date),
-        err instanceof Error ? err.message : String(err)
-      );
+  try {
+    for (const s of summaries) {
+      try {
+        await recalculateCalorieBalance(s.date, undefined, db);
+        processed++;
+      } catch (err) {
+        failed++;
+        console.error(
+          // #364: KST 자정 instant 를 UTC 로 찍으면 로그 날짜가 하루 앞으로 밀린다.
+          // 장애 때 실제로 읽는 것은 이 실패 로그다 (cron.ts:70 성공 로그의 쌍둥이).
+          "[calorie-balance] 재계산 실패",
+          ymdKST(s.date),
+          err instanceof Error ? err.message : String(err)
+        );
+      }
     }
+  } finally {
+    // #394: 호출자 (프로필 PATCH · daily-summary fetcher) 가 전부 await 하지 않는 백그라운드로 돌린다. 호출 시점이나
+    // lastSyncAt 갱신 시점에 히스토리 캐시 키가 바뀌면 **재계산 중간** 값이 새 키로 캐시돼 TTL 동안 남으므로,
+    // 순차 재계산이 끝난 여기서 버전을 올린다 (PR #402 Codex P2 1 · 3회차). 일부 실패해도 성공분은 반영돼야 한다.
+    bumpHistoryCacheVersion();
   }
   return { processed, failed };
 }

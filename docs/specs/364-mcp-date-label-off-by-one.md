@@ -135,6 +135,8 @@ MCP 응답의 날짜 라벨을 **KST 기준**으로 통일해, AI 가 날짜로 
 아래는 **같은 근본 원인 (서버 로컬 TZ 의존) 이지만 이번 PR 스코프 밖**이다 → **#365**. 사전 리뷰가
 확인한 지점이므로 후속 이슈에서 그대로 착수할 것.
 
+> **처리 (2026-09-28 · #365 · `365-server-tz-residuals.md`)**: 아래 표 전부 + 감사 A1 (fetcher 날짜 직렬화) + `formatDateLocal` · `formatRelativeDate` · `formatDateTime` KST 화 + PM2 `TZ` 고정 + verify 스캔 확장. `birthDate` 제외 항목은 KST 읽기가 양쪽 호스트에서 안전해 함께 해소 (365 스펙 §4).
+
 | 위치 | 영향 | 왜 분리했나 |
 |---|---|---|
 | `src/bot/commands/sleep.ts:18`, `weight.ts:19`, `run.ts:30` | `toLocaleDateString("ko-KR")` 에 `timeZone` 없음. **사용자가 텔레그램에서 직접 읽는 날짜**. `run.ts` 는 `startTime` 기준이라 아침 러닝이 대상 | 별도 프로세스 (`myfitness-bot`), 실사용 확인 필요 |

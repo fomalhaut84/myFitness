@@ -1,6 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { formatDateLocal } from "@/lib/format";
+import { ymdKST } from "@/lib/garmin/utils";
+import { parseYmdRangeParams } from "@/lib/history/range-params";
 
 function formatPaceCsv(secPerKm: number | null): string {
   if (secPerKm === null) return "";
@@ -36,9 +37,16 @@ export async function GET(request: Request) {
   try {
     const url = new URL(request.url);
     const type = url.searchParams.get("type") ?? "activities";
+    // #393 (M15-1): from/to = KST 달력일 inclusive. 없으면 전체 (기존 동작).
+    const range = parseYmdRangeParams(url.searchParams.get("from"), url.searchParams.get("to"));
+    if (!range.ok) {
+      return NextResponse.json({ error: range.error }, { status: 400 });
+    }
+    const rangeSuffix = range.from || range.to ? `-${range.from ?? "start"}_${range.to ?? "end"}` : "";
 
     if (type === "activities") {
       const activities = await prisma.activity.findMany({
+        where: range.where ? { startTime: range.where } : {},
         orderBy: { startTime: "desc" },
         select: {
           name: true,
@@ -59,7 +67,7 @@ export async function GET(request: Request) {
       const csv = toCsv(
         ["날짜", "이름", "타입", "거리(km)", "시간(분)", "페이스(/km)", "평균HR", "최대HR", "칼로리", "고도(m)", "TE", "VO2max"],
         activities.map((a) => [
-          formatDateLocal(a.startTime),
+          ymdKST(a.startTime),
           a.name,
           a.activityType,
           a.distance ? (a.distance / 1000).toFixed(2) : "",
@@ -77,13 +85,14 @@ export async function GET(request: Request) {
       return new Response(csv, {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="myfitness-activities-${formatDateLocal(new Date())}.csv"`,
+          "Content-Disposition": `attachment; filename="myfitness-activities${rangeSuffix}-${ymdKST()}.csv"`,
         },
       });
     }
 
     if (type === "body") {
       const records = await prisma.bodyComposition.findMany({
+        where: range.where ? { date: range.where } : {},
         orderBy: { date: "desc" },
         select: { date: true, weight: true, bmi: true, bodyFat: true, muscleMass: true },
       });
@@ -91,7 +100,7 @@ export async function GET(request: Request) {
       const csv = toCsv(
         ["날짜", "체중(kg)", "BMI", "체지방(%)", "근육량(kg)"],
         records.map((r) => [
-          formatDateLocal(r.date),
+          ymdKST(r.date),
           r.weight.toFixed(1),
           r.bmi?.toFixed(1) ?? "",
           r.bodyFat?.toFixed(1) ?? "",
@@ -102,7 +111,7 @@ export async function GET(request: Request) {
       return new Response(csv, {
         headers: {
           "Content-Type": "text/csv; charset=utf-8",
-          "Content-Disposition": `attachment; filename="myfitness-body-${formatDateLocal(new Date())}.csv"`,
+          "Content-Disposition": `attachment; filename="myfitness-body${rangeSuffix}-${ymdKST()}.csv"`,
         },
       });
     }

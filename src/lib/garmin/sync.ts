@@ -2,16 +2,22 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
+import { advanceLastSyncDateWhere, clampCursorToToday } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
 import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
 import { syncHeartRate } from "./fetchers/heart-rate";
+import { fillRecoveryColumns } from "@/lib/heart/fill-recovery";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { syncBodyComposition } from "./fetchers/body-composition";
 import { syncBloodPressure } from "./fetchers/blood-pressure";
+import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
 import { syncUserProfile } from "./fetchers/user-profile";
 import { runWeatherBackfill } from "@/lib/weather/enrich";
+import { activityRecheckStart } from "./activity-recheck";
+import { resolveWeatherBackfillMode, weatherBackfillPlan, type WeatherBackfillMode } from "./weather-backfill-mode";
 
 // #269 Codex P2: syncAll 후 weather 자동 enrich. cron 이외 caller (daily/weekly 리포트 pre-sync
 // 등) 도 신규 활동이 즉시 weather 채워지도록. 각 호출 소규모 배치 (30 건) — 리포트 지연 방지.
@@ -27,6 +33,7 @@ type DataType =
   | "heart_rate"
   | "body_composition"
   | "blood_pressure"
+  | "fitness_metrics"
   | "user_profile";
 
 interface SyncResult {
@@ -45,6 +52,7 @@ const SYNC_FNS: Record<
   heart_rate: syncHeartRate,
   body_composition: syncBodyComposition,
   blood_pressure: syncBloodPressure,
+  fitness_metrics: syncFitnessMetrics,
   user_profile: syncUserProfile,
 };
 
@@ -55,6 +63,8 @@ const SYNC_ORDER: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  // #378: 프로필 스냅샷(user_profile) 앞 — 같은 값을 두 소스가 다르게 들 수 있어 이력이 먼저 갱신되도록.
+  "fitness_metrics",
   "user_profile",
 ];
 
@@ -64,6 +74,15 @@ async function getStartDate(dataType: DataType): Promise<Date> {
   });
 
   if (meta?.lastSyncDate) {
+    // Codex P2 (PR #386 3회차): 커서가 미래(예전 /api/sync 미래 endDate)면 lastSyncDate+1 > endDate 로 skip 돼
+    // updateSyncMetadata 의 복구 분기에 닿지 못한다 → 오늘부터 다시 싱크해 그 성공이 커서를 오늘로 끌어내리게 한다.
+    const today = todayKST();
+    if (meta.lastSyncDate.getTime() > today.getTime()) {
+      console.warn(
+        `[${dataType}] lastSyncDate 가 미래 (${formatDate(meta.lastSyncDate)}) — 오늘부터 재싱크해 커서 복구`,
+      );
+      return today;
+    }
     // 마지막 싱크 날짜 다음 날부터
     const next = new Date(meta.lastSyncDate);
     next.setDate(next.getDate() + 1);
@@ -117,6 +136,11 @@ async function firstRecordDate(dataType: DataType): Promise<Date | null> {
         orderBy: { date: "asc" },
         select: { date: true },
       }),
+    fitness_metrics: () =>
+      prisma.fitnessMetricDaily.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
   };
   const r = await finders[
     dataType as Exclude<DataType, "user_profile" | "activities">
@@ -132,13 +156,14 @@ async function updateSyncMetadata(
   error?: string
 ): Promise<void> {
   const now = new Date();
+  const today = todayKST();
 
   // 표준 필드 upsert. oldestFetchedDate 는 별도 atomic UPDATE 로 처리 (Codex bot P2).
+  // #381: update 경로는 lastSyncDate 를 건드리지 않는다 — 아래 조건부 updateMany 가 단조 증가로 전진.
   await prisma.syncMetadata.upsert({
     where: { dataType },
     update: {
       lastSyncAt: now,
-      lastSyncDate: endDate,
       syncCount: { increment: syncCount },
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
@@ -146,11 +171,21 @@ async function updateSyncMetadata(
     create: {
       dataType,
       lastSyncAt: now,
-      lastSyncDate: endDate,
+      lastSyncDate: clampCursorToToday(endDate, today),
       syncCount,
       status: error ? "error" : "idle",
       errorMessage: error ?? null,
     },
+  });
+
+  // #381: lastSyncDate 단조 증가 (sync-metadata.ts). 과거 범위 명시 싱크(backfill 청크 · /api/sync 옛 범위)가
+  // 증분 커서를 뒤로 끌지 못하고, backfill 과 cron 이 경쟁해도 늦은 쪽이 남는다 (atomic 조건부 UPDATE).
+  // Codex P1 (PR #386): 미래 endDate 는 오늘로 clamp — 단조 증가라 한 번 미래로 가면 되돌릴 수 없다 (/api/sync 도 거부).
+  // 2회차 P1: 이미 미래로 저장된 커서(예전 /api/sync)는 predicate 의 OR 분기가 끌어내려 다음 싱크에서 자가 복구.
+  const cursor = clampCursorToToday(endDate, today);
+  await prisma.syncMetadata.updateMany({
+    where: advanceLastSyncDateWhere(dataType, cursor, today),
+    data: { lastSyncDate: cursor },
   });
 
   // #220: 커버 범위 [oldestFetchedDate, coveredThroughDate] 는 contiguous 로 관리.
@@ -258,12 +293,25 @@ export async function syncAll(
      * 미제공 시 알림 skip (서버 로그만). Garmin 재인증 실패 자동 감지 목적.
      */
     notifyBot?: Bot;
+    /**
+     * #414: `activities` 타입만 startDate 를 `today − N일` 까지 앞당긴다 (넓히기만). 과거 활동의 레이스 표시 · 이름 · 유형 변경이
+     * 다음 싱크에 반영되도록 — 매일 cron (3일 창) · 봇 /sync 가 `ACTIVITY_RECHECK_DAYS` 를 넘긴다. 리포트 전 싱크 (지연 민감) ·
+     * 백필 청크 · /api/sync (명시 범위) 는 넘기지 않는다. 커서는 단조 증가 (#381) 라 뒤로 가지 않는다.
+     */
+    activityRecheckDays?: number;
+    /**
+     * #390: 끝의 weather backfill 실행 방식. 기본 `background` (fire-and-forget · #269). `backfill:history` 는 청크마다 syncAll 을
+     * 부르고 종료 시 `$disconnect` 하므로 `skip` — 백그라운드 lock 해제가 닫힌 엔진에 닿아 실패하던 문제. `await` 는 끝을 기다린다.
+     */
+    weatherBackfill?: WeatherBackfillMode;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
   const endDate = options?.endDate ?? todayKST();
   const dataTypes = options?.dataTypes ?? SYNC_ORDER;
   const results: SyncResult[] = [];
+  // #425: 활동 · 심박이 실제로 돈 최소 startDate — 루프 뒤 hrr2 후처리 창의 시작
+  let recoveryFrom: Date | null = null;
 
   for (const dataType of dataTypes) {
     // 초기화 여부는 lastSyncDate로 판정:
@@ -327,6 +375,17 @@ export async function syncAll(
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
     }
 
+    // #414: 활동 메타 재조회 창 — 호출자가 요청한 경우에만 (cron · 봇 /sync). hrr 후처리 창은 넓히기 전 startDate 를 쓴다
+    // (사전 리뷰 info 1: 30일치 후보를 매일 다시 훑을 이유가 없다 — hrr2 는 최근 며칠만 null 로 남는다)
+    const recoveryStart = startDate;
+    if (dataType === "activities" && options?.activityRecheckDays) {
+      const widened = activityRecheckStart(startDate, todayKST(), options.activityRecheckDays);
+      if (widened.getTime() < startDate.getTime()) {
+        console.log(`[${dataType}] 최근 ${options.activityRecheckDays}일 활동 메타 재조회: ${formatDate(startDate)} → ${formatDate(widened)}`);
+        startDate = widened;
+      }
+    }
+
     // user_profile은 날짜 범위 무관 (스냅샷 동기화) → "이미 최신" skip 제외
     if (startDate > endDate && dataType !== "user_profile") {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
@@ -348,6 +407,9 @@ export async function syncAll(
       await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
+      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || recoveryStart < recoveryFrom)) {
+        recoveryFrom = recoveryStart;
+      }
     } catch (error) {
       const message =
         error instanceof Error ? error.message : String(error);
@@ -367,20 +429,41 @@ export async function syncAll(
     }
   }
 
-  // #269 후속 Codex P1: weather backfill 은 fire-and-forget. await 하면 30 활동 × 8s timeout =
+  // #425: 종료 후 심박 회복 (hrr2 · hrrDrop10) 후처리 — 심박이 SYNC_ORDER 의 마지막이라 활동 fetcher 안에서는 그 날 심박이
+  // 없을 수 있다. 창은 시작일 − 2일: 저녁 러닝 직후 싱크에서 하루치 심박이 부분이라 null 로 남은 활동을 다음 싱크 (창이 오늘뿐) 가
+  // 다시 잡게. DB 만 읽고 쓰므로 await (수 건). 실패는 로그만 — 싱크 결과에 영향 X.
+  if (recoveryFrom !== null) {
+    try {
+      const r = await fillRecoveryColumns({ from: new Date(recoveryFrom.getTime() - 2 * DAY_MS), to: new Date(endDate.getTime() + DAY_MS) });
+      if (r.candidates > 0) console.log(`[sync] hrr 후처리: 대상 ${r.candidates}, 갱신 ${r.updated}, 레코드 없음 ${r.missing}, 결측 ${r.skipped}`);
+      // 싱크 stamp 는 이미 갱신됐으므로 (updateSyncMetadata) 수동 쓰기 버전으로 캐시를 무효화한다
+      if (r.updated > 0) bumpHistoryCacheVersion();
+    } catch (hrrErr) {
+      console.error("[sync] hrr 후처리 에러:", hrrErr instanceof Error ? hrrErr.message : hrrErr);
+    }
+  }
+
+  // #269 후속 Codex P1: weather backfill 은 기본 fire-and-forget. await 하면 30 활동 × 8s timeout =
   // 최대 4분 syncAll 지연 → 리포트 pipeline 정지 복귀. 백그라운드 실행으로 신규 활동이
   // 나중에 채워짐 (transient 실패는 attempts 카운터 로테이션으로 스타베이션 없음).
-  void runWeatherBackfill({ limit: WEATHER_BACKFILL_LIMIT_PER_SYNC })
-    .then((wr) => {
-      if (wr.candidates > 0) {
-        console.log(
-          `[sync] weather backfill (bg): 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
-        );
-      }
-    })
-    .catch((weatherErr) => {
-      console.error("[sync] weather backfill (bg) 에러:", weatherErr);
-    });
+  // #390: 호출자가 모드를 고른다 — backfill:history 는 skip (종료 시 $disconnect 뒤 lock 해제 실패 방지).
+  const weatherPlan = weatherBackfillPlan(resolveWeatherBackfillMode(options?.weatherBackfill));
+  if (weatherPlan.run) {
+    const tag = weatherPlan.awaitResult ? "await" : "bg";
+    const weatherRun = runWeatherBackfill({ limit: WEATHER_BACKFILL_LIMIT_PER_SYNC })
+      .then((wr) => {
+        if (wr.candidates > 0) {
+          console.log(
+            `[sync] weather backfill (${tag}): 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
+          );
+        }
+      })
+      .catch((weatherErr) => {
+        console.error(`[sync] weather backfill (${tag}) 에러:`, weatherErr);
+      });
+    if (weatherPlan.awaitResult) await weatherRun;
+    else void weatherRun;
+  }
 
   return results;
 }

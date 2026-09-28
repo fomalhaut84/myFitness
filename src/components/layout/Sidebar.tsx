@@ -113,6 +113,40 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    label: "기록",
+    href: "/history",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="3" y="4" width="14" height="13" rx="2" />
+        <path d="M3 8h14M7 2v4M13 2v4" />
+        <path d="M7 11.5h.01M10 11.5h.01M13 11.5h.01M7 14.5h.01M10 14.5h.01" />
+      </svg>
+    ),
+  },
+  {
+    label: "추이",
+    href: "/trends",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v14h14" />
+        <path d="M6 13l3.5-4 3 2.5L17 6" />
+      </svg>
+    ),
+  },
+  {
+    label: "분석",
+    href: "/insights",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <path d="M3 3v14h14" />
+        <circle cx="7" cy="12" r="1.2" />
+        <circle cx="10" cy="8" r="1.2" />
+        <circle cx="13.5" cy="10.5" r="1.2" />
+        <circle cx="15.5" cy="5.5" r="1.2" />
+      </svg>
+    ),
+  },
+  {
     label: "리포트",
     href: "/reports",
     icon: (
@@ -211,7 +245,9 @@ export default function Sidebar({ isOpen, onClose }: SidebarProps) {
         <nav className="flex-1 px-3">
           <ul className="space-y-0.5">
             {NAV_ITEMS.map((item) => {
-              const isActive = pathname === item.href;
+              // #394: `/history/2024/03` 같은 하위 경로에서도 "기록" 이 활성. `/` 는 모든 경로의 prefix 라 완전 일치만.
+              const isActive =
+                pathname === item.href || (item.href !== "/" && pathname.startsWith(`${item.href}/`));
               return (
                 <li key={item.href}>
                   <Link
