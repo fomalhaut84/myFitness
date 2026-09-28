@@ -16,6 +16,7 @@ import { syncBloodPressure } from "./fetchers/blood-pressure";
 import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
 import { syncUserProfile } from "./fetchers/user-profile";
 import { runWeatherBackfill } from "@/lib/weather/enrich";
+import { activityRecheckStart } from "./activity-recheck";
 
 // #269 Codex P2: syncAll 후 weather 자동 enrich. cron 이외 caller (daily/weekly 리포트 pre-sync
 // 등) 도 신규 활동이 즉시 weather 채워지도록. 각 호출 소규모 배치 (30 건) — 리포트 지연 방지.
@@ -291,6 +292,12 @@ export async function syncAll(
      * 미제공 시 알림 skip (서버 로그만). Garmin 재인증 실패 자동 감지 목적.
      */
     notifyBot?: Bot;
+    /**
+     * #414: `activities` 타입만 startDate 를 `today − N일` 까지 앞당긴다 (넓히기만). 과거 활동의 레이스 표시 · 이름 · 유형 변경이
+     * 다음 싱크에 반영되도록 — 매일 cron (3일 창) · 봇 /sync 가 `ACTIVITY_RECHECK_DAYS` 를 넘긴다. 리포트 전 싱크 (지연 민감) ·
+     * 백필 청크 · /api/sync (명시 범위) 는 넘기지 않는다. 커서는 단조 증가 (#381) 라 뒤로 가지 않는다.
+     */
+    activityRecheckDays?: number;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
@@ -362,6 +369,17 @@ export async function syncAll(
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
     }
 
+    // #414: 활동 메타 재조회 창 — 호출자가 요청한 경우에만 (cron · 봇 /sync). hrr 후처리 창은 넓히기 전 startDate 를 쓴다
+    // (사전 리뷰 info 1: 30일치 후보를 매일 다시 훑을 이유가 없다 — hrr2 는 최근 며칠만 null 로 남는다)
+    const recoveryStart = startDate;
+    if (dataType === "activities" && options?.activityRecheckDays) {
+      const widened = activityRecheckStart(startDate, todayKST(), options.activityRecheckDays);
+      if (widened.getTime() < startDate.getTime()) {
+        console.log(`[${dataType}] 최근 ${options.activityRecheckDays}일 활동 메타 재조회: ${formatDate(startDate)} → ${formatDate(widened)}`);
+        startDate = widened;
+      }
+    }
+
     // user_profile은 날짜 범위 무관 (스냅샷 동기화) → "이미 최신" skip 제외
     if (startDate > endDate && dataType !== "user_profile") {
       console.log(`[${dataType}] 이미 최신 상태 (${formatDate(startDate)}까지 싱크 완료)`);
@@ -383,8 +401,8 @@ export async function syncAll(
       await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
-      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || startDate < recoveryFrom)) {
-        recoveryFrom = startDate;
+      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || recoveryStart < recoveryFrom)) {
+        recoveryFrom = recoveryStart;
       }
     } catch (error) {
       const message =
