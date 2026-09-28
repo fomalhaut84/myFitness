@@ -33,10 +33,15 @@ git log origin/dev --oneline -3
 ## Step 2: PR 머지 상태
 
 ```bash
-# 브랜치와 연결된 PR
-gh pr list --head $CURRENT --state merged --limit 1 --json number,mergedAt
+# 브랜치와 연결된 머지된 PR 의 head 커밋 (#371 ①: mergedAt 타임스탬프가 아니라 **머지된 head** 로 판정)
+MERGED_HEAD=$(gh pr list --head $CURRENT --state merged --limit 1 --json headRefOid -q '.[0].headRefOid')
+echo "Merged head: ${MERGED_HEAD:-<none>}"
 
-# 대상 PR 이 이미 머지됐고 로컬 브랜치에 이후 커밋이 있으면 → orphan
+# 머지된 head 이후에 로컬 브랜치에만 있는 커밋 → orphan 후보 (비어 있으면 정상)
+[ -n "$MERGED_HEAD" ] && git log --oneline $MERGED_HEAD..$CURRENT
+
+# 보조 확인 — 내용 기준: 비어 있으면 브랜치 내용이 dev 에 전부 들어 있다 (squash 로 patch-id 가 달라도 안전)
+git diff origin/dev $CURRENT --stat
 ```
 
 ## Step 3: Orphan 감지 로직
@@ -46,14 +51,20 @@ gh pr list --head $CURRENT --state merged --limit 1 --json number,mergedAt
 | 조건 | 결과 |
 |---|---|
 | PR state=OPEN + 로컬 커밋 있음 | 정상 진행 중 |
-| PR state=MERGED + 로컬 마지막 커밋이 PR merged commit 이전 | 정상 (다 반영됨) |
-| **PR state=MERGED + 로컬 마지막 커밋이 mergedAt 이후** | **⚠ ORPHAN** |
+| PR state=MERGED + `git log $MERGED_HEAD..$CURRENT` 비어 있음 | 정상 (다 반영됨) |
+| **PR state=MERGED + `git log $MERGED_HEAD..$CURRENT` 에 커밋 있음** | **⚠ ORPHAN** — `git diff origin/dev $CURRENT --stat` 도 비어 있지 않으면 확정 |
+
+> **정정 (#371 ①, pleiades#22 Codex).** 이전 판정은 `mergedAt` 타임스탬프 비교였다 — **머지 전에 만들고 머지 후에 push 한 커밋**은
+> mergedAt 보다 오래돼 "정상"으로 오판되고, 그 뒤 브랜치를 지우면 커밋을 잃는다. 머지된 PR 의 head 커밋 기준으로 본다.
 
 ## Step 4: Orphan 회수
 
 orphan 감지 시:
 
 ```bash
+# 원 브랜치 이름을 먼저 보존 (#371 ③: checkout 뒤에는 $CURRENT 가 dev 가 된다)
+OLD_BRANCH=$CURRENT
+
 # dev 최신 pull
 git checkout dev && git pull
 
@@ -65,8 +76,8 @@ git checkout -b <type>/<issue>-<N+1>
 git cherry-pick <orphan-hash>
 
 # 방법 B: 파일 직접 편집 (여러 커밋 통합)
-# — 원 브랜치 diff 확인
-git diff origin/dev..$OLD_BRANCH -- <file>
+# — orphan 커밋 범위의 diff 만 본다 (#371 ②: origin/dev 기준이면 머지 후 dev 에 들어온 무관한 변경의 역전이 섞여 복구 PR 이 최신 작업을 되돌린다)
+git diff $MERGED_HEAD..$OLD_BRANCH -- <file>
 # — 최종 목표 상태로 파일 재작성 후 하나의 커밋
 ```
 
@@ -101,8 +112,8 @@ Closes #<issue> (재오픈 없이 후속 fix)"
 
 ```
 User: 머지완료
-Me:   [orphan-check] gh pr view 226 → MERGED at 02:36:56Z
-      git log fix/223-2 → 마지막 커밋 02:40:xx (orphan!)
+Me:   [orphan-check] MERGED_HEAD=$(gh pr list --head fix/223-2 --state merged --json headRefOid -q '.[0].headRefOid')
+      git log $MERGED_HEAD..fix/223-2 → 커밋 1개 (orphan!)
       → dev pull → fix/223-3 브랜치 → 목표 상태 통합 재작성 → PR #227
 ```
 

@@ -119,4 +119,4 @@ git status --short
 
 - 관련 스킬: `session-primer` (다음 세션 진입 시 재로드)
 - 백로그 문서: `docs/specs/M<N>-followup.md`
-- Memory 경로: `~/.claude/projects/-Users-sagan-workspace-myFitness/memory/`
+- Memory 경로: `~/.claude/projects/<저장소 슬러그>/memory/` (슬러그 = 저장소 절대경로의 `/` 를 `-` 로 바꾼 것, #370)
