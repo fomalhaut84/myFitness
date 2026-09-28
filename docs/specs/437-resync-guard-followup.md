@@ -23,7 +23,7 @@
 
 - [x] F1 `preserve.ts` `isPresent`: `typeof v === "string"` 이면 `trim() !== "" && Number.isFinite(Number(v)) && Number(v) !== 0` 일 때 값 있음. 날짜 · qualifier 같은 비숫자 문자열은 그대로 "값 없음" (요약 플래그).
 - [x] F2 `fetchers/sleep-payload.ts` (신규 · 순수): `buildSleepScoreDetails(dto)` · `buildSleepRecordData(sleepData)` · `buildSleepUpdatePayload(data, scoreDetails, { trimmed })` — trimmed 면 `rawData` 와 `sleepScoreDetails` 둘 다 생략.
-- [x] F3 `fetchers/sleep.ts`: 위 함수로 교체 (동작 동일 · trimmed 규칙만 확장). `toInt` · `toFloat` 는 payload 모듈로 이동.
+- [x] F3 `fetchers/sleep.ts`: 위 함수로 교체 (trimmed 규칙 확장 외 동작 동일 — 단 단계 초가 숫자 아닌 문자열이면 NaN 대신 null, `"0"` 문자열은 0 대신 null · 사전 리뷰 info 2). `toInt` · `toFloat` 는 payload 모듈 내부로 (export 없음 · info 3).
 - [x] F4 회귀 테스트 (vitest):
   - `preserve.test.ts`: `"94"` → 없음 = trimmed · `94` → `"94"` = trimmed 아님 · `"0"` · `""` · `" "` · 날짜 문자열은 값 없음
   - `sleep-payload.test.ts`: trimmed 면 update 에 `rawData` · `sleepScoreDetails` 없음 (회귀: 릴리즈 PR #434 Codex P2) · trimmed 아니면 둘 다 포함 · `sleepScores` 없으면 키 자체 없음 · 초 → 분 변환 · 입력 불변
@@ -49,6 +49,8 @@
 §3 F4. 4종 검증 (`lint / typecheck / test / build`). 실 API 호출 없음 — 로컬 dev DB 검증 불필요 (순수 함수 + 회귀 테스트로 대체).
 
 ## 7. 제외 사항
+
+- **알려진 한계 (사전 리뷰 info 1)**: trimmed 면 `sleepScoreDetails` 를 통째로 생략하므로 (a) `sleepScore` 컬럼은 갱신되는데 `sleepScoreDetails.overall` 은 옛 값으로 남아 어긋날 수 있고, (b) 기존 행의 `sleepScoreDetails` 가 DbNull 인데 trimmed 응답이 완전한 점수를 담고 있어도 채워지지 않는다. 보존 창 밖 행은 첫 싱크 때 완전한 값이 들어가므로 실제 영향은 작다. 더 정확히 하려면 기존 `sleepScoreDetails` 도 select 해 소실 여부를 따로 판정 — 필요해지면 별도 이슈.
 
 - `heart-rate.ts` 의 payload 순수 분리 — `sleepScoreDetails` 같은 별도 JSON 컬럼이 없어 현재 `preserveUpdate` 만으로 충분. 필요해지면 같은 패턴.
 - 문자열 안의 단위 · 통화 등 숫자가 아닌 표기 (`"94%"`) 는 값 없음 그대로 (Garmin 응답에 없음).

@@ -115,12 +115,12 @@ export function buildSleepUpdatePayload(
   return { ...base, sleepScoreDetails: scoreDetails as unknown as Prisma.InputJsonValue };
 }
 
-export function toInt(val: unknown): number | null {
+function toInt(val: unknown): number | null {
   const n = toFloat(val);
   return n === null ? null : Math.round(n);
 }
 
-export function toFloat(val: unknown): number | null {
+function toFloat(val: unknown): number | null {
   if (val === null || val === undefined) return null;
   const n = Number(val);
   return Number.isNaN(n) ? null : n;
