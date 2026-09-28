@@ -13,7 +13,7 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| **v2.40.0 배포 후 확인** | 배포 완료 · **`pm2 startOrReload` 실행 완료 (사용자 · 2026-09-28 13:35 KST · 세 앱 reload ✓)** · **앱별 TZ 확인 완료 (`pm2 env 3/81/21` 전부 `Asia/Seoul`)** — 나머지 확인 대기 | 봇 날짜 라벨 · 06:00 싱크 · 식단 5초 캐시 · YoY 표 · backfill lock 로그. 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **v2.40.0 배포 후 확인** | 배포 완료 · 앱별 TZ 확인 완료 (`pm2 env 3/81/21` 전부 `Asia/Seoul`) — 나머지 확인 대기 | **`ecosystem.config.js` env 변경은 Deploy on Release (`deploy/deploy.sh`) 가 이미 적용한다** — 웹 `startOrReload --only myfitness --update-env` · MCP `startOrRestart` · 봇 `delete + start`. **전체 `pm2 startOrReload ecosystem.config.js` 는 쓰지 않는다** (봇 409 중복 인스턴스 · MCP `EADDRINUSE` — `140-bot-409-conflict-fix.md` · PR #484 Codex P1). 이번엔 그 지시로 사용자가 한 번 실행했다 (13:35 KST · 세 앱 ✓ · 봇 ↺ 1) — `pm2 logs myfitness-bot --lines 200 --nostream \| grep -c 409` 로 잔여 확인. 나머지: 봇 날짜 라벨 · 06:00 싱크 · 식단 5초 캐시 · YoY 표 · backfill lock 로그. 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
 | **v2.39.1 · v2.39.2 확인** (계속) | 확인 대기 | `/insights` 캡션 · 레이스 점 색 · cron 30일 재조회 로그 · 레이스 표 |
 | **#419 RSC 페이로드 실측** | 사용자 실행 — 이슈 댓글 curl (콜드 = `pm2 restart` 직후) | 1s 안 → 종료 · 초과 → 별도 이슈 |
 | **#480 date-only 입력 KST 자정 저장** (bug · P2) | 신규 (PR #478 Codex 2회차 P2 후속) | 동쪽 TZ 호스트 한정 · 프로덕션 도달 불가 · 작음 (`parseLocalDate` 2곳 → `kstInstant`) |
@@ -34,6 +34,7 @@
 - 사전 리뷰 에이전트가 세 PR 에서 major 를 잡았다 (TZ 경계 · bump 순서 · 접근성 텍스트) — "다른 파일에 있는 호출자" (lib 안의 쓰기 · 다른 페이지의 helper 사용) 를 리뷰 프롬프트에 명시하면 잘 찾는다.
 - Codex P2 는 1회차면 반영 · 2회차 P2 만이면 후속 이슈 (규칙 그대로 작동). 클린은 👍 리액션.
 - `TZ=UTC npx vitest run` 을 릴리즈 전 한 번 돌리면 호스트 TZ 의존이 드러난다 — 정례화 후보 (vitest config 에 TZ 고정은 별도 판단).
+- **PM2 env 변경에 수동 reload 를 지시하지 말 것** — `deploy.sh` 가 앱별 안전 절차 (웹 reload+update-env · MCP hard restart · 봇 delete+start) 로 이미 적용한다. 전체 `startOrReload` 는 봇 409 · MCP EADDRINUSE 를 부른다 (PR #484 Codex P1 — 릴리즈 노트 · 인계 문서에 잘못 적었다가 정정). 확인은 `pm2 env <id>` 로.
 
 ---
 
