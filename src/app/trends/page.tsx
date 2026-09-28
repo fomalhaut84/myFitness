@@ -16,6 +16,7 @@ import YoyChart from "@/components/trends/YoyChart";
 import { aggregateCaption } from "@/components/trends/chart-format";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { addDaysYmd, type HistoryGranularity } from "@/lib/history/buckets";
+import { effectiveLowerBound } from "@/lib/history/bounds";
 import { getCachedHistorySummary, getCachedLowerBound, getCachedPersonalRecords, getCachedRangeTotals } from "@/lib/history/cache";
 import { loadHistoryEvents } from "@/lib/history/events";
 import { toChartMarkers } from "@/lib/history/markers";
@@ -301,7 +302,8 @@ const VIEW_COMPONENTS = { series: SeriesView, yoy: YoyView, season: SeasonView, 
 
 export default async function TrendsPage({ searchParams }: PageProps) {
   const raw = await searchParams;
-  const ctx: TrendsContext = { today: todayKSTString(), lowerBound: await getCachedLowerBound() };
+  const today = todayKSTString();
+  const ctx: TrendsContext = { today, lowerBound: effectiveLowerBound(await getCachedLowerBound(), today) }; // #405
   const query = parseTrendsQuery(raw, ctx);
   const def = getHistoryMetric(query.metric);
   const color = metricColor(def.id);

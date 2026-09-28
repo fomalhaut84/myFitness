@@ -69,3 +69,23 @@ describe("parseHistoryRoute", () => {
     });
   });
 });
+
+// #405 회귀: 기록이 없는 설치에서 미래 체중을 저장하면 하한 > 오늘 — 연 뷰가 올해로 수렴하고 redirect 가 왕복하지 않는다
+describe("parseHistoryRoute — 하한 > 오늘 (#405)", () => {
+  const future = { today: "2026-09-21", lowerBound: "2027-03-01" };
+
+  it("올해 연 뷰는 ok · 다른 해는 올해로 redirect", () => {
+    expect(parseHistoryRoute({ year: "2026" }, future)).toEqual({ ok: true, route: { level: "year", year: 2026 } });
+    expect(parseHistoryRoute({ year: "2027" }, future)).toEqual({ ok: false, redirectTo: "/history/2026" });
+    expect(parseHistoryRoute({ year: "2020" }, future)).toEqual({ ok: false, redirectTo: "/history/2026" });
+  });
+
+  it("월 · 일은 오늘로 클램프되고 redirect 타깃을 다시 파싱하면 ok (루프 없음)", () => {
+    const month = parseHistoryRoute({ year: "2027", month: "03" }, future);
+    expect(month).toEqual({ ok: false, redirectTo: "/history/2026/09" });
+    expect(parseHistoryRoute({ year: "2026", month: "09" }, future).ok).toBe(true);
+    const day = parseHistoryRoute({ year: "2027", month: "03", day: "15" }, future);
+    expect(day).toEqual({ ok: false, redirectTo: "/history/2026/09/21" });
+    expect(parseHistoryRoute({ year: "2026", month: "09", day: "21" }, future).ok).toBe(true);
+  });
+});

@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+// #365: 서버 로컬 자정 (`setHours(0,0,0,0)`) 대신 KST 자정 instant — 조회 경계가 호스트 TZ 와 무관
+import { daysAgoKST, todayKST, todayKSTString } from "@/lib/garmin/utils";
 import { resolveSpO2Source, resolveSpO2Value } from "@/lib/spo2-source";
 import DashboardClient from "./dashboard-client";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
@@ -7,26 +9,13 @@ import TodayWorkoutHero from "./components/TodayWorkoutHero";
 import TodayWorkoutHeroEmpty from "./components/TodayWorkoutHeroEmpty";
 import type { RecommendPayload } from "./training-plan/types";
 
-function todayLocal(): Date {
-  const d = new Date();
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
-  const today = todayLocal();
-  const yesterday = daysAgoLocal(1);
-  const weekAgo = daysAgoLocal(6);
-  const thirtyDaysAgo = daysAgoLocal(29);
+  const today = todayKST(); // PR #478 Codex P2: 남은 로컬 자정 — 일별 행은 KST 자정 instant 키라 findUnique 가 빗나간다
+  const yesterday = daysAgoKST(1);
+  const weekAgo = daysAgoKST(6);
+  const thirtyDaysAgo = daysAgoKST(29);
 
   const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
     await Promise.all([
@@ -110,8 +99,7 @@ export default async function DashboardPage() {
   };
 
   // 오늘 최신 리포트 (KST 기준, daily-report.ts와 동일 방식)
-  const kstNow = new Date(new Date().toLocaleString("en-US", { timeZone: "Asia/Seoul" }));
-  const todayDateStr = `${kstNow.getFullYear()}-${String(kstNow.getMonth() + 1).padStart(2, "0")}-${String(kstNow.getDate()).padStart(2, "0")}`;
+  const todayDateStr = todayKSTString();
   const latestReport = await prisma.aIAdvice.findFirst({
     where: {
       category: { in: ["morning_report", "evening_report"] },

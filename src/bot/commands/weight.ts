@@ -1,5 +1,6 @@
 import type { Bot } from "grammy";
 import prisma from "../prisma";
+import { formatDateKST } from "../../lib/format";
 
 export function registerWeightCommand(bot: Bot) {
   bot.command("weight", async (ctx) => {
@@ -16,7 +17,7 @@ export function registerWeightCommand(bot: Bot) {
 
     const lines = ["⚖️ <b>체중 추세</b>\n"];
     for (const r of recent) {
-      const date = r.date.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+      const date = formatDateKST(r.date, { month: "short", day: "numeric" }); // #365
       const fat = r.bodyFat ? ` · ${r.bodyFat.toFixed(1)}%` : "";
       lines.push(`${date}: <b>${r.weight.toFixed(1)}</b> kg${fat}`);
     }

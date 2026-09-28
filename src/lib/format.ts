@@ -1,9 +1,25 @@
-/** Date → "YYYY-MM-DD" (로컬 시간 기준, UTC 변환 없음) */
+import { ymdKST } from "@/lib/garmin/utils";
+
+const DAY_MS = 24 * 60 * 60 * 1000;
+
+/**
+ * Date → "YYYY-MM-DD" — **KST 벽시계** (#365: 이전엔 서버 로컬 getter 라 UTC 호스트에서 DB 의 KST 자정 date 가 전날로 찍혔다).
+ * 이름은 호환을 위해 유지. 호출자: 대시보드 · 심박 · 수면 · 체성분 · 활동 상세 · 프로필 페이지 (DB 의 KST 자정 instant) · MCP user-profile
+ * (`parseLocalDate` 로 쓴 서버 로컬 자정 — KST · UTC 호스트 어느 쪽에서 썼든 KST 로 읽으면 같은 날).
+ * **자정 − 1ms 같은 값을 넘기지 말 것** — KST 로 읽으면 다음 날이 된다. "전날" 라벨은 `formatDayBefore`.
+ */
 export function formatDateLocal(date: Date): string {
-  const y = date.getFullYear();
-  const m = String(date.getMonth() + 1).padStart(2, "0");
-  const d = String(date.getDate()).padStart(2, "0");
-  return `${y}-${m}-${d}`;
+  return ymdKST(date);
+}
+
+/** exclusive 경계 (KST 자정 instant) 의 **전날** "YYYY-MM-DD" — 주간 요약 끝 라벨 (#365 사전 리뷰 major 1: `−1ms` 는 호스트 TZ 에 따라 날이 바뀐다) */
+export function formatDayBefore(exclusiveEnd: Date): string {
+  return ymdKST(new Date(exclusiveEnd.getTime() - DAY_MS));
+}
+
+/** #365: `toLocaleDateString("ko-KR")` 의 KST 고정판 — 봇 · 서버 라벨은 항상 이걸로 (timeZone 없는 호출은 verify 스캔이 잡는다) */
+export function formatDateKST(date: Date, options: Intl.DateTimeFormatOptions = {}): string {
+  return date.toLocaleDateString("ko-KR", { timeZone: "Asia/Seoul", ...options });
 }
 
 /** ISO/UTC 시간을 KST(+9)로 변환하여 HH:MM 표시 */
@@ -51,30 +67,26 @@ export function formatDurationShort(seconds: number): string {
   return `${m}분 ${s}초`;
 }
 
-/** ISO 날짜 → 상대 날짜 또는 M월 D일 */
-export function formatRelativeDate(isoStr: string): string {
+/** ISO 날짜 → 상대 날짜 (오늘 · 어제 · N일 전) 또는 M월 D일 — KST 벽시계 (#365). `now` 는 테스트 주입용 */
+export function formatRelativeDate(isoStr: string, now: Date = new Date()): string {
   const d = new Date(isoStr);
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const target = new Date(d.getFullYear(), d.getMonth(), d.getDate());
-  const diffDays = Math.round(
-    (today.getTime() - target.getTime()) / (1000 * 60 * 60 * 24)
-  );
-
-  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
+  const todayYmd = ymdKST(now);
+  const targetYmd = ymdKST(d);
+  // 두 KST 날짜를 UTC 자정으로 파싱해 뺀다 — KST 는 DST 가 없어 정수 일수
+  const diffDays = Math.round((Date.parse(`${todayYmd}T00:00:00Z`) - Date.parse(`${targetYmd}T00:00:00Z`)) / DAY_MS);
+  const time = formatEpochKST(d);
 
   if (diffDays === 0) return `오늘 ${time}`;
   if (diffDays === 1) return `어제 ${time}`;
-  if (diffDays < 7) return `${diffDays}일 전`;
-  return `${d.getMonth() + 1}월 ${d.getDate()}일`;
+  if (diffDays > 1 && diffDays < 7) return `${diffDays}일 전`;
+  const [, mm, dd] = targetYmd.split("-");
+  return `${Number(mm)}월 ${Number(dd)}일`;
 }
 
-/** ISO 날짜 → YYYY.MM.DD HH:mm */
+/** ISO 날짜 → YYYY.MM.DD HH:mm — KST 벽시계 (#365) */
 export function formatDateTime(isoStr: string): string {
   const d = new Date(isoStr);
-  const date = `${d.getFullYear()}.${(d.getMonth() + 1).toString().padStart(2, "0")}.${d.getDate().toString().padStart(2, "0")}`;
-  const time = `${d.getHours().toString().padStart(2, "0")}:${d.getMinutes().toString().padStart(2, "0")}`;
-  return `${date} ${time}`;
+  return `${ymdKST(d).replace(/-/g, ".")} ${formatEpochKST(d)}`;
 }
 
 /**

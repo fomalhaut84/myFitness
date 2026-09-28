@@ -1,5 +1,6 @@
 import type { Bot } from "grammy";
 import prisma from "../prisma";
+import { formatDateKST } from "../../lib/format";
 import { fmtSleepTime, fmtTime } from "../utils/formatter";
 import { fmtSpO2 } from "@/lib/format";
 
@@ -15,7 +16,8 @@ export function registerSleepCommand(bot: Bot) {
     }
 
     const lines = ["😴 <b>최근 수면</b>\n"];
-    lines.push(`📅 ${recent.date.toLocaleDateString("ko-KR")}`);
+    // #365: 서버 TZ 무관 KST 라벨
+    lines.push(`📅 ${formatDateKST(recent.date)}`);
     lines.push(`⏰ ${fmtTime(recent.sleepStart.toISOString())} → ${fmtTime(recent.sleepEnd.toISOString())}`);
     lines.push(`⏱ 총 ${fmtSleepTime(recent.totalSleep)}`);
 

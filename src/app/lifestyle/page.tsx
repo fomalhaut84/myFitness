@@ -1,5 +1,5 @@
 import prisma from "@/lib/prisma";
-import { daysAgoKST, todayKSTString, ymdKST } from "@/lib/garmin/utils";
+import { daysAgoKST, hourOfDayKST, todayKSTString, ymdKST } from "@/lib/garmin/utils";
 import { kstDayRange, kstInstant, startOfMonthYmd } from "@/lib/history/buckets";
 import { startOfWeekKST, weekStartKST, parseHistoryYmd } from "@/lib/date";
 import LifestyleClient from "./lifestyle-client";
@@ -107,10 +107,11 @@ export default async function LifestylePage(props: {
     const start = new Date(r.sleepStart);
     const end = new Date(r.sleepEnd);
     // 취침 시간을 소수점 시간으로 (자정 이후면 그대로, 이전이면 음수 방지를 위해 -24 안 함)
-    let startHour = start.getHours() + start.getMinutes() / 60;
+    // #365: 취침 · 기상 시각은 KST 벽시계 (서버 TZ 무관)
+    let startHour = hourOfDayKST(start);
     // 22~24시를 음수로 변환하지 않고 그대로 유지
     if (startHour > 18) startHour = startHour - 24; // 예: 23시 → -1, 자정 기준 비교용
-    const endHour = end.getHours() + end.getMinutes() / 60;
+    const endHour = hourOfDayKST(end);
 
     return {
       date: ymdKST(r.date),
