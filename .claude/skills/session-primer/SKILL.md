@@ -20,8 +20,8 @@ myFitness 신규 세션 진입 시 컨텍스트 로드. 이전 세션의 상세�
 cd "$(git rev-parse --show-toplevel)"  # 저장소 루트 (#370: 절대경로 금지)
 git fetch --tags origin 2>/dev/null
 git tag -l 'v*' | sort -V | tail -5
-git log --oneline main..dev 2>/dev/null | head -10
-git log --oneline -5 main
+git log --oneline origin/main..origin/dev 2>/dev/null | head -10   # 로컬 main/dev 는 fetch 로 움직이지 않는다 — 원격 ref 로 본다 (myFitness#494 Codex P2)
+git log --oneline -5 origin/main
 ```
 
 **판단:**

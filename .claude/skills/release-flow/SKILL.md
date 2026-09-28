@@ -29,10 +29,10 @@ git branch -d <branch>
 
 ## Step 3: Semver 판단
 
-`main` 최신 태그 확인:
+`main` 최신 태그 확인 — **ref 를 명시한다.** Step 1 이 `dev` 를 체크아웃했으므로 인자 없는 `git describe` 는 `dev` HEAD 를 본다. 릴리즈 태그는 `main` 의 머지 커밋에 찍혀 `dev` 에서 닿지 않으므로 직전 태그가 나오거나 실패해 semver 가 기존 버전을 재사용한다(myFitness#494 Codex P1):
 
 ```bash
-git describe --tags --abbrev=0
+git fetch --tags origin && git describe --tags --abbrev=0 origin/main
 ```
 
 새 버전 결정:

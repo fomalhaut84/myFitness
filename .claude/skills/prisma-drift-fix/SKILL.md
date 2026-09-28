@@ -1,6 +1,6 @@
 ---
 name: prisma-drift-fix
-description: Prisma migrate dev 가 drift 감지로 실패할 때 (예 "We need to reset the public schema", data loss 위험) 수동 SQL migration 절차. schema.prisma 편집 → migration 파일 수동 작성 → psql -f apply → _prisma_migrations INSERT → npx prisma generate. `prisma migrate reset` 절대 금지 (data loss). 스키마 변경, 새 필드 추가, 인덱스/DEFAULT 조정 시 사용.
+description: Prisma migrate dev 가 drift 감지로 실패할 때 (예 "We need to reset the public schema", data loss 위험) 수동 SQL migration 절차. schema.prisma 편집 → migration 파일 수동 작성 → psql -f apply → `prisma migrate resolve --applied` → npx prisma generate. `prisma migrate reset` 절대 금지 (data loss). 스키마 변경, 새 필드 추가, 인덱스/DEFAULT 조정 시 사용.
 ---
 
 # Prisma Drift Fix
@@ -121,7 +121,7 @@ ALTER TABLE "UserProfile"
 EOF
 
 psql -d myfitness -f prisma/migrations/20260714020738_m12_personal_goals/migration.sql
-psql -d myfitness -c "INSERT INTO _prisma_migrations ... ON CONFLICT DO NOTHING;"
+npx prisma migrate resolve --applied 20260714020738_m12_personal_goals   # 직접 INSERT 금지 (#496)
 npx prisma generate
 ```
 

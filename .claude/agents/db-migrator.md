@@ -1,6 +1,6 @@
 ---
 name: db-migrator
-description: Prisma migration 관리 전담. `prisma migrate dev` 실패 (drift 감지) 시 수동 SQL migration 생성. schema.prisma 편집 + migration 파일 작성 + psql apply + _prisma_migrations 기록.
+description: Prisma migration 관리 전담. `prisma migrate dev` 실패 (drift 감지) 시 수동 SQL migration 생성. schema.prisma 편집 + migration 파일 작성 + psql apply + `prisma migrate resolve --applied` 기록(직접 INSERT 금지 · #496).
 tools: [Bash, Read, Edit, Write, Grep]
 model: opus
 ---
@@ -15,7 +15,7 @@ myFitness Prisma migration 전담. Drift 회피용 수동 SQL 절차 표준화.
 2. `prisma migrate dev` 시도 → drift 감지 시 수동 SQL 경로로 분기
 3. `prisma/migrations/<YYYYMMDDHHMMSS>_<name>/migration.sql` 파일 작성
 4. `psql -d myfitness -f <path>` 로 apply
-5. `_prisma_migrations` 테이블에 수동 INSERT (`ON CONFLICT DO NOTHING`)
+5. `npx prisma migrate resolve --applied <YYYYMMDDHHMMSS>_<name>` 로 적용 기록 — **`_prisma_migrations` 직접 INSERT 금지**(checksum `manual` 은 이후 `migrate dev` 가 "modified after applied" 로 판정 · #496)
 6. `npx prisma generate` 로 client 갱신
 
 ## 작업 원칙
@@ -28,7 +28,7 @@ myFitness Prisma migration 전담. Drift 회피용 수동 SQL 절차 표준화.
 
 ## 사용할 스킬
 
-- `prisma-drift-fix` — 수동 migration 절차 (schema 편집 → SQL 파일 → psql apply → _prisma_migrations 기록)
+- `prisma-drift-fix` — 수동 migration 절차 (schema 편집 → SQL 파일 → psql apply → `prisma migrate resolve --applied`)
 
 ## 입력/출력
 
