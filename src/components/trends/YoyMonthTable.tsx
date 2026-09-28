@@ -1,23 +1,27 @@
 // #413: YoY 차트의 글자 · 링크 대응물 (키보드 · 스크린리더). 기본은 접혀 있다 — 시각 사용자의 화면은 그대로.
 // 차트 (client · role="img") 와 달리 서버 렌더 <a> 라 Tab 으로 닿는다. `ValueTable` 톤, 폰은 가로 스크롤.
 import { PARTIAL_LABELS } from "@/lib/history/trends";
-import type { YoyLinkRow } from "@/lib/history/yoy-links";
+import { hasAnyYoyValue, yoyCellAnnouncement, type YoyLinkRow } from "@/lib/history/yoy-links";
 import { formatChartValue, type ChartMetric } from "./chart-format";
 
 interface YoyMonthTableProps {
   rows: readonly YoyLinkRow[];
-  metric: Pick<ChartMetric, "label" | "format" | "decimals" | "unit">;
+  metric: Pick<ChartMetric, "label" | "format" | "decimals" | "unit" | "aggregate">;
 }
 
 const MONTHS = Array.from({ length: 12 }, (_, i) => i + 1);
 
 export default function YoyMonthTable({ rows, metric }: YoyMonthTableProps) {
-  if (rows.length === 0) return null;
-  const hasPartial = rows.some((r) => r.months.some((m) => m.partial !== null));
+  // 값이 하나도 없으면 (빈 차트 문구 아래 대시만 있는 표) 그리지 않는다 (사전 리뷰 info 2)
+  if (!hasAnyYoyValue(rows)) return null;
+  // 미완결 표시는 합계형에서만 — 차트 · Keys 문구와 같은 규칙 (info 4)
+  const isSum = metric.aggregate === "sum";
+  const hasPartial = isSum && rows.some((r) => r.months.some((m) => m.partial !== null));
+  const hasLow = rows.some((r) => r.months.some((m) => m.lowCoverage));
   return (
     <details className="group mt-3 rounded-xl border border-border bg-card">
       <summary className="cursor-pointer list-none px-3.5 py-2 text-[12px] text-sub [&::-webkit-details-marker]:hidden">
-        <span className="mr-1.5 inline-block transition-transform group-open:rotate-90">▸</span>
+        <span aria-hidden="true" className="mr-1.5 inline-block transition-transform group-open:rotate-90">▸</span>
         월별 값 · 링크 <span className="text-dim">(키보드 · 스크린리더 — 칸을 열면 그 달의 기록)</span>
       </summary>
       <div className="overflow-x-auto border-t border-border">
@@ -47,11 +51,14 @@ export default function YoyMonthTable({ rows, metric }: YoyMonthTableProps) {
                     ) : (
                       <a
                         href={cell.href}
-                        title={cell.partial ? PARTIAL_LABELS[cell.partial] : undefined}
-                        className={`underline-offset-2 hover:underline focus-visible:underline ${cell.lowCoverage ? "text-dim" : "text-bright"}`}
+                        title={isSum && cell.partial ? PARTIAL_LABELS[cell.partial] : undefined}
+                        // 저커버리지는 흐림 (text-sub · 12px 대비 유지 — info 5) + sr-only 글자 (major 1)
+                        className={`underline-offset-2 hover:underline focus-visible:underline ${cell.lowCoverage ? "text-sub" : "text-bright"}`}
                       >
+                        {/* Tab · 링크 목록에서는 th 가 안 읽힌다 — 연 · 월 · 상태를 글자로 (사전 리뷰 major 1) */}
+                        <span className="sr-only">{yoyCellAnnouncement(row.year, cell, { isSum })} </span>
                         {formatChartValue(metric, cell.value)}
-                        {cell.partial ? "*" : ""}
+                        {isSum && cell.partial ? <span aria-hidden="true">*</span> : null}
                       </a>
                     )}
                   </td>
@@ -61,7 +68,12 @@ export default function YoyMonthTable({ rows, metric }: YoyMonthTableProps) {
           </tbody>
         </table>
       </div>
-      {hasPartial && <p className="px-3.5 py-2 text-[11px] text-dim">* = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림). 흐린 값 = 기록이 절반 미만인 달.</p>}
+      {(hasPartial || hasLow) && (
+        <p className="px-3.5 py-2 text-[11px] text-dim">
+          {hasPartial ? "* = 다 채워지지 않은 달 (진행 중이거나 기록 시작일이 걸림). " : ""}
+          {hasLow ? "흐린 값 = 기록이 절반 미만인 달." : ""}
+        </p>
+      )}
     </details>
   );
 }

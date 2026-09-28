@@ -217,7 +217,7 @@ async function YoyView({ ctx, def, color }: ViewProps) {
           ...(startNote ? [startNote] : []),
         ]}
       />
-      {/* #413: 차트 (role="img" · 마우스 전용 점) 의 글자 · 링크 대응물 — 연도 × 12개월 표. 차트가 없어도 값이 있으면 보인다 */}
+      {/* #413: 차트 (role="img" · 마우스 전용 점) 의 글자 · 링크 대응물 — 연도 × 12개월 표. 차트가 없어도 값이 있으면 보인다 (전부 null 이면 표도 없음) */}
       <YoyMonthTable rows={yoyLinkRows(pivot, def.id)} metric={def} />
     </Panel>
   );

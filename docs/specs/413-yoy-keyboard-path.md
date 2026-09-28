@@ -17,9 +17,9 @@ YoY 뷰에 차트와 같은 정보를 **글자와 링크**로 주는 대응물 �
 ## 3. 요구사항
 
 - [x] F1 `src/lib/history/yoy-links.ts` (순수): `yoyLinkRows(pivot, metricId)` → 연도 내림차순 × 12개월 `{ month, value, partial, lowCoverage, href }`. 값 없는 달은 `value: null` · `href: null`. href 는 `historyMonthPath` + `historyMetricQuery` (차트의 점 클릭과 같은 경로).
-- [x] F2 `src/components/trends/YoyMonthTable.tsx` (서버 컴포넌트): `<details>` "월별 값 · 링크" 안에 `<table>` — 열 헤더 1~12월 · 행 = 연도 · 칸 = `<a>` (값 · 미완결 달은 `*` 와 `title`) 또는 `—`. `ValueTable` 톤 · 폰은 가로 스크롤. `aria-label` 로 지표 이름.
+- [x] F2 `src/components/trends/YoyMonthTable.tsx` (서버 컴포넌트): `<details>` "월별 값 · 링크" 안에 `<table>` — 열 헤더 1~12월 · 행 = 연도 · 칸 = `<a>` 또는 `—`. 링크 안에 **sr-only 로 "YYYY년 M월 · 상태"** (`yoyCellAnnouncement` — Tab · 링크 목록에서는 `th` 가 안 읽힌다 · 사전 리뷰 major 1). 미완결 `*` 는 합계형에서만 (차트와 같은 규칙) · 저커버리지는 `text-sub` 흐림 + sr-only. 값이 전부 null 이면 표 없음. `ValueTable` 톤 · 폰은 가로 스크롤. `aria-label` 로 지표 이름.
 - [x] F3 `YoyView` (`src/app/trends/page.tsx`): 차트 · `Keys` 아래에 표. 차트가 없을 때 (`hasUsable` false) 도 값이 있으면 표는 보인다 (절반 미만 달만 있어도 링크는 유효).
-- [x] F4 회귀 테스트 `yoy-links.test.ts`: 연도 정렬 · 12칸 · href 형식 · 기본 지표는 쿼리 생략 · 값 없는 달 null.
+- [x] F4 회귀 테스트 `yoy-links.test.ts`: 연도 정렬 · 12칸 · href 형식 · 기본 지표는 쿼리 생략 · 값 없는 달 null · lowCoverage/clipped 통과 · cells 없는 해 · `hasAnyYoyValue` · `yoyCellAnnouncement` (합계형만 미완결).
 - [x] F5 스펙 396 §3 F16~F18 ↳ · 디자인 노트 "구현 시 시안과 달라지는 것" 갱신.
 
 ## 4. 기술 설계
