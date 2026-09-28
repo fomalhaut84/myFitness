@@ -20,7 +20,7 @@ date-only 입력은 **KST 자정 instant** 로 저장한다 — 호스트 TZ 와
 - [x] F2 두 route 의 `parseLocalDate` 삭제 → `parseDateOnlyKST`. 동작: KST 호스트에서는 값 변화 없음 (`new Date(y, m-1, d)` = KST 자정).
 - [x] F3 주석 정정: `format.ts` (`parseLocalDate` 언급) · `history/day.ts` (수동 체중이 서버 로컬 자정이라던 설명 — KST 범위 조회는 방어로 유지).
 - [x] F4 회귀 테스트 `date-input.test.ts`: "2026-09-28" → `2026-09-27T15:00:00.000Z` · `ymdKST` 왕복 · 무효 날짜 throw. 전체 vitest 를 `TZ=UTC` 로도 실행.
-- [x] F5 스펙 365 §4 · 이슈 제외 항목 갱신.
+- [x] F5 스펙 365 §4 갱신 (이슈 #480 본문의 "365 스펙 §4 근거 밖" 서술과 맞춤).
 
 ## 4. 기술 설계
 
@@ -35,7 +35,7 @@ date-only 입력은 **KST 자정 instant** 로 저장한다 — 호스트 TZ 와
 | `src/lib/date-input.ts` (+ `src/lib/__tests__/date-input.test.ts`) | 신규 · 순수 |
 | `src/app/api/profile/route.ts` · `src/app/api/body-composition/route.ts` | `parseLocalDate` → `parseDateOnlyKST` |
 | `src/lib/format.ts` · `src/lib/history/day.ts` | 주석 |
-| `docs/specs/365-server-tz-residuals.md` | §4 · §7 갱신 |
+| `docs/specs/365-server-tz-residuals.md` | §4 갱신 (동쪽 TZ 예외) |
 
 ## 6. 테스트 계획
 
@@ -45,3 +45,4 @@ date-only 입력은 **KST 자정 instant** 로 저장한다 — 호스트 TZ 와
 
 - 옛 행 재정규화 — KST 호스트 기록이라 불필요.
 - `training-plan` 의 날짜 (`toUtcDateOnly` — UTC 자정 규칙) — 별개 규칙 · 범위 밖.
+- `src/app/sleep/[date]/page.tsx` 의 ymd → 서버 로컬 자정 (`setHours` · 로컬 getter 왕복 검증) — 같은 뿌리의 잔여 (사전 리뷰 관찰). 수면 조회 키가 KST 자정이라 동쪽 TZ 호스트에서 어긋날 수 있다 — 후속 후보 (이슈 미생성 · 프로덕션 도달 불가).

@@ -1,8 +1,8 @@
 import { NextResponse } from "next/server";
-// #480: date-only 입력은 서버 로컬 자정이 아니라 KST 자정 (읽기 `formatDateLocal` = KST 와 같은 규칙)
-import { parseDateOnlyKST } from "@/lib/date-input";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
+// #480: date-only 입력은 서버 로컬 자정이 아니라 KST 자정 (읽기 `formatDateLocal` = KST 와 같은 규칙)
+import { parseDateOnlyKST } from "@/lib/date-input";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import {
