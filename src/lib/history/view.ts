@@ -5,7 +5,8 @@
  * KPI 는 그 기간을 **한 버킷** 으로 롤업한 summary 에서 만든다. 월 버킷을 다시 평균 내면 평균의 평균이 된다.
  */
 import { getCachedHistorySummary } from "./cache";
-import { diffDaysYmd, type HistoryGranularity } from "./buckets";
+import { coverableDays as coverableBucketDays } from "./bounds";
+import { type HistoryGranularity } from "./buckets";
 import { buildIntensityScale, type IntensityLevel } from "./intensity";
 import { buildHistoryKpis, HISTORY_KPI_METRIC_IDS, type HistoryKpi } from "./kpi";
 import {
@@ -106,8 +107,7 @@ function dayValueMap(dayBuckets: readonly SummaryBucket[], id: HistoryMetricId):
  */
 function coverableDays(bucket: SummaryBucket | undefined, ym: string, ctx: HistoryViewContext): number {
   if (!bucket) return daysInYm(ym);
-  const beforeLowerBound = bucket.start < ctx.lowerBound ? diffDaysYmd(bucket.start, ctx.lowerBound) : 0;
-  return Math.max(0, bucket.totalDays - beforeLowerBound);
+  return coverableBucketDays(bucket, ctx.lowerBound); // #408: `/trends` 와 공용 (bounds.ts)
 }
 
 export interface HistoryYearView {

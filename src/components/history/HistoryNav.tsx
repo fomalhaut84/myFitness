@@ -48,7 +48,8 @@ export default function HistoryNav({ route, today, lowerBound, metric }: History
   const query = historyMetricQuery(metric);
   const minYear = Number(lowerBound.slice(0, 4));
   const maxYear = Number(today.slice(0, 4));
-  const years = Array.from({ length: maxYear - minYear + 1 }, (_, i) => minYear + i);
+  // #405: 하한 > 오늘이면 길이가 0 이하 — 최소 올해 하나 (입구 정규화의 이중 방어)
+  const years = Array.from({ length: Math.max(1, maxYear - minYear + 1) }, (_, i) => minYear + i);
 
   const crumbs: { href: string; label: string }[] = [{ href: `${historyYearPath(route.year)}${query}`, label: "기록" }];
   if (route.level !== "year") crumbs.push({ href: `${historyYearPath(route.year)}${query}`, label: String(route.year) });

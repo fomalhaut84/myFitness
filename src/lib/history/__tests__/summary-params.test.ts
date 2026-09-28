@@ -80,3 +80,15 @@ describe("parseSummaryParams — 400 경로", () => {
     expect(parseSummaryParams({ granularity: "month", from: "2019-01-01", to: "2019-12-31" }, ctx).ok).toBe(false);
   });
 });
+
+// #405 회귀: 하한 > 오늘이면 400 이 아니라 오늘 하루로 클램프
+describe("parseSummaryParams — 하한 > 오늘 (#405)", () => {
+  it("from · to 가 오늘로 클램프되고 ok", () => {
+    const r = parseSummaryParams({ granularity: "month", from: "2026-01-01", to: "2026-12-31" }, { todayYmd: "2026-09-18", lowerBound: "2027-03-01" });
+    expect(r.ok).toBe(true);
+    if (!r.ok) return;
+    expect(r.params.from).toBe("2026-09-18");
+    expect(r.params.to).toBe("2026-09-18");
+    expect(r.params.clampedFrom).toBe(true);
+  });
+});

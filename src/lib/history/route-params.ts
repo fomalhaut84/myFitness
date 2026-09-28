@@ -5,6 +5,7 @@
  * 잘못된 URL 은 404 가 아니라 **같은 레벨의 가장 가까운 유효 값으로 redirect** 한다 — 미래는 오늘 쪽, 하한 이전은
  * 하한 쪽. 월·일은 2자리 zero-pad 가 정규형 (`/history/2024/3` → `/history/2024/03`) 이라 공유 링크가 하나로 수렴한다.
  */
+import { effectiveLowerBound } from "./bounds";
 import { isValidYmd } from "./buckets";
 import { DEFAULT_HISTORY_METRIC_ID, type HistoryMetricId } from "./metrics";
 import { formatYm } from "./month-cells";
@@ -53,9 +54,11 @@ function parseIntSegment(raw: string | undefined): number | null {
 
 export function parseHistoryRoute(
   segments: { year: string; month?: string; day?: string },
-  ctx: HistoryRouteContext,
+  rawCtx: HistoryRouteContext,
 ): HistoryRouteResult {
   const redirect = (to: string): HistoryRouteResult => ({ ok: false, redirectTo: to });
+  // #405: 하한 > 오늘이면 clamp(min > max) 가 redirect 를 왕복시킨다 — 입구에서 오늘로 정규화 (캐시된 옛 하한도 방어)
+  const ctx: HistoryRouteContext = { today: rawCtx.today, lowerBound: effectiveLowerBound(rawCtx.lowerBound, rawCtx.today) };
 
   const year = parseIntSegment(segments.year);
   if (year === null || segments.year.length !== 4) return redirect(HISTORY_ROOT);

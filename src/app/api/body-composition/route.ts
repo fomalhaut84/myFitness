@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { bumpHistoryCacheVersion } from "@/lib/history/cache";
+import { todayKSTString } from "@/lib/garmin/utils";
 
 const POST_SCHEMA = z.object({
   date: z
@@ -38,6 +39,10 @@ export async function POST(request: Request) {
     }
 
     const { date, weight, bodyFat, muscleMass } = parsed.data;
+    // #405: 미래 체중은 측정값이 아니다 — 기록 없는 설치에서 히스토리 하한을 미래로 밀던 입구를 막는다
+    if (date > todayKSTString()) {
+      return NextResponse.json({ error: "미래 날짜는 기록할 수 없습니다" }, { status: 400 });
+    }
     const dayDate = parseLocalDate(date);
 
     // BMI 계산 (키 정보 있으면)

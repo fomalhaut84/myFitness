@@ -6,6 +6,7 @@
  * - `to > today` → today 로 클램프 + `clampedTo`.
  * - `granularity=day` 는 MAX_DAY_GRANULARITY_SPAN 일까지 (버킷 폭주 방지).
  */
+import { effectiveLowerBound } from "./bounds";
 import { diffDaysYmd, isHistoryGranularity, isValidYmd, type HistoryGranularity } from "./buckets";
 import { HISTORY_METRIC_IDS, isHistoryMetricId, type HistoryMetricId } from "./metrics";
 
@@ -60,12 +61,14 @@ export function parseSummaryParams(raw: SummaryRawParams, ctx: SummaryContext): 
     return { ok: false, error: `from(${raw.from}) 이 to(${raw.to}) 보다 뒤입니다` };
   }
 
-  const clampedFrom = raw.from < ctx.lowerBound;
+  // #405: 하한 > 오늘이면 오늘 하루로 (400 이 아니라 클램프)
+  const lowerBound = effectiveLowerBound(ctx.lowerBound, ctx.todayYmd);
+  const clampedFrom = raw.from < lowerBound;
   const clampedTo = raw.to > ctx.todayYmd;
-  const from = clampedFrom ? ctx.lowerBound : raw.from;
+  const from = clampedFrom ? lowerBound : raw.from;
   const to = clampedTo ? ctx.todayYmd : raw.to;
   if (from > to) {
-    return { ok: false, error: `조회 가능 범위(${ctx.lowerBound} ~ ${ctx.todayYmd}) 밖입니다` };
+    return { ok: false, error: `조회 가능 범위(${lowerBound} ~ ${ctx.todayYmd}) 밖입니다` };
   }
   if (raw.granularity === "day" && diffDaysYmd(from, to) + 1 > MAX_DAY_GRANULARITY_SPAN) {
     return { ok: false, error: `granularity=day 는 최대 ${MAX_DAY_GRANULARITY_SPAN}일까지 조회할 수 있습니다` };

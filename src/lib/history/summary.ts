@@ -4,6 +4,7 @@
  */
 import { todayKSTString } from "@/lib/garmin/utils";
 import { MIN_HISTORY_YMD } from "@/lib/date";
+import { clipSpan } from "./bounds";
 import { bucketSpan, enumerateBuckets, type HistoryGranularity } from "./buckets";
 import { loadDailyPoints, type DailyPointsByMetric } from "./load";
 import { getHistoryLowerBound } from "./lower-bound";
@@ -66,8 +67,8 @@ export async function getHistorySummary(
 ): Promise<HistorySummary> {
   const buckets = enumerateBuckets(params.from, params.to, params.granularity, ctx.today);
   // 첫/끝 버킷은 달력 전체(§4.1)이므로 조회도 버킷 스팬으로 — from/to 로 조회하면 부분 합계가 된다
-  // (#393 사전 리뷰 major 1). 하한 이전·오늘 이후는 행이 없어 무해.
-  const span = bucketSpan(buckets);
+  // (#393 사전 리뷰 major 1). #408-2: 스팬을 [하한, 오늘] 로 잘라 하한 앞 행 (2020-01-01 이전 잔여) 이 첫 주 버킷에 들어오지 않게.
+  const span = clipSpan(bucketSpan(buckets), ctx);
   const points = span ? await loader(span.fromYmd, span.toYmd, params.metrics) : {};
 
   const rolled = params.metrics.map((id) => [id, rollup(points[id] ?? [], buckets, getHistoryMetric(id))] as const);
