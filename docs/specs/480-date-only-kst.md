@@ -25,7 +25,7 @@ date-only 입력은 **KST 자정 instant** 로 저장한다 — 호스트 TZ 와
 ## 4. 기술 설계
 
 - `kstInstant` (`src/lib/history/buckets.ts`) 를 그대로 쓰되, 입력 검증과 의도 (date-only → KST 자정) 를 이름에 담은 얇은 함수로. `buckets.ts` 는 prisma 의존 없음.
-- 기존 행: KST 호스트에서 쓴 값은 이미 KST 자정 — 마이그레이션 불필요.
+- 기존 행: KST 호스트에서 쓴 값은 이미 KST 자정 — 마이그레이션 불필요. **다른 TZ 호스트의 옛 행** (PR #485 Codex P2): 새 KST 키 upsert 가 못 찾아 같은 KST 날에 두 행이 생길 수 있다 → 저장 전에 그 KST 하루 범위 (`kstDayRange`) 의 기존 행을 찾아 그 행을 갱신하며 `date` 를 정규 키로 옮긴다 (정규 키 행이 있으면 우선 · 없으면 upsert 로 동시 요청 경쟁 처리). 조회 1회 추가 (수동 입력 경로만).
 - `history/day.ts` 의 KST 하루 범위 조회는 옛 행 (다른 TZ 에서 썼을 가능성) 방어로 유지.
 
 ## 5. 변경 파일
