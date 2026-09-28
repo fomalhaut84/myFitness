@@ -22,14 +22,15 @@ DB 에 보이는 무효화 신호 하나 (**epoch**) 를 stamp 에 합친다. �
 - [x] F1 `cache-core.ts` `composeSyncStamp(lastSyncAt, epoch)` (순수) — 둘 다 null 허용 · 어느 쪽이 바뀌어도 다른 문자열.
 - [x] F2 `cache-epoch.ts` (서버): `HISTORY_CACHE_EPOCH_ALERT_TYPE = "history_cache_epoch"` · `readHistoryCacheEpoch()` (`lastAlertAt` · 행 없으면 null) · `touchHistoryCacheEpoch()` (upsert `lastAlertAt = now` · 실패는 로그만).
 - [x] F3 `cache.ts`: `getSyncStamp` = `Promise.all([max lastSyncAt, epoch])` → `composeSyncStamp` (요청당 쿼리 1 → 2 · 5초 memo 그대로). `bumpHistoryCacheVersion()` 은 in-process bump + `touchHistoryCacheEpoch()` fire-and-forget (await 하지 않는다 — 호출자 응답 지연 없음).
-- [x] F4 봇 식단 쓰기 5곳 (`food.ts` create · updateMany · `food-photo.ts` create · `food-edit-callback.ts` delete · update) 성공 뒤 `bumpHistoryCacheVersion()`.
-- [x] F5 회귀 테스트: `cache.test.ts` — `composeSyncStamp` (epoch 만 바뀌어도 재조회 · null 조합) · 기존 stamp 테스트 유지.
+- [x] F4 봇 식단 경로 **6곳** 의 재계산 블록을 `withHistoryCacheBump` 로 감싼다 — `food.ts` 기록 (`recalcWithRetry`) · `/food_kcal` 보정 · `food-photo.ts` 기록 · `food-edit-callback.ts` 삭제 · kcal 보정 · 설명 수정. bump 는 **재계산 뒤** (사전 리뷰 major 2: 먼저 bump 하면 재계산 전 값이 새 키로 캐시). kcal 보정 2곳은 `applyKcalCorrection` (lib) 안에서 쓰므로 처음 grep 에서 빠졌다 (major 1).
+- [x] F5 회귀 테스트: `cache.test.ts` — `composeSyncStamp` (epoch 만 바뀌어도 재조회 · null 조합) · `runThenBump` (재계산 → bump 순서 · 던져도 bump) · 기존 stamp 테스트 유지.
 - [x] F6 로드맵 M15-2 후속 표기 · 394 스펙 §4.6 처리 표기.
 
 ## 4. 기술 설계
 
 - epoch 값은 `SystemAlertState.lastAlertAt` (ms 정밀). 같은 ms 안의 두 쓰기는 같은 값 — 그 창의 두 번째 쓰기는 다음 조회가 아니라 5초 memo 만료 뒤에 보인다 (TTL 10분 → 최대 5초 · 수용).
 - 2번 경로: `recalculateAllCalorieBalances` 의 `finally` 가 이미 `bumpHistoryCacheVersion()` 을 부른다 → epoch 갱신으로 웹 키가 바뀌어 부분 값 캐시가 폐기된다.
+- 봇 경로도 같은 순서 (`runThenBump` · `withHistoryCacheBump`): 쓰기 → 재계산 (실패 시 stale 큐) → bump. 재계산이 실패해 stale 큐로 넘어가면 cron (Next 프로세스) 이 재계산 뒤 `finally` 에서 bump 한다.
 - `bumpHistoryCacheVersion` 을 부르는 웹 route 들 (체중 · 식단 · cron · sync · calorie-balance) 은 코드 변경 없이 epoch 도 올린다.
 - 대안 (fetcher 에서 재계산 await) 은 2번만 풀고 싱크를 수 초 늦춘다 — 채택 안 함.
 
@@ -40,7 +41,7 @@ DB 에 보이는 무효화 신호 하나 (**epoch**) 를 stamp 에 합친다. �
 | `src/lib/history/cache-core.ts` (+ `__tests__/cache.test.ts`) | `composeSyncStamp` |
 | `src/lib/history/cache-epoch.ts` | 신규 (서버) |
 | `src/lib/history/cache.ts` | stamp 합성 · bump 가 epoch touch |
-| `src/bot/commands/food.ts` · `food-photo.ts` · `food-edit-callback.ts` | bump 호출 |
+| `src/bot/commands/food.ts` · `food-photo.ts` · `food-edit-callback.ts` | 재계산 블록 6곳을 `withHistoryCacheBump` 로 |
 | `docs/roadmap.md` · `docs/specs/394-*.md` | 표기 |
 
 ## 6. 테스트 계획

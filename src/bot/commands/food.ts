@@ -1,5 +1,5 @@
 import prisma from "../prisma";
-import { bumpHistoryCacheVersion } from "../../lib/history/cache";
+import { withHistoryCacheBump } from "../../lib/history/cache";
 import type { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import {
@@ -222,7 +222,6 @@ export async function handleFoodInput(
     data: { date: now, description, mealType, estimatedKcal: null },
     select: { id: true },
   });
-  bumpHistoryCacheVersion(); // #403: 웹 연·월 뷰 캐시 (다른 프로세스) 무효화
 
   // 2a) #295 (M14 Phase 2 #2): 최근 30일 내 같은 description 로그가 있으면 그 kcal 재사용.
   //     AI 호출 스킵 → 즉시 응답, 일관성 유지 (MFP '밈 재작성' pain 해결).
@@ -353,7 +352,6 @@ export async function handleFoodInput(
           items: (decidedItems ?? undefined) as Prisma.InputJsonValue | undefined,
         },
       });
-      if (updated.count > 0) bumpHistoryCacheVersion(); // #403
       if (updated.count === 0) {
         repeatHit = null;
         estimate = null;
@@ -370,7 +368,8 @@ export async function handleFoodInput(
 
   // 4) 칼로리 밸런스 재계산. Codex P2 (#283): recalcWithRetry 로 즉시 재시도 + 실패 시 큐 mark →
   //    cron 이 이어받음 (kcal 이 성공 저장된 경우 backfill 은 이 row 를 다시 안 뽑기 때문).
-  await recalcWithRetry(now, 1);
+  // #403: 재계산 뒤 bump — 웹 연·월 뷰 캐시 (다른 프로세스) 무효화. 순서는 사전 리뷰 major 2
+  await withHistoryCacheBump(() => recalcWithRetry(now, 1));
 
   // 5) 사용자 응답. #292 (M14 Phase 2 #1): inline keyboard [수정][삭제] 로 모바일 UX 개선.
   //    #295 (M14 Phase 2 #2): repeat hit 은 재사용 사실 명시로 투명성 확보 (실제 양이 다르면
@@ -454,7 +453,7 @@ export async function handleFoodKcalCommand(
     // Codex P2: 재계산 실패해도 kcal 은 이미 저장됨 → 백필이 이 row 를 다시 안 뽑음 →
     // DailySummary 가 stale 로 남을 수 있음 (특히 historical 로그, cron 2일 창 밖).
     // 즉시 1회 재시도. 그래도 실패면 사용자에게 명시 경고.
-    const recalcOk = await recalcWithRetry(updated.date, 1);
+    const recalcOk = await withHistoryCacheBump(() => recalcWithRetry(updated.date, 1)); // #403 (major 1: kcal 보정도 bump)
     const label = updated.mealType ? MEAL_LABELS[updated.mealType] ?? updated.mealType : "";
     const tail = recalcOk ? "" : "\n⚠️ 일일 요약 재계산 실패 — 잠시 후 자동 재시도됩니다.";
     await ctx.reply(

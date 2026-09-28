@@ -1,6 +1,6 @@
 // #394 (M15-2): summary 메모리 캐시. 키 = 파라미터 + syncStamp + 수동 쓰기 버전, TTL · 용량 제한.
 import { describe, expect, it, vi } from "vitest";
-import { composeSyncStamp, createHistoryCache, summaryCacheKey } from "../cache-core";
+import { composeSyncStamp, createHistoryCache, runThenBump, summaryCacheKey } from "../cache-core";
 
 function setup(opts?: { ttlMs?: number; maxEntries?: number }) {
   const state = { stamp: "s1", now: 1_000 };
@@ -129,5 +129,25 @@ describe("composeSyncStamp (#403)", () => {
     state.stamp = composeSyncStamp(t1, t2);
     await cache.get("k", load);
     expect(load).toHaveBeenCalledTimes(2);
+  });
+});
+
+// 회귀: #403 사전 리뷰 major 2 — bump 가 재계산보다 먼저면 재계산 전 DailySummary 값이 새 키로 캐시된다
+describe("runThenBump (#403)", () => {
+  it("재계산이 끝난 뒤에 bump · 반환값 통과", async () => {
+    const order: string[] = [];
+    const bump = vi.fn(() => order.push("bump"));
+    const result = await runThenBump(async () => {
+      await new Promise((r) => setTimeout(r, 5));
+      order.push("recalc");
+      return 42;
+    }, bump);
+    expect(result).toBe(42);
+    expect(order).toEqual(["recalc", "bump"]);
+  });
+  it("재계산이 던져도 bump 는 한다 (성공분 반영 · stale 큐가 이어받음)", async () => {
+    const bump = vi.fn();
+    await expect(runThenBump(async () => { throw new Error("recalc failed"); }, bump)).rejects.toThrow("recalc failed");
+    expect(bump).toHaveBeenCalledTimes(1);
   });
 });

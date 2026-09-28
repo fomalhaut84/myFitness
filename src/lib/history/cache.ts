@@ -7,7 +7,7 @@
  * stamp 가 그것을 포함하므로 최대 `SYNC_STAMP_REUSE_MS` 뒤 새 키 (이전엔 TTL 10분).
  */
 import prisma from "@/lib/prisma";
-import { composeSyncStamp, createHistoryCache, summaryCacheKey, type HistoryCache } from "./cache-core";
+import { composeSyncStamp, createHistoryCache, runThenBump, summaryCacheKey, type HistoryCache } from "./cache-core";
 import { readHistoryCacheEpoch, touchHistoryCacheEpoch } from "./cache-epoch";
 import { getHistoryLowerBound } from "./lower-bound";
 import type { HistoryMetricId } from "./metrics";
@@ -54,6 +54,11 @@ function cache(): HistoryCache {
 export function bumpHistoryCacheVersion(): void {
   cache().bump();
   void touchHistoryCacheEpoch();
+}
+
+/** 봇 식단 경로용: 재계산 (또는 재계산 포함 블록) 을 돌린 **뒤** bump (#403 · `runThenBump`) */
+export function withHistoryCacheBump<T>(run: () => Promise<T>): Promise<T> {
+  return runThenBump(run, bumpHistoryCacheVersion);
 }
 
 export function getCachedLowerBound(): Promise<string> {

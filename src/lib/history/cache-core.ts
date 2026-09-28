@@ -83,6 +83,19 @@ export function createHistoryCache(
   };
 }
 
+/**
+ * #403 (사전 리뷰 major 2): 쓰기 → **재계산** → bump 순서를 고정한다. bump 가 재계산보다 먼저면 웹 요청이 새 epoch 로 stamp 를 읽고
+ * 옛 `DailySummary` 값을 새 키로 캐시해 TTL 동안 남는다 (`recalculateAllCalorieBalances` 의 finally bump 와 같은 원칙).
+ * 재계산이 던져도 bump 는 한다 (성공분 반영 · stale 큐가 이어받는다). 순수 — bump 주입.
+ */
+export async function runThenBump<T>(run: () => Promise<T>, bump: () => void): Promise<T> {
+  try {
+    return await run();
+  } finally {
+    bump();
+  }
+}
+
 /** #403: DB 의 두 신호를 stamp 문자열 하나로. 어느 쪽이 바뀌어도 (null 포함) 다른 키 */
 export function composeSyncStamp(lastSyncAt: Date | null, epoch: Date | null): string {
   return `${lastSyncAt?.toISOString() ?? "never"}+${epoch?.toISOString() ?? "0"}`;
