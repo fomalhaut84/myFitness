@@ -55,13 +55,15 @@ gh issue create --title "[<type>] <제목>" \
 
 ## Step 4: 브랜치 생성
 
+**실서비스 긴급 수정(hotfix)은 이 단계를 타지 않는다** — `main` 에서 분기해 main·dev 양쪽에 PR 하는 별도 경로다: `release-flow` 스킬 **Hotfix** 절(`git checkout main && git checkout -b hotfix/<issue>-<n>`) 또는 `workflow.md` 긴급 수정 절. 아래는 `dev` 기준 평시 경로뿐이다 — 여기서 `dev` 로 분기하면 미배포 개발분 위에 긴급 수정을 얹게 된다(myFitness#494 Codex P1).
+
 ```bash
 git checkout dev && git pull
 git checkout -b <feat|fix>/<issue>-<n>
 ```
 
 - feat: 새 기능
-- fix: 버그 (서비스 전이면), hotfix (main 서비스 후 긴급)
+- fix: 버그 (서비스 전이면). **main 서비스 후 긴급이면 hotfix → 위 경로**
 
 ## Step 5: 구현
 
