@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, todayKSTString, withRateLimit } from "../utils";
 import { isTrimmedResponse } from "../preserve";
+import { fetchDailySleep } from "../daily-endpoints";
 import { buildSleepRecordData, buildSleepScoreDetails, buildSleepUpdatePayload } from "./sleep-payload";
 
 export async function syncSleep(
@@ -15,7 +16,8 @@ export async function syncSleep(
 
   for (const date of dates) {
     try {
-      const sleepData = await withRateLimit(() => client.getSleepData(date));
+      // #365: 라이브러리 getSleepData 는 서버 로컬 TZ 로 날짜를 만든다 — KST 문자열로 직접 호출
+      const sleepData = await withRateLimit(() => fetchDailySleep(client, date));
 
       if (!sleepData?.dailySleepDTO) continue;
 
