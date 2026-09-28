@@ -13,6 +13,7 @@ import SeasonalityChart from "@/components/trends/SeasonalityChart";
 import TrendSeriesChart from "@/components/trends/TrendSeriesChart";
 import TrendsControls from "@/components/trends/TrendsControls";
 import YoyChart from "@/components/trends/YoyChart";
+import YoyMonthTable from "@/components/trends/YoyMonthTable";
 import { aggregateCaption } from "@/components/trends/chart-format";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { addDaysYmd, type HistoryGranularity } from "@/lib/history/buckets";
@@ -25,6 +26,7 @@ import { formatHistoryValue, historyDisplayUnit } from "@/lib/history/format";
 import { loadMetricDataStart, dataStartNote } from "@/lib/history/data-start";
 import { getHistoryMetric, type HistoryAggregate, type HistoryMetricDef } from "@/lib/history/metrics";
 import { pivotByYear, seasonality, summarizeSeries, toTrendPoints, type TrendPoint } from "@/lib/history/trends";
+import { yoyLinkRows } from "@/lib/history/yoy-links";
 import {
   isMonthRangeTruncated,
   monthRangeLength,
@@ -216,6 +218,8 @@ async function YoyView({ ctx, def, color }: ViewProps) {
           ...(startNote ? [startNote] : []),
         ]}
       />
+      {/* #413: 차트 (role="img" · 마우스 전용 점) 의 글자 · 링크 대응물 — 연도 × 12개월 표. 차트가 없어도 값이 있으면 보인다 (전부 null 이면 표도 없음) */}
+      <YoyMonthTable rows={yoyLinkRows(pivot, def.id)} metric={def} />
     </Panel>
   );
 }
