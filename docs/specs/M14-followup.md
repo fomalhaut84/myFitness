@@ -13,7 +13,7 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| **v2.40.0 배포 후 확인** | 배포 완료 — 확인 대기 | **수동 1회**: `pm2 startOrReload ecosystem.config.js` (TZ env 는 restart 만으로 안 들어간다) → `pm2 env <id> \| grep TZ` 세 앱. 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **v2.40.0 배포 후 확인** | 배포 완료 · **`pm2 startOrReload` 실행 완료 (사용자 · 2026-09-28 13:35 KST · 세 앱 reload ✓)** — 나머지 확인 대기 | `pm2 env 3/81/21 \| grep '^TZ'` 로 앱별 TZ 확인 (id 0 은 pm2-webui — 앱 증거 아님). 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
 | **v2.39.1 · v2.39.2 확인** (계속) | 확인 대기 | `/insights` 캡션 · 레이스 점 색 · cron 30일 재조회 로그 · 레이스 표 |
 | **#419 RSC 페이로드 실측** | 사용자 실행 — 이슈 댓글 curl (콜드 = `pm2 restart` 직후) | 1s 안 → 종료 · 초과 → 별도 이슈 |
 | **#480 date-only 입력 KST 자정 저장** (bug · P2) | 신규 (PR #478 Codex 2회차 P2 후속) | 동쪽 TZ 호스트 한정 · 프로덕션 도달 불가 · 작음 (`parseLocalDate` 2곳 → `kstInstant`) |
