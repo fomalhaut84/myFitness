@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { bumpHistoryCacheVersion } from "../../lib/history/cache";
 import type { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import {
@@ -221,6 +222,7 @@ export async function handleFoodInput(
     data: { date: now, description, mealType, estimatedKcal: null },
     select: { id: true },
   });
+  bumpHistoryCacheVersion(); // #403: 웹 연·월 뷰 캐시 (다른 프로세스) 무효화
 
   // 2a) #295 (M14 Phase 2 #2): 최근 30일 내 같은 description 로그가 있으면 그 kcal 재사용.
   //     AI 호출 스킵 → 즉시 응답, 일관성 유지 (MFP '밈 재작성' pain 해결).
@@ -351,6 +353,7 @@ export async function handleFoodInput(
           items: (decidedItems ?? undefined) as Prisma.InputJsonValue | undefined,
         },
       });
+      if (updated.count > 0) bumpHistoryCacheVersion(); // #403
       if (updated.count === 0) {
         repeatHit = null;
         estimate = null;

@@ -5,8 +5,9 @@
  * Prisma 행 역직렬화 (약 11,500행) 라 결과를 통째로 캐시한다.
  *
  * 전체 키 = `<호출자 키>|<syncStamp>|<version>`
- * - syncStamp: `max(SyncMetadata.lastSyncAt)`. 싱크가 어느 프로세스에서 돌든 DB 값이라 보인다.
- * - version: 수동 쓰기 route 가 `bump()`. `POST /api/body-composition` 등은 SyncMetadata 를 안 건드려
+ * - syncStamp: `max(SyncMetadata.lastSyncAt)` + **DB epoch** (#403 · `cache-epoch.ts`). 싱크 · 수동 쓰기가 어느 프로세스에서
+ *   일어나든 DB 값이라 보인다 (`composeSyncStamp`).
+ * - version: 수동 쓰기 route 가 `bump()` (같은 프로세스에서는 즉시). `POST /api/body-composition` 등은 SyncMetadata 를 안 건드려
  *   stamp 만으론 저장 직후에도 옛 값이 TTL 동안 남는다 (PR #401 Codex P2).
  * stamp · version 이 바뀌면 옛 엔트리는 다시 조회되지 않고 TTL · 용량으로만 빠진다.
  *
@@ -80,6 +81,11 @@ export function createHistoryCache(
       return entries.size;
     },
   };
+}
+
+/** #403: DB 의 두 신호를 stamp 문자열 하나로. 어느 쪽이 바뀌어도 (null 포함) 다른 키 */
+export function composeSyncStamp(lastSyncAt: Date | null, epoch: Date | null): string {
+  return `${lastSyncAt?.toISOString() ?? "never"}+${epoch?.toISOString() ?? "0"}`;
 }
 
 /**

@@ -2,11 +2,13 @@
  * #394 (M15-2): 히스토리 캐시 싱글턴 (서버 전용). 코어·키 규칙은 `cache-core.ts`.
  *
  * 인스턴스는 `globalThis` 에 둔다 — 수동 쓰기 route (bump) 와 `/history` 페이지 (get) 가 서로 다른 번들에
- * 들어가도 같은 캐시·버전을 봐야 한다. 유효 범위는 Next 프로세스 하나 (`myfitness`). 봇 프로세스의 식단 기록은
- * 버전도 stamp 도 못 올리므로 연·월 뷰에 최대 TTL 만큼 늦게 반영된다 (394 스펙 §4.6 — 수용).
+ * 들어가도 같은 캐시·버전을 봐야 한다. 유효 범위는 Next 프로세스 하나 (`myfitness`).
+ * #403: 다른 프로세스 (봇) 의 쓰기는 DB epoch (`cache-epoch.ts`) 로 보인다 — `bumpHistoryCacheVersion` 이 epoch 도 갱신하고
+ * stamp 가 그것을 포함하므로 최대 `SYNC_STAMP_REUSE_MS` 뒤 새 키 (이전엔 TTL 10분).
  */
 import prisma from "@/lib/prisma";
-import { createHistoryCache, summaryCacheKey, type HistoryCache } from "./cache-core";
+import { composeSyncStamp, createHistoryCache, summaryCacheKey, type HistoryCache } from "./cache-core";
+import { readHistoryCacheEpoch, touchHistoryCacheEpoch } from "./cache-epoch";
 import { getHistoryLowerBound } from "./lower-bound";
 import type { HistoryMetricId } from "./metrics";
 import { getHistoryRangeTotals, type HistoryRangeTotals } from "./range-totals";
@@ -26,9 +28,10 @@ let stampMemo: { value: Promise<string>; at: number } | null = null;
 function getSyncStamp(): Promise<string> {
   const now = Date.now();
   if (stampMemo && now - stampMemo.at < SYNC_STAMP_REUSE_MS) return stampMemo.value;
-  const value = prisma.syncMetadata
-    .aggregate({ _max: { lastSyncAt: true } })
-    .then((agg) => agg._max.lastSyncAt?.toISOString() ?? "never");
+  // #403: lastSyncAt 과 epoch 를 함께 (요청당 쿼리 2 · 5초 memo)
+  const value = Promise.all([prisma.syncMetadata.aggregate({ _max: { lastSyncAt: true } }), readHistoryCacheEpoch()]).then(
+    ([agg, epoch]) => composeSyncStamp(agg._max.lastSyncAt ?? null, epoch),
+  );
   const memo = { value, at: now };
   stampMemo = memo;
   value.catch(() => {
@@ -44,9 +47,13 @@ function cache(): HistoryCache {
   return globalForCache.historyCache;
 }
 
-/** 수동 쓰기 route (체중 · 식단) 성공 경로에서 호출. */
+/**
+ * 수동 쓰기 (체중 · 식단 · 봇 식단 · 재계산 완료) 성공 경로에서 호출. 같은 프로세스는 version 으로 즉시,
+ * 다른 프로세스는 DB epoch 로 (#403). epoch 쓰기는 기다리지 않는다 — 호출자 응답을 늦추지 않고, 실패해도 TTL 로 복구.
+ */
 export function bumpHistoryCacheVersion(): void {
   cache().bump();
+  void touchHistoryCacheEpoch();
 }
 
 export function getCachedLowerBound(): Promise<string> {

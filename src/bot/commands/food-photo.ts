@@ -10,6 +10,7 @@ import path from "path";
 import { pipeline } from "stream/promises";
 import type { Bot, Context } from "grammy";
 import prisma from "../prisma";
+import { bumpHistoryCacheVersion } from "../../lib/history/cache";
 import type { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -173,6 +174,7 @@ async function handleFoodPhoto(ctx: Context): Promise<void> {
       },
       select: { id: true },
     });
+    bumpHistoryCacheVersion(); // #403: 웹 연·월 뷰 캐시 (다른 프로세스) 무효화
 
     // 칼로리 밸런스 재계산. 실패 시 stale queue mark (기존 food.ts recalcWithRetry 로직 축약).
     try {

@@ -12,6 +12,7 @@
 import type { Bot } from "grammy";
 import { InlineKeyboard } from "grammy";
 import prisma from "../prisma";
+import { bumpHistoryCacheVersion } from "../../lib/history/cache";
 import { Prisma } from "@/generated/prisma/client";
 import { recalculateCalorieBalance } from "@/lib/fitness/calorie-balance";
 import { markStaleRecalcDate } from "@/lib/nutrition/stale-recalc";
@@ -135,6 +136,7 @@ export function registerFoodEditCallback(bot: Bot): void {
           select: { date: true },
         });
         deletedDate = row.date;
+        bumpHistoryCacheVersion(); // #403
       } catch (err) {
         if (
           err instanceof Prisma.PrismaClientKnownRequestError &&
@@ -478,6 +480,7 @@ async function handleDescReply(
         items: Prisma.DbNull,
       },
     });
+    bumpHistoryCacheVersion(); // #403
 
     // 재계산 — kcal 이 null 로 리셋됐으므로 밸런스 재계산 (다른 로그 반영). 실패 시 stale queue.
     try {
