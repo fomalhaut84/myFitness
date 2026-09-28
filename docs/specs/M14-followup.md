@@ -14,7 +14,7 @@
 | 항목 | 상태 | 비고 |
 |---|---|---|
 | **릴리즈 대기분** | dev 의 #480 — 다음 코드 변경 때 함께 (v2.40.1 patch 또는 v2.41.0) | 단독 릴리즈 불필요 (KST 호스트에서 instant 동일) |
-| **v2.40.0 배포 후 확인** (계속) | TZ · #419 실측 · 봇 409 는 완료 | 남은 것: 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 + 최신 `SleepRecord.sleepScoreDetails` 채워짐 (#437) · 텔레그램 `/sleep` `/weight` `/run` 날짜 · 식단 기록 → 5초 뒤 `/history` 월 뷰 · `history_cache_epoch` 행 · `/trends?view=yoy` 표 · `/insights` 캡션 · cron 30일 재조회 로그 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **v2.40.0 배포 후 확인** (계속) | TZ · #419 실측 · 봇 409 는 완료 | 남은 것: 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 + 최신 `SleepRecord.sleepScoreDetails` 채워짐 (#437) · 텔레그램 `/sleep` `/weight` `/run` 날짜 · 식단 기록 → 5초 뒤 `/history` 월 뷰 · `history_cache_epoch` 행 · `/trends?view=yoy` 표 · `/insights` 캡션 **+ 레이스 속 빈 점 윤곽 = 그 해 색 (A · E 패널 · #419)** · cron 30일 재조회 로그 **+ Garmin 에서 30일 안 과거 러닝을 레이스로 표시 → 다음 싱크 뒤 `/trends` 레이스 표 등장 (#414)** · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
 | **#486 옛 행 정규화 스크립트** (chore · P2) | 신규 (PR #485 Codex 2회차 P2) | 다른 TZ 호스트에서 로컬 자정으로 쓴 수동 체성분 행 — **프로덕션 해당 없음** (처음부터 KST). 필요해질 때만 |
 | **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | 이전 상태 표 그대로 |
 | 잔여 후보 (이슈 없음) | `src/app/sleep/[date]/page.tsx` 서버 로컬 자정 왕복 검증 (480 스펙 §7) · `TZ=UTC` vitest 정례화 판단 | 착수 시 이슈 생성 |
