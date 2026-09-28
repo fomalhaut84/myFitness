@@ -2,11 +2,11 @@
 // 패널 = 질문 → 차트 → 답 (큰 숫자 하나 + 근거 표). 기간은 전체 고정, 컨트롤은 패널별 계열 토글뿐.
 import InsightPanel, { Answer, BigNumber } from "@/components/insights/InsightPanel";
 import InsightScatter, { type ScatterSeries } from "@/components/insights/InsightScatter";
+import { yearSeries } from "@/components/insights/year-series";
 import ValueTable from "@/components/insights/ValueTable";
 import ZoneStack from "@/components/insights/ZoneStack";
 import { ZONE_COLORS, ZONE_NAMES } from "@/components/insights/zone-colors";
 import ReadoutRow from "@/components/trends/ReadoutRow";
-import { yearColor } from "@/components/trends/year-colors";
 import { formatPace } from "@/lib/format";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { getCachedHistorySummary, getCachedInsightRuns, getCachedLowerBound } from "@/lib/history/cache";
@@ -14,6 +14,7 @@ import {
   EFFICIENCY_BAND,
   HUMIDITY_LABELS,
   correlationWord,
+  describeDropped,
   efficiencyByYear,
   efficiencyDelta,
   efficiencyPoints,
@@ -54,26 +55,6 @@ const activityHref = (id: string) => `/activities/${id}`;
 /** #425: 연도 중앙값 계열 색 (밝은 색 · 큰 속 빈 점) */
 const MEDIAN_COLOR = "#ededed";
 
-function yearSeries<T extends { year: number }>(
-  items: readonly T[],
-  years: readonly number[],
-  currentYear: number,
-  toPoint: (item: T) => { x: number; y: number; lines: string[]; href: string | null },
-  race?: (item: T) => boolean,
-): ScatterSeries[] {
-  const byYear = years.map((year) => ({
-    id: String(year),
-    label: String(year),
-    color: yearColor(year, years, currentYear, HR_COLOR),
-    points: items.filter((it) => it.year === year && !(race && race(it))).map(toPoint),
-  }));
-  if (!race) return byYear;
-  const races = items.filter(race);
-  if (races.length === 0) return byYear;
-  // 레이스는 계열 하나 (범례 1개) 지만 연도 토글을 따른다 — `toggleId` 로 그 해를 끄면 레이스 점도 숨는다 (사전 리뷰 info 6)
-  return [...byYear, { id: "race", label: "레이스", color: "#e5e5e5", hollow: true, points: races.map((it) => ({ ...toPoint(it), toggleId: String(it.year) })) }];
-}
-
 export default async function InsightsPage() {
   const ctx: InsightContext = { today: todayKSTString(), lowerBound: await getCachedLowerBound() };
   const currentYear = Number(ctx.today.slice(0, 4));
@@ -84,9 +65,10 @@ export default async function InsightsPage() {
       ctx,
     ),
   ]);
-  const { kept: runs, dropped, total } = usableRuns(allRuns);
+  const { kept: runs, dropped, droppedBy, total } = usableRuns(allRuns);
   const years = [...new Set(runs.map((r) => r.year))].sort((a, b) => a - b);
-  const filterNote = `러닝 ${n(total)}건 중 ${n(runs.length)}건 (3km 미만 · 페이스 범위 밖 ${n(dropped)}건 제외)`;
+  // #419: 제외 사유별 건수 (거리 없음 = 트레드밀 등). 제외가 없으면 괄호 생략
+  const filterNote = dropped > 0 ? `러닝 ${n(total)}건 중 ${n(runs.length)}건 (${describeDropped(droppedBy)} 제외)` : `러닝 ${n(total)}건`;
 
   // A
   const effPoints = efficiencyPoints(runs);
@@ -98,6 +80,7 @@ export default async function InsightsPage() {
     years,
     currentYear,
     (p) => ({ x: p.pace, y: p.hr, lines: [p.ymd, `${formatPace(p.pace)}/km · ${p.hr}bpm · ${km1(p.distanceM)}${p.race ? " · 레이스" : ""}`], href: activityHref(p.id) }),
+    HR_COLOR,
     (p) => p.race,
   );
 
@@ -127,12 +110,18 @@ export default async function InsightsPage() {
   // D
   const lagRs = lagCorrelations(weeks.buckets, LAGS, ctx);
   const pairs1 = lagPairs(weeks.buckets, 1, ctx);
-  const lagSeries = yearSeries(pairs1, [...new Set(pairs1.map((p) => p.year))].sort((a, b) => a - b), currentYear, (p) => ({
-    x: p.km,
-    y: p.rhr,
-    lines: [`${p.weekKey} 주`, `${p.km.toFixed(1)}km → 다음 주 안정시 심박 ${Math.round(p.rhr)}bpm`],
-    href: null,
-  }));
+  const lagSeries = yearSeries(
+    pairs1,
+    [...new Set(pairs1.map((p) => p.year))].sort((a, b) => a - b),
+    currentYear,
+    (p) => ({
+      x: p.km,
+      y: p.rhr,
+      lines: [`${p.weekKey} 주`, `${p.km.toFixed(1)}km → 다음 주 안정시 심박 ${Math.round(p.rhr)}bpm`],
+      href: null,
+    }),
+    HR_COLOR,
+  );
   const kmBands = kmBandTable(pairs1);
 
   // E — 필터 전 러닝 (HRR 은 거리와 무관 · 트레드밀 포함)
@@ -148,6 +137,7 @@ export default async function InsightsPage() {
       hrrChartYears,
       currentYear,
       (p) => ({ x: yearFraction(p.ymd), y: p.hrr2, lines: [p.ymd, `2분 HRR ${signed(p.hrr2)} bpm${p.distanceM !== null ? ` · ${km1(p.distanceM)}` : ""}${p.race ? " · 레이스" : ""}`], href: activityHref(p.id) }),
+      HR_COLOR,
       (p) => p.race,
     ),
     {
@@ -172,7 +162,7 @@ export default async function InsightsPage() {
 
       <InsightPanel
         question="같은 페이스, 더 낮은 심박?"
-        how="점 = 러닝 1건. 가로 = 평균 페이스 (오른쪽이 빠름), 세로 = 평균 심박. 올해만 색, 지난 해는 최근일수록 밝은 회색. 속 빈 점 = 레이스"
+        how="점 = 러닝 1건. 가로 = 평균 페이스 (오른쪽이 빠름), 세로 = 평균 심박. 올해만 색, 지난 해는 최근일수록 밝은 회색. 속 빈 점 = 레이스 (윤곽은 그 해의 색)"
         foot={`기준 구간 ${band}/km 은 평균 페이스 근처의 30초 폭. 5건 미만인 해는 —. 같은 페이스끼리만 비교되므로 느린 회복 러닝은 표에 섞이지 않습니다.`}
       >
         {effPoints.length > 0 ? (
@@ -290,7 +280,7 @@ export default async function InsightsPage() {
       {/* #425 E — 시간 축 (소수 연도) · 연도 중앙값은 강조 계열 · 0 선 */}
       <InsightPanel
         question="회복이 빨라졌나?"
-        how={`점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값, 작은 속 빈 점 = 레이스.${hrrFrom ? ` 종료 후 심박은 ${hrrFrom} 부터 있습니다` : ""}`}
+        how={`점 = 러닝 1건. 세로 = 달리기를 멈추고 2분 뒤 심박이 얼마나 떨어졌나 (2분 HRR · 클수록 빠른 회복). 올해만 색, 지난 해는 최근일수록 밝은 회색. 큰 속 빈 점 = 그 해 중앙값, 작은 속 빈 점 = 레이스 (윤곽은 그 해의 색).${hrrFrom ? ` 종료 후 심박은 ${hrrFrom} 부터 있습니다` : ""}`}
         foot={`중앙값 — 인터벌 · 레이스처럼 고심박에서 멈춘 러닝은 HRR 이 크게 나와 평균을 끌어올립니다. 2분 해상도라 워치의 1분 HRR 과 다릅니다. 하루 심박이 없거나 종료 후 샘플이 빠진 러닝 ${n(hrrMissing)}건은 뺐습니다. 5건 미만인 해는 —. 0 아래는 종료 뒤 심박이 오히려 오른 러닝.`}
       >
         {hrrPoints.length > 0 ? (
