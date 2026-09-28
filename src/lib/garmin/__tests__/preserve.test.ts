@@ -94,6 +94,20 @@ describe("isTrimmedResponse", () => {
     expect(isTrimmedResponse({ dailySleepDTO: null, sleepLevels: [{ x: 1 }] }, existing)).toBe(true);
   });
 
+  // 회귀: PR #436 Codex 2회차 P2 (#437) — extractSleepSpO2 가 받는 숫자 문자열 ("94") 을 가드도 값으로 센다
+  it("숫자 문자열은 값 있음 — \"94\" 가 사라지면 trimmed · 94 → \"94\" 는 trimmed 아님", () => {
+    expect(isTrimmedResponse({ dailySleepDTO: { averageSpO2Value: null } }, { dailySleepDTO: { averageSpO2Value: "94" } })).toBe(true);
+    expect(isTrimmedResponse({ dailySleepDTO: { averageSpO2Value: "94" } }, { dailySleepDTO: { averageSpO2Value: 94 } })).toBe(false);
+    expect(isTrimmedResponse({ dailySleepDTO: { averageSpO2Value: 94 } }, { dailySleepDTO: { averageSpO2Value: " 94 " } })).toBe(false);
+  });
+
+  it("\"0\" · 빈 문자열 · 공백 · 날짜 문자열은 값 없음 (사라져도 trimmed 아님)", () => {
+    const existing = { a: "0", b: "", c: "  ", d: "2026-04-05", e: "GOOD" };
+    expect(isTrimmedResponse({ a: null, b: null, c: null, d: null, e: null }, existing)).toBe(false);
+    // 기존이 이런 문자열뿐이면 "값 있음" 키가 없어 애초에 trimmed 판정 대상이 아니다
+    expect(isTrimmedResponse({}, existing)).toBe(false);
+  });
+
   // 사전 리뷰 info 1: 0 아닌 수치 → 0 도 trimmed (rawData 만 유지 · 컬럼은 갱신) — 의도를 고정
   it("0 아닌 수치가 0 으로 바뀌면 trimmed", () => {
     expect(isTrimmedResponse({ restlessMomentsCount: 0 }, { restlessMomentsCount: 5 })).toBe(true);
