@@ -90,3 +90,21 @@ export function resetClient(): void {
   clientInstance = null;
   isAuthenticated = false;
 }
+
+/**
+ * #383 Codex P2 (PR #387 2회차): 영속 토큰 폐기. `withReauth` 는 메모리 상태만 비우고 `authenticate()` 가 같은
+ * `.garmin-tokens` 파일을 다시 읽으므로, 토큰이 profile 조회는 통과하지만 daily summary 를 privacyProtected 로 돌려주는
+ * 경우엔 재인증이 무의미했다. 파일을 지우면 다음 인증이 이메일/비밀번호 로그인으로 가서 새 토큰을 발급·저장한다.
+ * 파일이 없거나 삭제 실패는 무해 (로그만) — 어차피 상위에서 싱크 실패로 기록된다.
+ */
+export function evictPersistedToken(): void {
+  for (const name of ["oauth1_token.json", "oauth2_token.json"]) {
+    const file = path.join(TOKEN_DIR, name);
+    try {
+      if (fs.existsSync(file)) fs.unlinkSync(file);
+    } catch (error) {
+      console.warn(`[garmin] 토큰 파일 삭제 실패 (${name}):`, error instanceof Error ? error.message : String(error));
+    }
+  }
+  resetClient();
+}

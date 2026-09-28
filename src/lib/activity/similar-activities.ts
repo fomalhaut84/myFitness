@@ -106,6 +106,22 @@ export interface SimilarActivitiesOptions {
   limit?: number;
   radiusMeters?: number;
   distanceTolerance?: number;
+  /** #448: 이 시각 **이전** 활동만 (exclusive). AI 평가 기준선처럼 이후 기록을 빼야 할 때 — DB 에서 자르므로 상한이 이전 기록으로 채워진다 */
+  before?: Date;
+}
+
+export type CandidateTimeRange = { gte: Date; lte: Date } | { gte: Date; lt: Date };
+
+/**
+ * 후보 시각 창 — 대상 활동 startTime 기준 ±N 년 (Codex P1 #1: now 기준이면 오래된 활동을 열었을 때 동시대 활동을 놓친다).
+ * `before` 가 창 끝보다 앞이면 끝을 `lt: before` 로 자른다 (#448). 순수 — 회귀 테스트 대상.
+ */
+export function candidateTimeRange(startTime: Date, before?: Date): CandidateTimeRange {
+  const gte = new Date(startTime);
+  gte.setFullYear(gte.getFullYear() - CANDIDATE_WINDOW_YEARS);
+  const lte = new Date(startTime);
+  lte.setFullYear(lte.getFullYear() + CANDIDATE_WINDOW_YEARS);
+  return before !== undefined && before.getTime() <= lte.getTime() ? { gte, lt: before } : { gte, lte };
 }
 
 /** 렌더 전용 select — rawData 없음. 태그 매칭 (GPS 검사 불필요) 과 최종 반환에 사용. */
@@ -158,11 +174,8 @@ export async function findSimilarActivities(
   // GPS도 없고 태그도 없으면 매칭 후보 없음 — 빠른 반환.
   if (!currentLoc && !currentTag) return [];
 
-  // 대상 활동 startTime 기준 ±N 년 창. Codex P1 #1: now 기준이면 오래된 활동을 열었을 때 동시대 활동을 놓친다.
-  const windowStart = new Date(current.startTime);
-  windowStart.setFullYear(windowStart.getFullYear() - CANDIDATE_WINDOW_YEARS);
-  const windowEnd = new Date(current.startTime);
-  windowEnd.setFullYear(windowEnd.getFullYear() + CANDIDATE_WINDOW_YEARS);
+  // 대상 활동 startTime 기준 ±N 년 창 (before 가 있으면 그 앞까지 — #448)
+  const timeRange = candidateTimeRange(current.startTime, opts.before);
 
   // Codex P2: 태그 매칭과 러닝 계열 매칭을 분리 쿼리. 통합 쿼리에서 `take` 상한이
   // 오래된 tagged 레코드를 최신 러닝 500 건에 밀려 빠뜨릴 수 있음. 태그는 사용자 명시
@@ -174,7 +187,7 @@ export async function findSimilarActivities(
   // distance 가 null 인 활동은 매칭 대상이 될 수 없어 (isSameCourse 도 조기 반환) 제외.
   const runningWhere = {
     id: { not: activityId },
-    startTime: { gte: windowStart, lte: windowEnd },
+    startTime: timeRange,
     OR: [
       { activityType: { contains: "running" } },
       { activityType: { in: ["virtual_run", "obstacle_run"] } },
@@ -197,6 +210,8 @@ export async function findSimilarActivities(
           where: {
             id: { not: activityId },
             routeTag: currentTag,
+            // #448: 태그 매칭은 날짜 창을 무시하지만 before 는 지킨다 (이전 기록만)
+            ...(opts.before !== undefined ? { startTime: { lt: opts.before } } : {}),
           },
           orderBy: { startTime: "desc" },
           select: RENDER_SELECT,

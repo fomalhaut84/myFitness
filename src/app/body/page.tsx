@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
-import { formatDateLocal } from "@/lib/format";
+import { formatDateLocal, formatDayBefore } from "@/lib/format";
+// #365 (사전 리뷰 major 1): 서버 로컬 자정 (`setHours(0,0,0,0)`) 대신 KST 자정 instant — 조회 경계 · 주간 라벨이 호스트 TZ 와 무관
+import { daysAgoKST } from "@/lib/garmin/utils";
 import {
   movingAverage,
   summarizeWeek,
@@ -9,17 +11,10 @@ import BodyClient from "./body-client";
 
 export const dynamic = "force-dynamic";
 
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export default async function BodyPage() {
-  const today = daysAgoLocal(0);
-  const thirtyDaysAgo = daysAgoLocal(30);
-  const sixtyDaysAgo = daysAgoLocal(60);
+  const today = daysAgoKST(0);
+  const thirtyDaysAgo = daysAgoKST(30);
+  const sixtyDaysAgo = daysAgoKST(60);
 
   const [latest, weightRecent, fatTrend, recentRecords, profile, balances, weeklyRuns, maxWeightRecord] =
     await Promise.all([
@@ -35,7 +30,7 @@ export default async function BodyPage() {
         orderBy: { date: "asc" },
       }),
       prisma.bodyComposition.findMany({
-        where: { date: { gte: daysAgoLocal(14) } },
+        where: { date: { gte: daysAgoKST(14) } },
         orderBy: { date: "desc" },
         select: {
           date: true,
@@ -47,7 +42,7 @@ export default async function BodyPage() {
       }),
       prisma.userProfile.findFirst(),
       prisma.dailySummary.findMany({
-        where: { date: { gte: daysAgoLocal(30) } },
+        where: { date: { gte: daysAgoKST(30) } },
         select: {
           date: true,
           calorieBalance: true,
@@ -59,7 +54,7 @@ export default async function BodyPage() {
       }),
       prisma.activity.findMany({
         where: {
-          startTime: { gte: daysAgoLocal(56) },
+          startTime: { gte: daysAgoKST(56) },
           activityType: { contains: "running" },
         },
         select: { startTime: true, distance: true },
@@ -92,8 +87,8 @@ export default async function BodyPage() {
   // 주간 요약 (최근 4주)
   const weeklySummaries = [];
   for (let i = 0; i < 4; i++) {
-    const weekEnd = daysAgoLocal(i * 7);
-    const weekStart = daysAgoLocal(i * 7 + 7);
+    const weekEnd = daysAgoKST(i * 7);
+    const weekStart = daysAgoKST(i * 7 + 7);
     weeklySummaries.push(
       summarizeWeek({
         balances,
@@ -107,8 +102,8 @@ export default async function BodyPage() {
   // 주간 러닝 거리 (최근 8주). weekStart(inclusive) ~ weekEnd(exclusive)로 경계 중복 방지.
   const weeklyDistances: { weekLabel: string; distanceKm: number }[] = [];
   for (let i = 7; i >= 0; i--) {
-    const weekStart = daysAgoLocal(i * 7 + 6);
-    const weekEndExclusive = daysAgoLocal(i * 7 - 1); // 다음 주 시작 (미포함)
+    const weekStart = daysAgoKST(i * 7 + 6);
+    const weekEndExclusive = daysAgoKST(i * 7 - 1); // 다음 주 시작 (미포함)
     const weekRuns = weeklyRuns.filter(
       (r) =>
         r.startTime.getTime() >= weekStart.getTime() &&
@@ -165,9 +160,8 @@ export default async function BodyPage() {
       calorieSeries={calorieSeries}
       weeklySummaries={weeklySummaries.map((s) => ({
         weekStartLabel: formatDateLocal(s.weekStart),
-        weekEndLabel: formatDateLocal(
-          new Date(s.weekEnd.getTime() - 1)
-        ),
+        // weekEnd 는 KST 자정 (exclusive) → 라벨은 그 전날. `−1ms` 는 UTC 호스트에서 KST 로 읽으면 같은 날이 된다 (사전 리뷰 major 1)
+        weekEndLabel: formatDayBefore(s.weekEnd),
         avgDailyBalance: s.avgDailyBalance,
         projectedLossKg: s.projectedLossKg,
         weightChangeKg: s.weightChangeKg,

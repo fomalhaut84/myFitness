@@ -1,0 +1,358 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>기록 — /history 시안 (#394)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root {
+    --bg:#0a0a0a; --bg-raised:#111111; --card:#161616; --card-hover:#1c1c1c; --surface:#1e1e1e;
+    --border:#262626; --border-hover:#333333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e;
+    --m:#22c55e; /* 선택 지표 색 — JS 가 교체 */
+    --mono:"Geist Mono",ui-monospace,monospace;
+  }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font-family:"Geist",system-ui,sans-serif; font-size:14px; line-height:1.5; }
+  a { color:inherit; text-decoration:none; }
+  button { font:inherit; color:inherit; background:none; border:0; cursor:pointer; }
+  :focus-visible { outline:2px solid var(--m); outline-offset:2px; border-radius:4px; }
+  .page { max-width:1040px; margin:0 auto; padding:24px 16px 80px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:20px; }
+
+  /* 네비 */
+  .crumbs { display:flex; align-items:baseline; gap:8px; flex-wrap:wrap; }
+  .crumbs a { color:var(--sub); } .crumbs a:hover { color:var(--bright); }
+  .crumbs .sep { color:var(--dim); }
+  .crumbs h1 { font-size:26px; font-weight:600; color:var(--bright); letter-spacing:-0.02em; }
+  .crumbs .dow { font-size:14px; color:var(--sub); font-weight:400; margin-left:6px; }
+  .navrow { display:flex; align-items:center; justify-content:space-between; gap:12px; margin:14px 0 20px; flex-wrap:wrap; }
+  .step { display:flex; gap:6px; }
+  .step a, .step span, .jump { font-size:13px; padding:6px 10px; border:1px solid var(--border); border-radius:8px; color:var(--text); }
+  .step a:hover, .jump:hover { border-color:var(--border-hover); color:var(--bright); }
+  .step span { color:var(--dim); border-color:#1c1c1c; cursor:not-allowed; }
+  .years { display:flex; gap:2px; overflow-x:auto; scrollbar-width:none; }
+  .years a { font:500 13px var(--mono); padding:6px 10px; border-radius:8px; color:var(--sub); white-space:nowrap; }
+  .years a:hover { color:var(--bright); }
+  .years a.on { background:var(--surface); color:var(--bright); }
+  .jump { font-family:var(--mono); background:transparent; color-scheme:dark; }
+
+  /* 지표 선택 */
+  .metrics { display:flex; gap:6px; overflow-x:auto; scrollbar-width:none; margin-bottom:20px; padding-bottom:2px; }
+  .metrics button { display:flex; align-items:center; gap:7px; font-size:13px; padding:6px 12px; border:1px solid var(--border); border-radius:999px; color:var(--text); white-space:nowrap; }
+  .metrics button i { width:8px; height:8px; border-radius:50%; background:var(--c); opacity:.55; }
+  .metrics button:hover { border-color:var(--border-hover); }
+  .metrics button.on { color:var(--bright); border-color:var(--c); background:color-mix(in srgb, var(--c) 10%, transparent); }
+  .metrics button.on i { opacity:1; }
+  .metrics .gap { width:1px; background:var(--border); margin:4px 4px; flex:none; }
+
+  /* KPI 띠 — 카드 7장이 아니라 한 줄의 판독값 */
+  .kpis { display:grid; grid-template-columns:repeat(7,1fr); border:1px solid var(--border); border-radius:12px; background:var(--card); margin-bottom:24px; }
+  .kpis div { padding:12px 14px; border-left:1px solid var(--border); min-width:0; }
+  .kpis div:first-child { border-left:0; }
+  .kpis dt { font-size:11px; color:var(--sub); white-space:nowrap; }
+  .kpis dd { font:500 17px var(--mono); color:var(--bright); margin-top:2px; white-space:nowrap; }
+  .kpis dd small { font-size:11px; color:var(--sub); font-weight:400; margin-left:3px; }
+  .kpis dd.none { font:400 13px "Geist",sans-serif; color:var(--dim); padding-top:4px; }
+
+  /* 연 뷰 — 12개월 밀착 인화 */
+  .year { display:grid; grid-template-columns:repeat(4,1fr); gap:12px; }
+  .mcard { display:block; background:var(--card); border:1px solid var(--border); border-radius:12px; padding:14px; }
+  a.mcard:hover { border-color:var(--border-hover); background:var(--card-hover); }
+  .mcard.off { opacity:.35; }
+  .mcard header { display:flex; justify-content:space-between; align-items:baseline; margin-bottom:10px; }
+  .mcard .name { font-size:14px; color:var(--bright); font-weight:500; }
+  .mcard .val { font:500 14px var(--mono); color:var(--bright); }
+  .mcard .val small { font-size:11px; color:var(--sub); font-weight:400; margin-left:2px; }
+  .mcard .val.none { font:400 12px "Geist",sans-serif; color:var(--dim); }
+  .mini { display:grid; grid-template-columns:repeat(7,1fr); gap:3px; }
+  .mini b { aspect-ratio:1; border-radius:3px; background:var(--surface); }
+  .mini b.x { background:none; }
+  .mini b.na { background:none; box-shadow:inset 0 0 0 1px #242424; }
+  .mcard .cover { font-size:11px; color:var(--dim); margin-top:8px; }
+
+  /* 월 그리드 */
+  .dows, .grid { display:grid; grid-template-columns:repeat(7,1fr); gap:4px; }
+  .dows { margin-bottom:6px; font-size:11px; color:var(--dim); text-align:center; }
+  .cell { position:relative; aspect-ratio:1; border-radius:8px; background:var(--card); display:flex; align-items:flex-end; justify-content:center; padding-bottom:16%; min-width:0; }
+  a.cell:hover { box-shadow:inset 0 0 0 1px var(--border-hover); }
+  .cell .d { position:absolute; top:5px; left:7px; font-size:10px; color:var(--sub); }
+  .cell .v { font:500 clamp(11px,1.6vw,15px) var(--mono); color:var(--bright); }
+  .cell.na { background:none; box-shadow:inset 0 0 0 1px #1f1f1f; }
+  .cell.na .v { font:400 10px "Geist",sans-serif; color:var(--dim); }
+  .cell.zero .v { color:var(--dim); }
+  .cell.off { background:none; } .cell.off .d { color:#333; }
+  .cell.today { box-shadow:inset 0 0 0 1.5px var(--m); }
+  .cell.hot .d { color:rgba(255,255,255,.72); }
+  @media (min-width:900px) { .cell { aspect-ratio:1.55; padding-bottom:0; align-items:center; } }
+  .legend { display:flex; align-items:center; gap:14px; flex-wrap:wrap; margin-top:12px; font-size:11px; color:var(--sub); }
+  .legend .ramp { display:flex; gap:2px; align-items:center; } .legend .ramp b { width:12px; height:12px; border-radius:3px; }
+  .legend .k { display:flex; align-items:center; gap:5px; } .legend .k b { width:12px; height:12px; border-radius:3px; }
+
+  /* 일별 스트립 */
+  .strip { margin-top:28px; }
+  .strip h2, .sec-title { font-size:13px; font-weight:500; color:var(--text); margin-bottom:10px; }
+  .bars { display:flex; align-items:flex-end; gap:2px; height:72px; border-bottom:1px solid var(--border); }
+  .bars a, .bars span { flex:1; min-width:0; border-radius:2px 2px 0 0; background:var(--m); opacity:.75; }
+  .bars a:hover { opacity:1; }
+  .bars span.na { height:3px !important; background:var(--border); opacity:1; }
+  .axis { display:flex; justify-content:space-between; font:400 10px var(--mono); color:var(--dim); margin-top:4px; }
+
+  /* 일 뷰 — 카드 8장이 아니라 하루의 장부 */
+  .ledger { border:1px solid var(--border); border-radius:12px; background:var(--card); overflow:hidden; }
+  .row { display:grid; grid-template-columns:132px 1fr; gap:16px; padding:16px 18px; border-top:1px solid var(--border); }
+  .row:first-child { border-top:0; }
+  .row > h2 { font-size:13px; font-weight:500; color:var(--bright); }
+  .row > h2 a { display:block; font-size:12px; font-weight:400; color:var(--sub); margin-top:2px; }
+  .row > h2 a:hover { color:var(--bright); }
+  .row.empty { padding:10px 18px; background:var(--bg-raised); }
+  .row.empty > h2 { color:var(--dim); font-weight:400; }
+  .row.empty p { font-size:13px; color:var(--dim); }
+  .stats { display:flex; flex-wrap:wrap; gap:6px 28px; }
+  .stats div { min-width:72px; }
+  .stats dt { font-size:11px; color:var(--sub); }
+  .stats dd { font:500 16px var(--mono); color:var(--bright); }
+  .stats dd small { font-size:11px; color:var(--sub); font-weight:400; margin-left:2px; }
+  .acts { display:grid; gap:8px; }
+  .act { display:flex; justify-content:space-between; gap:12px; align-items:baseline; padding:10px 12px; background:var(--surface); border-radius:8px; }
+  .act:hover { background:#262626; }
+  .act .t { color:var(--bright); } .act .t small { color:var(--sub); font:400 12px var(--mono); margin-left:8px; }
+  .act .n { font:400 13px var(--mono); color:var(--text); white-space:nowrap; }
+  .stages { display:flex; height:8px; border-radius:4px; overflow:hidden; margin-top:12px; max-width:420px; }
+  .stages b { display:block; }
+  .stagekey { display:flex; gap:14px; font-size:11px; color:var(--sub); margin-top:6px; flex-wrap:wrap; }
+  .stagekey i { display:inline-block; width:8px; height:8px; border-radius:2px; margin-right:5px; }
+  .foods li { display:flex; justify-content:space-between; gap:12px; padding:4px 0; list-style:none; font-size:13px; }
+  .foods { padding:0; margin-top:10px; max-width:460px; } .foods span:last-child { font-family:var(--mono); color:var(--sub); white-space:nowrap; }
+  .foods em { font-style:normal; color:var(--sub); margin-right:8px; font-size:12px; }
+  .report { font-size:13px; color:var(--text); max-width:62ch; }
+  .report + .report { margin-top:12px; padding-top:12px; border-top:1px solid var(--border); }
+  .report strong { display:block; color:var(--bright); font-weight:500; margin-bottom:2px; }
+
+  @media (max-width:900px) { .year { grid-template-columns:repeat(3,1fr); } .kpis { grid-template-columns:repeat(4,1fr); } .kpis div:nth-child(5){border-left:0;} .kpis div:nth-child(n+5){border-top:1px solid var(--border);} }
+  @media (max-width:560px) {
+    .crumbs h1 { font-size:22px; }
+    /* KPI 는 한 줄 가로 스크롤 — 그리드(주인공)가 첫 화면에 들어오도록 */
+    .kpis { display:flex; overflow-x:auto; scrollbar-width:none; }
+    .kpis div { flex:none; min-width:112px; border-top:0 !important; border-left:1px solid var(--border) !important; }
+    .kpis div:first-child { border-left:0 !important; }
+    .navrow { flex-wrap:nowrap; } .years { flex:1; min-width:0; }
+    /* 연 뷰: 세로 스택, 왼쪽 값 · 오른쪽 미니 달력 */
+    .year { grid-template-columns:1fr; gap:8px; }
+    .mcard { display:grid; grid-template-columns:1fr 112px; gap:12px; align-items:center; padding:12px 14px; }
+    .mcard header { display:block; margin:0; } .mcard .val { display:block; font-size:17px; margin-top:2px; }
+    .mcard .cover { grid-column:1; margin-top:0; } .mini { grid-column:2; grid-row:1 / span 2; gap:2px; }
+    .grid, .dows { gap:3px; } .cell { border-radius:6px; } .cell .d { top:3px; left:4px; font-size:9px; } .cell .v { font-size:11px; }
+    .row { grid-template-columns:1fr; gap:10px; padding:14px; } .row.empty { grid-template-columns:96px 1fr; padding:10px 14px; }
+    .row > h2 { display:flex; justify-content:space-between; align-items:baseline; } .row > h2 a { margin:0; }
+  }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 #394 — 데이터는 가짜(시드 난수)입니다. 하한 2020-06-16, 오늘 2026-09-21 로 고정. 셀·카드·브레드크럼을 눌러 연 → 월 → 일로 이동해 보세요.</p>
+  <div id="app"></div>
+</div>
+<script>
+const TODAY = "2026-09-21", LOWER = "2020-06-16";
+const METRICS = [
+  { id:"runningKm", label:"러닝 거리", unit:"km", dec:2, agg:"sum", zero:true,  c:"#22c55e", main:true },
+  { id:"steps",     label:"걸음",      unit:"보", dec:0, agg:"sum", zero:false, c:"#fbbf24", main:true },
+  { id:"sleepScore",label:"수면 점수", unit:"점", dec:0, agg:"avg", zero:false, c:"#a78bfa", main:true },
+  { id:"restingHR", label:"안정시 심박",unit:"bpm",dec:0, agg:"avg", zero:false, c:"#f87171", main:true },
+  { id:"weight",    label:"체중",      unit:"kg", dec:1, agg:"avg", zero:false, c:"#2dd4bf", main:true },
+  { id:"runningCount",label:"러닝 횟수",unit:"회",dec:0, agg:"sum", zero:true,  c:"#86efac" },
+  { id:"vo2max",    label:"VO2max",    unit:"",   dec:1, agg:"max", zero:false, c:"#fb923c" },
+  { id:"calorieBalance",label:"칼로리 밸런스",unit:"kcal",dec:0,agg:"avg",zero:false,c:"#e879f9" },
+  { id:"intakeKcal",label:"섭취 칼로리",unit:"kcal",dec:0, agg:"avg", zero:false, c:"#f472b6" },
+];
+const M = Object.fromEntries(METRICS.map(m => [m.id, m]));
+const pad = n => String(n).padStart(2,"0");
+const ymd = (y,m,d) => `${y}-${pad(m)}-${pad(d)}`;
+const dim = (y,m) => new Date(Date.UTC(y,m,0)).getUTCDate();
+const dow = (y,m,d) => new Date(Date.UTC(y,m-1,d)).getUTCDay();
+const DOW = ["일","월","화","수","목","금","토"];
+function rnd(key){ let h=2166136261; for(const ch of key){ h^=ch.charCodeAt(0); h=Math.imul(h,16777619);} h^=h>>>13; h=Math.imul(h,0x5bd1e995); return ((h^(h>>>15))>>>0)/4294967296; }
+function inRange(s){ return s>=LOWER && s<=TODAY; }
+
+function dayVal(id, s){
+  if(!inRange(s)) return undefined;
+  const r = k => rnd(s+id+k), y = +s.slice(0,4), mo = +s.slice(5,7);
+  const season = Math.cos((mo-4)/12*2*Math.PI);
+  switch(id){
+    case "runningKm": return r("a")<0.46 ? +(4+r("b")*r("c")*24).toFixed(2) : 0;
+    case "runningCount": return dayVal("runningKm",s)>0 ? (r("d")<0.06?2:1) : 0;
+    case "steps": return r("a")<0.04 ? null : Math.round(5000+r("b")*9000+(dayVal("runningKm",s)||0)*1100);
+    case "sleepScore": return r("a")<0.06 ? null : Math.round(62+r("b")*30);
+    case "restingHR": return r("a")<0.04 ? null : Math.round(50-season*2+r("b")*5-(y-2020)*0.4);
+    case "weight": return r("a")<0.78 ? null : +(72.5-season*0.8-(y-2020)*0.25+r("b")*1.2).toFixed(1);
+    case "vo2max": return r("a")<0.3 ? null : +(45+(y-2020)*0.6+season+r("b")*1.5).toFixed(1);
+    case "calorieBalance": return y<2026 ? null : (r("a")<0.2?null:Math.round(-450+r("b")*700));
+    case "intakeKcal": return y<2026 ? null : (r("a")<0.2?null:Math.round(1700+r("b")*900));
+  }
+}
+function agg(id, days){
+  const m = M[id], vals = days.map(s => dayVal(id,s)).filter(v => v!==undefined);
+  const has = vals.filter(v => v!==null && !(m.zero && v===0));
+  const nums = vals.filter(v => v!==null);
+  if(m.zero) return { value: nums.reduce((a,b)=>a+b,0), covered: has.length, total: vals.length };
+  if(!nums.length) return { value:null, covered:0, total:vals.length };
+  const v = m.agg==="sum" ? nums.reduce((a,b)=>a+b,0) : m.agg==="max" ? Math.max(...nums) : nums.reduce((a,b)=>a+b,0)/nums.length;
+  return { value:v, covered:nums.length, total:vals.length, last:nums[nums.length-1] };
+}
+const daysOfMonth = (y,m) => Array.from({length:dim(y,m)},(_,i)=>ymd(y,m,i+1));
+const daysOfYear = y => Array.from({length:12},(_,i)=>daysOfMonth(y,i+1)).flat();
+function fmt(id, v, short){
+  if(v===null||v===undefined) return null;
+  const m = M[id];
+  if(short && id==="steps") return (v/1000).toFixed(1)+"k";
+  if(short && id==="runningKm") return v.toFixed(1);
+  return v.toLocaleString("ko-KR",{minimumFractionDigits:m.dec,maximumFractionDigits:m.dec});
+}
+const pace = (sec) => `${Math.floor(sec/60)}:${pad(Math.round(sec%60))}`;
+
+/* 색 강도: 뷰 범위 안에서 5단계. sum 형은 0 기준, avg 형은 min~max 정규화 */
+function scaleFor(id, days){
+  const nums = days.map(s=>dayVal(id,s)).filter(v=>typeof v==="number" && !(M[id].zero&&v===0));
+  if(!nums.length) return ()=>0;
+  const max=Math.max(...nums), min=M[id].agg==="sum"?0:Math.min(...nums);
+  return v => Math.min(5, Math.max(1, Math.ceil(((v-min)/((max-min)||1))*5)));
+}
+const tint = (c,l) => `color-mix(in srgb, ${c} ${[0,14,26,40,56,74][l]}%, #161616)`;
+
+function route(){
+  const [p,q] = (location.hash.slice(1)||"/2026").split("?");
+  const seg = p.split("/").filter(Boolean).map(Number);
+  const metric = new URLSearchParams(q||"").get("metric");
+  return { y:seg[0]||2026, m:seg[1], d:seg[2], metric: M[metric]?metric:"runningKm" };
+}
+const href = (r,parts) => `#/${parts.join("/")}${r.metric!=="runningKm"?`?metric=${r.metric}`:""}`;
+
+function nav(r){
+  const level = r.d?"day":r.m?"month":"year";
+  const crumbs = [`<a href="${href(r,[r.y])}">기록</a>`];
+  let title, prev, next, jump;
+  if(level==="year"){
+    title = `${r.y}년`;
+  } else if(level==="month"){
+    crumbs.push(`<span class="sep">›</span><a href="${href(r,[r.y])}">${r.y}</a>`);
+    title = `${r.m}월`;
+    const pm = r.m===1?[r.y-1,12]:[r.y,r.m-1], nm = r.m===12?[r.y+1,1]:[r.y,r.m+1];
+    prev = ymd(pm[0],pm[1],dim(pm[0],pm[1]))>=LOWER ? href(r,[pm[0],pad(pm[1])]) : null;
+    next = ymd(nm[0],nm[1],1)<=TODAY ? href(r,[nm[0],pad(nm[1])]) : null;
+    jump = `<input class="jump" type="month" aria-label="월 이동" value="${r.y}-${pad(r.m)}" min="${LOWER.slice(0,7)}" max="${TODAY.slice(0,7)}" onchange="if(this.value)location.hash='#/'+this.value.replace('-','/')">`;
+  } else {
+    crumbs.push(`<span class="sep">›</span><a href="${href(r,[r.y])}">${r.y}</a><span class="sep">›</span><a href="${href(r,[r.y,pad(r.m)])}">${r.m}월</a>`);
+    title = `${r.d}일<span class="dow">${DOW[dow(r.y,r.m,r.d)]}요일</span>`;
+    const shift = n => { const t=new Date(Date.UTC(r.y,r.m-1,r.d+n)); return [t.getUTCFullYear(),t.getUTCMonth()+1,t.getUTCDate()]; };
+    const p=shift(-1), n=shift(1);
+    prev = ymd(...p)>=LOWER ? href(r,[p[0],pad(p[1]),pad(p[2])]) : null;
+    next = ymd(...n)<=TODAY ? href(r,[n[0],pad(n[1]),pad(n[2])]) : null;
+    jump = `<input class="jump" type="date" aria-label="날짜 이동" value="${ymd(r.y,r.m,r.d)}" min="${LOWER}" max="${TODAY}" onchange="if(this.value)location.hash='#/'+this.value.replaceAll('-','/')">`;
+  }
+  const stepper = level==="year"
+    ? `<nav class="years" aria-label="연도">${[2020,2021,2022,2023,2024,2025,2026].map(y=>`<a class="${y===r.y?"on":""}" href="${href(r,[y])}">${y}</a>`).join("")}</nav>`
+    : `<div class="step">${prev?`<a href="${prev}">이전</a>`:`<span>이전</span>`}${next?`<a href="${next}">다음</a>`:`<span>다음</span>`}</div>`;
+  const todayLink = level==="day" ? href(r,TODAY.split("-")) : level==="month" ? href(r,TODAY.split("-").slice(0,2)) : href(r,[2026]);
+  return `<div class="crumbs">${crumbs.join("")}${crumbs.length?`<span class="sep">›</span>`:""}<h1>${title}</h1></div>
+    <div class="navrow">${stepper}<div class="step">${jump||""}<a href="${todayLink}">${level==="day"?"오늘":level==="month"?"이번 달":"올해"}</a></div></div>`;
+}
+function picker(r){
+  const parts = r.d?[r.y,pad(r.m),pad(r.d)]:r.m?[r.y,pad(r.m)]:[r.y];
+  const btn = m => `<button class="${m.id===r.metric?"on":""}" style="--c:${m.c}" aria-pressed="${m.id===r.metric}" onclick="location.hash='${href({metric:m.id},parts)}'"><i></i>${m.label}</button>`;
+  return `<div class="metrics" role="group" aria-label="지표">${METRICS.filter(m=>m.main).map(btn).join("")}<span class="gap"></span>${METRICS.filter(m=>!m.main).map(btn).join("")}</div>`;
+}
+function kpis(days){
+  const km=agg("runningKm",days), cnt=agg("runningCount",days), vo=agg("vo2max",days), rhr=agg("restingHR",days), sl=agg("sleepScore",days), w=agg("weight",days);
+  const items = [
+    ["총 거리", km.value?fmt("runningKm",km.value):null, "km"],
+    ["러닝", cnt.value?cnt.value:null, "회"],
+    ["평균 페이스", km.value?pace(318+rnd(days[0])*40):null, "/km"],
+    ["최고 VO2max", fmt("vo2max",vo.value), ""],
+    ["평균 안정시 심박", fmt("restingHR",rhr.value), "bpm"],
+    ["평균 수면 점수", fmt("sleepScore",sl.value), "점"],
+    ["기간 말 체중", w.last!=null?fmt("weight",w.last):null, "kg"],
+  ];
+  return `<dl class="kpis">${items.map(([k,v,u])=>`<div><dt>${k}</dt>${v!==null&&v!==undefined?`<dd>${v}<small>${u}</small></dd>`:`<dd class="none">기록 없음</dd>`}</div>`).join("")}</dl>`;
+}
+
+function yearView(r){
+  const m = M[r.metric], scale = scaleFor(r.metric, daysOfYear(r.y));
+  const cards = Array.from({length:12},(_,i)=>{
+    const mo=i+1, days=daysOfMonth(r.y,mo), a=agg(r.metric,days);
+    const live = days.some(inRange);
+    const cells = Array(dow(r.y,mo,1)).fill(`<b class="x"></b>`).concat(days.map(s=>{
+      const v=dayVal(r.metric,s);
+      if(v===undefined) return `<b class="x"></b>`;
+      if(v===null) return `<b class="na"></b>`;
+      if(m.zero&&v===0) return `<b></b>`;
+      return `<b style="background:${tint(m.c,scale(v))}"></b>`;
+    })).join("");
+    const val = a.value===null||(!live) ? `<span class="val none">기록 없음</span>` : `<span class="val">${fmt(r.metric,a.value)}<small>${m.unit}</small></span>`;
+    const cover = !live ? "" : m.zero ? `${a.covered}일 달림` : `${a.covered}/${a.total}일 기록`;
+    const inner = `<header><span class="name">${mo}월</span>${live?val:""}</header><div class="mini" aria-hidden="true">${cells}</div><p class="cover">${cover}</p>`;
+    return live ? `<a class="mcard" href="${href(r,[r.y,pad(mo)])}">${inner}</a>` : `<div class="mcard off">${inner}</div>`;
+  }).join("");
+  return nav(r)+picker(r)+kpis(daysOfYear(r.y))+`<div class="year" style="--m:${m.c}">${cards}</div>`+legend(m);
+}
+function legend(m){
+  return `<div class="legend"><span class="ramp">낮음&nbsp;${[1,2,3,4,5].map(l=>`<b style="background:${tint(m.c,l)}"></b>`).join("")}&nbsp;높음</span>
+    ${m.zero?`<span class="k"><b style="background:var(--surface)"></b>${m.id==="runningKm"?"쉰 날":"0"}</span>`:""}
+    <span class="k"><b style="box-shadow:inset 0 0 0 1px #2a2a2a"></b>기록 없음</span></div>`;
+}
+function monthView(r){
+  const m=M[r.metric], days=daysOfMonth(r.y,r.m), scale=scaleFor(r.metric,days);
+  const blanks = Array(dow(r.y,r.m,1)).fill(`<div></div>`).join("");
+  const cells = days.map((s,i)=>{
+    const v=dayVal(r.metric,s), d=i+1, to=href(r,[r.y,pad(r.m),pad(d)]), t=s===TODAY?" today":"";
+    if(v===undefined) return `<div class="cell off"><span class="d">${d}</span></div>`;
+    if(v===null) return `<a class="cell na${t}" href="${to}" aria-label="${d}일 기록 없음"><span class="d">${d}</span><span class="v">없음</span></a>`;
+    if(m.zero&&v===0) return `<a class="cell zero${t}" href="${to}" aria-label="${d}일 0"><span class="d">${d}</span><span class="v">·</span></a>`;
+    return `<a class="cell${scale(v)>=3?" hot":""}${t}" href="${to}" style="background:${tint(m.c,scale(v))}" aria-label="${d}일 ${fmt(r.metric,v)}${m.unit}"><span class="d">${d}</span><span class="v">${fmt(r.metric,v,true)}</span></a>`;
+  }).join("");
+  const nums = days.map(s=>dayVal(r.metric,s)), max=Math.max(1,...nums.filter(v=>typeof v==="number"));
+  const min = m.agg==="sum"?0:Math.min(...nums.filter(v=>typeof v==="number"))*0.97;
+  const bars = days.map((s,i)=>{ const v=nums[i];
+    if(v===undefined) return `<span style="height:0"></span>`;
+    if(v===null) return `<span class="na" title="${i+1}일 기록 없음"></span>`;
+    return `<a href="${href(r,[r.y,pad(r.m),pad(i+1)])}" title="${i+1}일 ${fmt(r.metric,v)}${m.unit}" style="height:${Math.max(0,(v-min)/(max-min)*100)}%"></a>`; }).join("");
+  return nav(r)+picker(r)+kpis(days)+`<div style="--m:${m.c}">
+    <div class="dows">${DOW.map(d=>`<span>${d}</span>`).join("")}</div><div class="grid">${blanks}${cells}</div>${legend(m)}
+    <section class="strip"><h2>${m.label} 일별 <span style="color:var(--sub);font-weight:400">${m.unit&&`(${m.unit})`}</span></h2><div class="bars">${bars}</div><div class="axis"><span>1</span><span>${Math.ceil(days.length/2)}</span><span>${days.length}</span></div></section></div>`;
+}
+
+function dayView(r){
+  const s=ymd(r.y,r.m,r.d), km=dayVal("runningKm",s), sl=dayVal("sleepScore",s), st=dayVal("steps",s), rhr=dayVal("restingHR",s), w=dayVal("weight",s), intake=dayVal("intakeKcal",s), bal=dayVal("calorieBalance",s);
+  const stat = (k,v,u)=>`<div><dt>${k}</dt><dd>${v}<small>${u||""}</small></dd></div>`;
+  const row = (title, link, body) => body
+    ? `<section class="row"><h2>${title}${link?`<a href="javascript:void 0">${link}</a>`:""}</h2><div>${body}</div></section>`
+    : `<section class="row empty"><h2>${title}</h2><p>기록 없음</p></section>`;
+  const p = 300+rnd(s+"p")*60, dur = km*p;
+  const acts = km ? `<div class="acts"><a class="act" href="javascript:void 0"><span class="t">${km>15?"장거리 러닝":km>9?"한강 러닝":"동네 러닝"}<small>06:${pad(10+Math.floor(rnd(s+"t")*45))}</small></span><span class="n">${km.toFixed(2)} km&ensp;${pace(p)}/km&ensp;${Math.floor(dur/60)}분&ensp;${Math.round(142+rnd(s+"h")*18)} bpm</span></a>${rnd(s+"x")<0.2?`<a class="act" href="javascript:void 0"><span class="t">근력 운동<small>19:30</small></span><span class="n">42분&ensp;118 bpm</span></a>`:""}</div>` : null;
+  const deep=16+rnd(s+"d")*8, rem=18+rnd(s+"r")*8, awake=3+rnd(s+"w")*4, light=100-deep-rem-awake, tot=380+rnd(s+"s")*90;
+  const sleep = sl!=null ? `<dl class="stats">${stat("점수",sl,"점")}${stat("수면 시간",`${Math.floor(tot/60)}:${pad(Math.round(tot%60))}`)}${stat("야간 HRV",Math.round(48+rnd(s+"v")*18),"ms")}${stat("최저 SpO2",Math.round(84+rnd(s+"o")*4),"%")}</dl>
+    <div class="stages" role="img" aria-label="수면 단계 비율"><b style="width:${deep}%;background:#6d28d9"></b><b style="width:${light}%;background:#a78bfa"></b><b style="width:${rem}%;background:#38bdf8"></b><b style="width:${awake}%;background:#525252"></b></div>
+    <div class="stagekey"><span><i style="background:#6d28d9"></i>깊은 ${Math.round(tot*deep/100)}분</span><span><i style="background:#a78bfa"></i>얕은 ${Math.round(tot*light/100)}분</span><span><i style="background:#38bdf8"></i>렘 ${Math.round(tot*rem/100)}분</span><span><i style="background:#525252"></i>깸 ${Math.round(tot*awake/100)}분</span></div>` : null;
+  const heart = rhr!=null ? `<dl class="stats">${stat("안정시 심박",rhr,"bpm")}${stat("최저 / 최고",`${rhr-3} / ${km?168:121}`,"bpm")}${stat("평균 스트레스",Math.round(24+rnd(s+"st")*20))}${stat("바디배터리",`${Math.round(12+rnd(s+"bl")*20)} → ${Math.round(78+rnd(s+"bh")*20)}`)}</dl>` : null;
+  const body = w!=null ? `<dl class="stats">${stat("체중",w.toFixed(1),"kg")}${stat("체지방",(15+rnd(s+"f")*2).toFixed(1),"%")}${stat("출처",rnd(s+"src")<0.5?"Garmin":"직접 입력")}</dl>` : null;
+  const bp = rnd(s+"bp")<0.12 ? `<dl class="stats">${stat("수축기",`${118+Math.round(rnd(s+"1")*8)}`,"mmHg")}${stat("이완기",`${74+Math.round(rnd(s+"2")*6)}`,"mmHg")}${stat("맥박",58,"bpm")}${stat("측정",2,"회")}</dl>` : null;
+  const move = st!=null ? `<dl class="stats">${stat("걸음",st.toLocaleString("ko-KR"),"보")}${stat("활성 칼로리",Math.round(st*0.05+km*62).toLocaleString("ko-KR"),"kcal")}${intake!=null?stat("섭취",intake.toLocaleString("ko-KR"),"kcal"):""}${bal!=null?stat("밸런스",(bal>0?"+":"")+bal,"kcal"):""}</dl>` : null;
+  const food = intake!=null ? `<dl class="stats">${stat("합계",intake.toLocaleString("ko-KR"),"kcal")}${stat("단백질",Math.round(intake*0.05),"g")}</dl><ul class="foods"><li><span><em>아침</em>그릭요거트, 바나나</span><span>${Math.round(intake*0.18).toLocaleString("ko-KR")} kcal</span></li><li><span><em>점심</em>비빔밥, 계란국</span><span>${Math.round(intake*0.42).toLocaleString("ko-KR")} kcal</span></li><li><span><em>저녁</em>닭가슴살 샐러드, 고구마</span><span>${Math.round(intake*0.4).toLocaleString("ko-KR")} kcal</span></li></ul>` : null;
+  const ai = r.y>=2026 ? `<div class="report"><strong>모닝 리포트</strong>수면 점수 ${sl??"—"}점, 안정시 심박은 최근 7일 평균과 같습니다. ${km?"오늘 러닝은 계획대로 진행해도 좋습니다.":"오늘은 회복일입니다. 가벼운 걷기를 권합니다."} <a href="javascript:void 0" style="color:var(--sub)">전체 보기</a></div><div class="report"><strong>이브닝 리포트</strong>${km?`${km.toFixed(1)} km 를 ${pace(p)}/km 로 마쳤습니다. 심박 드리프트가 작아 유산소 기반이 안정적입니다.`:"활동량이 평소보다 적었습니다. 섭취 칼로리는 목표 범위 안입니다."} <a href="javascript:void 0" style="color:var(--sub)">전체 보기</a></div>` : null;
+  return nav(r)+`<div class="ledger">
+    ${row("활동", null, acts)}${row("수면", sleep&&"수면 상세", sleep)}${row("심박 · 스트레스", null, heart)}${row("체성분", null, body)}
+    ${row("혈압", null, bp)}${row("걸음 · 칼로리", null, move)}${row("식단", food&&"영양 페이지", food)}${row("AI 리포트", null, ai)}</div>`;
+}
+
+function render(){
+  const r = route();
+  document.documentElement.style.setProperty("--m", M[r.metric].c);
+  document.getElementById("app").innerHTML = r.d ? dayView(r) : r.m ? monthView(r) : yearView(r);
+  window.scrollTo(0,0);
+}
+addEventListener("hashchange", render); render();
+</script>
+</body>
+</html>

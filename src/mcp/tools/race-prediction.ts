@@ -1,4 +1,5 @@
 import prisma from "../prisma";
+import { MAX_QUERY_DAYS, MIN_WINDOW_DAYS } from "./constants";
 import { todayKST, daysAgoKST, todayKSTString } from "../../lib/garmin/utils";
 import { type Bucket, bucketOf, formatPace } from "./running-buckets";
 
@@ -107,7 +108,7 @@ function makePrediction(
  * source bucket 우선순위: 자체 target > 다른 bucket 중 count 최대. 신뢰도 count 기반.
  */
 export async function getRacePrediction(args: { windowDays?: number } = {}) {
-  const windowDays = Math.min(365, Math.max(30, args.windowDays ?? 90));
+  const windowDays = Math.min(MAX_QUERY_DAYS, Math.max(MIN_WINDOW_DAYS, args.windowDays ?? 90));
   const since = daysAgoKST(windowDays - 1);
   const tomorrow = new Date(todayKST());
   tomorrow.setUTCDate(tomorrow.getUTCDate() + 1);

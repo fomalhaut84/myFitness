@@ -1,24 +1,20 @@
+// #445: 달력 계산은 `monthCells` (ymd 문자열 · 월요일 시작) — 이전의 로컬 TZ `new Date(y, m-1, 1)` 는 서버 TZ 에 따라 요일이 어긋났다 (#365).
+import { todayKSTString } from "@/lib/garmin/utils";
+import { WEEKDAY_LABELS, formatYm, monthCells } from "@/lib/history/month-cells";
+
 interface MonthlyHeatmapProps {
   year: number;
   month: number; // 1-12
   activeDates: Set<string>; // "YYYY-MM-DD" 형식
 }
 
-const DAY_LABELS = ["일", "월", "화", "수", "목", "금", "토"];
-
 export default function MonthlyHeatmap({ year, month, activeDates }: MonthlyHeatmapProps) {
-  const firstDay = new Date(year, month - 1, 1);
-  const lastDay = new Date(year, month, 0);
-  const startDow = firstDay.getDay();
-  const totalDays = lastDay.getDate();
+  const { leadingBlanks, days } = monthCells(formatYm(year, month));
+  const totalDays = days.length;
+  const todayStr = todayKSTString();
 
-  const today = new Date();
-  const todayStr = `${today.getFullYear()}-${String(today.getMonth() + 1).padStart(2, "0")}-${String(today.getDate()).padStart(2, "0")}`;
-
-  const cells: (number | null)[] = [];
-  // 첫 주 빈칸
-  for (let i = 0; i < startDow; i++) cells.push(null);
-  for (let d = 1; d <= totalDays; d++) cells.push(d);
+  // 첫 주 빈칸 (null) + 그 달의 ymd
+  const cells: (string | null)[] = [...Array.from({ length: leadingBlanks }, () => null), ...days];
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">
@@ -28,7 +24,7 @@ export default function MonthlyHeatmap({ year, month, activeDates }: MonthlyHeat
 
       {/* 요일 헤더 */}
       <div className="grid grid-cols-7 gap-1 mb-1">
-        {DAY_LABELS.map((d) => (
+        {WEEKDAY_LABELS.map((d) => (
           <div key={d} className="text-center text-[9px] text-dim">
             {d}
           </div>
@@ -37,10 +33,10 @@ export default function MonthlyHeatmap({ year, month, activeDates }: MonthlyHeat
 
       {/* 날짜 그리드 */}
       <div className="grid grid-cols-7 gap-1">
-        {cells.map((day, i) => {
-          if (day === null) return <div key={i} />;
+        {cells.map((dateStr, i) => {
+          if (dateStr === null) return <div key={i} />;
 
-          const dateStr = `${year}-${String(month).padStart(2, "0")}-${String(day).padStart(2, "0")}`;
+          const day = Number(dateStr.slice(8, 10));
           const isActive = activeDates.has(dateStr);
           const isToday = dateStr === todayStr;
 

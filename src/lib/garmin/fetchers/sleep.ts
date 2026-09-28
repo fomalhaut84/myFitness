@@ -2,7 +2,9 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { dateRange, isNoDataError, todayKSTString, withRateLimit } from "../utils";
-import { extractSleepSpO2 } from "./sleep-spo2";
+import { isTrimmedResponse } from "../preserve";
+import { fetchDailySleep } from "../daily-endpoints";
+import { buildSleepRecordData, buildSleepScoreDetails, buildSleepUpdatePayload } from "./sleep-payload";
 
 export async function syncSleep(
   client: GarminConnect,
@@ -14,7 +16,8 @@ export async function syncSleep(
 
   for (const date of dates) {
     try {
-      const sleepData = await withRateLimit(() => client.getSleepData(date));
+      // #365: 라이브러리 getSleepData 는 서버 로컬 TZ 로 날짜를 만든다 — KST 문자열로 직접 호출
+      const sleepData = await withRateLimit(() => fetchDailySleep(client, date));
 
       if (!sleepData?.dailySleepDTO) continue;
 
@@ -31,69 +34,19 @@ export async function syncSleep(
       // KST midnight UTC instant (서버 타임존 무관, 다른 fetcher와 정합)
       const dayDate = new Date(`${calendarDate}T00:00:00+09:00`);
 
-      // 수면 점수 세부
-      const sleepScoreDetails = dto.sleepScores
-        ? {
-            overall: dto.sleepScores.overall?.value ?? null,
-            duration: dto.sleepScores.totalDuration?.qualifierKey ?? null,
-            stress: dto.sleepScores.stress?.qualifierKey ?? null,
-            awakeCount: dto.sleepScores.awakeCount?.qualifierKey ?? null,
-            remPercentage: {
-              value: dto.sleepScores.remPercentage?.value ?? null,
-              qualifier: dto.sleepScores.remPercentage?.qualifierKey ?? null,
-            },
-            deepPercentage: {
-              value: dto.sleepScores.deepPercentage?.value ?? null,
-              qualifier: dto.sleepScores.deepPercentage?.qualifierKey ?? null,
-            },
-            lightPercentage: {
-              value: dto.sleepScores.lightPercentage?.value ?? null,
-              qualifier: dto.sleepScores.lightPercentage?.qualifierKey ?? null,
-            },
-            restlessness: dto.sleepScores.restlessness?.qualifierKey ?? null,
-          }
-        : null;
+      // payload 조립은 순수 함수 (#437 · sleep-payload.ts) — 컬럼 매핑 · 수면 점수 세부 · trimmed 규칙
+      const scoreDetails = buildSleepScoreDetails(dto);
+      const data = buildSleepRecordData(sleepData);
 
-      const spo2 = extractSleepSpO2(sleepData);
-
-      const data = {
-        sleepStart: new Date(dto.sleepStartTimestampGMT),
-        sleepEnd: new Date(dto.sleepEndTimestampGMT),
-        totalSleep: Math.round(dto.sleepTimeSeconds / 60),
-        deepSleep: dto.deepSleepSeconds
-          ? Math.round(dto.deepSleepSeconds / 60)
-          : null,
-        lightSleep: dto.lightSleepSeconds
-          ? Math.round(dto.lightSleepSeconds / 60)
-          : null,
-        remSleep: dto.remSleepSeconds
-          ? Math.round(dto.remSleepSeconds / 60)
-          : null,
-        awakeDuration: dto.awakeSleepSeconds
-          ? Math.round(dto.awakeSleepSeconds / 60)
-          : null,
-        sleepScore: dto.sleepScores?.overall?.value ?? null,
-        // M2: 추가 지표
-        avgSpO2: spo2.avg,
-        lowestSpO2: spo2.lowest,
-        highestSpO2: spo2.highest,
-        avgRespiration: toFloat(dto.averageRespirationValue),
-        lowestRespiration: toFloat(dto.lowestRespirationValue),
-        highestRespiration: toFloat(dto.highestRespirationValue),
-        avgSleepStress: toFloat(dto.avgSleepStress),
-        bodyBatteryChange: toInt(sleepData.bodyBatteryChange),
-        restingHR: toInt(sleepData.restingHeartRate),
-        hrvOvernight: toFloat(sleepData.avgOvernightHrv),
-        sleepScoreDetails: sleepScoreDetails
-          ? (sleepScoreDetails as Prisma.InputJsonValue)
-          : Prisma.DbNull,
-        rawData: sleepData as unknown as Prisma.InputJsonValue,
-      };
-
+      // #431 · #435: 보존 창 (~150일) 밖 재싱크는 야간 HRV · SpO2 epochs · 수면 심박 타임라인이 빠진 채 온다 — 기존 값을 지우지 않는다.
+      // 기존 행의 rawData 와 비교해 (하루 1회 조회) 값 있던 키가 사라진 응답이면 rawData · sleepScoreDetails 를 유지한다 (#437).
+      const existing = await prisma.sleepRecord.findUnique({ where: { date: dayDate }, select: { rawData: true } });
+      const trimmed = isTrimmedResponse(sleepData, existing?.rawData);
       await prisma.sleepRecord.upsert({
         where: { date: dayDate },
-        update: data,
-        create: { date: dayDate, ...data },
+        update: buildSleepUpdatePayload(data, scoreDetails, { trimmed }),
+        // create 에서만 DbNull — update 는 null 을 받지 않는다 (#431)
+        create: { date: dayDate, ...data, sleepScoreDetails: scoreDetails ? (scoreDetails as unknown as Prisma.InputJsonValue) : Prisma.DbNull },
       });
 
       synced++;
@@ -104,16 +57,4 @@ export async function syncSleep(
   }
 
   return synced;
-}
-
-function toInt(val: unknown): number | null {
-  if (val === null || val === undefined) return null;
-  const n = Number(val);
-  return isNaN(n) ? null : Math.round(n);
-}
-
-function toFloat(val: unknown): number | null {
-  if (val === null || val === undefined) return null;
-  const n = Number(val);
-  return isNaN(n) ? null : n;
 }

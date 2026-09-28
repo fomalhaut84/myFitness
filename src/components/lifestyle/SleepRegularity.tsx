@@ -1,3 +1,7 @@
+import { regularityLabel, type RegularityLabel } from "@/lib/sleep/regularity";
+
+const REGULARITY_COLORS: Record<RegularityLabel, string> = { "매우 규칙적": "#22c55e", 규칙적: "#60a5fa", 보통: "#f59e0b", 불규칙: "#ef4444" };
+
 interface SleepEntry {
   date: string;
   sleepStartHour: number; // 소수점 시간 (예: 23.5 = 23:30)
@@ -42,14 +46,9 @@ export default function SleepRegularity({ entries }: SleepRegularityProps) {
   const avgWakeup = waketimes.reduce((s, v) => s + v, 0) / waketimes.length;
   const bedtimeStdDev = calcStdDev(bedtimes);
 
-  const getRegularityLabel = (stdDev: number) => {
-    if (stdDev < 0.5) return { label: "매우 규칙적", color: "#22c55e" };
-    if (stdDev < 1.0) return { label: "규칙적", color: "#60a5fa" };
-    if (stdDev < 1.5) return { label: "보통", color: "#f59e0b" };
-    return { label: "불규칙", color: "#ef4444" };
-  };
-
-  const regularity = getRegularityLabel(bedtimeStdDev);
+  // #455: 라벨 임계는 lib/sleep/regularity.ts 가 정본 (MCP get_sleep regularity 와 같은 값)
+  const label = regularityLabel(bedtimeStdDev);
+  const regularity = { label, color: REGULARITY_COLORS[label] };
 
   return (
     <div className="bg-card border border-border rounded-xl p-5">

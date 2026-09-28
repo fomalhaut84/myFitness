@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
-import { formatPace } from "@/mcp/tools/running-buckets";
+import { formatPace } from "@/lib/running/buckets";
 import {
   WORKOUT_PATCH_SCHEMA,
   toWorkoutUpdate,

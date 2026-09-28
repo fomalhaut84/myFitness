@@ -1,5 +1,6 @@
 import type { Bot } from "grammy";
 import { syncAll } from "../../lib/garmin/sync";
+import { ACTIVITY_RECHECK_DAYS } from "../../lib/garmin/activity-recheck";
 
 export function registerSyncCommand(bot: Bot) {
   bot.command("sync", async (ctx) => {
@@ -16,6 +17,8 @@ export function registerSyncCommand(bot: Bot) {
         startDate: yesterday,
         endDate: today,
         notifyBot: bot,
+        // #414: 수동 싱크는 방금 Garmin 에서 바꾼 과거 활동을 반영하려는 경우가 많다 — 활동만 최근 30일
+        activityRecheckDays: ACTIVITY_RECHECK_DAYS,
       });
       const total = results.reduce((s, r) => s + r.synced, 0);
       const failed = results.filter((r) => r.error).length;

@@ -4,6 +4,7 @@ import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import { isRunningType } from "@/lib/activity/running-types";
+import { loadActivityRecovery } from "@/lib/heart/load-recovery";
 import ActivityDetailClient from "./activity-detail-client";
 import Link from "next/link";
 
@@ -66,9 +67,12 @@ export default async function ActivityDetailPage({ params }: PageProps) {
   // #261: 같은 코스 활동 매칭 (GPS 시작점 반경 + 거리 유사, 또는 같은 routeTag).
   // 기존 M4-10 은 activityType + distance ±10% 만 사용 (지역 무관, 오탐 다수) → 대체.
   // Codex P2: 러닝 계열에서만 호출 (non-running 활동은 섹션 자체를 렌더 안 함 → 쿼리 비용 절감).
-  const similarRaw = isRunningType(activity.activityType)
-    ? await findSimilarActivities(id, { limit: 10 })
-    : [];
+  // #418: 종료 후 회복 곡선도 러닝 계열만 (하루치 심박 시계열 1~2행 · 활동 rawData 는 로더 안에서만 읽는다).
+  const running = isRunningType(activity.activityType);
+  const [similarRaw, recovery] = await Promise.all([
+    running ? findSimilarActivities(id, { limit: 10 }) : Promise.resolve([]),
+    running ? loadActivityRecovery(id) : Promise.resolve(null),
+  ]);
   const similarActivities = similarRaw.map((a) => ({
     id: a.id,
     name: a.name,
@@ -100,6 +104,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
           startTime: activity.startTime.toISOString(),
           zoneDistribution: parseZoneDistribution(activity.zoneDistribution),
         }}
+        recovery={recovery}
         similarActivities={similarActivities.map((a) => ({
           id: a.id,
           name: a.name,

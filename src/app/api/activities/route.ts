@@ -1,5 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
+import { parseYmdRangeParams } from "@/lib/history/range-params";
 
 export async function GET(request: Request) {
   try {
@@ -10,9 +11,16 @@ export async function GET(request: Request) {
     const limit = Math.min(Number.isNaN(limitRaw) ? 20 : Math.max(1, limitRaw), 100);
     const offset = Number.isNaN(offsetRaw) ? 0 : Math.max(0, offsetRaw);
 
-    const where = type && type !== "all"
-      ? { activityType: { contains: type } }
-      : {};
+    // #393 (M15-1): from/to = KST 달력일 inclusive. 없으면 기존 동작.
+    const range = parseYmdRangeParams(url.searchParams.get("from"), url.searchParams.get("to"));
+    if (!range.ok) {
+      return NextResponse.json({ error: range.error }, { status: 400 });
+    }
+
+    const where = {
+      ...(type && type !== "all" ? { activityType: { contains: type } } : {}),
+      ...(range.where ? { startTime: range.where } : {}),
+    };
 
     const [activities, total] = await Promise.all([
       prisma.activity.findMany({

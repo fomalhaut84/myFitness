@@ -1,6 +1,7 @@
 import type { Bot } from "grammy";
 import prisma from "../prisma";
 import { fmtDistance, fmtPace, fmtDuration } from "../utils/formatter";
+import { formatDateKST } from "../../lib/format";
 
 export function registerRunCommand(bot: Bot) {
   bot.command("run", async (ctx) => {
@@ -27,7 +28,7 @@ export function registerRunCommand(bot: Bot) {
     const lines = ["🏃 <b>최근 러닝</b>\n"];
 
     for (const r of recent) {
-      const date = r.startTime.toLocaleDateString("ko-KR", { month: "short", day: "numeric" });
+      const date = formatDateKST(r.startTime, { month: "short", day: "numeric" }); // #365: 아침 러닝이 UTC 호스트에서 전날로 찍히던 라벨
       lines.push(
         `<b>${r.name}</b> (${date})`,
         `  ${fmtDistance(r.distance)} · ${fmtDuration(r.duration)} · ${fmtPace(r.avgPace)}`,

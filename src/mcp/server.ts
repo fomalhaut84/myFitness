@@ -33,6 +33,8 @@ import {
   getTrends,
 } from "./tools/fitness";
 import { getActivitySplits } from "./tools/splits";
+import { getActivityContext } from "./tools/activity-context";
+import { getPersonalRecords } from "./tools/personal-records";
 import { getWeightLossStatus } from "./tools/weight-loss";
 import { getBloodPressure } from "./tools/blood-pressure";
 import { getUserProfile, getMetricHistory } from "./tools/user-profile";
@@ -48,6 +50,9 @@ import {
 } from "./tools/training-plan";
 import { recommendTodayWorkout } from "./tools/recommend-today-workout";
 import { getPersonalGoals } from "./tools/personal-goals";
+import { getDataCoverage } from "./tools/coverage";
+import { getFitnessMetricTrend } from "./tools/fitness-metrics";
+import { MAX_QUERY_DAYS, MIN_WINDOW_DAYS } from "./tools/constants";
 
 /**
  * tools/call 요청 처리 스코프. Handler wrapper 가 실행됐는지 tracking 해
@@ -311,9 +316,24 @@ export function createMyFitnessMcpServer(): McpServer {
 
 server.tool(
   "get_activities",
-  "최근 운동 활동 목록 조회 (거리, 페이스, 심박, 칼로리 등)",
+  "운동 활동 조회 (거리, 페이스, 심박, 칼로리 등). 장기 조회는 granularity 로 주/월 × 활동타입 집계 daily 행은 2분 HRR(hrr2) · 존 분포(zones/zonePct) 포함, envelope 의 runningSummary 가 창 안 러닝의 80/20 · HRR 중앙값.",
   {
-    days: z.number().int().positive().max(365).optional().describe("조회 일수 (기본 14)"),
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 14, 최대 3650). 전체 기록은 get_data_coverage 로 범위 확인 후 지정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
     type: z.string().optional().describe("활동 타입 필터 (running, strength 등)"),
   },
   async (args) => getActivities(args)
@@ -323,7 +343,22 @@ server.tool(
   "get_sleep",
   "수면 기록 조회 (수면 단계, 점수, 시작/종료 시간)",
   {
-    days: z.number().int().positive().max(365).optional().describe("조회 일수 (기본 14)"),
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 14, 최대 3650). 전체 기록은 get_data_coverage 로 범위 확인 후 지정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getSleep(args)
 );
@@ -332,7 +367,22 @@ server.tool(
   "get_heart_rate",
   "안정시 심박수 + HRV 추세 조회",
   {
-    days: z.number().int().positive().max(365).optional().describe("조회 일수 (기본 30)"),
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 30, 최대 3650). 전체 기록은 get_data_coverage 로 범위 확인 후 지정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getHeartRate(args)
 );
@@ -341,16 +391,46 @@ server.tool(
   "get_daily_stats",
   "일일 통계 조회 (걸음, 칼로리, 스트레스, 바디배터리)",
   {
-    days: z.number().int().positive().max(365).optional().describe("조회 일수 (기본 14)"),
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 14, 최대 3650). 전체 기록은 get_data_coverage 로 범위 확인 후 지정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getDailyStats(args)
 );
 
 server.tool(
   "get_body_composition",
-  "체중/체지방 추세 조회",
+  "체중/체지방 추세 조회. 장기 조회는 granularity 로 주/월 집계 (weight avg/min/max)",
   {
-    days: z.number().int().positive().max(365).optional().describe("조회 일수 (기본 90)"),
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 90, 최대 3650). 전체 기록은 get_data_coverage 로 범위 확인 후 지정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
   },
   async (args) => getBodyComposition(args)
 );
@@ -365,6 +445,13 @@ server.tool(
 );
 
 server.tool(
+  "get_data_coverage",
+  "DB 에 실제 보유한 데이터 범위 (dataType 별 oldest/newest/count, 러닝 별도) + 싱크 커버 마커. '전체 기록', '역대', '가장 좋았던 때', 'N년 전' 질문은 먼저 이걸로 범위를 확인한 뒤 days 를 정한다. oldest 이전은 도구 한도가 아니라 미보유 구간.",
+  {},
+  async () => getDataCoverage()
+);
+
+server.tool(
   "get_activity_splits",
   "특정 활동의 km별(lap별) 구간 데이터 조회 (페이스/심박/케이던스/고도/강도 타입). 한계치 런·인터벌 분석에 사용.",
   {
@@ -375,6 +462,28 @@ server.tool(
       .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열"),
   },
   async (args) => getActivitySplits(args)
+);
+
+// #444: 활동 상세 AI 평가 (#440) 와 같은 근거 섹션 — 리포트 (이브닝) 가 오늘 러닝을 상세 페이지만큼 깊게 본다
+server.tool(
+  "get_activity_context",
+  "특정 활동의 평가 근거 전체 (기본 · km 스플릿 파생값 · 강도 · 종료 후 회복/2분 HRR · 다이나믹스 · 추가 지표 · 환경 · 같은 코스/비슷한 거리 비교). 오늘/특정 러닝을 평가할 때 get_activity_splits 대신 이것 하나로.",
+  {
+    activityId: z
+      .string()
+      .trim()
+      .min(1)
+      .describe("활동의 DB id(cuid) 또는 Garmin garminId 문자열 (get_activities 응답의 id / garminId)"),
+  },
+  async (args) => getActivityContext(args)
+);
+
+// #455: 전 기간 개인 기록 — 리포트가 "오늘/이번 주 신기록" 을 말할 수 있게 (웹 API 경유)
+server.tool(
+  "get_personal_records",
+  "전 기간 개인 기록 (거리 버킷 5k/10k/HM/FM 별 최저 페이스 · 최장 거리 · 최다 km 월 · 최고 VO2max · 최저 안정시 심박 · 가장 큰 2분 HRR · 레이스 목록). 오늘/이번 주 러닝이 신기록인지 판단할 때 — 기록의 id/ymd 와 비교.",
+  {},
+  async () => getPersonalRecords()
 );
 
 server.tool(
@@ -392,9 +501,9 @@ server.tool(
       .number()
       .int()
       .positive()
-      .max(365)
+      .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 30)"),
+      .describe("조회 일수 (기본 30, 최대 3650). 일별 400행 초과 시 주/월 집계로 자동 승격"),
   },
   async (args) => getBloodPressure(args)
 );
@@ -418,11 +527,35 @@ server.tool(
       .number()
       .int()
       .positive()
-      .max(365)
+      .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 90)"),
+      .describe("조회 일수 (기본 90, 최대 3650). 앱 도입(2026-04) 이후 변경 로그만 있음 — Garmin 장기 이력(VO2max 2020-06~, 젖산역치 2023-05~)은 get_fitness_metric_trend"),
   },
   async (args) => getMetricHistory(args)
+);
+
+server.tool(
+  "get_fitness_metric_trend",
+  "Garmin 성과통계 장기 이력 — VO2max(일별, 2020-06~) · 러닝 젖산역치 HR/페이스(Garmin 감지일만, 2023-05~). current(최신값+기준일) · best(VO2max 최고 / LT 페이스 최저 날짜) · lthrDetections · records(일별 또는 주/월 집계). '컨디션이 제일 좋았던 시기', 'VO2max 가 언제 가장 높았나' 류 질문에 사용. 현재 프로필값은 get_user_profile.",
+  {
+    days: z
+      .number()
+      .int()
+      .positive()
+      .max(MAX_QUERY_DAYS)
+      .optional()
+      .describe("조회 일수 (기본 365, 최대 3650). 전체 기록은 get_data_coverage 의 fitness_metrics.oldest 기준으로 산정"),
+    granularity: z
+      .enum(["daily", "weekly", "monthly"])
+      .optional()
+      .describe("집계 단위. 생략 시 days≤120 daily · ≤730 weekly · 초과 monthly 자동. 집계 시 vo2maxRunning 은 {avg,min,max}, lthr/lthrPace 는 각각 버킷 마지막 감지값(감지일 별도)"),
+    endDate: z
+      .string()
+      .regex(/^\d{4}-\d{2}-\d{2}$/)
+      .optional()
+      .describe("조회 종료일 YYYY-MM-DD (KST, 포함). 생략 시 오늘. 과거 특정 시기를 daily 로 재조회할 때 days=<폭> 과 함께 지정 — 창은 [endDate-days, endDate]"),
+  },
+  async (args) => getFitnessMetricTrend(args)
 );
 
 server.tool(
@@ -446,10 +579,10 @@ server.tool(
     windowDays: z
       .number()
       .int()
-      .min(30)
-      .max(365)
+      .min(MIN_WINDOW_DAYS)
+      .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 90, 30~365)"),
+      .describe("조회 일수 (기본 90, 30~3650). 전체 기록은 get_data_coverage 의 oldest 기준으로 산정"),
   },
   async (args) => getPaceProgression(args)
 );
@@ -464,7 +597,7 @@ server.tool(
       .min(1)
       .max(90)
       .optional()
-      .describe("조회 일수 (기본 14, 1~90)"),
+      .describe("조회 일수 (기본 14, 1~90). 일자별 한 줄 도구라 상한 유지 — 장기는 get_daily_stats 의 granularity 사용"),
   },
   async (args) => getCalendarSummary(args)
 );
@@ -556,10 +689,10 @@ server.tool(
     windowDays: z
       .number()
       .int()
-      .min(30)
-      .max(365)
+      .min(MIN_WINDOW_DAYS)
+      .max(MAX_QUERY_DAYS)
       .optional()
-      .describe("조회 일수 (기본 90, 30~365)"),
+      .describe("조회 일수 (기본 90, 30~3650). 전체 기록은 get_data_coverage 의 oldest 기준으로 산정"),
   },
   async (args) => getRacePrediction(args)
 );
