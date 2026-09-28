@@ -29,7 +29,7 @@
 
 ## 4. 기술 설계
 
-- `droppedBy` 는 `kept` 필터와 같은 조건을 한 번 더 도는 게 아니라 `reduce` 한 번으로 분류 (러닝 2,156행 · 무시할 비용이지만 한 곳에서 조건을 관리).
+- `droppedBy` 는 `kept` 필터와 같은 조건을 한 번 더 도는 게 아니라 **한 번의 순회**로 분류 (함수 안에서 만든 배열 · 객체만 채운다 · 사전 리뷰 info 1). `kept` 의 좁힘은 타입 가드 `hasDistanceAndPace` 가 맡는다 (info 2).
 - `ScatterPoint.color` 는 선택 필드 — 기존 호출 (습도 · lag · 중앙값) 은 변경 없음. `shape` 의 세 분기 모두 `payload.color ?? s.color`.
 - `yearSeries` 는 `yearColor` (`components/trends/year-colors`) 와 `ScatterSeries` 타입만 의존 → 순수 모듈. `page.tsx` 는 import 만 바뀐다.
 - 디자인 단계: 기존 승인 시안 (`docs/designs/397-insights/`) 의 색 규칙 안에서 윤곽 색만 바뀌므로 새 시안 없이 스펙에 기록.
@@ -58,3 +58,4 @@
   ```
 - **예상 효과 (설계 메모)**: 점 하나가 지금 `{x, y, lines[2], href}` ≈ 110B. 툴팁 문자열을 클라이언트에서 조립해도 `id` (cuid 25자) · `ymd` · 원시값이 남아 ≈ 80B — **절반 이하는 문자열 이동만으로는 안 된다.** 절반을 넘기려면 `id` 를 빼고 (클릭 → `/activities/by-date/<ymd>` 같은 우회) 또는 gzip 을 전제해야 한다 (Nginx gzip 이면 반복 문자열이 이미 많이 줄어 실효는 더 작다). 측정값이 1s 안이면 종료.
 - 존 · lag 패널의 툴팁은 점이 수십~수백 개라 대상 아님.
+- **캡션 "거리 없음"** 은 거리는 있는데 페이스만 null 인 드문 행도 포함한다 (사전 리뷰 info 3) — `load.ts` 가 페이스를 거리에서 만들므로 실제로는 거리 없음과 같은 집합. 라벨은 짧게 유지.

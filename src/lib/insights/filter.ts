@@ -23,22 +23,27 @@ export interface UsableRuns {
   total: number;
 }
 
-type DropReason = keyof DroppedBy | null;
+/** 거리 · 페이스가 있는 러닝 — 타입 가드 (사전 리뷰 info 2: `as` 캐스트 대신 컴파일러가 `kept` 의 좁힘을 검사하게) */
+const hasDistanceAndPace = (r: InsightRun): r is UsableRun => r.distanceM !== null && r.avgPace !== null;
 
-const dropReason = (r: InsightRun): DropReason => {
-  if (r.distanceM === null || r.avgPace === null) return "noDistance";
+/** 제외 사유 — 없으면 null (= 산점도에 쓴다) */
+const dropReason = (r: UsableRun): keyof DroppedBy | null => {
   if (r.distanceM < MIN_DISTANCE_M) return "tooShort";
   if (r.avgPace < PACE_RANGE[0] || r.avgPace > PACE_RANGE[1]) return "paceOut";
   return null;
 };
 
 export function usableRuns(runs: readonly InsightRun[]): UsableRuns {
-  // 거리 · 페이스 없는 러닝 (트레드밀 등) 은 여기서만 빠진다 — 존 패널은 전체 러닝을 쓴다
+  // 거리 · 페이스 없는 러닝 (트레드밀 등) 은 여기서만 빠진다 — 존 패널은 전체 러닝을 쓴다. 한 번의 순회로 분류 (함수 안에서 만든 객체만 채운다)
   const kept: UsableRun[] = [];
   const droppedBy: DroppedBy = { noDistance: 0, tooShort: 0, paceOut: 0 };
   for (const r of runs) {
+    if (!hasDistanceAndPace(r)) {
+      droppedBy.noDistance += 1;
+      continue;
+    }
     const reason = dropReason(r);
-    if (reason === null) kept.push(r as UsableRun);
+    if (reason === null) kept.push(r);
     else droppedBy[reason] += 1;
   }
   return { kept, dropped: runs.length - kept.length, droppedBy, total: runs.length };
