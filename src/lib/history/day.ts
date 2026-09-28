@@ -3,8 +3,8 @@
  *
  * - **캐시하지 않는다** — 단일 날짜 8쿼리는 가볍고, 방금 기록한 식단·체중이 바로 보여야 한다 (394 스펙 §4.6).
  * - rawData 는 읽지 않는다 (필요한 컬럼만 select).
- * - 일별 모델은 `date = KST 자정` 이지만 수동 체중 입력은 서버 로컬 자정으로 저장된다 (`body-composition/route.ts`
- *   `parseLocalDate` — #365). findUnique 대신 **KST 하루 범위** 로 조회해 방어한다.
+ * - 일별 모델은 `date = KST 자정`. 수동 체중 입력도 #480 부터 KST 자정 (`parseDateOnlyKST`) — 그 전엔 서버 로컬 자정이라
+ *   (#365) 옛 행 방어로 findUnique 대신 **KST 하루 범위** 로 조회한다.
  * - 결측은 null. 0 과 구분한다 (걸음 0 ≠ 기록 없음).
  */
 import prisma from "@/lib/prisma";
