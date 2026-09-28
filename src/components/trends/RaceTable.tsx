@@ -5,8 +5,9 @@ import { historyDayPath } from "@/lib/history/route-params";
 import type { RaceRow } from "@/lib/history/records";
 import { ACTIVITY_RECHECK_DAYS } from "@/lib/garmin/activity-recheck";
 
-// #414: 레이스 표시는 매일 싱크가 최근 N일 활동을 되돌아봐 반영된다. 그보다 오래된 활동은 명시 재조회 (`backfill:history --types=activities`)
-const RECHECK_NOTE = `최근 ${ACTIVITY_RECHECK_DAYS}일 안의 활동은 다음 싱크에 반영됩니다. 더 오래된 활동은 npm run backfill:history -- --types=activities --from=YYYY-MM-DD 로 재조회합니다.`;
+// #414: 레이스 표시는 매일 싱크가 최근 N일 활동을 되돌아봐 반영된다. 그보다 오래된 활동은 명시 재조회 (`backfill:history --types=activities`).
+// `--to` 필수 (PR #474 Codex P2): 생략하면 스크립트가 끝을 `oldestFetchedDate − 1일` 로 잡아 이미 가져온 범위 안의 날짜는 from > to 로 거부된다
+const RECHECK_NOTE = `최근 ${ACTIVITY_RECHECK_DAYS}일 안의 활동은 다음 싱크에 반영됩니다. 더 오래된 활동은 npm run backfill:history -- --types=activities --from=YYYY-MM-DD --to=YYYY-MM-DD 로 재조회합니다.`;
 
 export default function RaceTable({ races }: { races: readonly RaceRow[] }) {
   return (

@@ -13,7 +13,7 @@
 - 이슈 본문은 "증분 싱크 = `lastSyncDate + 1`" 이라 했지만, 실제 매일 06:00 cron 은 **명시 3일 창** (`startDate: daysAgoKST(3)` · `src/lib/cron.ts`) 으로 돈다. 리포트 전 싱크는 1일, 봇 `/sync` 는 어제~오늘. `lastSyncDate + 1` 경로는 `startDate` 없는 호출 (주간 리포트 step1b) 에서만 탄다.
 - 따라서 **3일보다 오래된 활동**을 워치 · Garmin Connect 에서 레이스로 바꾸거나 이름 · 유형을 고쳐도 DB 는 그대로다. `RaceTable` 의 "다음 싱크에 반영됩니다" 는 최근 3일 안의 활동에만 참.
 - 활동 목록 API (`getActivities(start, limit)`) 는 최신순 페이지네이션 (20건) 이고 fetcher 는 `activityDate < startDate` 에서 멈춘다 — 창을 30일로 넓히면 페이지 2~3개 (API 호출 +1~2 · 각 `API_DELAY_MS` 대기) 가 더 든다. 하루 1회 cron 에서 무시할 비용.
-- 그보다 오래된 활동은 이미 명시 재조회 경로가 있다: `npm run backfill:history -- --types=activities --from=YYYY-MM-DD --to=YYYY-MM-DD` (청크 1개 · upsert 로 메타 갱신 · `lastSyncDate` 는 스냅샷/복원 + 단조 규칙으로 보호).
+- 그보다 오래된 활동은 이미 명시 재조회 경로가 있다: `npm run backfill:history -- --types=activities --from=YYYY-MM-DD --to=YYYY-MM-DD` (청크 1개 · upsert 로 메타 갱신 · `lastSyncDate` 는 스냅샷/복원 + 단조 규칙으로 보호). **`--to` 는 필수** — 생략하면 스크립트가 끝을 `oldestFetchedDate − 1일` 로 잡아 (과거 확장용 기본값) 이미 가져온 범위 안의 날짜는 `from > to` 로 거부된다 (PR #474 Codex P2).
 
 ## 2. 목표
 
