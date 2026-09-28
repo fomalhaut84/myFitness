@@ -71,17 +71,15 @@ psql -d myfitness -f prisma/migrations/${TS}_<name>/migration.sql
 
 ### Step 4: `_prisma_migrations` 기록
 
-Prisma 이 이 migration 을 "적용됨" 으로 인식하도록:
+Prisma 이 이 migration 을 "적용됨" 으로 인식하도록 **Prisma 자신의 명령으로** 기록한다 — `migration.sql` 의 실제 SHA-256 checksum 이 함께 저장된다:
 
 ```bash
-psql -d myfitness -c "
-INSERT INTO _prisma_migrations
-  (id, checksum, migration_name, started_at, applied_steps_count, finished_at)
-VALUES
-  ('${TS}_<slug>', 'manual', '${TS}_<name>', NOW(), 1, NOW())
-ON CONFLICT DO NOTHING;
-"
+npx prisma migrate resolve --applied ${TS}_<name>
 ```
+
+> **정정 (#496 · myFitness#494 Codex P1).** 이전 판은 `psql` 로 `_prisma_migrations` 에 checksum `'manual'` 을 직접 INSERT 했다.
+> 그 값은 `migration.sql` 의 SHA-256 과 다르므로 이후 `prisma migrate dev` 가 *"migration was modified after it was applied"* 로
+> 판정해 reset·reconcile 을 계속 요구한다 — drift 를 고치려는 절차가 drift 를 만들었다. `migrate resolve --applied` 가 실제 checksum 을 기록한다. 되돌리기: 즉시.
 
 ### Step 5: Client 갱신
 

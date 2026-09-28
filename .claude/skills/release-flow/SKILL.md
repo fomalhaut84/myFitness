@@ -207,6 +207,7 @@ Deploy on Release 워크플로우 자동 트리거. 사용자 "배포완료" 알
 git checkout main && git checkout -b hotfix/<issue>-<n>
 # ... 수정 → 4종 검증 (lint / typecheck / test / build) ...
 # 1. 로컬 사전 리뷰 1회 (pr-review-toolkit:code-reviewer) — critical·major 는 반드시 수정, info 는 후속 이슈. 반복 루프만 생략
+git push -u origin hotfix/<issue>-<n>   # 먼저 push — `--head` 지정 시 gh 는 자동 push 하지 않는다 (#495)
 gh pr create --base main --head hotfix/<issue>-<n> --body "$(cat <<'EOF'
 <수정 요약>
 

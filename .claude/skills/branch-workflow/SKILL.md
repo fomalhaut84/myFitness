@@ -139,6 +139,7 @@ Agent(subagent_type: "pr-review-toolkit:code-reviewer",
 ## Step 9: PR 생성
 
 ```bash
+git push -u origin <branch>          # 먼저 push — `gh pr create --head` 는 자동 push 를 건너뛴다(`--help`) · 없으면 head ref 부재로 실패 (#495 · myFitness#494 Codex P1)
 gh pr create --base dev --head <branch> \
   --title "[<type>] <제목> (#<issue>)" \
   --body "$(cat <<'EOF'
