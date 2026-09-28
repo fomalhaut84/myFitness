@@ -31,9 +31,9 @@ yarn-error.log*
 # vercel
 .vercel
 
-# claude code
-.claude/
-CLAUDE.md
+# claude code — 하네스(.claude/ · CLAUDE.md)는 tracked (#493 · pleiades#72). 로컬 설정과 worktree 디렉터리만 제외
+.claude/settings.local.json
+.claude/worktrees/
 .runtime/
 
 # ide
