@@ -25,7 +25,7 @@
 
 - [x] F1 `src/lib/history/bounds.ts` (순수): `effectiveLowerBound(lowerBound, today)` = min · `coverableDays(bucket, lowerBound)` (view.ts 에서 이동) · `clipSpan(span, ctx)` (∩ [하한, 오늘] · 비면 null).
 - [x] F2 `lower-bound.ts` `clampLowerBound(earliest, todayYmd?)` — 하한 > 오늘이면 오늘. `getHistoryLowerBound` 가 `todayKSTString()` 전달 (원천 정규화).
-- [x] F3 입구 정규화 (순수 함수 안에서 · 캐시된 옛 하한도 방어): `parseHistoryRoute` · `parseSummaryParams` · `resolveTrendsRange` · `monthRangeToYmd` · `clampYm` 가 `effectiveLowerBound` 를 쓴다. `HistoryNav` 연도 배열 길이 `Math.max(1, …)`.
+- [x] F3 입구 정규화 (순수 함수 안에서 · 캐시된 옛 하한도 방어): `parseHistoryRoute` · `parseSummaryParams` · `resolveTrendsRange` · `monthRangeToYmd` · `clampYm` 가 `effectiveLowerBound` 를 쓴다. `HistoryNav` 는 컴포넌트 입구에서 `effectiveLowerBound` 로 정규화한 값을 탭 · 이전 링크 · picker `min` 에 쓴다 (사전 리뷰 info 1: 길이 방어만 두면 하한 연도 탭이 생기고 올해 탭이 없다).
 - [x] F4 `trends.ts` `toTrendPoints` · `pivotByYear`: `totalDays` · `lowCoverage` 분모를 `coverableDays(bucket, ctx.lowerBound)` 로. `view.ts` 는 공용 헬퍼 사용.
 - [x] F5 `summary.ts` `getHistorySummary`: `clipSpan(bucketSpan(buckets), ctx)` 로 loader 호출 (null 이면 조회 없음).
 - [x] F6 `POST /api/body-composition`: `date > todayKSTString()` → 400 `미래 날짜는 기록할 수 없습니다`.
@@ -50,7 +50,7 @@
 | `src/lib/history/trends.ts` · `view.ts` · `summary.ts` | 분모 · 클립 |
 | `src/components/history/HistoryNav.tsx` | 길이 방어 |
 | `src/app/api/body-composition/route.ts` | 미래 거부 |
-| 테스트 5개 갱신 · `docs/roadmap.md` | — |
+| 테스트 4개 갱신 + 2개 신규 · `docs/roadmap.md` | — |
 
 ## 6. 테스트 계획
 
@@ -60,3 +60,4 @@
 
 - `range-totals` 시그니처 변경 (ctx 주입) — 호출자 클램프로 충분.
 - 캐시 키에 오늘을 넣는 문제 (자정 넘김) — 기존 설계 (`getCachedLowerBound` TTL) 그대로.
+- `POST /api/body-composition` 미래 거부의 라우트 테스트 (사전 리뷰 info 2) — P2 라 8-5 필수 아님. 검사는 zod 가 보장한 `YYYY-MM-DD` 문자열 비교.
