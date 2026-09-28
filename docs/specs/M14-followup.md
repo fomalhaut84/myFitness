@@ -5,7 +5,39 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-28 낮, v2.39.2 배포 완료 · 세션 계속)
+## 현재 상태 (2026-09-28 오후, v2.40.0 배포 완료 · 독립 후속 소진)
+
+**최근 릴리즈:** **v2.40.0** (릴리즈 PR #483 · merge commit · 태그 · Release · **Deploy on Release success** run 36378224165, 2026-09-28 04:34 UTC 완료 확인). 포함: #390 (PR #477) · #365 (PR #478) · #405+#408 (PR #479) · #403 (PR #481) · #413 (PR #482). 같은 날 v2.39.1 · v2.39.2 (아래 이전 상태). dev = main (이 문서 PR 만 앞섬). 열린 PR 0 · 로컬 브랜치 없음.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **v2.40.0 배포 후 확인** | 배포 완료 — 확인 대기 | **수동 1회**: `pm2 startOrReload ecosystem.config.js` (TZ env 는 restart 만으로 안 들어간다) → `pm2 env <id> \| grep TZ` 세 앱. 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **v2.39.1 · v2.39.2 확인** (계속) | 확인 대기 | `/insights` 캡션 · 레이스 점 색 · cron 30일 재조회 로그 · 레이스 표 |
+| **#419 RSC 페이로드 실측** | 사용자 실행 — 이슈 댓글 curl (콜드 = `pm2 restart` 직후) | 1s 안 → 종료 · 초과 → 별도 이슈 |
+| **#480 date-only 입력 KST 자정 저장** (bug · P2) | 신규 (PR #478 Codex 2회차 P2 후속) | 동쪽 TZ 호스트 한정 · 프로덕션 도달 불가 · 작음 (`parseLocalDate` 2곳 → `kstInstant`) |
+| **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | 이전 상태 표 그대로 |
+| 열린 이슈 | #480 · #467 뿐 — 독립 후속 7건 전부 소진 | 다음 세션은 배포 후 확인 결과 → #480 또는 새 요청 |
+
+**이번 세션 결과 (2026-09-28 오후 · 독립 후속 사이클):**
+- **#390** (PR #477) `weather-backfill-mode.ts` · syncAll `weatherBackfill` · backfill:history skip. 사전 info 1 · Codex 👍.
+- **#365** (PR #478) `daily-endpoints.ts` (라이브러리 로컬 TZ 직렬화 우회) · format.ts KST 화 · 봇 라벨 · 네 페이지 `daysAgoKST` · PM2 `TZ` · verify 스캔 확장 · `TZ=UTC` 전체 통과. 사전 **major 1** (body 주간 라벨 `−1ms`) 반영 · Codex 1회차 P2 (남은 로컬 자정 today) 반영 · 2회차 P2 → 종료 규칙 · #480.
+- **#405+#408** (PR #479) `bounds.ts` · 원천 + 입구 + ctx 정규화 · `coverableDays` 공용 · `clipSpan` · 미래 체중 400. 사전 info 2 · Codex P2 (ctx 만드는 곳) 반영 · 2회차 👍.
+- **#403** (PR #481) DB epoch · `composeSyncStamp` · 봇 식단 경로 6곳 `withHistoryCacheBump` (재계산 뒤 bump). 사전 **major 2** (kcal 보정 경로 누락 · bump 순서) 반영 + `runThenBump` 회귀 · Codex 👍. 머지 시 roadmap 충돌 → dev 머지로 해소.
+- **#413** (PR #482) `yoy-links.ts` · `YoyMonthTable` (sr-only 연 · 월 · 상태). 사전 **major 1** (링크 텍스트가 값뿐) + info 6 반영 · Codex 👍.
+- **#371 · #370** 로컬 하네스 직접 수정 후 종료 (tracked 정본은 #467).
+- 릴리즈 PR #483 → **v2.40.0** (minor · fix 5 + feat 1). vitest 356 → 386.
+
+**세션 관찰:**
+- 같은 세션에서 PR 5개를 병행하면 **문서 (roadmap 한 줄) 에서 충돌**이 난다 — 완료 표기를 각 PR 에 넣지 말고 릴리즈 docs PR 에서 한 번에 하는 편이 낫다.
+- 사전 리뷰 에이전트가 세 PR 에서 major 를 잡았다 (TZ 경계 · bump 순서 · 접근성 텍스트) — "다른 파일에 있는 호출자" (lib 안의 쓰기 · 다른 페이지의 helper 사용) 를 리뷰 프롬프트에 명시하면 잘 찾는다.
+- Codex P2 는 1회차면 반영 · 2회차 P2 만이면 후속 이슈 (규칙 그대로 작동). 클린은 👍 리액션.
+- `TZ=UTC npx vitest run` 을 릴리즈 전 한 번 돌리면 호스트 TZ 의존이 드러난다 — 정례화 후보 (vitest config 에 TZ 고정은 별도 판단).
+
+---
+
+## 이전 상태 (2026-09-28 낮, v2.39.2 배포 완료 · 세션 계속)
 
 **최근 릴리즈:** **v2.39.2** (릴리즈 PR #475 · merge commit · 태그 · Release · **Deploy on Release success** run 36372674827, 2026-09-28 03:11 UTC 완료 확인). 포함: #414 (PR #474). 직전 v2.39.1 (같은 날 · 아래 이전 상태). dev = main (이 문서 PR 만 앞섬). 열린 PR 0.
 
