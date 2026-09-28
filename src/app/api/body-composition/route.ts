@@ -3,6 +3,7 @@ import { z } from "zod";
 import prisma from "@/lib/prisma";
 import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { todayKSTString } from "@/lib/garmin/utils";
+import { parseDateOnlyKST } from "@/lib/date-input";
 
 const POST_SCHEMA = z.object({
   date: z
@@ -22,11 +23,6 @@ const POST_SCHEMA = z.object({
   muscleMass: z.number().positive().max(200).nullable().optional(),
 });
 
-function parseLocalDate(isoDate: string): Date {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
-
 export async function POST(request: Request) {
   try {
     const body = await request.json().catch(() => ({}));
@@ -43,7 +39,7 @@ export async function POST(request: Request) {
     if (date > todayKSTString()) {
       return NextResponse.json({ error: "미래 날짜는 기록할 수 없습니다" }, { status: 400 });
     }
-    const dayDate = parseLocalDate(date);
+    const dayDate = parseDateOnlyKST(date); // #480: KST 자정 — Garmin 일별 키 · 히스토리 조회 키와 같은 규칙
 
     // BMI 계산 (키 정보 있으면)
     const profile = await prisma.userProfile.findFirst();
