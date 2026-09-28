@@ -45,3 +45,22 @@ describe("getHistorySummary — 조회 범위 = 버킷 스팬", () => {
     expect(s.buckets).toEqual([]);
   });
 });
+
+// #408-2 회귀 (PR #407 Codex P2): 첫 주 버킷 스팬이 하한 이전 월요일부터라도 조회는 [하한, 오늘] 로 자른다
+describe("getHistorySummary — 조회 범위 = 버킷 스팬 ∩ [하한, 오늘] (#408)", () => {
+  it("week · 하한 (수요일) 이전 날짜는 loader 에 넘기지 않는다 · 오늘 이후도", async () => {
+    const calls: Array<[string, string]> = [];
+    const loader: DailyPointsLoader = async (from, to) => {
+      calls.push([from, to]);
+      return { runningKm: [] };
+    };
+    const floorCtx = { lowerBound: "2020-01-01", today: "2020-01-08" }; // 2020-01-01 은 수요일 → 첫 주 버킷은 2019-12-30 부터
+    const s = await getHistorySummary(
+      { granularity: "week", from: "2020-01-01", to: "2020-01-08", metrics: ["runningKm"], clampedFrom: false, clampedTo: false },
+      floorCtx,
+      loader,
+    );
+    expect(calls).toEqual([["2020-01-01", "2020-01-08"]]);
+    expect(s.buckets[0].start).toBe("2019-12-30"); // 버킷 자체는 달력 전체 (변경 없음)
+  });
+});
