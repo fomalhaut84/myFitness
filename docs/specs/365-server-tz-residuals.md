@@ -39,7 +39,7 @@
 
 ## 4. 기술 설계
 
-- `formatDateLocal` 을 KST 로 바꾸는 근거: 호출자 (대시보드 · 심박 페이지) 는 DB 의 KST 자정 instant 를 넘긴다. `user-profile.ts` 의 `birthDate` · `targetDate` (이슈 제외 항목) 는 `parseLocalDate` 가 **서버 로컬 자정**으로 쓰는데 — KST 호스트면 KST 자정 → KST 읽기 같은 날, UTC 호스트면 UTC 자정 = KST 09:00 → 같은 날. **KST 읽기는 두 경우 모두 안전**하고, 로컬 읽기는 "KST 로 쓰고 UTC 로 읽는" 경우에만 깨진다. 따라서 제외 항목도 함께 좋아진다.
+- `formatDateLocal` 을 KST 로 바꾸는 근거: 호출자 (대시보드 · 심박 · 수면 · 체성분 · 활동 상세 · 프로필 페이지 · MCP user-profile) 는 DB 의 KST 자정 instant 를 넘긴다. **예외가 하나 있었다** (사전 리뷰 major 1): 체성분 페이지가 서버 로컬 자정 `daysAgoLocal` 로 만든 `weekEnd − 1ms` 를 넘겨 UTC 호스트에서 KST 로 읽으면 같은 날이 됐다 → 네 페이지의 `daysAgoLocal` 을 `daysAgoKST` 로 통일하고 끝 라벨은 `formatDayBefore` (exclusive 경계 − 1일) 로. `user-profile.ts` 의 `birthDate` · `targetDate` (이슈 제외 항목) 는 `parseLocalDate` 가 **서버 로컬 자정**으로 쓰는데 — KST 호스트면 KST 자정 → KST 읽기 같은 날, UTC 호스트면 UTC 자정 = KST 09:00 → 같은 날. **KST 읽기는 두 경우 모두 안전**하고, 로컬 읽기는 "KST 로 쓰고 UTC 로 읽는" 경우에만 깨진다. 따라서 제외 항목도 함께 좋아진다.
 - `formatRelativeDate(iso, now = new Date())` — `now` 주입으로 테스트 가능. 날짜 차이는 두 KST ymd 를 UTC 자정으로 파싱해 뺀다 (DST 없음).
 - `hourOfDayKST(d)` = KST 시 + 분/60 (Intl `hour` · `minute` · `hourCycle: "h23"`).
 - 라이브러리 반환 타입은 `Awaited<ReturnType<GarminConnect["getSleepData"]>>` 로 재사용 — 타입 import 추가 없음.
@@ -51,7 +51,8 @@
 |---|---|
 | `src/lib/garmin/daily-endpoints.ts` (+ `__tests__/daily-endpoints.test.ts`) | 신규 |
 | `src/lib/garmin/fetchers/sleep.ts` · `heart-rate.ts` | `fetchDailySleep` · `fetchDailyHeartRate` |
-| `src/lib/format.ts` (+ `src/lib/__tests__/format-kst.test.ts`) | KST 화 · `formatDateKST` |
+| `src/lib/format.ts` (+ `src/lib/__tests__/format-kst.test.ts`) | KST 화 · `formatDateKST` · `formatDayBefore` |
+| `src/app/page.tsx` · `heart/page.tsx` · `sleep/page.tsx` · `body/page.tsx` | 로컬 `daysAgoLocal` → `daysAgoKST` (major 1) |
 | `src/lib/garmin/utils.ts` (+ `__tests__/kst-utils.test.ts`) | `hourOfDayKST` |
 | `src/bot/commands/sleep.ts` · `weight.ts` · `run.ts` | 라벨 |
 | `src/components/dashboard/RecentActivities.tsx` · `src/app/lifestyle/page.tsx` · `src/app/nutrition/page.tsx` · `src/app/api/dashboard/route.ts` | KST 헬퍼 |

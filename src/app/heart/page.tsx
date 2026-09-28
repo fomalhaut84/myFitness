@@ -1,22 +1,17 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+// #365: 서버 로컬 자정 (`setHours(0,0,0,0)`) 대신 KST 자정 instant — 조회 경계가 호스트 TZ 와 무관
+import { daysAgoKST } from "@/lib/garmin/utils";
 import HeartClient from "./heart-client";
 
 export const dynamic = "force-dynamic";
 
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export default async function HeartPage() {
   const today = new Date();
   today.setHours(0, 0, 0, 0);
-  const thirtyDaysAgo = daysAgoLocal(29);
-  const ninetyDaysAgo = daysAgoLocal(89);
-  const fourteenDaysAgo = daysAgoLocal(14);
+  const thirtyDaysAgo = daysAgoKST(29);
+  const ninetyDaysAgo = daysAgoKST(89);
+  const fourteenDaysAgo = daysAgoKST(14);
 
   const [
     todayHR,

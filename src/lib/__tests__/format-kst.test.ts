@@ -1,6 +1,6 @@
 // #365: 포맷 헬퍼가 호스트 TZ 와 무관하게 KST 를 말한다. 경계 instant = KST 자정 (UTC 로는 전날 15:00).
 import { describe, expect, it } from "vitest";
-import { formatDateKST, formatDateLocal, formatDateTime, formatRelativeDate } from "../format";
+import { formatDateKST, formatDateLocal, formatDateTime, formatDayBefore, formatRelativeDate } from "../format";
 
 const kstMidnight = new Date("2026-04-06T00:00:00+09:00");
 const kstMorning = "2026-04-06T06:30:00+09:00"; // = 2026-04-05T21:30Z
@@ -31,5 +31,13 @@ describe("formatRelativeDate (KST)", () => {
 describe("formatDateTime (KST)", () => {
   it("YYYY.MM.DD HH:mm", () => {
     expect(formatDateTime(kstMorning)).toBe("2026.04.06 06:30");
+  });
+});
+
+// 회귀: 사전 리뷰 major 1 — body 주간 요약의 끝 라벨을 `weekEnd − 1ms` 로 만들면 UTC 호스트에서 KST 로 읽을 때 같은 날 (8일 구간) 이 된다
+describe("formatDayBefore", () => {
+  it("KST 자정 exclusive 경계 → 전날", () => {
+    expect(formatDayBefore(new Date("2026-09-28T00:00:00+09:00"))).toBe("2026-09-27");
+    expect(formatDayBefore(new Date("2026-03-01T00:00:00+09:00"))).toBe("2026-02-28");
   });
 });

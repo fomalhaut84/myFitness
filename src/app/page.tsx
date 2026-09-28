@@ -1,5 +1,7 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+// #365: 서버 로컬 자정 (`setHours(0,0,0,0)`) 대신 KST 자정 instant — 조회 경계가 호스트 TZ 와 무관
+import { daysAgoKST } from "@/lib/garmin/utils";
 import { resolveSpO2Source, resolveSpO2Value } from "@/lib/spo2-source";
 import DashboardClient from "./dashboard-client";
 import { recommendTodayWorkout } from "@/mcp/tools/recommend-today-workout";
@@ -13,20 +15,13 @@ function todayLocal(): Date {
   return d;
 }
 
-function daysAgoLocal(n: number): Date {
-  const d = new Date();
-  d.setDate(d.getDate() - n);
-  d.setHours(0, 0, 0, 0);
-  return d;
-}
-
 export const dynamic = "force-dynamic";
 
 export default async function DashboardPage() {
   const today = todayLocal();
-  const yesterday = daysAgoLocal(1);
-  const weekAgo = daysAgoLocal(6);
-  const thirtyDaysAgo = daysAgoLocal(29);
+  const yesterday = daysAgoKST(1);
+  const weekAgo = daysAgoKST(6);
+  const thirtyDaysAgo = daysAgoKST(29);
 
   const [todaySummary, yesterdaySummary, todaySleep, yesterdaySleep] =
     await Promise.all([

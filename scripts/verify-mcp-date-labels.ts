@@ -113,7 +113,11 @@ const SCAN_ALLOWLIST: Record<string, string> = {
     "UTC 자정으로 파싱한 값을 같은 UTC 로 되읽는 왕복 검증 — KST 변환이 목적이 아니다",
 };
 
-/** #365: 절단 · 로컬 라벨 스캔 대상 (테스트 제외). "use client" 파일은 브라우저 TZ 라 로컬 라벨 스캔에서 뺀다 */
+/**
+ * #365: 절단 · 로컬 라벨 스캔 대상. `__tests__` 는 뺀다 (이전 src/mcp 스캔은 tools/__tests__ 도 봤지만 테스트는 프로덕션이 아니고 히트도 없었다).
+ * "use client" 파일은 브라우저 TZ 라 로컬 라벨 스캔에서 뺀다. 한계: `Date#toLocaleString()` · `new Intl.DateTimeFormat()` 의 timeZone 누락은 안 본다
+ * (현재 서버 파일의 그 호출은 전부 timeZone 명시 — admin-alerts · api/sync · lib/date).
+ */
 const SCAN_DIRS = ["src/mcp", "src/app", "src/bot", "src/components", "src/lib"];
 // 숫자의 `toLocaleString("ko-KR")` (천 단위 구분) 은 TZ 와 무관 — 날짜 · 시각 호출만 본다
 const LOCALE_CALL_RE = /\.toLocale(Date|Time)String\(/;
