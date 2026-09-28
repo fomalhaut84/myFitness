@@ -7,6 +7,8 @@ module.exports = {
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',
+        // #365: 날짜 · 시각 계산의 근본 방어 — 호스트 OS TZ 에 의존하지 않는다 (코드는 KST 명시가 원칙, 이건 이중 안전)
+        TZ: 'Asia/Seoul',
         PORT: 4200,
       },
       instances: 1,
@@ -21,6 +23,8 @@ module.exports = {
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',
+        // #365: 날짜 · 시각 계산의 근본 방어 — 호스트 OS TZ 에 의존하지 않는다 (코드는 KST 명시가 원칙, 이건 이중 안전)
+        TZ: 'Asia/Seoul',
         // #180: 봇 프로세스 (claude-advisor) 가 pm2 delete + start 로 시작되면
         // shell env override 를 자동 상속 못 함. 명시적으로 pass.
         // - MCP_PORT / MCP_HTTP_URL: mcp 앱과 같은 env 공유해 client/server 포트 정합 유지.
@@ -62,6 +66,8 @@ module.exports = {
       cwd: '/home/nasty68/myFitness',
       env: {
         NODE_ENV: 'production',
+        // #365: 날짜 · 시각 계산의 근본 방어 — 호스트 OS TZ 에 의존하지 않는다 (코드는 KST 명시가 원칙, 이건 이중 안전)
+        TZ: 'Asia/Seoul',
         MCP_TRANSPORT: 'http',
         // #194: 파일 tee 활성화 — logs/mcp-YYYY-MM-DD.log 로 pm2 stdout 외 사후 분석 채널.
         MCP_LOG_TEE_FILE: '1',

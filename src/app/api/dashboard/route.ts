@@ -1,6 +1,6 @@
 import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
-import { todayKST, daysAgoKST } from "@/lib/garmin/utils";
+import { todayKST, daysAgoKST, ymdKST } from "@/lib/garmin/utils";
 
 export async function GET() {
   try {
@@ -59,12 +59,13 @@ export async function GET() {
         sleepScore: yesterdaySleep?.sleepScore ?? null,
         bodyBattery: yesterdaySummary?.bodyBattery ?? null,
       },
+      // #365: UTC 절단 → KST (이 라우트는 호출자 없음 — 삭제는 별도 정리)
       weeklySteps: weeklySteps.map((d) => ({
-        date: d.date.toISOString().split("T")[0],
+        date: ymdKST(d.date),
         value: d.steps,
       })),
       weeklyHR: weeklyHR.map((d) => ({
-        date: d.date.toISOString().split("T")[0],
+        date: ymdKST(d.date),
         value: d.restingHR,
       })),
       recentActivities: recentActivities.map((a) => ({

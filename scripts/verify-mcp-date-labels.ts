@@ -106,34 +106,86 @@ const CASES: Case[] = [
 const SCAN_ALLOWLIST: Record<string, string> = {
   "src/mcp/logger.ts":
     "Date.now()+9h 를 선반영한 뒤 UTC 로 읽으므로 결과가 KST 벽시계 날짜 (주석에 근거 명시)",
+  // #365: 스캔 범위를 src/app · src/bot · src/components · src/lib 로 확장하면서 걸리는 의도된 UTC 절단
+  "src/lib/weather/open-meteo.ts":
+    "외부 API (Open-Meteo archive) 의 날짜 파라미터 — 기상 보강의 날짜 경계는 별도 판단 (365 스펙 §7)",
+  "src/app/api/training-plan/[planId]/workouts/[date]/route.ts":
+    "UTC 자정으로 파싱한 값을 같은 UTC 로 되읽는 왕복 검증 — KST 변환이 목적이 아니다",
 };
+
+/**
+ * #365: 절단 · 로컬 라벨 스캔 대상. `__tests__` 는 뺀다 (이전 src/mcp 스캔은 tools/__tests__ 도 봤지만 테스트는 프로덕션이 아니고 히트도 없었다).
+ * "use client" 파일은 브라우저 TZ 라 로컬 라벨 스캔에서 뺀다. 한계: `Date#toLocaleString()` · `new Intl.DateTimeFormat()` 의 timeZone 누락은 안 본다
+ * (현재 서버 파일의 그 호출은 전부 timeZone 명시 — admin-alerts · api/sync · lib/date).
+ */
+const SCAN_DIRS = ["src/mcp", "src/app", "src/bot", "src/components", "src/lib"];
+// 숫자의 `toLocaleString("ko-KR")` (천 단위 구분) 은 TZ 와 무관 — 날짜 · 시각 호출만 본다
+const LOCALE_CALL_RE = /\.toLocale(Date|Time)String\(/;
+const LOOKAHEAD_LINES = 4;
+
+function isClientFile(src: string): boolean {
+  return /^\s*["']use client["']/m.test(src.split("\n").slice(0, 5).join("\n"));
+}
 
 const TRUNCATION_RE = /toISOString\(\)\s*\.\s*(slice|split|substring)\s*\(/;
 
 function walk(dir: string, out: string[] = []): string[] {
   for (const entry of readdirSync(dir)) {
     const full = join(dir, entry);
-    if (statSync(full).isDirectory()) walk(full, out);
-    else if (full.endsWith(".ts")) out.push(full);
+    if (statSync(full).isDirectory()) {
+      if (entry === "__tests__") continue;
+      walk(full, out);
+    } else if (full.endsWith(".ts") || full.endsWith(".tsx")) out.push(full);
   }
   return out;
 }
 
 function scanForTruncation(): void {
   const offenders: string[] = [];
-  for (const file of walk("src/mcp")) {
-    const rel = file.replace(/\\/g, "/");
-    const lines = readFileSync(file, "utf-8").split("\n");
-    lines.forEach((line, i) => {
-      if (!TRUNCATION_RE.test(line)) return;
-      if (SCAN_ALLOWLIST[rel]) return;
-      offenders.push(`${rel}:${i + 1} → ${line.trim()}`);
-    });
+  for (const dir of SCAN_DIRS) {
+    for (const file of walk(dir)) {
+      const rel = file.replace(/\\/g, "/");
+      const lines = readFileSync(file, "utf-8").split("\n");
+      lines.forEach((line, i) => {
+        if (!TRUNCATION_RE.test(line)) return;
+        if (SCAN_ALLOWLIST[rel]) return;
+        offenders.push(`${rel}:${i + 1} → ${line.trim()}`);
+      });
+    }
   }
   check(
     offenders.length === 0
-      ? "src/mcp/** 에 허용되지 않은 toISOString() 절단 없음"
-      : `src/mcp/** 에 UTC 절단 발견:\n      ${offenders.join("\n      ")}`,
+      ? `${SCAN_DIRS.join(" · ")} 에 허용되지 않은 toISOString() 절단 없음`
+      : `UTC 절단 발견:\n      ${offenders.join("\n      ")}`,
+    offenders.length === 0,
+  );
+}
+
+/**
+ * #365: 서버에서 실행되는 파일의 `toLocaleDateString()` · `toLocaleTimeString()` 에 `timeZone` 이 없으면
+ * 호스트 TZ 를 따른다 (봇 /sleep · /weight · /run 이 그랬다). 호출 줄과 그 아래 4줄 안에 `timeZone` 이 있어야 통과.
+ * "use client" 파일은 브라우저 TZ (= 사용자) 라 제외. 서버 라벨은 `formatDateKST` (src/lib/format.ts) 로.
+ */
+function scanForLocalLabels(): void {
+  const offenders: string[] = [];
+  for (const dir of SCAN_DIRS) {
+    for (const file of walk(dir)) {
+      const rel = file.replace(/\\/g, "/");
+      const src = readFileSync(file, "utf-8");
+      if (isClientFile(src)) continue;
+      const lines = src.split("\n");
+      lines.forEach((line, i) => {
+        if (!LOCALE_CALL_RE.test(line)) return;
+        const window = lines.slice(i, i + 1 + LOOKAHEAD_LINES).join("\n");
+        if (/timeZone/.test(window)) return;
+        offenders.push(`${rel}:${i + 1} → ${line.trim()}`);
+      });
+    }
+  }
+  check(
+    offenders.length === 0
+      ? "서버 파일의 toLocaleDateString/TimeString() 에 timeZone 누락 없음 (#365)"
+      : `timeZone 없는 toLocaleDateString/TimeString() 발견 (#365):\n      ${offenders.join("\n      ")}`,
     offenders.length === 0,
   );
 }
@@ -179,6 +231,7 @@ function main(): void {
 
   console.log("\n[3] 소스 스캔 — mapper 우회로 UTC 절단이 인라인되는 것 차단\n");
   scanForTruncation();
+  scanForLocalLabels();
 
   console.log("\n[4] 서버 TZ 무관성\n");
   // 사전 리뷰 P0: TZ 전환이 실제로 먹었는지 먼저 단언하지 않으면 이 블록은 공허하다

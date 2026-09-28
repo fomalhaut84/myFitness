@@ -40,6 +40,13 @@ export function ymdKST(d: Date = new Date()): string {
   return new Intl.DateTimeFormat("en-CA", { timeZone: "Asia/Seoul" }).format(d);
 }
 
+/** #365: KST 벽시계의 시 + 분/60 (예: 23:30 → 23.5). 취침 · 기상 시각 분포용 — 서버 TZ 무관 */
+export function hourOfDayKST(d: Date): number {
+  const parts = new Intl.DateTimeFormat("en-US", { timeZone: "Asia/Seoul", hour: "numeric", minute: "numeric", hourCycle: "h23" }).formatToParts(d);
+  const get = (type: string) => Number(parts.find((p) => p.type === type)?.value ?? "0");
+  return get("hour") + get("minute") / 60;
+}
+
 /** 현재 시각 (instant은 절대시각이라 타임존 변환 불필요) */
 export function nowKST(): Date {
   return new Date();
