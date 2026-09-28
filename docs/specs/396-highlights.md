@@ -80,6 +80,7 @@ M15 의 유일한 스키마 변경 — 레이스는 Garmin 활동의 `eventType.
 - [x] F17 `YoyChart` 포인트 클릭 → `/history/YYYY/MM?metric=` · `SeasonalityChart` 연도별 점 클릭 → 같은 경로 (`YoyRow` 에 연도 · 월이 있으므로 컴포넌트에서 `historyMonthPath` 로 조립 — `route-params` 는 순수 lib 라 client import 가능, `MonthGrid` 선례)
   - ↳ YoY 는 실선 점 · 점선 (미완결 달) 속 빈 점 둘 다 링크
 - [x] F18 판독값 캡션 링크 (`ReadoutRow`) 는 그대로 — 키보드 · 스크린리더 경로
+  - ↳ **#413 (2026-09-28)**: YoY 뷰는 판독값 띠가 없어 키보드 경로가 0 이었다 → `YoyMonthTable` (연도 × 12개월 값 · `<a>` 링크 · 접힘) 추가. 시계열 · 계절성 포인트의 `<a>` 화는 하지 않음 (판독값 띠가 경로). 스펙 `413-yoy-keyboard-path.md`
   - ↳ 포인트 클릭은 SVG `onClick` (마우스 · 터치) 이고 `<a>` 가 아니다 — 차트가 `role="img"` 라 AT 에서는 판독값 · 이벤트 목록 링크가 경로. **YoY 뷰에는 판독값 띠가 없어 키보드 경로가 없다** → 후속 이슈 (사전 리뷰 info 13)
 
 **E. 커버리지 띠 (`/history` 연 뷰)**
