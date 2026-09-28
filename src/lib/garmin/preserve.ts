@@ -21,10 +21,19 @@ const asRecord = (raw: unknown): Record<string, unknown> | null => (raw !== null
 
 const isPlainObject = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
-/** "값 있음" — 비지 않은 배열 · 0 이 아닌 유한수 · 비지 않은 객체. 문자열 · 불리언 · 0 · 빈 컨테이너는 요약/플래그라 세지 않는다 */
+/** 0 이 아닌 유한수 — 수치와 숫자 문자열 (`"94"`) 에 같은 규칙. `Number("")` · `Number("  ")` 이 0 이 되는 함정은 빈 문자열 검사로 막는다 */
+const isNonZeroFinite = (n: number): boolean => Number.isFinite(n) && n !== 0;
+
+/**
+ * "값 있음" — 비지 않은 배열 · 0 이 아닌 유한수 (숫자 문자열 포함 · #437) · 비지 않은 객체.
+ * 날짜 · qualifier 같은 비숫자 문자열 · 불리언 · 0 · 빈 컨테이너는 요약/플래그라 세지 않는다.
+ * 숫자 문자열을 수와 같이 보는 이유: `extractSleepSpO2` 가 `"94"` 를 받아들이므로 (PR #436 Codex P2) 가드도 같은 값을 "있음" 으로 봐야
+ * 그 값이 사라진 응답을 trimmed 로 잡고, 수 ↔ 문자열 표기 변화를 소실로 오판하지 않는다.
+ */
 function isPresent(v: unknown): boolean {
   if (Array.isArray(v)) return v.length > 0;
-  if (typeof v === "number") return Number.isFinite(v) && v !== 0;
+  if (typeof v === "number") return isNonZeroFinite(v);
+  if (typeof v === "string") return v.trim() !== "" && isNonZeroFinite(Number(v));
   if (isPlainObject(v)) return Object.keys(v).length > 0;
   return false;
 }
