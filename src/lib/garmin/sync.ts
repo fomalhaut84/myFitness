@@ -17,6 +17,7 @@ import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
 import { syncUserProfile } from "./fetchers/user-profile";
 import { runWeatherBackfill } from "@/lib/weather/enrich";
 import { activityRecheckStart } from "./activity-recheck";
+import { resolveWeatherBackfillMode, weatherBackfillPlan, type WeatherBackfillMode } from "./weather-backfill-mode";
 
 // #269 Codex P2: syncAll 후 weather 자동 enrich. cron 이외 caller (daily/weekly 리포트 pre-sync
 // 등) 도 신규 활동이 즉시 weather 채워지도록. 각 호출 소규모 배치 (30 건) — 리포트 지연 방지.
@@ -298,6 +299,11 @@ export async function syncAll(
      * 백필 청크 · /api/sync (명시 범위) 는 넘기지 않는다. 커서는 단조 증가 (#381) 라 뒤로 가지 않는다.
      */
     activityRecheckDays?: number;
+    /**
+     * #390: 끝의 weather backfill 실행 방식. 기본 `background` (fire-and-forget · #269). `backfill:history` 는 청크마다 syncAll 을
+     * 부르고 종료 시 `$disconnect` 하므로 `skip` — 백그라운드 lock 해제가 닫힌 엔진에 닿아 실패하던 문제. `await` 는 끝을 기다린다.
+     */
+    weatherBackfill?: WeatherBackfillMode;
   }
 ): Promise<SyncResult[]> {
   // 기본 endDate: KST 기준 오늘. 미래 날짜는 각 fetcher의 calendarDate 가드가 차단.
@@ -437,20 +443,27 @@ export async function syncAll(
     }
   }
 
-  // #269 후속 Codex P1: weather backfill 은 fire-and-forget. await 하면 30 활동 × 8s timeout =
+  // #269 후속 Codex P1: weather backfill 은 기본 fire-and-forget. await 하면 30 활동 × 8s timeout =
   // 최대 4분 syncAll 지연 → 리포트 pipeline 정지 복귀. 백그라운드 실행으로 신규 활동이
   // 나중에 채워짐 (transient 실패는 attempts 카운터 로테이션으로 스타베이션 없음).
-  void runWeatherBackfill({ limit: WEATHER_BACKFILL_LIMIT_PER_SYNC })
-    .then((wr) => {
-      if (wr.candidates > 0) {
-        console.log(
-          `[sync] weather backfill (bg): 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
-        );
-      }
-    })
-    .catch((weatherErr) => {
-      console.error("[sync] weather backfill (bg) 에러:", weatherErr);
-    });
+  // #390: 호출자가 모드를 고른다 — backfill:history 는 skip (종료 시 $disconnect 뒤 lock 해제 실패 방지).
+  const weatherPlan = weatherBackfillPlan(resolveWeatherBackfillMode(options?.weatherBackfill));
+  if (weatherPlan.run) {
+    const tag = weatherPlan.awaitResult ? "await" : "bg";
+    const weatherRun = runWeatherBackfill({ limit: WEATHER_BACKFILL_LIMIT_PER_SYNC })
+      .then((wr) => {
+        if (wr.candidates > 0) {
+          console.log(
+            `[sync] weather backfill (${tag}): 대상 ${wr.candidates}, 성공 ${wr.ok}, 스킵 ${wr.skipped}, 실패 ${wr.failed}`,
+          );
+        }
+      })
+      .catch((weatherErr) => {
+        console.error(`[sync] weather backfill (${tag}) 에러:`, weatherErr);
+      });
+    if (weatherPlan.awaitResult) await weatherRun;
+    else void weatherRun;
+  }
 
   return results;
 }
