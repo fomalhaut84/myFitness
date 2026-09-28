@@ -17,7 +17,7 @@ export default function EventList({ events }: { events: readonly HistoryEvent[] 
       </h3>
       {sorted.length === 0 ? (
         <p className="px-3.5 pb-3 pt-2 text-[12px] text-dim">
-          이 기간에 표시할 이벤트가 없습니다. Garmin 에서 활동을 레이스로 표시하거나, 프로필에서 maxHR · LTHR 을 바꾸면 여기에 남습니다.
+          이 기간에 표시할 이벤트가 없습니다. Garmin 에서 활동을 레이스로 표시하거나 (최근 30일 안의 활동은 다음 싱크에 반영), 프로필에서 maxHR · LTHR 을 바꾸면 여기에 남습니다.
         </p>
       ) : (
         <ol className="py-1">

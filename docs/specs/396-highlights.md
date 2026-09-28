@@ -236,6 +236,7 @@ vitest:
 - `/history` 월 · 일 뷰 커버리지 띠 · 일 뷰 이벤트 표시 — 필요 시 후속
 - YoY · 계절성 마커 (F14)
 - 효율 · HR 존 · 기상 · 수면 규칙성 · 교차 상관 — #397
+- **과거 활동 재조회 (#414 · 2026-09-28 반영)**: 매일 cron · 봇 /sync 가 활동 타입만 최근 30일을 되돌아본다 (`activity-recheck.ts` · `syncAll` `activityRecheckDays`). 그보다 오래된 활동은 `backfill:history --types=activities --from --to`. 레이스 표 문구 정정. 상세 `414-activity-recheck.md`
 
 ## 8. 코드 리뷰 결과
 
