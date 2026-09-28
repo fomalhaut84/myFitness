@@ -16,6 +16,8 @@ export interface ScatterPoint {
   href: string | null;
   /** 이 계열의 토글이 아니라 다른 계열의 토글을 따르는 점 (레이스 점 → 연도) */
   toggleId?: string;
+  /** #419: 점 단위 색 — 계열 색 대신 (레이스 점 → 그 해의 연도 색). 없으면 계열 색 */
+  color?: string;
 }
 
 export interface ScatterSeries {
@@ -134,11 +136,12 @@ export default function InsightScatter({ series, x, y, ariaLabel, toggle }: Insi
                     if (payload.href) router.push(payload.href);
                   };
                   const cursor = payload.href ? "pointer" : "default";
-                  if (s.emphasis) return <circle cx={cx} cy={cy} r={EMPHASIS_R} fill="#161616" stroke={s.color} strokeWidth={1.6} style={{ cursor }} onClick={go} />;
+                  const color = payload.color ?? s.color;
+                  if (s.emphasis) return <circle cx={cx} cy={cy} r={EMPHASIS_R} fill="#161616" stroke={color} strokeWidth={1.6} style={{ cursor }} onClick={go} />;
                   return s.hollow ? (
-                    <circle cx={cx} cy={cy} r={DOT_R + 1} className={HOLLOW_CLASS} fill="#161616" stroke={s.color} strokeWidth={1.4} style={{ cursor }} onClick={go} />
+                    <circle cx={cx} cy={cy} r={DOT_R + 1} className={HOLLOW_CLASS} fill="#161616" stroke={color} strokeWidth={1.4} style={{ cursor }} onClick={go} />
                   ) : (
-                    <circle cx={cx} cy={cy} r={DOT_R} className={DOT_CLASS} fill={s.color} fillOpacity={0.7} style={{ cursor }} onClick={go} />
+                    <circle cx={cx} cy={cy} r={DOT_R} className={DOT_CLASS} fill={color} fillOpacity={0.7} style={{ cursor }} onClick={go} />
                   );
                 }}
               />
