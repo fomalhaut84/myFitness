@@ -4,7 +4,7 @@
  */
 import { todayKSTString } from "@/lib/garmin/utils";
 import { MIN_HISTORY_YMD } from "@/lib/date";
-import { clipSpan } from "./bounds";
+import { clipSpan, effectiveLowerBound } from "./bounds";
 import { bucketSpan, enumerateBuckets, type HistoryGranularity } from "./buckets";
 import { loadDailyPoints, type DailyPointsByMetric } from "./load";
 import { getHistoryLowerBound } from "./lower-bound";
@@ -54,7 +54,8 @@ export async function validateSummaryParams(
   const today = todayKSTString();
   const pure = parseSummaryParams(raw, { todayYmd: today, lowerBound: MIN_HISTORY_YMD });
   if (!pure.ok) return { ...pure, lowerBound: MIN_HISTORY_YMD, today };
-  const lowerBound = await lowerBoundLoader();
+  // #405: 돌려주는 lowerBound 도 정규화 — route 가 이걸 ctx 로 getCachedHistorySummary 에 넘긴다 (PR #479 Codex P2)
+  const lowerBound = effectiveLowerBound(await lowerBoundLoader(), today);
   return { ...parseSummaryParams(raw, { todayYmd: today, lowerBound }), lowerBound, today };
 }
 

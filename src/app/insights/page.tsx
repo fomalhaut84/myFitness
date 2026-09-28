@@ -9,6 +9,7 @@ import { ZONE_COLORS, ZONE_NAMES } from "@/components/insights/zone-colors";
 import ReadoutRow from "@/components/trends/ReadoutRow";
 import { formatPace } from "@/lib/format";
 import { todayKSTString } from "@/lib/garmin/utils";
+import { effectiveLowerBound } from "@/lib/history/bounds";
 import { getCachedHistorySummary, getCachedInsightRuns, getCachedLowerBound } from "@/lib/history/cache";
 import {
   EFFICIENCY_BAND,
@@ -56,7 +57,8 @@ const activityHref = (id: string) => `/activities/${id}`;
 const MEDIAN_COLOR = "#ededed";
 
 export default async function InsightsPage() {
-  const ctx: InsightContext = { today: todayKSTString(), lowerBound: await getCachedLowerBound() };
+  const today = todayKSTString();
+  const ctx: InsightContext = { today, lowerBound: effectiveLowerBound(await getCachedLowerBound(), today) }; // #405
   const currentYear = Number(ctx.today.slice(0, 4));
   const [allRuns, weeks] = await Promise.all([
     getCachedInsightRuns(ctx),

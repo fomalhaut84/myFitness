@@ -35,7 +35,7 @@
 ## 4. 기술 설계
 
 - `bounds.ts` 는 prisma 를 import 하지 않는다 — `route-params.ts` 가 클라이언트 번들에 들어가므로 (`lower-bound.ts` 는 prisma 의존).
-- 원천 (`getHistoryLowerBound`) 과 입구 (순수 파서) 양쪽에서 정규화: 캐시에 남은 미래 하한 (TTL 안) 도 입구가 막는다.
+- 원천 (`getHistoryLowerBound`) 과 입구 (순수 파서) 양쪽에서 정규화: 캐시에 남은 미래 하한 (TTL 안) 도 입구가 막는다. **ctx 를 만드는 곳** (`resolveHistoryRoute` · `validateSummaryParams` 반환 · `/trends` · `/insights`) 도 정규화한 값을 돌려준다 — 파서만 고치면 라우트는 통과하는데 뷰 로더가 미래 하한으로 빈 버킷을 그린다 (PR #479 Codex P2).
 - `coverableDays` 는 오늘 이후를 다시 빼지 않는다 — `enumerateBuckets` 의 `totalDays` 가 이미 오늘 이후를 세지 않는다.
 - `range-totals` 는 변경 없음: 호출자 (`resolveTrendsRange` · `monthRangeToYmd`) 가 클램프한 범위를 넘기고 `rangeTotalsFromPoints` 가 범위 밖 포인트를 버린다. F3 로 그 클램프의 하한도 정규화된다.
 - 미래 체중 거부는 이슈의 "별개로 판단" 항목 — 체중은 측정값이라 미래 기록의 정당한 쓰임이 없다. `targetDate` (프로필 목표일) 는 미래가 정상이라 무관.
