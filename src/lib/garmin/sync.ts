@@ -369,7 +369,9 @@ export async function syncAll(
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
     }
 
-    // #414: 활동 메타 재조회 창 — 호출자가 요청한 경우에만 (cron · 봇 /sync)
+    // #414: 활동 메타 재조회 창 — 호출자가 요청한 경우에만 (cron · 봇 /sync). hrr 후처리 창은 넓히기 전 startDate 를 쓴다
+    // (사전 리뷰 info 1: 30일치 후보를 매일 다시 훑을 이유가 없다 — hrr2 는 최근 며칠만 null 로 남는다)
+    const recoveryStart = startDate;
     if (dataType === "activities" && options?.activityRecheckDays) {
       const widened = activityRecheckStart(startDate, todayKST(), options.activityRecheckDays);
       if (widened.getTime() < startDate.getTime()) {
@@ -399,8 +401,8 @@ export async function syncAll(
       await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
       results.push({ dataType, synced });
-      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || startDate < recoveryFrom)) {
-        recoveryFrom = startDate;
+      if ((dataType === "activities" || dataType === "heart_rate") && (recoveryFrom === null || recoveryStart < recoveryFrom)) {
+        recoveryFrom = recoveryStart;
       }
     } catch (error) {
       const message =

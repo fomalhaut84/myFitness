@@ -1,5 +1,6 @@
 // #396 (M15-4): "이 기간의 이벤트" — 차트 (`role="img"`) 위 마커의 글자 대응물. 날짜 · 종류 (글리프 + 글자) · 내용 · 링크.
 // 최신순, 30건 넘으면 "외 N건". 빈 상태는 무엇을 하면 채워지는지 말한다.
+import { ACTIVITY_RECHECK_DAYS } from "@/lib/garmin/activity-recheck";
 import Link from "next/link";
 import { EVENT_KIND_LABELS, type HistoryEvent } from "@/lib/history/markers";
 import MarkerGlyph from "./MarkerGlyph";
@@ -17,7 +18,7 @@ export default function EventList({ events }: { events: readonly HistoryEvent[] 
       </h3>
       {sorted.length === 0 ? (
         <p className="px-3.5 pb-3 pt-2 text-[12px] text-dim">
-          이 기간에 표시할 이벤트가 없습니다. Garmin 에서 활동을 레이스로 표시하거나 (최근 30일 안의 활동은 다음 싱크에 반영), 프로필에서 maxHR · LTHR 을 바꾸면 여기에 남습니다.
+          이 기간에 표시할 이벤트가 없습니다. Garmin 에서 활동을 레이스로 표시하거나 (최근 {ACTIVITY_RECHECK_DAYS}일 안의 활동은 다음 싱크에 반영), 프로필에서 maxHR · LTHR 을 바꾸면 여기에 남습니다.
         </p>
       ) : (
         <ol className="py-1">

@@ -32,8 +32,8 @@
 
 ## 4. 기술 설계
 
-- `lastSyncDate` 는 단조 증가 (#381) 라 startDate 를 앞당겨도 커서가 뒤로 가지 않는다. `oldestFetchedDate` 는 겹침 병합 (`LEAST`) 이라 변화 없음.
-- fetcher 의 부수 효과는 DB 만 (`parseAndSaveWristTemps` · 강도 재계산은 rawData 에서 같은 값). `hrr2` · 기상 컬럼은 `data` 에 없어 건드리지 않는다. 싱크 뒤 `fillRecoveryColumns` 창이 `recoveryFrom = startDate − 2일` 로 30일이 되지만 DB 조회만 (수 건 갱신 · 대부분 이미 채워짐).
+- `lastSyncDate` 는 단조 증가 (#381) 라 startDate 를 앞당겨도 커서가 뒤로 가지 않는다.
+- fetcher 의 부수 효과는 DB 만 (`parseAndSaveWristTemps` · 강도 재계산은 rawData 에서 같은 값). `hrr2` · 기상 컬럼은 `data` 에 없어 건드리지 않는다. 싱크 뒤 `fillRecoveryColumns` 창은 **넓히기 전** startDate 기준 (`recoveryStart`) — hrr2 는 최근 며칠만 null 로 남으므로 30일치 후보를 매일 다시 훑지 않는다 (사전 리뷰 info 1). `oldestFetchedDate` 는 겹침 병합이라 기존보다 앞설 때만 앞당겨진다 (실제로 가져온 범위).
 - 옵션 방식을 택한 이유: `syncAll` 안에서 무조건 넓히면 리포트 전 싱크 (하루 2회 · 지연 민감) 와 백필 청크 (명시 범위 존중) 까지 바뀐다. 호출자가 의도를 넘긴다.
 
 ## 5. 변경 파일
@@ -55,3 +55,4 @@
 - 활동 **삭제** 반영 (Garmin 에서 지운 활동이 DB 에 남음) — 목록 비교가 필요, 별도 이슈.
 - 30일보다 오래된 활동의 자동 재조회 — 비용 대비 드문 경우. 명시 경로 (`backfill:history`) 로.
 - `/api/sync` 에 옵션 노출 — 명시 범위 API 라 불필요.
+- **봇 `/sync` 응답의 건수**가 30일치 활동 재조회분만큼 커진다 (예: 3건 → 40건 · 사전 리뷰 info 4). 카운트는 "가져온 행" 의미라 그대로 둔다 — 분리 표기가 필요해지면 후속.
