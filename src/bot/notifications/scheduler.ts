@@ -10,15 +10,8 @@ import {
   formatUserFriendlyError,
   notifyAdminIfKnownFailure,
 } from "@/lib/monitoring/admin-alerts";
-// #253: sendToAll/sendToAllWithKeyboard 은 별도 send.ts 로 이동 (auth-monitor 와 순환 import 방지).
-// 기존 소비자를 위해 re-export.
-export {
-  sendToAll,
-  sendToAllWithKeyboard,
-  type SendResult,
-  type SendKeyboardResult,
-} from "./send";
-import { sendToAll } from "./send";
+import { Route, html as htmlContent } from "@pleiades/notify";
+import { BOT_NOTIFY_CTX, notifierFor } from "./notifier";
 
 /** 리포트 cron 콜백 공통 처리: 단계별 로그 + 실패 시 텔레그램 알림 (조용한 실패 차단) */
 async function runReportCron(
@@ -31,7 +24,7 @@ async function runReportCron(
   try {
     const report = await generate();
     const html = `${emoji} <b>${label}</b>\n\n${mdToHtml(report)}`;
-    const r = await sendToAll(bot, html);
+    const r = await notifierFor(bot).notify(Route.ALLOWED, htmlContent(html), BOT_NOTIFY_CTX);
     if (r.total === 0) {
       console.warn(
         `[bot-cron] ${label} 전송 대상 없음 (TELEGRAM_ALLOWED_CHAT_IDS 미설정?)`
@@ -56,7 +49,11 @@ async function runReportCron(
     // 조용한 실패 차단: 사용자에게 카테고리 매핑 문구 (기존 raw msg 대체).
     try {
       const friendly = formatUserFriendlyError(error);
-      await sendToAll(bot, `❌ ${label} 생성 실패\n${friendly}`);
+      await notifierFor(bot).notify(
+        Route.ALLOWED,
+        htmlContent(`❌ ${label} 생성 실패\n${friendly}`),
+        BOT_NOTIFY_CTX,
+      );
     } catch (notifyErr) {
       console.error(`[bot-cron] ${label} 에러 알림 전송도 실패: ${sanitizeError(notifyErr)}`);
     }

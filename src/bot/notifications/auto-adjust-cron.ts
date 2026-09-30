@@ -7,7 +7,8 @@ import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { sanitizeError } from "../utils/error";
 import { buildAutoAdjustKeyboard, escapeHtml, typeKo } from "./auto-adjust";
-import { sendToAllWithKeyboard } from "./send";
+import { Route, html } from "@pleiades/notify";
+import { BOT_NOTIFY_CTX, notifierFor } from "./notifier";
 import { todayKST, ymdKST } from "@/lib/garmin/utils";
 
 const TTL_HOURS = 8;
@@ -75,7 +76,11 @@ async function processSnoozed(
 ): Promise<void> {
   const message = formatSnoozeMessage(adj);
   const keyboard = buildAutoAdjustKeyboard(adj.id);
-  const sendResult = await sendToAllWithKeyboard(bot, message, keyboard);
+  const sendResult = await notifierFor(bot).notify(
+    Route.ALLOWED,
+    html(message, keyboard),
+    BOT_NOTIFY_CTX,
+  );
   if (sendResult.total === 0) {
     console.warn("[auto-adjust-cron] snooze 재전송 대상 없음");
     return;
@@ -94,10 +99,8 @@ async function processSnoozed(
       decision: "pending",
       snoozeUntil: null,
       // 새 message id 로 교체 (이전 message 는 keyboard 유지되어 있으나 새 pending 이 canonical).
-      telegramMessageId: sendResult.first
-        ? String(sendResult.first.messageId)
-        : null,
-      telegramChatId: sendResult.first?.chatId ?? null,
+      telegramMessageId: sendResult.first?.ref ?? null,
+      telegramChatId: sendResult.first?.target ?? null,
     },
   });
   if (upd.count === 0) {

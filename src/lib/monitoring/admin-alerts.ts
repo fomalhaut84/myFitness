@@ -7,7 +7,8 @@
 import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { sanitizeError } from "@/bot/utils/error";
-import { sendToAll } from "@/bot/notifications/send";
+import { Route, html } from "@pleiades/notify";
+import { BOT_NOTIFY_CTX, notifierFor } from "@/bot/notifications/notifier";
 
 // ─── 카테고리 정의 ─────────────────────────────────────────────────────────
 
@@ -229,7 +230,7 @@ async function notifyRateLimitedAlert(
     const message = opts.buildMessage(errSnippet, nowKstDisplay());
     let delivered = false;
     try {
-      const r = await sendToAll(bot, message);
+      const r = await notifierFor(bot).notify(Route.ALLOWED, html(message), BOT_NOTIFY_CTX);
       delivered = r.sent > 0;
       if (delivered) {
         console.warn(`${opts.logPrefix} — admin alert 발송 (${errSnippet})`);

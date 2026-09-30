@@ -17,7 +17,8 @@ import {
   notifyAdminIfKnownFailure,
 } from "@/lib/monitoring/admin-alerts";
 import { sanitizeError } from "../utils/error";
-import { sendToAll, sendToAllWithKeyboard, type SendKeyboardResult } from "./send";
+import { Route, html, type BroadcastResult } from "@pleiades/notify";
+import { BOT_NOTIFY_CTX, notifierFor } from "./notifier";
 
 /** M13 Phase 2 callback_data prefix. 형식: `auto_adjust:<action>:<adjustmentId>` */
 export const CALLBACK_PREFIX = "auto_adjust";
@@ -237,7 +238,7 @@ export function formatAutoAdjustMessage(
  * - UserProfile.autoAdjustEnabled === false → skip
  * - recommendation.adjusted === false → skip (조용, 정상 컨디션)
  * - adjusted === true → Telegram push + AIAdvice 로그
- * 조용한 실패 방지: 오류 시 sendToAll 로 사용자 알림.
+ * 조용한 실패 방지: 오류 시 notifier 로 사용자 알림.
  */
 export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
   try {
@@ -392,10 +393,10 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     });
 
     const keyboard = buildAutoAdjustKeyboard(adjustment.id);
-    const sendResult: SendKeyboardResult = await sendToAllWithKeyboard(
-      bot,
-      message,
-      keyboard,
+    const sendResult: BroadcastResult = await notifierFor(bot).notify(
+      Route.ALLOWED,
+      html(message, keyboard),
+      BOT_NOTIFY_CTX,
     );
 
     // 조용한 실패 방지 (기존 runReportCron 패턴): 전송 대상 없음 or 전부 실패 시 escalate.
@@ -415,8 +416,8 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
         await prisma.workoutAdjustment.update({
           where: { id: adjustment.id },
           data: {
-            telegramMessageId: String(sendResult.first.messageId),
-            telegramChatId: sendResult.first.chatId,
+            telegramMessageId: sendResult.first.ref,
+            telegramChatId: sendResult.first.target,
           },
         });
       } catch (dbErr) {
@@ -452,7 +453,11 @@ export async function runAutoAdjustProposal(bot: Bot): Promise<void> {
     void notifyAdminIfKnownFailure(bot, error).catch(() => {});
     try {
       const friendly = formatUserFriendlyError(error);
-      await sendToAll(bot, `❌ Auto-adjust 알림 실패\n${friendly}`);
+      await notifierFor(bot).notify(
+        Route.ALLOWED,
+        html(`❌ Auto-adjust 알림 실패\n${friendly}`),
+        BOT_NOTIFY_CTX,
+      );
     } catch (notifyErr) {
       console.error(
         `[auto-adjust] 에러 알림 전송도 실패: ${sanitizeError(notifyErr)}`,
