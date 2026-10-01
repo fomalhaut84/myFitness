@@ -16,7 +16,7 @@ export default async function ProfilePage() {
     prisma.fitnessMetricDaily.findFirst({
       where: { lthrPace: { not: null } },
       orderBy: { date: "desc" },
-      select: { lthrPace: true },
+      select: { lthrPace: true, date: true },
     }),
   ]);
   // #505: 러닝 존 원본은 매 싱크 갱신 (수동 보호와 무관) → 현재 Garmin maxHR · LTHR
@@ -61,8 +61,11 @@ export default async function ProfilePage() {
         garmin: {
           maxHR: garminZone.maxHR,
           lthr: garminZone.lthr,
-          lthrPace: latestLthrPace?.lthrPace ?? null,
         },
+        // 감지 이력 값 — 싱크가 쓰는 user-settings 현재값과 다를 수 있어 날짜와 함께 따로 표시 (사전 리뷰 major 1)
+        ltDetection: latestLthrPace?.lthrPace
+          ? { pace: latestLthrPace.lthrPace, date: formatDateLocal(latestLthrPace.date) }
+          : null,
       }}
       metricHistory={history.map((h) => ({
         id: h.id,

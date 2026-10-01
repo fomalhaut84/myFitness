@@ -19,8 +19,10 @@ export interface GarminMeta {
   garminSyncedAt: string | null;
   /** 프로필에 저장된 현재 값 */
   current: HrValues;
-  /** #505: 최근 싱크 기준 Garmin 값 — 수동 보호 중이어도 비교할 수 있게 */
-  garmin: HrValues;
+  /** #505: 최근 싱크 기준 Garmin 러닝 존 심박 — 수동 보호 중이어도 비교할 수 있게 */
+  garmin: Pick<HrValues, "maxHR" | "lthr">;
+  /** #505: 최신 LT 감지 페이스 (FitnessMetricDaily · YYYY-MM-DD) — 참고 표시만, 비교 대상 아님 */
+  ltDetection: { pace: number; date: string } | null;
 }
 
 const FIELD_NAMES: Record<RevertField, string> = { maxHR: "maxHR", lthr: "LTHR" };
@@ -33,13 +35,15 @@ function formatPace(sec: number | null): string | null {
   return `${Math.floor(total / 60)}:${String(total % 60).padStart(2, "0")}`;
 }
 
-function formatHr(v: HrValues, field: RevertField): string {
-  if (field === "maxHR") return v.maxHR !== null ? `${v.maxHR} bpm` : "—";
-  const parts = [
-    v.lthr !== null ? `${v.lthr} bpm` : null,
-    formatPace(v.lthrPace) ? `${formatPace(v.lthrPace)}/km` : null,
-  ].filter(Boolean);
-  return parts.length > 0 ? parts.join(" · ") : "—";
+function formatBpm(v: number | null): string {
+  return v !== null ? `${v} bpm` : "—";
+}
+
+function formatCurrent(v: HrValues, field: RevertField): string {
+  if (field === "maxHR") return formatBpm(v.maxHR);
+  const pace = formatPace(v.lthrPace);
+  if (v.lthr === null && !pace) return "—";
+  return [formatBpm(v.lthr), pace ? `${pace}/km` : null].filter(Boolean).join(" · ");
 }
 
 function manualFields(meta: GarminMeta, exclude: RevertField | null): RevertField[] {
@@ -102,8 +106,9 @@ export default function GarminSyncSection({ meta }: { meta: GarminMeta }) {
         body: JSON.stringify({ revertToGarmin: [field] }),
       });
       if (!res.ok) {
+        // throw → withBusy 가 메시지만 표시하고 refresh 는 생략
         const data = await res.json().catch(() => null);
-        return data?.error ?? "되돌리기 실패";
+        throw new Error(data?.error ?? "되돌리기 실패");
       }
       return runProfileSync(manualFields(meta, field));
     });
@@ -135,12 +140,18 @@ export default function GarminSyncSection({ meta }: { meta: GarminMeta }) {
             key={field}
             field={field}
             source={field === "maxHR" ? meta.maxHRSource : meta.lthrSource}
-            current={formatHr(meta.current, field)}
-            garmin={formatHr(meta.garmin, field)}
+            current={formatCurrent(meta.current, field)}
+            garminBpm={meta.garmin[field]}
+            currentBpm={meta.current[field]}
             busy={busy}
             onRevert={() => handleRevert(field)}
           />
         ))}
+        {meta.lthrSource === "manual" && meta.ltDetection && (
+          <div className="text-[11px] text-dim">
+            Garmin LT 감지 페이스: {formatPace(meta.ltDetection.pace)}/km ({meta.ltDetection.date})
+          </div>
+        )}
         {meta.vo2maxRunning !== null && (
           <div className="text-dim">
             VO2max:{" "}
@@ -167,20 +178,23 @@ function MetricSourceRow({
   field,
   source,
   current,
-  garmin,
+  garminBpm,
+  currentBpm,
   busy,
   onRevert,
 }: {
   field: RevertField;
   source: string | null;
   current: string;
-  garmin: string;
+  garminBpm: number | null;
+  currentBpm: number | null;
   busy: boolean;
   onRevert: () => void;
 }) {
   const isManual = source === "manual";
-  // 수동 보호 중일 때만 Garmin 값을 따로 보여준다 (자동이면 현재 값이 곧 Garmin 값)
-  const differs = isManual && garmin !== "—" && garmin !== current;
+  // 수동 보호 중일 때만 Garmin 값을 따로 보여준다 (자동이면 현재 값이 곧 Garmin 값).
+  // 비교는 싱크가 실제로 쓰는 러닝 존 심박만 — 페이스는 출처가 달라 비교하지 않는다 (사전 리뷰 major 1)
+  const differs = isManual && garminBpm !== null && garminBpm !== currentBpm;
   return (
     <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
       <span className="text-dim w-12">{FIELD_NAMES[field]}</span>
@@ -190,7 +204,7 @@ function MetricSourceRow({
         <span
           className={`font-[family-name:var(--font-geist-mono)] ${differs ? "text-amber-300" : "text-dim"}`}
         >
-          · Garmin {garmin}
+          · Garmin {formatBpm(garminBpm)}
         </span>
       )}
       {isManual && (

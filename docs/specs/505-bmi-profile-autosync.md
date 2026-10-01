@@ -32,7 +32,7 @@
 - [ ] F3 보호 규칙: `canAutoUpdate(source)` = `source !== "manual"` (순수 함수로 추출). maxHR · LTHR (+pace) · 안정시 심박 공통. "null + 값 = manual 간주" 제거 — 덮어쓰더라도 `MetricChange` 에 이전 값이 남는다.
 - [ ] F4 `PATCH /api/profile` 에 `revertToGarmin: ("maxHR" | "lthr")[]` — 해당 source 를 `"garmin"` 으로 설정 (값은 그대로 · 다음 싱크가 Garmin 값으로 갱신). 같은 요청에서 그 필드 값을 바꾸면 400.
 - [ ] F5 프로필 "Garmin 자동 동기화" 카드: 항목별 `수동` 배지 옆 **"Garmin 자동으로"** 버튼 → `revertToGarmin` → `/api/sync` (user_profile) → refresh.
-- [ ] F6 같은 카드에 현재 Garmin 값 표시: maxHR · LTHR 은 저장된 `heartRateZonesRaw` (RUNNING 존, 매 싱크 갱신 · 보호와 무관), LTHR 페이스는 최신 `FitnessMetricDaily.lthrPace`. 수동 값과 다르면 강조. 순수 파서 `extractGarminProfileValues(raw)` (외부 JSON 검증).
+- [ ] F6 같은 카드에 현재 Garmin 값 표시: maxHR · LTHR 은 저장된 `heartRateZonesRaw` (RUNNING 존, 매 싱크 갱신 · 보호와 무관) — 수동 값과 다르면 강조. 순수 파서 `extractGarminZoneValues(raw)` (외부 JSON 검증). LTHR 페이스는 최신 `FitnessMetricDaily.lthrPace` 를 **감지 날짜와 함께 참고로만** 표시 — 싱크가 쓰는 user-settings 현재값과 출처가 달라 비교 · 강조하지 않는다 (사전 리뷰 major 1).
 - [ ] F7 "지금 싱크" 결과 메시지: 수동 보호 항목이 있으면 `동기화 완료 — 수동 항목(maxHR · LTHR)은 갱신하지 않음` 으로 구분.
 - [ ] F8 회귀 테스트 (vitest): `bmi.test.ts` · `profile-sync-rules.test.ts` (null source + 값 → 갱신 가능 · manual → 불가 · garmin → 가능) · `garmin-profile-values.test.ts` (raw 파싱 · 잘못된 형태 → null).
 
@@ -48,14 +48,15 @@
 ```
 Garmin 자동 동기화                               [지금 싱크]
 maxHR  [수동] 175 · Garmin 175        [Garmin 자동으로]
-LTHR   [수동] 155 · 5:24 · Garmin 155 · 5:24  [Garmin 자동으로]
+LTHR   [수동] 155 · 5:24 · Garmin 155    [Garmin 자동으로]
+Garmin LT 감지 페이스: 5:24/km (2026-09-29)
 VO2max 45
 마지막 싱크: …
 ```
 
 ## 5. 변경 파일
 
-- 신규: `src/lib/fitness/bmi.ts` · `src/lib/garmin/profile-values.ts` · 테스트 3개
+- 신규: `src/lib/fitness/bmi.ts` · `src/lib/garmin/profile-values.ts` · `src/app/settings/profile/garmin-sync-section.tsx` (카드 분리) · 테스트 3개
 - 수정: `src/app/body/page.tsx` · `src/app/api/export/route.ts` · `src/mcp/tools/fitness.ts` · `src/app/api/body-composition/route.ts` · `src/lib/garmin/fetchers/user-profile.ts` · `src/app/api/profile/route.ts` · `src/app/settings/profile/page.tsx` · `src/app/settings/profile/profile-client.tsx`
 - DB 마이그레이션 없음 · 패키지 추가 없음
 
