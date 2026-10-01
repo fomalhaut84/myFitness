@@ -96,6 +96,7 @@ export default function ProfileClient({
   garminMeta,
   metricHistory = [],
 }: ProfileClientProps) {
+  const router = useRouter();
   const buildValues = (init: ProfileValues) => ({
     name: init.name,
     birthDate: init.birthDate,
@@ -200,6 +201,9 @@ export default function ProfileClient({
         return;
       }
       setMessage({ type: "success", text: "저장되었습니다" });
+      // #505 (PR #506 Codex P2): 수동 입력은 source 를 manual 로 바꾼다 — Garmin 카드 배지 · 되돌리기 버튼 ·
+      // 싱크 메시지가 낡은 source 로 판단하지 않도록 서버 props 를 다시 받는다 (폼은 initialKey 로 재초기화)
+      router.refresh();
     } catch (err) {
       setMessage({
         type: "error",
