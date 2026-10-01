@@ -5,7 +5,7 @@ const DAY_MS = 24 * 60 * 60 * 1000;
 /**
  * Date → "YYYY-MM-DD" — **KST 벽시계** (#365: 이전엔 서버 로컬 getter 라 UTC 호스트에서 DB 의 KST 자정 date 가 전날로 찍혔다).
  * 이름은 호환을 위해 유지. 호출자: 대시보드 · 심박 · 수면 · 체성분 · 활동 상세 · 프로필 페이지 (DB 의 KST 자정 instant) · MCP user-profile
- * (`parseLocalDate` 로 쓴 서버 로컬 자정 — KST · UTC 호스트 어느 쪽에서 썼든 KST 로 읽으면 같은 날).
+ * (#480 부터 `parseDateOnlyKST` 로 KST 자정 저장 — 그 전 서버 로컬 자정 행도 KST · UTC 호스트에서 쓴 것이면 KST 로 읽어 같은 날).
  * **자정 − 1ms 같은 값을 넘기지 말 것** — KST 로 읽으면 다음 날이 된다. "전날" 라벨은 `formatDayBefore`.
  */
 export function formatDateLocal(date: Date): string {

@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { z } from "zod";
 import prisma from "@/lib/prisma";
+// #480: date-only 입력은 서버 로컬 자정이 아니라 KST 자정 (읽기 `formatDateLocal` = KST 와 같은 규칙)
+import { parseDateOnlyKST } from "@/lib/date-input";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import {
@@ -55,15 +57,11 @@ const PATCH_SCHEMA = z.object({
   personalGoalNote: z.string().trim().max(500).nullable().optional(),
   // M13 Phase 1 (#243): auto-adjust 사전 알림 토글.
   autoAdjustEnabled: z.boolean().optional(),
+  // #505: 수동 보호(source = manual) 해제 — source 만 "garmin" 으로, 값은 다음 싱크가 갱신.
+  revertToGarmin: z.array(z.enum(["maxHR", "lthr"])).max(2).optional(),
 });
 
 const DEFAULT_NAME = "사용자";
-
-/** "YYYY-MM-DD" 문자열을 서버 로컬 midnight Date로 파싱 (저장/검증 통일 경로). */
-function parseLocalDate(isoDate: string): Date {
-  const [y, m, d] = isoDate.split("-").map(Number);
-  return new Date(y, m - 1, d);
-}
 
 /**
  * 싱글톤 UserProfile 조회 또는 생성.
@@ -112,7 +110,7 @@ export async function PATCH(request: Request) {
     const nextBirthDate =
       data.birthDate !== undefined
         ? data.birthDate
-          ? parseLocalDate(data.birthDate)
+          ? parseDateOnlyKST(data.birthDate)
           : null
         : existing.birthDate;
     if (nextLthr !== null) {
@@ -131,18 +129,31 @@ export async function PATCH(request: Request) {
       }
     }
 
+    // #505: 되돌리기와 같은 요청에서 그 필드 값을 바꾸면 어느 쪽이 의도인지 모호 → 거절.
+    const revert = new Set(data.revertToGarmin ?? []);
+    const maxHRChanged = data.maxHR !== undefined && data.maxHR !== existing.maxHR;
+    const lthrPairChanged =
+      (data.lthr !== undefined && data.lthr !== existing.lthr) ||
+      (data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace);
+    if ((revert.has("maxHR") && maxHRChanged) || (revert.has("lthr") && lthrPairChanged)) {
+      return NextResponse.json(
+        { error: "Garmin 자동으로 되돌리는 항목의 값은 같은 요청에서 바꿀 수 없습니다" },
+        { status: 400 }
+      );
+    }
+
     const updatePayload: Record<string, unknown> = {};
     if (data.name !== undefined) updatePayload.name = data.name;
     if (data.birthDate !== undefined)
       updatePayload.birthDate = data.birthDate
-        ? parseLocalDate(data.birthDate)
+        ? parseDateOnlyKST(data.birthDate)
         : null;
     if (data.height !== undefined) updatePayload.height = data.height;
     if (data.targetWeight !== undefined)
       updatePayload.targetWeight = data.targetWeight;
     if (data.targetDate !== undefined)
       updatePayload.targetDate = data.targetDate
-        ? parseLocalDate(data.targetDate)
+        ? parseDateOnlyKST(data.targetDate)
         : null;
     if (data.restingHRBase !== undefined) {
       updatePayload.restingHRBase = data.restingHRBase;
@@ -186,6 +197,9 @@ export async function PATCH(request: Request) {
         // 한쪽만 비워졌고 다른 쪽이 남아있으면 source 유지 (현재 보호 상태 보존)
       }
     }
+    // #505: 값 변경 판정 뒤에 적용 — 위 충돌 검사로 같은 필드의 manual 지정과 겹치지 않는다.
+    if (revert.has("maxHR")) updatePayload.maxHRSource = "garmin";
+    if (revert.has("lthr")) updatePayload.lthrSource = "garmin";
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
     // M12 (#223): 개인 목표 필드 update passthrough (변경 이력 tracking 대상 아님).

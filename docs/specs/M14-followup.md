@@ -5,7 +5,62 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-09-28 낮, v2.39.2 배포 완료 · 세션 계속)
+## 현재 상태 (2026-09-28 오후 · 세션 종료, v2.40.0 배포 · #480 dev 머지 · 릴리즈 대기)
+
+**최근 릴리즈:** **v2.40.0** (2026-09-28 · Deploy success · PM2 세 앱 `TZ=Asia/Seoul` 확인 — 아래 이전 상태). **dev 는 main 보다 2커밋 앞**: 인계 문서 (PR #484) + **#480** (PR #485 · date-only 입력 KST 자정 저장 · 프로덕션 영향 없음) — **사용자 결정: 다음 코드 변경과 묶어 릴리즈**. 열린 PR 0 · 로컬 브랜치 없음.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **릴리즈 대기분** | dev 의 #480 — 다음 코드 변경 때 함께 (v2.40.1 patch 또는 v2.41.0) | 단독 릴리즈 불필요 (KST 호스트에서 instant 동일) |
+| **v2.40.0 배포 후 확인** (계속) | TZ · #419 실측 · 봇 409 는 완료 | 남은 것: 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 + 최신 `SleepRecord.sleepScoreDetails` 채워짐 (#437) · 텔레그램 `/sleep` `/weight` `/run` 날짜 · 식단 기록 → 5초 뒤 `/history` 월 뷰 · `history_cache_epoch` 행 · `/trends?view=yoy` 표 · `/insights` 캡션 **+ 레이스 속 빈 점 윤곽 = 그 해 색 (A · E 패널 · #419)** · cron 30일 재조회 로그 **+ Garmin 에서 30일 안 과거 러닝을 레이스로 표시 → 다음 싱크 뒤 `/trends` 레이스 표 등장 (#414)** · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **#486 옛 행 정규화 스크립트** (chore · P2) | 신규 (PR #485 Codex 2회차 P2) | 다른 TZ 호스트에서 로컬 자정으로 쓴 수동 체성분 행 — **프로덕션 해당 없음** (처음부터 KST). 필요해질 때만 |
+| **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | 이전 상태 표 그대로 |
+| 잔여 후보 (이슈 없음) | `src/app/sleep/[date]/page.tsx` 서버 로컬 자정 왕복 검증 (480 스펙 §7) · `TZ=UTC` vitest 정례화 판단 | 착수 시 이슈 생성 |
+
+**이번 세션 결과 (2026-09-28 · 하루 세션 전체):** v2.39.1 (#437 · #419 · #441 문서) → v2.39.2 (#414) → **v2.40.0** (#390 · #365 · #405+#408 · #403 · #413) 릴리즈 3회 · 하네스 #371 · #370 종료 · #480 dev 머지 (PR #485 · 후속 #486). vitest 337 → 388 (`TZ=UTC` 도 전체 통과). 인계 상단 항목 · 독립 후속 7건 전부 소진 — **열린 이슈 #486 · #467 뿐**.
+
+**세션 관찰 (이번 마무리 추가):**
+- 정정 2건에서 배운 것: 운영 지시 (PM2 · 포트 · 인증) 는 `deploy/deploy.sh` · `ecosystem.config.js` 를 먼저 읽고 쓴다 (memory `project_pm2_reload_rules`). 서버 로컬 curl 은 4200 · `-u` 불필요.
+- 하루에 릴리즈 3회 + PR 11개 (코드 7 · 문서 4) — 세션 후반 문서 PR 의 Codex 라운드가 3회까지 갔다. 문서 PR 도 첫 커밋에 확인 항목을 빠짐없이 넣고 push 횟수를 줄이는 편이 낫다.
+
+---
+
+## 이전 상태 (2026-09-28 오후, v2.40.0 배포 완료 · 독립 후속 소진)
+
+**최근 릴리즈:** **v2.40.0** (릴리즈 PR #483 · merge commit · 태그 · Release · **Deploy on Release success** run 36378224165, 2026-09-28 04:34 UTC 완료 확인). 포함: #390 (PR #477) · #365 (PR #478) · #405+#408 (PR #479) · #403 (PR #481) · #413 (PR #482). 같은 날 v2.39.1 · v2.39.2 (아래 이전 상태). dev = main (이 문서 PR 만 앞섬). 열린 PR 0 · 로컬 브랜치 없음.
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **v2.40.0 배포 후 확인** | 배포 완료 · 앱별 TZ 확인 완료 (`pm2 env 3/81/21` 전부 `Asia/Seoul`) — 나머지 확인 대기 | **`ecosystem.config.js` env 변경은 Deploy on Release (`deploy/deploy.sh`) 가 이미 적용한다** — 웹 `startOrReload --only myfitness --update-env` · MCP `startOrRestart` · 봇 `delete + start`. **전체 `pm2 startOrReload ecosystem.config.js` 는 쓰지 않는다** (봇 409 중복 인스턴스 · MCP `EADDRINUSE` — `140-bot-409-conflict-fix.md` · PR #484 Codex P1). 이번엔 그 지시로 사용자가 한 번 실행했다 (13:35 KST · 세 앱 ✓ · 봇 ↺ 1) — `pm2 logs myfitness-bot --lines 200 --nostream \| grep -c 409` 로 잔여 확인. 나머지: 봇 날짜 라벨 · 06:00 싱크 · 식단 5초 캐시 · YoY 표 · backfill lock 로그. 텔레그램 `/sleep` `/weight` `/run` 날짜 · 다음 06:00 싱크 뒤 수면 · 심박 날짜 그대로 · 식단 기록 → 5초 뒤 `/history` 월 뷰 갱신 · `SystemAlertState history_cache_epoch` 행 · `/trends?view=yoy` 표 · 다음 `backfill:history` 에 `lock 해제 실패` 없음 |
+| **v2.39.1 · v2.39.2 확인** (계속) | 확인 대기 | `/insights` 캡션 · 레이스 점 색 · cron 30일 재조회 로그 · 레이스 표 · **다음 06:00 싱크 뒤 수면 싱크 오류 없음 + 최신 `SleepRecord.sleepScoreDetails` 채워짐** (#437 payload 리팩터 회귀 확인 — PR #484 Codex P2 로 복원) |
+| **#419 RSC 페이로드 실측** | **종료** — 사용자 실측 (2026-09-28 · 4200): TTFB 0.76s · HTML 777KB → 1s 안 | 별도 이슈 없음. 필요해지면 `id` 우회 · gzip 전제로 재판단 (419 스펙 §7) |
+| **#480 date-only 입력 KST 자정 저장** (bug · P2) | 신규 (PR #478 Codex 2회차 P2 후속) | 동쪽 TZ 호스트 한정 · 프로덕션 도달 불가 · 작음 (`parseLocalDate` 2곳 → `kstInstant`) |
+| **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | 이전 상태 표 그대로 |
+| 열린 이슈 | #480 · #467 뿐 — 독립 후속 7건 전부 소진 | 다음 세션은 배포 후 확인 결과 → #480 또는 새 요청 |
+
+**이번 세션 결과 (2026-09-28 오후 · 독립 후속 사이클):**
+- **#390** (PR #477) `weather-backfill-mode.ts` · syncAll `weatherBackfill` · backfill:history skip. 사전 info 1 · Codex 👍.
+- **#365** (PR #478) `daily-endpoints.ts` (라이브러리 로컬 TZ 직렬화 우회) · format.ts KST 화 · 봇 라벨 · 네 페이지 `daysAgoKST` · PM2 `TZ` · verify 스캔 확장 · `TZ=UTC` 전체 통과. 사전 **major 1** (body 주간 라벨 `−1ms`) 반영 · Codex 1회차 P2 (남은 로컬 자정 today) 반영 · 2회차 P2 → 종료 규칙 · #480.
+- **#405+#408** (PR #479) `bounds.ts` · 원천 + 입구 + ctx 정규화 · `coverableDays` 공용 · `clipSpan` · 미래 체중 400. 사전 info 2 · Codex P2 (ctx 만드는 곳) 반영 · 2회차 👍.
+- **#403** (PR #481) DB epoch · `composeSyncStamp` · 봇 식단 경로 6곳 `withHistoryCacheBump` (재계산 뒤 bump). 사전 **major 2** (kcal 보정 경로 누락 · bump 순서) 반영 + `runThenBump` 회귀 · Codex 👍. 머지 시 roadmap 충돌 → dev 머지로 해소.
+- **#413** (PR #482) `yoy-links.ts` · `YoyMonthTable` (sr-only 연 · 월 · 상태). 사전 **major 1** (링크 텍스트가 값뿐) + info 6 반영 · Codex 👍.
+- **#371 · #370** 로컬 하네스 직접 수정 후 종료 (tracked 정본은 #467).
+- 릴리즈 PR #483 → **v2.40.0** (minor · fix 5 + feat 1). vitest 356 → 386.
+
+**세션 관찰:**
+- 같은 세션에서 PR 5개를 병행하면 **문서 (roadmap 한 줄) 에서 충돌**이 난다 — 완료 표기를 각 PR 에 넣지 말고 릴리즈 docs PR 에서 한 번에 하는 편이 낫다.
+- 사전 리뷰 에이전트가 세 PR 에서 major 를 잡았다 (TZ 경계 · bump 순서 · 접근성 텍스트) — "다른 파일에 있는 호출자" (lib 안의 쓰기 · 다른 페이지의 helper 사용) 를 리뷰 프롬프트에 명시하면 잘 찾는다.
+- Codex P2 는 1회차면 반영 · 2회차 P2 만이면 후속 이슈 (규칙 그대로 작동). 클린은 👍 리액션.
+- `TZ=UTC npx vitest run` 을 릴리즈 전 한 번 돌리면 호스트 TZ 의존이 드러난다 — 정례화 후보 (vitest config 에 TZ 고정은 별도 판단).
+- **PM2 env 변경에 수동 reload 를 지시하지 말 것** — `deploy.sh` 가 앱별 안전 절차 (웹 reload+update-env · MCP hard restart · 봇 delete+start) 로 이미 적용한다. 전체 `startOrReload` 는 봇 409 · MCP EADDRINUSE 를 부른다 (PR #484 Codex P1 — 릴리즈 노트 · 인계 문서에 잘못 적었다가 정정). 확인은 `pm2 env <id>` 로.
+
+---
+
+## 이전 상태 (2026-09-28 낮, v2.39.2 배포 완료 · 세션 계속)
 
 **최근 릴리즈:** **v2.39.2** (릴리즈 PR #475 · merge commit · 태그 · Release · **Deploy on Release success** run 36372674827, 2026-09-28 03:11 UTC 완료 확인). 포함: #414 (PR #474). 직전 v2.39.1 (같은 날 · 아래 이전 상태). dev = main (이 문서 PR 만 앞섬). 열린 PR 0.
 

@@ -1,17 +1,26 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
+import { extractGarminZoneValues } from "@/lib/garmin/profile-values";
 import ProfileClient from "./profile-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const [profile, history] = await Promise.all([
+  const [profile, history, latestLthrPace] = await Promise.all([
     prisma.userProfile.findFirst(),
     prisma.metricChange.findMany({
       orderBy: { changedAt: "desc" },
       take: 50,
     }),
+    // #505: Garmin 최신 LT 페이스 (#378 이력 — 감지일만 row) · 수동 보호 중인 값과 비교용
+    prisma.fitnessMetricDaily.findFirst({
+      where: { lthrPace: { not: null } },
+      orderBy: { date: "desc" },
+      select: { lthrPace: true, date: true },
+    }),
   ]);
+  // #505: 러닝 존 원본은 매 싱크 갱신 (수동 보호와 무관) → 현재 Garmin maxHR · LTHR
+  const garminZone = extractGarminZoneValues(profile?.heartRateZonesRaw ?? null);
 
   return (
     <ProfileClient
@@ -43,6 +52,19 @@ export default async function ProfilePage() {
         vo2maxRunning: profile?.vo2maxRunning ?? null,
         garminSyncedAt: profile?.garminSyncedAt
           ? profile.garminSyncedAt.toISOString()
+          : null,
+        current: {
+          maxHR: profile?.maxHR ?? null,
+          lthr: profile?.lthr ?? null,
+          lthrPace: profile?.lthrPace ?? null,
+        },
+        garmin: {
+          maxHR: garminZone.maxHR,
+          lthr: garminZone.lthr,
+        },
+        // 감지 이력 값 — 싱크가 쓰는 user-settings 현재값과 다를 수 있어 날짜와 함께 따로 표시 (사전 리뷰 major 1)
+        ltDetection: latestLthrPace?.lthrPace
+          ? { pace: latestLthrPace.lthrPace, date: formatDateLocal(latestLthrPace.date) }
           : null,
       }}
       metricHistory={history.map((h) => ({

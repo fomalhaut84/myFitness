@@ -7,6 +7,7 @@ import {
   summarizeWeek,
   computeGoalProgress,
 } from "@/lib/fitness/weight-trend";
+import { resolveBmi } from "@/lib/fitness/bmi";
 import BodyClient from "./body-client";
 
 export const dynamic = "force-dynamic";
@@ -126,7 +127,7 @@ export default async function BodyPage() {
   return (
     <BodyClient
       latestWeight={latest?.weight ?? null}
-      latestBMI={latest?.bmi ?? null}
+      latestBMI={latest ? resolveBmi(latest.bmi, latest.weight, profile?.height) : null}
       latestBodyFat={latest?.bodyFat ?? null}
       weightTrend={weightRecords
         .filter((r) => r.date.getTime() >= thirtyDaysAgo.getTime())
@@ -153,7 +154,7 @@ export default async function BodyPage() {
       recentRecords={recentRecords.map((r) => ({
         date: formatDateLocal(r.date),
         weight: r.weight,
-        bmi: r.bmi,
+        bmi: resolveBmi(r.bmi, r.weight, profile?.height),
         bodyFat: r.bodyFat,
         muscleMass: r.muscleMass,
       }))}

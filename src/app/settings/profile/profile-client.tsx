@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import GarminSyncSection, { type GarminMeta } from "./garmin-sync-section";
 
 interface ProfileValues {
   name: string;
@@ -21,14 +22,6 @@ interface ProfileValues {
   personalGoalNote: string; // 빈 문자열 = 미설정
   // M13 Phase 1 (#243): auto-adjust 사전 알림 활성 여부
   autoAdjustEnabled: boolean;
-}
-
-interface GarminMeta {
-  maxHRSource: string | null;
-  lthrSource: string | null;
-  lthrAutoDetected: boolean | null;
-  vo2maxRunning: number | null;
-  garminSyncedAt: string | null;
 }
 
 interface MetricChangeEntry {
@@ -103,6 +96,7 @@ export default function ProfileClient({
   garminMeta,
   metricHistory = [],
 }: ProfileClientProps) {
+  const router = useRouter();
   const buildValues = (init: ProfileValues) => ({
     name: init.name,
     birthDate: init.birthDate,
@@ -207,6 +201,9 @@ export default function ProfileClient({
         return;
       }
       setMessage({ type: "success", text: "저장되었습니다" });
+      // #505 (PR #506 Codex P2): 수동 입력은 source 를 manual 로 바꾼다 — Garmin 카드 배지 · 되돌리기 버튼 ·
+      // 싱크 메시지가 낡은 source 로 판단하지 않도록 서버 props 를 다시 받는다 (폼은 initialKey 로 재초기화)
+      router.refresh();
     } catch (err) {
       setMessage({
         type: "error",
@@ -488,110 +485,6 @@ function Field({ label, hint, children }: FieldProps) {
       {children}
       {hint && <div className="text-[11px] text-dim mt-1">{hint}</div>}
     </label>
-  );
-}
-
-function GarminSyncSection({ meta }: { meta: GarminMeta }) {
-  const router = useRouter();
-  const [syncing, setSyncing] = useState(false);
-  const [message, setMessage] = useState<string | null>(null);
-
-  async function handleSync() {
-    setSyncing(true);
-    setMessage(null);
-    try {
-      const res = await fetch("/api/sync", {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ dataTypes: ["user_profile"] }),
-      });
-      const data = await res.json();
-      if (!res.ok) {
-        setMessage(data?.error ?? "동기화 실패");
-        return;
-      }
-      // /api/sync는 200을 반환하면서 results[i].error로 개별 타입 실패를 보고.
-      // 단, syncUserProfile은 부분 실패 시 데이터를 apply한 후에 throw하므로
-      // 에러가 있어도 DB가 갱신될 수 있음 → 무조건 refresh.
-      const profileResult = (data?.results as Array<{ dataType: string; error?: string }> | undefined)
-        ?.find((r) => r.dataType === "user_profile");
-      if (profileResult?.error) {
-        setMessage(`부분 실패 (일부 데이터 갱신): ${profileResult.error}`);
-      } else {
-        setMessage("동기화 완료");
-      }
-      setTimeout(() => router.refresh(), 600);
-    } catch (err) {
-      setMessage(err instanceof Error ? err.message : "네트워크 오류");
-    } finally {
-      setSyncing(false);
-    }
-  }
-
-  return (
-    <div className="bg-card border border-border rounded-xl p-5 mb-6">
-      <div className="flex items-center justify-between mb-3">
-        <div>
-          <div className="text-[11px] text-dim tracking-wider uppercase">
-            Garmin 자동 동기화
-          </div>
-          <div className="text-[12px] text-sub mt-1">
-            maxHR · LTHR · VO2max를 Garmin에서 자동 가져옵니다
-          </div>
-        </div>
-        <button
-          onClick={handleSync}
-          disabled={syncing}
-          className="px-3 py-1.5 rounded-md bg-card border border-[#2a2a2a] text-sm hover:border-accent/60 disabled:opacity-50 transition-colors"
-        >
-          {syncing ? "동기화 중..." : "지금 싱크"}
-        </button>
-      </div>
-
-      <div className="grid grid-cols-2 gap-3 text-[12px]">
-        <SourceBadge label="maxHR" source={meta.maxHRSource} />
-        <SourceBadge label="LTHR" source={meta.lthrSource} />
-        {meta.vo2maxRunning !== null && (
-          <div className="col-span-2 text-dim">
-            VO2max:{" "}
-            <span className="text-bright font-[family-name:var(--font-geist-mono)]">
-              {meta.vo2maxRunning}
-            </span>
-          </div>
-        )}
-        {meta.garminSyncedAt && (
-          <div className="col-span-2 text-[11px] text-dim">
-            마지막 싱크: {new Date(meta.garminSyncedAt).toLocaleString("ko-KR")}
-          </div>
-        )}
-      </div>
-
-      {message && (
-        <div className="mt-3 text-[12px] text-accent">{message}</div>
-      )}
-    </div>
-  );
-}
-
-function SourceBadge({
-  label,
-  source,
-}: {
-  label: string;
-  source: string | null;
-}) {
-  if (!source) return <div className="text-dim">{label}: 미설정</div>;
-  const badge =
-    source === "garmin"
-      ? "bg-blue-900/40 text-blue-300"
-      : "bg-amber-900/40 text-amber-300";
-  return (
-    <div>
-      <span className="text-dim">{label}: </span>
-      <span className={`text-[10px] px-1.5 py-0.5 rounded ${badge}`}>
-        {source === "garmin" ? "Garmin 자동" : "수동"}
-      </span>
-    </div>
   );
 }
 
