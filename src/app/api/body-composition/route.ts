@@ -5,6 +5,7 @@ import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { todayKSTString } from "@/lib/garmin/utils";
 import { parseDateOnlyKST } from "@/lib/date-input";
 import { kstDayRange } from "@/lib/history/buckets";
+import { computeBmi } from "@/lib/fitness/bmi";
 
 const POST_SCHEMA = z.object({
   date: z
@@ -44,11 +45,7 @@ export async function POST(request: Request) {
 
     // BMI 계산 (키 정보 있으면)
     const profile = await prisma.userProfile.findFirst();
-    const heightM = profile?.height ? profile.height / 100 : null;
-    const bmi =
-      heightM && heightM > 0
-        ? Number((weight / (heightM * heightM)).toFixed(1))
-        : null;
+    const bmi = computeBmi(weight, profile?.height);
 
     const data = {
       weight,

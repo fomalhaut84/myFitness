@@ -13,6 +13,7 @@ import { MAX_DAILY_ROWS } from "./constants";
 import { activityTypeWhere } from "./activity-filter";
 // #455: 일별 창 합계 (강도 분 · 층수) · 수면 규칙성 — daily envelope 에만
 import { summarizeDailyWindow } from "@/lib/fitness/daily-window";
+import { resolveBmi } from "@/lib/fitness/bmi";
 import { sleepRegularity } from "@/lib/sleep/regularity";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
@@ -379,11 +380,16 @@ export async function getBodyComposition(args: RangeArgs) {
   const days = args.days ?? 90;
   const requested = resolveGranularity(days, args.granularity);
   const { since, until, to } = resolveWindow(days, args.endDate);
-  const records = await prisma.bodyComposition.findMany({
-    where: { date: dateFilter(since, until) },
-    orderBy: { date: "desc" },
-    select: BODY_SELECT,
-  });
+  const [rows, profile] = await Promise.all([
+    prisma.bodyComposition.findMany({
+      where: { date: dateFilter(since, until) },
+      orderBy: { date: "desc" },
+      select: BODY_SELECT,
+    }),
+    prisma.userProfile.findFirst({ select: { height: true } }),
+  ]);
+  // #505: Garmin 행은 bmi 가 비어 있어 키로 계산 (저장값 우선) — 집계 전 행 단위로
+  const records = rows.map((r) => ({ ...r, bmi: resolveBmi(r.bmi, r.weight, profile?.height) }));
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, {
     granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용).",
