@@ -2,6 +2,7 @@ import { NextResponse } from "next/server";
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 import { parseYmdRangeParams } from "@/lib/history/range-params";
+import { resolveBmi } from "@/lib/fitness/bmi";
 
 function formatPaceCsv(secPerKm: number | null): string {
   if (secPerKm === null) return "";
@@ -91,18 +92,22 @@ export async function GET(request: Request) {
     }
 
     if (type === "body") {
-      const records = await prisma.bodyComposition.findMany({
-        where: range.where ? { date: range.where } : {},
-        orderBy: { date: "desc" },
-        select: { date: true, weight: true, bmi: true, bodyFat: true, muscleMass: true },
-      });
+      const [records, profile] = await Promise.all([
+        prisma.bodyComposition.findMany({
+          where: range.where ? { date: range.where } : {},
+          orderBy: { date: "desc" },
+          select: { date: true, weight: true, bmi: true, bodyFat: true, muscleMass: true },
+        }),
+        prisma.userProfile.findFirst({ select: { height: true } }),
+      ]);
 
       const csv = toCsv(
         ["날짜", "체중(kg)", "BMI", "체지방(%)", "근육량(kg)"],
         records.map((r) => [
           ymdKST(r.date),
           r.weight.toFixed(1),
-          r.bmi?.toFixed(1) ?? "",
+          // #505: Garmin 행은 bmi 가 비어 있어 키로 계산 (저장값 우선)
+          resolveBmi(r.bmi, r.weight, profile?.height)?.toFixed(1) ?? "",
           r.bodyFat?.toFixed(1) ?? "",
           r.muscleMass?.toFixed(1) ?? "",
         ])
