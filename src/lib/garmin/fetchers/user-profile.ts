@@ -7,6 +7,7 @@ import {
   type MetricReason,
 } from "@/lib/fitness/profile-history";
 import { withRateLimit } from "../utils";
+import { canAutoUpdate } from "../profile-values";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
 const USER_SETTINGS_URL =
@@ -97,20 +98,12 @@ async function applyAutoSync(args: {
         ? "garmin_auto_detect"
         : "garmin_initial";
 
-  // 자동 갱신 가능 여부 (source 우선 판정):
-  // - source === "garmin" → 갱신 OK
-  // - source === null + 값 없음 → 최초 자동 설정 OK
-  // - source === "manual" → 보호 (값이 null이어도 — 사용자가 lthrPace만 편집한 경우 등)
-  // - source === null + 값 있음 → 마이그레이션 전 데이터 보호 (manual로 간주)
-  const canAutoUpdateMaxHR =
-    profile.maxHRSource === "garmin" ||
-    (profile.maxHRSource === null && profile.maxHR === null);
-  const canAutoUpdateLthr =
-    profile.lthrSource === "garmin" ||
-    (profile.lthrSource === null && profile.lthr === null);
-  const canAutoUpdateRestingHR =
-    profile.restingHRBaseSource === "garmin" ||
-    (profile.restingHRBaseSource === null && profile.restingHRBase === null);
+  // 자동 갱신 가능 여부: source === "manual" 만 보호 (값이 null이어도 — 사용자가 lthrPace만 편집한 경우 등).
+  // #505: "source null + 값 있음 = manual 간주" 규칙은 제거 — source 컬럼 이전부터 값이 있던 프로필이
+  // 한 번도 자동 갱신되지 않았다. 수동 보호 해제는 프로필의 "Garmin 자동으로" (revertToGarmin).
+  const canAutoUpdateMaxHR = canAutoUpdate(profile.maxHRSource);
+  const canAutoUpdateLthr = canAutoUpdate(profile.lthrSource);
+  const canAutoUpdateRestingHR = canAutoUpdate(profile.restingHRBaseSource);
 
   // 필드별 출처:
   //  - heartRateZones: maxHR, lthr(RUNNING), restingHR, zonesRaw
