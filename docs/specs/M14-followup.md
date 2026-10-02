@@ -13,7 +13,7 @@
 
 | 항목 | 상태 | 비고 |
 |---|---|---|
-| **#505 후속 확인** (자연 발생) | 다음 Garmin LT 감지 → 다음 06:00 싱크 뒤 `MetricChange` 에 `lthr … garmin` 행 | 프로필 source 는 이제 `garmin` — 직접 입력하면 다시 `manual` 이 된다 (카드에서 되돌리기 가능) |
+| **#505 후속 확인** (자연 발생) | 다음 Garmin LT 감지 → 다음 06:00 싱크 뒤 **바뀐 값에 대해서만** `MetricChange` 에 `garmin` 출처 행 (`lthr` · `lthrPace` · `maxHR` 각각 — 감지돼도 HR 이 그대로면 `lthr` 행은 없고 `lthrPace` 만 생길 수 있다 · PR #509 Codex P2). 정상 판정: 프로필 값 = Garmin 값 + `lthrSource` · `maxHRSource` = `garmin` | 프로필 source 는 이제 `garmin` — 직접 입력하면 다시 `manual` 이 된다 (카드에서 되돌리기 가능) |
 | **v2.40.0 배포 후 확인** (계속) | 이전 상태 표 그대로 | 수면 · 심박 날짜 · `/history` 월 뷰 · `/trends?view=yoy` · #414 레이스 등 |
 | **#486 옛 행 정규화 스크립트** (chore · P2) | 릴리즈 PR #507 Codex P2 도 같은 지적 → 이슈에 코멘트 연결 | 프로덕션 해당 없음 (KST 호스트). 필요해질 때만 |
 | **#467 멀티 디바이스 Claude Code 환경 재현** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | |
