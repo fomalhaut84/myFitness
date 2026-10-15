@@ -39,6 +39,7 @@ export default async function BodyPage() {
           bmi: true,
           bodyFat: true,
           muscleMass: true,
+          source: true,
         },
       }),
       prisma.userProfile.findFirst(),
@@ -157,7 +158,22 @@ export default async function BodyPage() {
         bmi: resolveBmi(r.bmi, r.weight, profile?.height),
         bodyFat: r.bodyFat,
         muscleMass: r.muscleMass,
+        source: r.source,
       }))}
+      bodyDetail={
+        latest
+          ? {
+              date: formatDateLocal(latest.date),
+              source: latest.source,
+              visceralFatLevel: latest.visceralFatLevel,
+              basalMetabolism: latest.basalMetabolism,
+              bodyAge: latest.bodyAge,
+              skeletalMusclePct: latest.skeletalMusclePct,
+              // #514: OMRON 행의 muscleMass 는 골격근량 — 다른 출처는 골격근 kg 로 보이지 않게
+              skeletalMuscleKg: latest.source === "omron" ? latest.muscleMass : null,
+            }
+          : null
+      }
       calorieSeries={calorieSeries}
       weeklySummaries={weeklySummaries.map((s) => ({
         weekStartLabel: formatDateLocal(s.weekStart),

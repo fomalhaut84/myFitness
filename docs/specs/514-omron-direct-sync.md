@@ -86,7 +86,7 @@ OMRON 혈압계 · 체중계 측정값을 OMRON Connect (iOS) → **Garmin Conne
 - [ ] R2 실패 시 기존 관리자 알림 경로 재사용 (OMRON 인증 실패 구분).
 
 ### 소비처 · UI
-- [ ] U1 `/body` · `/heart` 최근 값 옆 출처 배지 (`OMRON` / `Garmin` / `수동`). `/body` 에 내장지방 · 기초대사 · 체연령 · 골격근률 표시 (값 있을 때만).
+- [ ] U1 `/body` · `/heart` 최근 값 옆 출처 배지 (`OMRON` / `Garmin` / `직접 입력` — 기존 히스토리 라벨과 통일). `/body` 에 내장지방 · 기초대사 · 체연령 · 골격근률 표시 (값 있을 때만).
 - [ ] U2 MCP `getBodyComposition` · `getBloodPressure` · CSV export 에 새 필드 · `source` 포함.
 
 ### 테스트 (vitest · 합성 fixture — 실측 원본은 커밋하지 않는다)

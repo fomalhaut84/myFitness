@@ -6,6 +6,7 @@ import type { ReactNode } from "react";
 import { formatDuration, formatPace, formatTimeKST } from "@/lib/format";
 import type { HistoryDay, HistoryDayActivity } from "@/lib/history/day";
 import ReportBody from "./ReportBody";
+import { dataSourceLabel, muscleMassLabel } from "@/lib/data-source";
 
 interface DayLedgerProps {
   day: HistoryDay;
@@ -13,7 +14,6 @@ interface DayLedgerProps {
 
 const REPORT_TITLES: Record<string, string> = { morning_report: "모닝 리포트", evening_report: "이브닝 리포트" };
 const MEAL_LABELS: Record<string, string> = { breakfast: "아침", lunch: "점심", dinner: "저녁", snack: "간식" };
-const SOURCE_LABELS: Record<string, string> = { garmin: "Garmin", manual: "직접 입력" };
 const SLEEP_STAGES = [
   { key: "deepMin", label: "깊은", color: "#6d28d9" },
   { key: "lightMin", label: "얕은", color: "#a78bfa" },
@@ -166,8 +166,8 @@ export default function DayLedger({ day }: DayLedgerProps) {
           <Stats>
             <Stat label="체중" value={body.weight.toFixed(1)} unit="kg" />
             <Stat label="체지방" value={body.bodyFat === null ? null : body.bodyFat.toFixed(1)} unit="%" />
-            <Stat label="근육량" value={body.muscleMass === null ? null : body.muscleMass.toFixed(1)} unit="kg" />
-            <Stat label="출처" value={SOURCE_LABELS[body.source] ?? body.source} />
+            <Stat label={muscleMassLabel(body.source)} value={body.muscleMass === null ? null : body.muscleMass.toFixed(1)} unit="kg" />
+            <Stat label="출처" value={dataSourceLabel(body.source)} />
           </Stats>
         )}
       </Row>

@@ -3,6 +3,7 @@ import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 import { parseYmdRangeParams } from "@/lib/history/range-params";
 import { resolveBmi } from "@/lib/fitness/bmi";
+import { dataSourceLabel } from "@/lib/data-source";
 
 function formatPaceCsv(secPerKm: number | null): string {
   if (secPerKm === null) return "";
@@ -96,20 +97,38 @@ export async function GET(request: Request) {
         prisma.bodyComposition.findMany({
           where: range.where ? { date: range.where } : {},
           orderBy: { date: "desc" },
-          select: { date: true, weight: true, bmi: true, bodyFat: true, muscleMass: true },
+          select: {
+            date: true,
+            weight: true,
+            bmi: true,
+            bodyFat: true,
+            muscleMass: true,
+            // #514: OMRON 체성분계 · 출처
+            visceralFatLevel: true,
+            basalMetabolism: true,
+            bodyAge: true,
+            skeletalMusclePct: true,
+            source: true,
+          },
         }),
         prisma.userProfile.findFirst({ select: { height: true } }),
       ]);
 
       const csv = toCsv(
-        ["날짜", "체중(kg)", "BMI", "체지방(%)", "근육량(kg)"],
+        ["날짜", "체중(kg)", "BMI", "체지방(%)", "근육량(kg)", "골격근률(%)", "내장지방 레벨", "기초대사(kcal)", "체연령", "출처"],
         records.map((r) => [
           ymdKST(r.date),
           r.weight.toFixed(1),
           // #505: Garmin 행은 bmi 가 비어 있어 키로 계산 (저장값 우선)
           resolveBmi(r.bmi, r.weight, profile?.height)?.toFixed(1) ?? "",
           r.bodyFat?.toFixed(1) ?? "",
+          // OMRON 행은 골격근량 (출처 열로 구분)
           r.muscleMass?.toFixed(1) ?? "",
+          r.skeletalMusclePct?.toFixed(1) ?? "",
+          r.visceralFatLevel === null ? "" : String(r.visceralFatLevel),
+          r.basalMetabolism === null ? "" : String(r.basalMetabolism),
+          r.bodyAge === null ? "" : String(r.bodyAge),
+          dataSourceLabel(r.source) ?? "",
         ])
       );
 
