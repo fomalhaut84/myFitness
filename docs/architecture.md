@@ -40,6 +40,15 @@ MCP Server        Garmin Connect
 - **수동 싱크**: `POST /api/sync` (기본 최근 3일, 날짜 범위 지정 가능).
 - **에러 처리**: 429 시 60초 대기 후 재시도. 데이터 타입별 독립 싱크.
 
+## OMRON 싱크 (#514)
+
+- **대상**: OMRON Connect Cloud (비공식 · 아시아 리전 v1) 의 혈압계 · 체중계 측정. 스펙 `docs/specs/514-omron-direct-sync.md`.
+- **코드**: `src/lib/omron/` (config · client · parse · aggregate · write-policy · sync). 프로토콜은 자체 PoC 실측 기준 — 참고한 omramin (GPL-2.0) 코드는 사용하지 않는다.
+- **실행**: `syncAll` 의 dataType `omron_body_composition` · `omron_blood_pressure` (Garmin 체중 · 혈압 뒤). cron · `/api/sync` · 봇 · 리포트 사전 싱크 공통. env 5개가 없으면 건너뛴다.
+- **인증**: refresh token 을 `.omron-tokens/` (0600) 에 보관 · 재사용 (회전 안 함). 실패 시 비밀번호 로그인. 인증 실패는 관리자 알림.
+- **저장**: KST 날짜별 1행. 혈압은 일 집계 + 개별 측정 (`measurements`), category 는 AHA 2017 · 그날 최고 단계. 체중은 그날 **가장 이른 측정**이 대표, 전체 측정은 rawData.
+- **중복**: OMRON 우선 — Garmin 행은 OMRON 으로 교체 (원본은 `rawData.replacedGarmin`), `manual` 은 보호. Garmin 싱크는 `manual` · `omron` 행을 덮지 않는다.
+
 ## 프로젝트 구조
 
 ```
@@ -85,6 +94,11 @@ docs/
 DATABASE_URL=postgresql://user:pass@localhost:5432/myfitness
 GARMIN_EMAIL=xxx@gmail.com
 GARMIN_PASSWORD=xxx
+OMRON_EMAIL=xxx            # #514 · 5개 모두 있어야 OMRON 싱크 활성
+OMRON_PASSWORD=xxx
+OMRON_APP_ID=xxx           # OMRON 앱 값 — 커밋 금지
+OMRON_APP_KEY=xxx
+OMRON_API_BASE=https://…   # 아시아 리전 v1
 PORT=4200
 NODE_ENV=production
 BASIC_AUTH_USER=xxx

@@ -46,6 +46,8 @@ next-env.d.ts
 
 # garmin tokens
 .garmin-tokens/
+# omron tokens (#514)
+.omron-tokens/
 
 # backups & logs & reports
 /backups/

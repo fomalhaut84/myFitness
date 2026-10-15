@@ -15,19 +15,15 @@ import {
   YAxis,
 } from "recharts";
 import TrendLineChart from "@/components/ui/TrendLineChart";
+import SourceBadge from "@/components/ui/SourceBadge";
+import BodyDetailCard, { type BodyDetail } from "./body-detail-card";
+import RecentBodyRecords, { type BodyRecord } from "./recent-body-records";
 
 interface DataPoint {
   date: string;
   value: number | null;
 }
 
-interface BodyRecord {
-  date: string;
-  weight: number;
-  bmi: number | null;
-  bodyFat: number | null;
-  muscleMass: number | null;
-}
 
 interface CaloriePoint {
   date: string;
@@ -69,6 +65,8 @@ interface BodyClientProps {
   weightMA14: DataPoint[];
   fatTrend: DataPoint[];
   recentRecords: BodyRecord[];
+  /** #514: 최신 행의 OMRON 체성분 상세 (없으면 카드 숨김) */
+  bodyDetail: BodyDetail | null;
   calorieSeries: CaloriePoint[];
   weeklySummaries: WeeklySummaryRow[];
   weeklyDistances: WeeklyDistance[];
@@ -85,6 +83,7 @@ export default function BodyClient({
   weightMA14,
   fatTrend,
   recentRecords,
+  bodyDetail,
   calorieSeries,
   weeklySummaries,
   weeklyDistances,
@@ -118,7 +117,13 @@ export default function BodyClient({
         <GoalProgressCard progress={goalProgress} />
       )}
 
-      {/* 최근 수치 */}
+      {/* 최근 수치 — 출처는 상세 카드 유무와 무관하게 표시 (PR #519 Codex P2) */}
+      {bodyDetail && (
+        <div className="flex items-center gap-2 text-[11px] text-dim mb-2">
+          최근 측정 {bodyDetail.date}
+          <SourceBadge source={bodyDetail.source} />
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <Stat label="체중" value={latestWeight?.toFixed(1) ?? "—"} unit="kg" />
         <Stat label="BMI" value={latestBMI?.toFixed(1) ?? "—"} />
@@ -128,6 +133,8 @@ export default function BodyClient({
           unit="%"
         />
       </div>
+
+      <BodyDetailCard detail={bodyDetail} />
 
       {/* 체중 추세 (이동평균 포함) */}
       <WeightTrendChart raw={weightTrend} ma7={weightMA7} ma14={weightMA14} />
@@ -154,45 +161,7 @@ export default function BodyClient({
       )}
 
       {/* 최근 기록 */}
-      <div className="bg-card border border-border rounded-xl p-5 mt-6">
-        <div className="text-[11px] text-dim tracking-wider uppercase mb-4">
-          최근 체중 기록
-        </div>
-        {recentRecords.length > 0 ? (
-          <div className="space-y-3">
-            {recentRecords.map((r, i) => (
-              <div key={r.date}>
-                {i > 0 && <div className="border-t border-border mb-3" />}
-                <div className="flex items-center justify-between">
-                  <span className="text-[13px]">{r.date}</span>
-                  <div className="flex items-center gap-4 text-[13px]">
-                    <span className="font-[family-name:var(--font-geist-mono)]">
-                      {r.weight.toFixed(1)}
-                      <span className="text-dim ml-1">kg</span>
-                    </span>
-                    {r.bodyFat !== null && (
-                      <span className="font-[family-name:var(--font-geist-mono)]">
-                        {r.bodyFat.toFixed(1)}
-                        <span className="text-dim ml-1">%</span>
-                      </span>
-                    )}
-                    {r.muscleMass !== null && (
-                      <span className="font-[family-name:var(--font-geist-mono)]">
-                        {r.muscleMass.toFixed(1)}
-                        <span className="text-dim ml-1">kg 근육</span>
-                      </span>
-                    )}
-                  </div>
-                </div>
-              </div>
-            ))}
-          </div>
-        ) : (
-          <div className="text-center py-4 text-dim text-[13px]">
-            체중 기록 없음
-          </div>
-        )}
-      </div>
+      <RecentBodyRecords records={recentRecords} />
 
       {/* 식단 기록 */}
       <div className="mt-10">

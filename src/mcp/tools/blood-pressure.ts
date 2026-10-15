@@ -58,6 +58,7 @@ export async function getBloodPressure(args: { days?: number }) {
       avgPulse: true,
       measureCount: true,
       category: true,
+      source: true,
     },
   });
 
@@ -67,7 +68,7 @@ export async function getBloodPressure(args: { days?: number }) {
         {
           type: "text" as const,
           text: JSON.stringify({
-            _context: "혈압 데이터 없음. Garmin Connect에서 혈압을 입력 중인지 확인하세요.",
+            _context: "혈압 데이터 없음. OMRON 혈압계 측정이 OMRON Connect 앱에 동기화되는지 (또는 Garmin Connect 수동 입력) 확인하세요.",
             records: [],
           }),
         },
@@ -173,6 +174,8 @@ export async function getBloodPressure(args: { days?: number }) {
     measurements: r.measureCount,
     category: r.category,
     categoryLabel: r.category ? (BP_CATEGORY_LABELS[r.category] ?? r.category) : null,
+    // #514: garmin | omron (OMRON 직접 연동 행은 측정별 원본이 DB measurements 에 있다)
+    source: r.source,
   }));
   const rows = promoted
     ? aggregateDaily(displayRecords, granularity, {
@@ -187,7 +190,7 @@ export async function getBloodPressure(args: { days?: number }) {
       "수면 부족, 높은 스트레스, 운동 부족이 혈압 상승 원인일 수 있음. " +
       "warnings가 있으면 리포트에 반드시 포함하세요." +
       (promoted
-        ? ` records 가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다 (버킷 평균 · highSystolic/highDiastolic 은 min/max 포함). summary/warnings 는 일별 원본 기준. 특정 시기는 days 를 좁혀 재조회.`
+        ? ` records 가 ${MAX_DAILY_ROWS}행을 초과해 ${granularity} 로 집계했습니다 (버킷 평균 · highSystolic/highDiastolic 은 min/max 포함 · 출처 source 는 집계 행에 없다). summary/warnings 는 일별 원본 기준. 특정 시기는 days 를 좁혀 재조회.`
         : ""),
     period: `최근 ${displayDays}일`,
     granularity,
