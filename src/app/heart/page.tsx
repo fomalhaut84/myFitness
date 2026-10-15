@@ -63,6 +63,7 @@ export default async function HeartPage() {
         avgPulse: true,
         measureCount: true,
         category: true,
+        source: true,
       },
     }),
     prisma.sleepRecord.findMany({
@@ -129,6 +130,7 @@ export default async function HeartPage() {
               ),
         pulse: latestBP.avgPulse,
         category: latestBP.category,
+        source: latestBP.source,
       }
     : null;
 

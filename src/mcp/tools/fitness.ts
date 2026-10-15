@@ -374,7 +374,17 @@ const BODY_SELECT = {
   bmi: true,
   bodyFat: true,
   muscleMass: true,
+  // #514: OMRON 체성분계 (Garmin · 직접 입력 행은 null)
+  visceralFatLevel: true,
+  basalMetabolism: true,
+  bodyAge: true,
+  skeletalMusclePct: true,
+  source: true,
 } as const;
+
+const BODY_CONTEXT =
+  "source: garmin | omron | manual. muscleMass(kg) 는 omron 이면 골격근량 · 그 외 근육량. " +
+  "visceralFatLevel · basalMetabolism(kcal) · bodyAge · skeletalMusclePct(%) 는 OMRON 체성분계 행에만 있다.";
 
 export async function getBodyComposition(args: RangeArgs) {
   const days = args.days ?? 90;
@@ -393,16 +403,19 @@ export async function getBodyComposition(args: RangeArgs) {
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, {
     granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용).",
+    source: BODY_CONTEXT,
   });
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"], fields: numericFields(BODY_SELECT, []) }),
+      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"], fields: numericFields(BODY_SELECT, ["source"]) }),
       context,
     );
   }
 
+  // daily 는 집계 안내 없이 출처 안내만 (#514)
   return envelope(days, fmt(since), to, granularity,
     records.map((r) => ({ ...r, date: fmt(r.date) })),
+    { source: BODY_CONTEXT },
   );
 }
 

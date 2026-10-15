@@ -1,6 +1,6 @@
 "use client";
 
-import { useState } from "react";
+import { useState, type ReactNode } from "react";
 import {
   ComposedChart,
   Line,
@@ -13,6 +13,7 @@ import {
   ReferenceLine,
 } from "recharts";
 import TrendLineChart from "@/components/ui/TrendLineChart";
+import SourceBadge from "@/components/ui/SourceBadge";
 
 interface DataPoint {
   date: string;
@@ -52,6 +53,8 @@ interface LatestBP {
   diastolic: number;
   pulse: number | null;
   category: string | null;
+  /** #514: garmin | omron */
+  source: string;
 }
 
 interface HeartClientProps {
@@ -114,6 +117,12 @@ export default function HeartClient({
                 latestBP.category
                   ? BP_CATEGORY_META[latestBP.category]
                   : undefined
+              }
+              footer={
+                <span className="flex items-center gap-1.5 text-[10px] text-dim">
+                  {latestBP.date}
+                  <SourceBadge source={latestBP.source} />
+                </span>
               }
             />
             <StatCard label="맥박" value={latestBP.pulse} unit="bpm" />
@@ -210,11 +219,13 @@ function StatCard({
   value,
   unit,
   badge,
+  footer,
 }: {
   label: string;
   value: number | string | null;
   unit?: string;
   badge?: { label: string; badge: string };
+  footer?: ReactNode;
 }) {
   return (
     <div className="bg-card border border-border rounded-xl p-4">
@@ -234,6 +245,7 @@ function StatCard({
           {badge.label}
         </span>
       )}
+      {footer && <div className="mt-1.5">{footer}</div>}
     </div>
   );
 }

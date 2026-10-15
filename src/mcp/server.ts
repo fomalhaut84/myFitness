@@ -413,7 +413,7 @@ server.tool(
 
 server.tool(
   "get_body_composition",
-  "체중/체지방 추세 조회. 장기 조회는 granularity 로 주/월 집계 (weight avg/min/max)",
+  "체중/체성분 추세 조회 (체중 · BMI · 체지방률 · 근육량 · OMRON 내장지방 · 기초대사 · 체연령 · 골격근률 · 출처). 장기 조회는 granularity 로 주/월 집계 (weight avg/min/max)",
   {
     days: z
       .number()
@@ -495,7 +495,7 @@ server.tool(
 
 server.tool(
   "get_blood_pressure",
-  "혈압 추세 조회 (수축기/이완기/맥박, 카테고리 분류, 경고). 건강 지표 연계 분석에 사용.",
+  "혈압 추세 조회 (수축기/이완기/맥박, 카테고리 분류, 경고, 출처 garmin/omron). 건강 지표 연계 분석에 사용.",
   {
     days: z
       .number()
