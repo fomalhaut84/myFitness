@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
-import { extractGarminZoneValues } from "@/lib/garmin/profile-values";
+import { extractGarminSyncCandidates, extractGarminZoneValues } from "@/lib/garmin/profile-values";
+import { resolveMaxHR } from "@/lib/fitness/zones";
 import ProfileClient from "./profile-client";
 
 export const dynamic = "force-dynamic";
@@ -62,6 +63,9 @@ export default async function ProfilePage() {
           maxHR: garminZone.maxHR,
           lthr: garminZone.lthr,
         },
+        // #515: 보류 판정용 — 싱크가 쓸 값 (null = Garmin 이 비움) 과 maxHR 이 비면 비교할 fallback (applyAutoSync 와 같은 값)
+        syncCandidates: extractGarminSyncCandidates(profile?.heartRateZonesRaw ?? null),
+        fallbackMaxHR: resolveMaxHR({ maxHR: null, birthDate: profile?.birthDate ?? null }),
         // 감지 이력 값 — 싱크가 쓰는 user-settings 현재값과 다를 수 있어 날짜와 함께 따로 표시 (사전 리뷰 major 1)
         ltDetection: latestLthrPace?.lthrPace
           ? { pace: latestLthrPace.lthrPace, date: formatDateLocal(latestLthrPace.date) }
