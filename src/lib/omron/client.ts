@@ -3,6 +3,7 @@
  * 프로토콜은 자체 PoC 실측 (스펙 §2-1). refresh token 은 회전하지 않아 파일에 보관해 재사용한다.
  * 토큰 · 비밀번호는 로그에 남기지 않는다.
  */
+import { createHash } from "crypto";
 import fs from "fs";
 import path from "path";
 import type { OmronConfig } from "./config";
@@ -42,18 +43,40 @@ interface TokenResponse {
   expires_in?: unknown;
 }
 
-function readStoredRefreshToken(): string | null {
+/**
+ * 토큰을 발급받은 계정 · 앱 · 서버 식별자 (해시 — 이메일을 파일에 평문으로 두지 않는다).
+ * PR #518 Codex P2: OMRON_EMAIL 을 바꿨는데 이전 계정 토큰이 남아 있으면 그 계정으로 로그인돼 다른 사람 데이터를 가져온다.
+ */
+export function tokenAccountKey(config: Pick<OmronConfig, "email" | "appId" | "apiBase">): string {
+  return createHash("sha256").update(`${config.apiBase}\n${config.appId}\n${config.email.trim().toLowerCase()}`).digest("hex");
+}
+
+/** 저장 파일 내용 → 이 계정의 refresh token. 계정이 다르거나 형식이 틀리면 null (순수) */
+export function storedTokenFor(fileContent: string, accountKey: string): string | null {
   try {
-    const parsed = JSON.parse(fs.readFileSync(TOKEN_FILE, "utf8")) as { refreshToken?: unknown };
+    const parsed = JSON.parse(fileContent) as { refreshToken?: unknown; account?: unknown };
+    if (parsed.account !== accountKey) return null;
     return typeof parsed.refreshToken === "string" && parsed.refreshToken.length > 0 ? parsed.refreshToken : null;
   } catch {
-    return null; // 파일 없음 · 손상 → 비밀번호 로그인
+    return null;
   }
 }
 
-function storeRefreshToken(refreshToken: string): void {
+function readStoredRefreshToken(accountKey: string): string | null {
+  try {
+    return storedTokenFor(fs.readFileSync(TOKEN_FILE, "utf8"), accountKey);
+  } catch {
+    return null; // 파일 없음 → 비밀번호 로그인
+  }
+}
+
+function storeRefreshToken(refreshToken: string, accountKey: string): void {
   fs.mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
-  fs.writeFileSync(TOKEN_FILE, JSON.stringify({ refreshToken, savedAt: new Date().toISOString() }), { mode: 0o600 });
+  fs.writeFileSync(
+    TOKEN_FILE,
+    JSON.stringify({ refreshToken, account: accountKey, savedAt: new Date().toISOString() }),
+    { mode: 0o600 }
+  );
   // mode 는 새로 만들 때만 적용된다 — 기존 파일도 0600 으로 (사전 리뷰 info 4)
   fs.chmodSync(TOKEN_FILE, 0o600);
 }
@@ -99,13 +122,13 @@ export class OmronClient {
     if (status !== 200 || typeof t.access_token !== "string") {
       throw new OmronHttpError(`OMRON 토큰 요청 실패: HTTP ${status}`, status);
     }
-    if (typeof t.refresh_token === "string") storeRefreshToken(t.refresh_token);
+    if (typeof t.refresh_token === "string") storeRefreshToken(t.refresh_token, tokenAccountKey(this.config));
     const expiresInSec = typeof t.expires_in === "number" && t.expires_in > 0 ? t.expires_in : 3600;
     return { accessToken: t.access_token, expiresAt: Date.now() + expiresInSec * 1000 };
   }
 
   private async authenticate(): Promise<Session> {
-    const stored = readStoredRefreshToken();
+    const stored = readStoredRefreshToken(tokenAccountKey(this.config));
     if (stored) {
       const refreshed = await this.requestToken({ grant_type: "refresh_token", refresh_token: stored });
       if (refreshed) return refreshed;
@@ -133,12 +156,15 @@ export class OmronClient {
         body
       );
       if (status === 200) return json;
-      if (status === 401 && attempt === 1) {
+      if (status === 401) {
         this.session = null;
-        continue;
+        if (attempt === 1) continue;
+        // PR #518 Codex P2: 재인증 직후에도 401 → 인증 실패로 분류해 관리자 알림. 쓸 수 없는 refresh token 은 지운다
+        clearStoredRefreshToken();
+        throw new OmronAuthError(`OMRON ${endpoint} 재인증 후에도 401`);
       }
       throw new OmronHttpError(`OMRON ${endpoint} 실패: HTTP ${status}`, status);
     }
-    throw new OmronAuthError(`OMRON ${endpoint} 재인증 후에도 401`);
+    throw new OmronAuthError(`OMRON ${endpoint} 인증 재시도 소진`);
   }
 }
