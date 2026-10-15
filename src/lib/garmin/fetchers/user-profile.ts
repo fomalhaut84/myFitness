@@ -7,7 +7,8 @@ import {
   type MetricReason,
 } from "@/lib/fitness/profile-history";
 import { withRateLimit } from "../utils";
-import { canAutoUpdate } from "../profile-values";
+import { resolveMaxHR } from "@/lib/fitness/zones";
+import { canAutoUpdate, findHrPairConflict } from "../profile-values";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
 const USER_SETTINGS_URL =
@@ -101,9 +102,43 @@ async function applyAutoSync(args: {
   // 자동 갱신 가능 여부: source === "manual" 만 보호 (값이 null이어도 — 사용자가 lthrPace만 편집한 경우 등).
   // #505: "source null + 값 있음 = manual 간주" 규칙은 제거 — source 컬럼 이전부터 값이 있던 프로필이
   // 한 번도 자동 갱신되지 않았다. 수동 보호 해제는 프로필의 "Garmin 자동으로" (revertToGarmin).
-  const canAutoUpdateMaxHR = canAutoUpdate(profile.maxHRSource);
-  const canAutoUpdateLthr = canAutoUpdate(profile.lthrSource);
+  const maxHRUnprotected = canAutoUpdate(profile.maxHRSource);
+  const lthrUnprotected = canAutoUpdate(profile.lthrSource);
   const canAutoUpdateRestingHR = canAutoUpdate(profile.restingHRBaseSource);
+
+  // LTHR null 쓰기(stale clear)는 양쪽 endpoint 모두 성공해야 — 한쪽 실패면 null이
+  // "Garmin이 비웠다"인지 "endpoint 실패 데이터 없음"인지 구분 불가.
+  const lthrAllSourcesOk = args.hrZonesOk && args.userSettingsOk;
+  const canWriteLthr =
+    args.garminLthr === undefined
+      ? false
+      : args.garminLthr !== null
+        ? args.hrZonesOk || args.userSettingsOk
+        : lthrAllSourcesOk;
+
+  // #510: 한쪽만 manual 이면 싱크가 LTHR ≤ maxHR 을 깰 수 있다 (수동 maxHR 170 · Garmin LTHR 175 등).
+  // 충돌하는 Garmin 쪽 갱신만 보류 — LTHR 은 pace · 감지 메타까지 한 쌍으로 보류한다. 다음 싱크에서 재판정.
+  const hrPairBlocked = findHrPairConflict({
+    maxHR: {
+      current: profile.maxHR,
+      source: profile.maxHRSource,
+      garmin:
+        args.hrZonesOk && maxHRUnprotected ? args.garminMaxHR : undefined,
+    },
+    lthr: {
+      current: profile.lthr,
+      source: profile.lthrSource,
+      garmin: canWriteLthr && lthrUnprotected ? (args.garminLthr ?? null) : undefined,
+    },
+  }, resolveMaxHR({ maxHR: null, birthDate: profile.birthDate }));
+  if (hrPairBlocked) {
+    console.warn(
+      `[user-profile] ${hrPairBlocked} 갱신 보류 — Garmin 값이 수동 값과 LTHR ≤ maxHR 을 깬다`,
+      { maxHR: profile.maxHR, lthr: profile.lthr, garminMaxHR: args.garminMaxHR, garminLthr: args.garminLthr }
+    );
+  }
+  const canAutoUpdateMaxHR = maxHRUnprotected && hrPairBlocked !== "maxHR";
+  const canAutoUpdateLthr = lthrUnprotected && hrPairBlocked !== "lthr";
 
   // 필드별 출처:
   //  - heartRateZones: maxHR, lthr(RUNNING), restingHR, zonesRaw
@@ -145,16 +180,7 @@ async function applyAutoSync(args: {
     }
   }
 
-  // LTHR — heartRateZones 우선, user-settings fallback.
-  // null 쓰기(stale clear)는 양쪽 endpoint 모두 성공해야 — 한쪽 실패면 null이
-  // "Garmin이 비웠다"인지 "endpoint 실패 데이터 없음"인지 구분 불가.
-  const lthrAllSourcesOk = args.hrZonesOk && args.userSettingsOk;
-  const canWriteLthr =
-    args.garminLthr === undefined
-      ? false
-      : args.garminLthr !== null
-        ? args.hrZonesOk || args.userSettingsOk
-        : lthrAllSourcesOk;
+  // LTHR — heartRateZones 우선, user-settings fallback. (canWriteLthr 는 위 #510 판정과 공유)
   if (canWriteLthr && canAutoUpdateLthr && profile.lthr !== args.garminLthr) {
     const newLthr: number | null = args.garminLthr ?? null;
     historyOps.push((tx) =>

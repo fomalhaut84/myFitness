@@ -40,7 +40,8 @@ export function getZoneRanges(lthr: number, maxHR?: number | null): ZoneRange[] 
     { zone: 2, min: b[0], max: b[1] - 1, label: "이지런" },
     { zone: 3, min: b[1], max: b[2] - 1, label: "에어로빅" },
     { zone: 4, min: b[2], max: b[3] - 1, label: "역치" },
-    { zone: 5, min: b[3], max: maxHR ?? null, label: "VO2max" },
+    // #510: LTHR > maxHR 이 들어와도 범위가 뒤집히지 않게 — 상한을 비워 "N+ bpm" 으로 표시
+    { zone: 5, min: b[3], max: maxHR != null && maxHR >= b[3] ? maxHR : null, label: "VO2max" },
   ];
 }
 
