@@ -13,6 +13,8 @@ const VALID_DATA_TYPES: DataType[] = [
   "blood_pressure",
   "fitness_metrics",
   "user_profile",
+  "omron_body_composition",
+  "omron_blood_pressure",
 ];
 
 /** "YYYY-MM-DD" 문자열을 KST midnight Date(정확한 UTC instant)로 파싱. 무효하면 null. */

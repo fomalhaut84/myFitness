@@ -248,7 +248,7 @@ model BloodPressure {
   measureCount  Int      @default(1)        // 측정 횟수
   category      String?                     // NORMAL, HIGH_NORMAL, STAGE_1_HIGH, STAGE_2_HIGH
   measurements  Json?                       // 개별 측정값 배열
-  source        String   @default("garmin") // "garmin" | "omron" (#514 — omron 행은 Garmin 싱크가 덮지 않음)
+  source        String   @default("garmin") // "garmin" | "omron" (#514 — omron 행은 Garmin 싱크가 덮지 않음 · DB CHECK)
   rawData       Json?
   createdAt     DateTime @default(now())
 }

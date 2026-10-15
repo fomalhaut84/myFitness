@@ -25,7 +25,8 @@ export async function preSyncForReport(
       startDate: daysAgoKST(1),
       endDate: todayKST(),
       // PR #456 Codex P2: 모닝 프롬프트가 get_blood_pressure 를 요구하므로 혈압도 리포트 전 갱신 (없으면 마지막 정기 싱크 이후 측정이 빠진다)
-      dataTypes: ["sleep", "daily_stats", "heart_rate", "activities", "blood_pressure"],
+      // #514: OMRON 혈압도 (env 미설정이면 syncAll 이 건너뛴다)
+      dataTypes: ["sleep", "daily_stats", "heart_rate", "activities", "blood_pressure", "omron_blood_pressure"],
       notifyBot: options?.notifyBot,
     });
     console.log("[report] 리포트 전 데이터 싱크 완료");

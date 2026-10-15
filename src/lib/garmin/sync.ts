@@ -4,7 +4,8 @@ import prisma from "@/lib/prisma";
 import { withReauth } from "./client";
 import { advanceLastSyncDateWhere, clampCursorToToday } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
-import { notifyGarminAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
+import { notifyGarminAuthFailedIfNeeded, notifyOmronAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
+import { isOmronEnabled, syncOmronBloodPressure, syncOmronBodyComposition } from "@/lib/omron/sync";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -26,7 +27,7 @@ const WEATHER_BACKFILL_LIMIT_PER_SYNC = 30;
 const INITIAL_HISTORY_DAYS = 365;
 const DAY_MS = 24 * 60 * 60 * 1000;
 
-type DataType =
+type GarminDataType =
   | "daily_stats"
   | "activities"
   | "sleep"
@@ -36,6 +37,15 @@ type DataType =
   | "fitness_metrics"
   | "user_profile";
 
+/** #514: OMRON Connect 직접 연동 — Garmin 클라이언트 없이 돌고 커서 · 백필은 같은 루프가 관리 */
+type OmronDataType = "omron_blood_pressure" | "omron_body_composition";
+
+type DataType = GarminDataType | OmronDataType;
+
+function isOmronDataType(dataType: DataType): dataType is OmronDataType {
+  return dataType === "omron_blood_pressure" || dataType === "omron_body_composition";
+}
+
 interface SyncResult {
   dataType: DataType;
   synced: number;
@@ -43,7 +53,7 @@ interface SyncResult {
 }
 
 const SYNC_FNS: Record<
-  DataType,
+  GarminDataType,
   (client: GarminConnect, start: Date, end: Date) => Promise<number>
 > = {
   daily_stats: syncDailySummaries,
@@ -56,6 +66,11 @@ const SYNC_FNS: Record<
   user_profile: syncUserProfile,
 };
 
+const OMRON_SYNC_FNS: Record<OmronDataType, (start: Date, end: Date) => Promise<number>> = {
+  omron_blood_pressure: syncOmronBloodPressure,
+  omron_body_composition: syncOmronBodyComposition,
+};
+
 const SYNC_ORDER: DataType[] = [
   "daily_stats",
   "activities",
@@ -63,6 +78,9 @@ const SYNC_ORDER: DataType[] = [
   "heart_rate",
   "body_composition",
   "blood_pressure",
+  // #514: Garmin 체중 · 혈압 뒤 — 같은 날짜면 OMRON 이 Garmin 행을 교체한다 (OMRON 우선)
+  "omron_body_composition",
+  "omron_blood_pressure",
   // #378: 프로필 스냅샷(user_profile) 앞 — 같은 값을 두 소스가 다르게 들 수 있어 이력이 먼저 갱신되도록.
   "fitness_metrics",
   "user_profile",
@@ -133,6 +151,18 @@ async function firstRecordDate(dataType: DataType): Promise<Date | null> {
       }),
     blood_pressure: () =>
       prisma.bloodPressure.findFirst({
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    omron_body_composition: () =>
+      prisma.bodyComposition.findFirst({
+        where: { source: "omron" },
+        orderBy: { date: "asc" },
+        select: { date: true },
+      }),
+    omron_blood_pressure: () =>
+      prisma.bloodPressure.findFirst({
+        where: { source: "omron" },
         orderBy: { date: "asc" },
         select: { date: true },
       }),
@@ -313,7 +343,14 @@ export async function syncAll(
   // #425: 활동 · 심박이 실제로 돈 최소 startDate — 루프 뒤 hrr2 후처리 창의 시작
   let recoveryFrom: Date | null = null;
 
+  // #514: OMRON env 가 없으면 OMRON 타입만 건너뛴다 (에러 · 결과 항목 아님)
+  const omronEnabled = isOmronEnabled();
+  if (!omronEnabled && dataTypes.some(isOmronDataType)) {
+    console.log("[omron] env 미설정 — OMRON 싱크 건너뜀");
+  }
+
   for (const dataType of dataTypes) {
+    if (isOmronDataType(dataType) && !omronEnabled) continue;
     // 초기화 여부는 lastSyncDate로 판정:
     // - markSyncing/markError가 생성한 row는 lastSyncDate=epoch(0)
     // - updateSyncMetadata(성공 시)만 lastSyncDate를 실제 날짜로 설정
@@ -400,9 +437,9 @@ export async function syncAll(
     await markSyncing(dataType);
 
     try {
-      const synced = await withReauth((client) =>
-        SYNC_FNS[dataType](client, startDate, endDate)
-      );
+      const synced = isOmronDataType(dataType)
+        ? await OMRON_SYNC_FNS[dataType](startDate, endDate)
+        : await withReauth((client) => SYNC_FNS[dataType](client, startDate, endDate));
 
       await updateSyncMetadata(dataType, startDate, endDate, synced);
       console.log(`[${dataType}] 싱크 완료: ${synced}건`);
@@ -422,9 +459,9 @@ export async function syncAll(
       // 우선) 대신 Garmin 전용 wrapper 직접 호출. classifyClaudeError 의 `unauthorized`
       // /`authentication` 패턴이 Garmin `Unauthorized` 를 claude_auth_expired 로 오분류 방지.
       // notifyBot 미제공 시 서버 로그만. 첫 실패에서 발송 후 이후 dataType 실패는 rate-limit.
-      void notifyGarminAuthFailedIfNeeded(options?.notifyBot, error).catch(
-        () => {},
-      );
+      // #514: OMRON 실패는 OMRON 인증 알림으로 분류 (Garmin 알림 오분류 방지)
+      const notify = isOmronDataType(dataType) ? notifyOmronAuthFailedIfNeeded : notifyGarminAuthFailedIfNeeded;
+      void notify(options?.notifyBot, error).catch(() => {});
       // 하나 실패해도 나머지 진행
     }
   }
@@ -468,4 +505,4 @@ export async function syncAll(
   return results;
 }
 
-export type { DataType, SyncResult };
+export type { DataType, OmronDataType, SyncResult };

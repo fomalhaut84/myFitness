@@ -1,6 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { GARMIN_PROTECTED_SOURCES } from "@/lib/omron/write-policy";
 import { formatDate, startOfDay } from "../utils";
 
 const WEIGHT_URL =
@@ -87,15 +88,16 @@ export async function syncBodyComposition(
       };
 
       // M4-7: 원자적 조건부 업데이트 + create fallback으로 source="manual" 보호.
-      // 1) 비-manual 레코드만 업데이트 시도 (원자적).
+      // #514: OMRON 행도 보호 (OMRON 우선 — Garmin 체중은 OMRON 값을 옮겨 적은 사본).
+      // 1) 보호 대상이 아닌 레코드만 업데이트 시도 (원자적).
       const updated = await prisma.bodyComposition.updateMany({
-        where: { date: dayDate, source: { not: "manual" } },
+        where: { date: dayDate, source: { notIn: [...GARMIN_PROTECTED_SOURCES] } },
         data,
       });
       if (updated.count > 0) {
         synced++;
       } else {
-        // 2) 업데이트된 게 없으면 → 레코드 자체가 없거나, manual 레코드가 있음.
+        // 2) 업데이트된 게 없으면 → 레코드 자체가 없거나, manual · omron 레코드가 있음.
         //    create 시도. unique 제약 위반(P2002)이면 manual 레코드 존재 → skip.
         try {
           await prisma.bodyComposition.create({
@@ -105,7 +107,7 @@ export async function syncBodyComposition(
         } catch (err) {
           const code = (err as { code?: string })?.code;
           if (code !== "P2002") throw err;
-          // manual 레코드 존재 → 보호 (skip, synced 미증가)
+          // manual · omron 레코드 존재 → 보호 (skip, synced 미증가)
         }
       }
     } catch (error) {
