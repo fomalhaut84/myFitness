@@ -5,6 +5,8 @@
  * "기존 커버 범위와 인접/중첩일 때만 병합" 이라, 최신 청크부터 붙여야 oldestFetchedDate 가
  * 한 청크씩 과거로 당겨진다. 과거→최신 순이면 마지막 청크만 병합돼 마커가 틀린다.
  */
+import { isOmronDataType } from "@/lib/omron/data-types";
+
 const DAY_MS = 24 * 60 * 60 * 1000;
 
 export const BACKFILL_CHUNK_DAYS = 365;
@@ -141,4 +143,19 @@ export function markersForTypes<T extends string>(
 ): (Date | null)[] {
   const byType = new Map(rows.map((r) => [r.dataType, r.oldestFetchedDate] as const));
   return types.map((t) => byType.get(t) ?? null);
+}
+
+/**
+ * #521: `--to` 기본값 (oldestFetchedDate 마커) 계산 대상. OMRON 은 1회 호출로 전 기간이 와서 청크 마커가 없고
+ * (첫 싱크 전 · env 미설정이면 행 자체가 없음), 섞이면 null 마커 때문에 Garmin 전 타입이 어제까지 재조회된다.
+ * Garmin 타입이 있으면 그것만, OMRON 만 골랐으면 그대로.
+ */
+export function markerTypes<T extends string>(types: readonly T[]): T[] {
+  const garmin = types.filter((t) => !isOmronDataType(t));
+  return garmin.length > 0 ? garmin : [...types];
+}
+
+/** #521: OMRON 만 고른 백필은 Garmin 로그인이 필요 없다 (syncAll 이 OMRON 은 Garmin 클라이언트 없이 돈다) */
+export function needsGarminLogin(types: readonly string[]): boolean {
+  return types.some((t) => !isOmronDataType(t));
 }

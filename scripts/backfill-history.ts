@@ -37,10 +37,13 @@ import { getGarminClient, resetClient } from "../src/lib/garmin/client";
 import { syncAll, type DataType, type SyncResult } from "../src/lib/garmin/sync";
 import { ymdKST, todayKST } from "../src/lib/garmin/utils";
 import { WELLNESS_RETENTION_DAYS } from "../src/lib/garmin/preserve";
+import { OMRON_DATA_TYPES } from "../src/lib/omron/data-types";
 import {
   buildBackfillChunks,
   buildLastSyncSnapshot,
   markersForTypes,
+  markerTypes,
+  needsGarminLogin,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
   restorableTypes,
@@ -50,6 +53,7 @@ import {
 } from "../src/lib/garmin/backfill-chunks";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
+/** `--types` 생략 시 기본 — Garmin 만 */
 const BACKFILL_TYPES: DataType[] = [
   "daily_stats",
   "activities",
@@ -59,10 +63,13 @@ const BACKFILL_TYPES: DataType[] = [
   "blood_pressure",
   // #378: 365일 청크당 호출 3회 — 배포 후 `--types=fitness_metrics --from=2020-06-01` 로 1회 실행.
   "fitness_metrics",
-  // #514: OMRON (env 미설정이면 syncAll 이 건너뛴다)
-  "omron_body_composition",
-  "omron_blood_pressure",
 ];
+
+/**
+ * `--types` 로 고를 수 있는 타입. #521: OMRON 은 기본에서 뺀다 — 첫 싱크가 경로와 무관하게 365일을 받고
+ * (shouldLoadInitialHistory), 섞이면 마커 계산이 흔들린다. 그 이전 기간이 필요할 때만 `--types=omron_…` 로 명시.
+ */
+const SELECTABLE_TYPES: DataType[] = [...BACKFILL_TYPES, ...OMRON_DATA_TYPES];
 
 type Chunk = BackfillChunk;
 
@@ -85,15 +92,17 @@ function readFlag(args: readonly string[], name: string): string | undefined {
 function parseTypes(raw: string | undefined): DataType[] {
   if (!raw) return BACKFILL_TYPES;
   const wanted = raw.split(",").map((t) => t.trim()).filter(Boolean);
-  const unknown = wanted.filter((t) => !BACKFILL_TYPES.includes(t as DataType));
+  const unknown = wanted.filter((t) => !SELECTABLE_TYPES.includes(t as DataType));
   if (unknown.length > 0) {
-    throw new Error(`--types: 지원하지 않는 타입 ${unknown.join(", ")} (가능: ${BACKFILL_TYPES.join(", ")})`);
+    throw new Error(`--types: 지원하지 않는 타입 ${unknown.join(", ")} (가능: ${SELECTABLE_TYPES.join(", ")})`);
   }
   return wanted as DataType[];
 }
 
 /** 선택 타입의 oldestFetchedDate 중 가장 늦은 값 - 1일 (M1). 없으면 어제. 타입별로 다르면 경고. */
-async function defaultTo(types: readonly DataType[]): Promise<Date> {
+async function defaultTo(selected: readonly DataType[]): Promise<Date> {
+  // #521: OMRON 은 마커 계산에서 제외 (Garmin 타입이 함께 있을 때)
+  const types = markerTypes(selected);
   const metas = await prisma.syncMetadata.findMany({
     where: { dataType: { in: [...types] } },
     select: { dataType: true, oldestFetchedDate: true },
@@ -292,9 +301,12 @@ async function main() {
 
   const chunks = buildBackfillChunks(from, to);
   console.log(`=== Garmin backfill: ${ymdKST(from)} ~ ${ymdKST(to)} · ${chunks.length}청크 · ${types.join(", ")} ===`);
-  console.log("Garmin 로그인...");
-  await getGarminClient();
-  console.log("로그인 성공");
+  // #521: OMRON 만 고른 백필은 Garmin 로그인 생략
+  if (needsGarminLogin(types)) {
+    console.log("Garmin 로그인...");
+    await getGarminClient();
+    console.log("로그인 성공");
+  }
 
   let state = await snapshotLastSync(types, to);
   installSignalHandlers();

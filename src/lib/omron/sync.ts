@@ -215,6 +215,11 @@ async function writeSequentially<T>(
   return results;
 }
 
+/** #521: 필수 값이 없어 버린 측정도 경고 — 형태 불일치 skip (fetchMeasures) 과 같은 경로로 드러나게 */
+function warnDropped(label: string, count: number): void {
+  if (count > 0) console.warn(`[omron] ${label}: 측정 ${count}건 제외`);
+}
+
 /** 반환: 저장 (생성 · 교체 · 갱신) 된 날짜 수 */
 export async function syncOmronBloodPressure(startDate: Date, endDate: Date): Promise<number> {
   const { measures, devices } = await collectMeasures(OMRON_DEVICE_CATEGORY.bloodPressure, startDate, endDate);
@@ -222,6 +227,7 @@ export async function syncOmronBloodPressure(startDate: Date, endDate: Date): Pr
     const r = toBpReading(m);
     return r ? [r] : [];
   });
+  warnDropped("혈압 (수축기 · 이완기 없음)", measures.length - readings.length);
   const actions = await writeSequentially("혈압", aggregateBpByDay(readings), (day) => writeBpDay(day, devices));
   return logActions("혈압", actions);
 }
@@ -232,6 +238,7 @@ export async function syncOmronBodyComposition(startDate: Date, endDate: Date): 
     const r = toScaleReading(m);
     return r ? [r] : [];
   });
+  warnDropped("체성분 (체중 없음)", measures.length - readings.length);
   const actions = await writeSequentially("체성분", pickDailyScale(readings), (day) => writeScaleDay(day, devices));
   return logActions("체성분", actions);
 }
