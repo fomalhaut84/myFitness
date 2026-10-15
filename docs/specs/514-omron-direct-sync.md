@@ -68,7 +68,7 @@ OMRON 혈압계 · 체중계 측정값을 OMRON Connect (iOS) → **Garmin Conne
 ### OMRON provider (`src/lib/omron/`)
 - [ ] P1 `config.ts` — env 검증 (zod). `OMRON_EMAIL` · `OMRON_PASSWORD` · `OMRON_APP_ID` · `OMRON_APP_KEY` · `OMRON_API_BASE` 중 하나라도 없으면 **비활성** (싱크 skip · 로그 1회 · 에러 아님).
 - [ ] P2 `client.ts` — 로그인 · refresh · 401 시 1회 재인증. refresh token 은 `.omron-tokens/` (gitignore · 파일 권한 0600) 에 저장. 토큰 · 비밀번호는 로그 금지.
-- [ ] P3 `parse.ts` (순수) — 응답 → `OmronBpReading[]` · `OmronScaleReading[]`. 외부 JSON 이라 zod 로 형태 검증, 필수 코드 (혈압 1·2·3 / 체중 257) 없는 레코드는 skip + 경고. `value × 10^exponent`.
+- [ ] P3 `parse.ts` (순수) — 응답 → `OmronBpReading[]` · `OmronScaleReading[]`. 외부 JSON 이라 zod 로 형태 검증, 필수 코드 (혈압 1·2 — 맥박 3 은 선택 · Garmin 혈압도 pulse null 허용 / 체중 257) 없는 레코드는 skip + 경고 (#521). `value × 10^exponent`.
 - [ ] P4 `aggregate.ts` (순수) — 혈압: KST 날짜별 high/low 수축기 · 이완기 · 평균 맥박 · 횟수 · `category` · `measurements` (개별값 + 원본 코드). 체성분: KST 날짜별 **가장 이른** 측정 → 행, 그날 전체 측정은 rawData.
 - [ ] P5 혈압 `category`: 측정별 분류 후 **그날 가장 높은 단계** (Garmin 과 같음 — §7). 측정별 기준 (AHA 2017 · Garmin 값과 일치):
   - `STAGE_2_HIGH`: 수축기 ≥ 140 **또는** 이완기 ≥ 90

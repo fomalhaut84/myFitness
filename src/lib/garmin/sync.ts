@@ -6,6 +6,7 @@ import { advanceLastSyncDateWhere, clampCursorToToday } from "./sync-metadata";
 import { daysAgo, formatDate, todayKST } from "./utils";
 import { notifyGarminAuthFailedIfNeeded, notifyOmronAuthFailedIfNeeded } from "@/lib/monitoring/admin-alerts";
 import { isOmronEnabled, syncOmronBloodPressure, syncOmronBodyComposition } from "@/lib/omron/sync";
+import { isOmronDataType, type OmronDataType } from "@/lib/omron/data-types";
 import { syncActivities } from "./fetchers/activities";
 import { syncDailySummaries } from "./fetchers/daily-summary";
 import { syncSleep } from "./fetchers/sleep";
@@ -38,14 +39,8 @@ type GarminDataType =
   | "fitness_metrics"
   | "user_profile";
 
-/** #514: OMRON Connect 직접 연동 — Garmin 클라이언트 없이 돌고 커서 · 백필은 같은 루프가 관리 */
-type OmronDataType = "omron_blood_pressure" | "omron_body_composition";
-
+/** #514: OMRON Connect 직접 연동 (OmronDataType) — Garmin 클라이언트 없이 돌고 커서 · 백필은 같은 루프가 관리 */
 type DataType = GarminDataType | OmronDataType;
-
-function isOmronDataType(dataType: DataType): dataType is OmronDataType {
-  return dataType === "omron_blood_pressure" || dataType === "omron_body_composition";
-}
 
 interface SyncResult {
   dataType: DataType;
