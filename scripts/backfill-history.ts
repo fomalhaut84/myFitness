@@ -9,6 +9,8 @@
  * - 청크 365일, **최신 → 과거** 순. #220 의 SyncMetadata 병합 규칙이 "인접/중첩만 병합" 이라
  *   첫 청크의 endDate 를 현재 oldestFetchedDate-1 에 붙여야 oldestFetchedDate 가 과거로 당겨지고
  *   다음 청크가 다시 인접이 된다. 과거→최신 순이면 마지막 청크만 병합돼 마커가 틀린다.
+ * - #521: Garmin 타입과 OMRON 타입은 한 실행에 섞지 않는다 (커버 마커가 달라 공통 --to · 청크가 어긋난다). 기본 --types 는 Garmin 만.
+ *   OMRON 은 첫 싱크가 경로와 무관하게 365일을 받으므로 그 이전이 필요할 때만 `--types=omron_…` 단독 실행.
  * - --to 생략 시 선택 타입들의 oldestFetchedDate 중 **가장 늦은 값** - 1일.
  *   병합 조건이 endDate >= oldestFetchedDate-1 이라 늦은 마커 기준이어야 전 타입이 인접/중첩 (사전 리뷰 M1).
  *   선택 타입 중 마커가 null 인 타입이 하나라도 있으면 어제 기준 — 옛 마커로 초기화된 커버 범위는 이후 cron
@@ -42,7 +44,7 @@ import {
   buildBackfillChunks,
   buildLastSyncSnapshot,
   markersForTypes,
-  markerTypes,
+  mixedProviderError,
   needsGarminLogin,
   pickBackfillTo,
   resolveRestoredLastSyncDate,
@@ -66,8 +68,8 @@ const BACKFILL_TYPES: DataType[] = [
 ];
 
 /**
- * `--types` 로 고를 수 있는 타입. #521: OMRON 은 기본에서 뺀다 — 첫 싱크가 경로와 무관하게 365일을 받고
- * (shouldLoadInitialHistory), 섞이면 마커 계산이 흔들린다. 그 이전 기간이 필요할 때만 `--types=omron_…` 로 명시.
+ * `--types` 로 고를 수 있는 타입. #521: OMRON 은 기본에서 뺀다 — 첫 싱크가 경로와 무관하게 365일을 받는다
+ * (shouldLoadInitialHistory). 그 이전 기간이 필요할 때만 `--types=omron_…` 단독으로 (Garmin 과 혼합 금지 · mixedProviderError).
  */
 const SELECTABLE_TYPES: DataType[] = [...BACKFILL_TYPES, ...OMRON_DATA_TYPES];
 
@@ -96,13 +98,13 @@ function parseTypes(raw: string | undefined): DataType[] {
   if (unknown.length > 0) {
     throw new Error(`--types: 지원하지 않는 타입 ${unknown.join(", ")} (가능: ${SELECTABLE_TYPES.join(", ")})`);
   }
+  const mixed = mixedProviderError(wanted);
+  if (mixed) throw new Error(mixed);
   return wanted as DataType[];
 }
 
 /** 선택 타입의 oldestFetchedDate 중 가장 늦은 값 - 1일 (M1). 없으면 어제. 타입별로 다르면 경고. */
-async function defaultTo(selected: readonly DataType[]): Promise<Date> {
-  // #521: OMRON 은 마커 계산에서 제외 (Garmin 타입이 함께 있을 때)
-  const types = markerTypes(selected);
+async function defaultTo(types: readonly DataType[]): Promise<Date> {
   const metas = await prisma.syncMetadata.findMany({
     where: { dataType: { in: [...types] } },
     select: { dataType: true, oldestFetchedDate: true },
@@ -300,7 +302,7 @@ async function main() {
   }
 
   const chunks = buildBackfillChunks(from, to);
-  console.log(`=== Garmin backfill: ${ymdKST(from)} ~ ${ymdKST(to)} · ${chunks.length}청크 · ${types.join(", ")} ===`);
+  console.log(`=== ${needsGarminLogin(types) ? "Garmin" : "OMRON"} backfill: ${ymdKST(from)} ~ ${ymdKST(to)} · ${chunks.length}청크 · ${types.join(", ")} ===`);
   // #521: OMRON 만 고른 백필은 Garmin 로그인 생략
   if (needsGarminLogin(types)) {
     console.log("Garmin 로그인...");

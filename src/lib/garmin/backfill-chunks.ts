@@ -146,13 +146,15 @@ export function markersForTypes<T extends string>(
 }
 
 /**
- * #521: `--to` 기본값 (oldestFetchedDate 마커) 계산 대상. OMRON 은 1회 호출로 전 기간이 와서 청크 마커가 없고
- * (첫 싱크 전 · env 미설정이면 행 자체가 없음), 섞이면 null 마커 때문에 Garmin 전 타입이 어제까지 재조회된다.
- * Garmin 타입이 있으면 그것만, OMRON 만 골랐으면 그대로.
+ * #521: Garmin 과 OMRON 타입을 한 백필에 섞지 않는다. 두 provider 의 커버 마커 (oldestFetchedDate) 가 달라
+ * 공통 `--to` · 청크 경계로는 한쪽이 어긋난다 — OMRON 첫 싱크 전이면 null 마커로 Garmin 전 타입이 어제까지 재조회되고,
+ * Garmin 마커 기준이면 OMRON 범위에 구멍이 나거나 (첫 싱크 전) 매 청크가 no-op 인데 성공으로 끝난다 (사전 리뷰 major 1).
+ * 반환: 오류 메시지 또는 null.
  */
-export function markerTypes<T extends string>(types: readonly T[]): T[] {
-  const garmin = types.filter((t) => !isOmronDataType(t));
-  return garmin.length > 0 ? garmin : [...types];
+export function mixedProviderError(types: readonly string[]): string | null {
+  const omron = types.filter((t) => isOmronDataType(t));
+  if (omron.length === 0 || omron.length === types.length) return null;
+  return `--types: OMRON 타입 (${omron.join(", ")}) 은 Garmin 타입과 섞을 수 없습니다 — 따로 실행하세요 (#521)`;
 }
 
 /** #521: OMRON 만 고른 백필은 Garmin 로그인이 필요 없다 (syncAll 이 OMRON 은 Garmin 클라이언트 없이 돈다) */
