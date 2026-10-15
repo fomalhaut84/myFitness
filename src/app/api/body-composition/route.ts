@@ -6,6 +6,7 @@ import { todayKSTString } from "@/lib/garmin/utils";
 import { parseDateOnlyKST } from "@/lib/date-input";
 import { kstDayRange } from "@/lib/history/buckets";
 import { computeBmi } from "@/lib/fitness/bmi";
+import { manualBodyCompositionData } from "@/lib/fitness/body-manual";
 
 const POST_SCHEMA = z.object({
   date: z
@@ -47,13 +48,7 @@ export async function POST(request: Request) {
     const profile = await prisma.userProfile.findFirst();
     const bmi = computeBmi(weight, profile?.height);
 
-    const data = {
-      weight,
-      bmi,
-      bodyFat: bodyFat ?? null,
-      muscleMass: muscleMass ?? null,
-      source: "manual",
-    };
+    const data = manualBodyCompositionData({ weight, bmi, bodyFat, muscleMass });
 
     // PR #485 Codex P2: 다른 TZ 호스트에서 옛 파서 (서버 로컬 자정) 로 쓴 행은 instant 가 달라 KST 키 upsert 가 못 찾고 같은 KST 날에
     // 두 행을 만든다 → 그 KST 하루 범위의 기존 행을 먼저 찾아 **그 행을 갱신하며 date 를 정규 키로 옮긴다** (정규 키 행이 있으면 그것 우선).

@@ -8,6 +8,7 @@ import type { Bot } from "grammy";
 import prisma from "@/lib/prisma";
 import { sanitizeError } from "@/bot/utils/error";
 import { sendToAll } from "@/bot/notifications/send";
+import { OmronAuthError } from "@/lib/omron/client";
 
 // ─── 카테고리 정의 ─────────────────────────────────────────────────────────
 
@@ -17,6 +18,7 @@ export type FailureCategory =
   | "claude_rate_limit"
   | "mcp_transport_down"
   | "garmin_auth_failed"
+  | "omron_auth_failed"
   | "tool_missing"
   | "network"
   | "unknown";
@@ -26,6 +28,7 @@ const ALERT_TYPE: Partial<Record<FailureCategory, string>> = {
   claude_auth_expired: "claude_auth_expired",
   mcp_transport_down: "mcp_transport_down",
   garmin_auth_failed: "garmin_auth_failed",
+  omron_auth_failed: "omron_auth_failed",
 };
 
 const RATE_LIMIT_MS = 60 * 60 * 1000; // 1시간
@@ -322,6 +325,29 @@ export async function notifyGarminAuthFailedIfNeeded(
         `서버에서 확인:`,
         `<code>GARMIN_EMAIL / GARMIN_PASSWORD env 확인</code>`,
         `<code>Garmin 계정 상태 (locked / password 변경)</code>`,
+        "",
+        `<b>에러</b>: ${errSnippet}`,
+      ].join("\n"),
+  });
+}
+
+/** #514: OMRON 로그인 실패 (계정 · 비밀번호 · 앱 키) 만 알린다 — 네트워크 · 일시 오류는 다음 싱크에서 재시도 */
+export async function notifyOmronAuthFailedIfNeeded(
+  bot: Bot | undefined,
+  err: unknown,
+): Promise<void> {
+  if (!(err instanceof OmronAuthError)) return;
+  await notifyRateLimitedAlert(bot, err, {
+    alertType: ALERT_TYPE.omron_auth_failed!,
+    logPrefix: "[omron-auth] FAILED",
+    buildMessage: (errSnippet, kst) =>
+      [
+        `⚠️ <b>OMRON Connect 인증 실패 감지</b>`,
+        `시각: ${kst} (KST)`,
+        "",
+        `서버에서 확인:`,
+        `<code>OMRON_EMAIL / OMRON_PASSWORD / OMRON_APP_ID / OMRON_APP_KEY env 확인</code>`,
+        `<code>OMRON Connect 앱 로그인 상태 (비밀번호 변경 · 앱 업데이트)</code>`,
         "",
         `<b>에러</b>: ${errSnippet}`,
       ].join("\n"),

@@ -1,6 +1,7 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import type { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
+import { GARMIN_PROTECTED_SOURCES } from "@/lib/omron/write-policy";
 import { formatDate, todayKSTString, withRateLimit } from "../utils";
 
 const BP_URL =
@@ -94,13 +95,21 @@ export async function syncBloodPressure(
         rawData: summary as unknown as Prisma.InputJsonValue,
       };
 
-      await prisma.bloodPressure.upsert({
-        where: { date: dayDate },
-        update: data,
-        create: { date: dayDate, ...data },
+      // #514: OMRON 이 가진 날짜는 덮지 않는다 (OMRON 우선). 조건부 갱신 → 없으면 생성, 충돌 (P2002) 이면 보호 행 → skip
+      const updated = await prisma.bloodPressure.updateMany({
+        where: { date: dayDate, source: { notIn: [...GARMIN_PROTECTED_SOURCES] } },
+        data,
       });
-
-      synced++;
+      if (updated.count > 0) {
+        synced++;
+        continue;
+      }
+      try {
+        await prisma.bloodPressure.create({ data: { date: dayDate, ...data } });
+        synced++;
+      } catch (err) {
+        if ((err as { code?: string })?.code !== "P2002") throw err;
+      }
     } catch (error) {
       const msg = error instanceof Error ? error.message : String(error);
       console.warn("[blood-pressure] 항목 저장 실패:", msg);

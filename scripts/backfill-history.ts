@@ -59,6 +59,9 @@ const BACKFILL_TYPES: DataType[] = [
   "blood_pressure",
   // #378: 365일 청크당 호출 3회 — 배포 후 `--types=fitness_metrics --from=2020-06-01` 로 1회 실행.
   "fitness_metrics",
+  // #514: OMRON (env 미설정이면 syncAll 이 건너뛴다)
+  "omron_body_composition",
+  "omron_blood_pressure",
 ];
 
 type Chunk = BackfillChunk;

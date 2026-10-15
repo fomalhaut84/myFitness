@@ -212,8 +212,13 @@ model BodyComposition {
   weight     Float                     // kg
   bmi        Float?
   bodyFat    Float?                    // %
-  muscleMass Float?                    // kg
-  source     String   @default("garmin") // "garmin" | "manual"
+  muscleMass Float?                    // kg — Garmin: 근육량 · OMRON (#514): 골격근량
+  source     String   @default("garmin") // "garmin" | "manual" | "omron"
+  // #514: OMRON 체성분계 (Garmin 행은 null)
+  visceralFatLevel  Float?             // 내장지방 레벨
+  basalMetabolism   Int?               // 기초대사 kcal
+  bodyAge           Int?               // 체연령
+  skeletalMusclePct Float?             // 골격근률 %
   rawData    Json?
   createdAt  DateTime @default(now())
 }
@@ -243,6 +248,7 @@ model BloodPressure {
   measureCount  Int      @default(1)        // 측정 횟수
   category      String?                     // NORMAL, HIGH_NORMAL, STAGE_1_HIGH, STAGE_2_HIGH
   measurements  Json?                       // 개별 측정값 배열
+  source        String   @default("garmin") // "garmin" | "omron" (#514 — omron 행은 Garmin 싱크가 덮지 않음 · DB CHECK)
   rawData       Json?
   createdAt     DateTime @default(now())
 }
