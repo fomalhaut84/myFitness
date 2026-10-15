@@ -16,3 +16,14 @@ export function dataSourceLabel(source: string | null | undefined): string | nul
 export function muscleMassLabel(source: string): string {
   return source === "omron" ? "골격근량" : "근육량";
 }
+
+/**
+ * muscleMass 를 출처별 의미로 나눈다 — OMRON 은 skeletalMuscleMass (골격근량), 그 외는 muscleMass (근육량).
+ * 둘을 한 필드로 집계하면 출처가 바뀐 주 · 달 평균이 의미 없어진다 (#514 PR 2 사전 리뷰 major 1 · MCP 주/월 집계).
+ */
+export function splitMuscleMass<T extends { muscleMass: number | null; source: string }>(
+  row: T
+): T & { skeletalMuscleMass: number | null } {
+  const isOmron = row.source === "omron";
+  return { ...row, muscleMass: isOmron ? null : row.muscleMass, skeletalMuscleMass: isOmron ? row.muscleMass : null };
+}

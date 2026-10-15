@@ -14,6 +14,7 @@ import { activityTypeWhere } from "./activity-filter";
 // #455: 일별 창 합계 (강도 분 · 층수) · 수면 규칙성 — daily envelope 에만
 import { summarizeDailyWindow } from "@/lib/fitness/daily-window";
 import { resolveBmi } from "@/lib/fitness/bmi";
+import { splitMuscleMass } from "@/lib/data-source";
 import { sleepRegularity } from "@/lib/sleep/regularity";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
@@ -383,7 +384,7 @@ const BODY_SELECT = {
 } as const;
 
 const BODY_CONTEXT =
-  "source: garmin | omron | manual. muscleMass(kg) 는 omron 이면 골격근량 · 그 외 근육량. " +
+  "source: garmin | omron | manual. muscleMass(kg) 는 Garmin · 직접 입력의 근육량, skeletalMuscleMass(kg) 는 OMRON 골격근량 — 정의가 달라 서로 비교하지 않는다. " +
   "visceralFatLevel · basalMetabolism(kcal) · bodyAge · skeletalMusclePct(%) 는 OMRON 체성분계 행에만 있다.";
 
 export async function getBodyComposition(args: RangeArgs) {
@@ -399,7 +400,8 @@ export async function getBodyComposition(args: RangeArgs) {
     prisma.userProfile.findFirst({ select: { height: true } }),
   ]);
   // #505: Garmin 행은 bmi 가 비어 있어 키로 계산 (저장값 우선) — 집계 전 행 단위로
-  const records = rows.map((r) => ({ ...r, bmi: resolveBmi(r.bmi, r.weight, profile?.height) }));
+  // #514: OMRON muscleMass(골격근량) 는 별도 필드로 — 출처가 섞인 주/월 버킷에서 근육량과 평균되지 않게
+  const records = rows.map((r) => splitMuscleMass({ ...r, bmi: resolveBmi(r.bmi, r.weight, profile?.height) }));
 
   const { granularity, context } = finalizeGranularity(requested, days, records.length, {
     granularity: GRANULARITY_NOTE + " weight/bodyFat 은 avg·min·max 동시 제공 (최저 체중 시기 탐색용).",
@@ -407,7 +409,7 @@ export async function getBodyComposition(args: RangeArgs) {
   });
   if (granularity !== "daily") {
     return envelope(days, fmt(since), to, granularity,
-      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"], fields: numericFields(BODY_SELECT, ["source"]) }),
+      aggregateDaily(records, granularity, { minMax: ["weight", "bodyFat"], fields: [...numericFields(BODY_SELECT, ["source"]), "skeletalMuscleMass"] }),
       context,
     );
   }
