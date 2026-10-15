@@ -63,3 +63,43 @@ export function findHrPairConflict(
   if (pair.maxHR.garmin !== undefined && pair.lthr.source === "manual") return "maxHR";
   return null;
 }
+
+/** #515: 싱크가 이번에 쓸 Garmin 값 (findHrPairConflict 의 `garmin`). null = Garmin 이 비움 · undefined = 알 수 없음 */
+export interface GarminSyncCandidates {
+  maxHR: number | null | undefined;
+  lthr: number | undefined;
+}
+
+/**
+ * #515: 저장된 러닝 존 raw (마지막 hrZonesOk 싱크) → 싱크 후보 값.
+ * maxHR: `maxHeartRateUsed` 키가 있고 null 이면 비운 것 (싱크도 null 을 쓴다) · 키 없음 · 형식 불일치는 알 수 없음.
+ * LTHR: 존 값이 없으면 싱크는 user-settings 로 대체하는데 그 값은 저장하지 않으므로 알 수 없음 (스펙 #510 제외 사항).
+ */
+export function extractGarminSyncCandidates(raw: unknown): GarminSyncCandidates {
+  if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
+    return { maxHR: undefined, lthr: undefined };
+  }
+  const zone = raw as Record<string, unknown>;
+  const maxHR = finiteOrNull(zone.maxHeartRateUsed);
+  return {
+    maxHR: maxHR ?? ("maxHeartRateUsed" in zone && zone.maxHeartRateUsed === null ? null : undefined),
+    lthr: finiteOrNull(zone.lactateThresholdHeartRateUsed) ?? undefined,
+  };
+}
+
+/**
+ * #515: 프로필 카드의 보류 표시 — applyAutoSync 와 같은 판정 (수동 필드는 싱크가 쓰지 않음 · maxHR 이 비면 fallback 비교).
+ */
+export function heldHrField(args: {
+  current: { maxHR: number | null; lthr: number | null };
+  sources: { maxHR: string | null; lthr: string | null };
+  candidates: GarminSyncCandidates;
+  fallbackMaxHR: number;
+}): HrPairField | null {
+  const side = (field: HrPairField): HrPairSide => ({
+    current: args.current[field],
+    source: args.sources[field],
+    garmin: canAutoUpdate(args.sources[field]) ? args.candidates[field] : undefined,
+  });
+  return findHrPairConflict({ maxHR: side("maxHR"), lthr: side("lthr") }, args.fallbackMaxHR);
+}
