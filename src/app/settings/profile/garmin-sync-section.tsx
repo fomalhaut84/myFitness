@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { findHrPairConflict } from "@/lib/garmin/profile-values";
 
 type RevertField = "maxHR" | "lthr";
 
@@ -76,8 +77,25 @@ async function runProfileSync(stillManual: RevertField[]): Promise<string> {
   return "동기화 완료";
 }
 
+/**
+ * #510: 싱크가 LTHR ≤ maxHR 때문에 보류 중인 필드 — 싱크와 같은 판정을 저장된 Garmin 존 값으로 재현.
+ * 수동 필드는 싱크가 쓰지 않으므로 Garmin 값을 넘기지 않는다.
+ */
+function heldField(meta: GarminMeta): RevertField | null {
+  const side = (field: RevertField, source: string | null) => ({
+    current: meta.current[field],
+    source,
+    garmin: source === "manual" ? undefined : (meta.garmin[field] ?? undefined),
+  });
+  return findHrPairConflict({
+    maxHR: side("maxHR", meta.maxHRSource),
+    lthr: side("lthr", meta.lthrSource),
+  });
+}
+
 export default function GarminSyncSection({ meta }: { meta: GarminMeta }) {
   const router = useRouter();
+  const held = heldField(meta);
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<string | null>(null);
 
@@ -143,6 +161,7 @@ export default function GarminSyncSection({ meta }: { meta: GarminMeta }) {
             current={formatCurrent(meta.current, field)}
             garminBpm={meta.garmin[field]}
             currentBpm={meta.current[field]}
+            held={held === field}
             busy={busy}
             onRevert={() => handleRevert(field)}
           />
@@ -180,6 +199,7 @@ function MetricSourceRow({
   current,
   garminBpm,
   currentBpm,
+  held,
   busy,
   onRevert,
 }: {
@@ -188,6 +208,8 @@ function MetricSourceRow({
   current: string;
   garminBpm: number | null;
   currentBpm: number | null;
+  /** #510: Garmin 값이 다른 쪽 수동 값과 LTHR ≤ maxHR 을 깨서 싱크가 보류 중 */
+  held: boolean;
   busy: boolean;
   onRevert: () => void;
 }) {
@@ -205,6 +227,12 @@ function MetricSourceRow({
           className={`font-[family-name:var(--font-geist-mono)] ${differs ? "text-amber-300" : "text-dim"}`}
         >
           · Garmin {formatBpm(garminBpm)}
+        </span>
+      )}
+      {held && (
+        <span className="text-amber-300">
+          · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
+          (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)
         </span>
       )}
       {isManual && (
