@@ -49,10 +49,14 @@ export interface HrPairSide {
  * #510: 자동 싱크 후 상태가 LTHR ≤ maxHR (PATCH /api/profile 과 같은 기준) 을 깨는가.
  * 깨면 **수동 값과 충돌하는 Garmin 쪽** 필드를 돌려준다 — 그 갱신만 보류하고 사용자가 입력한 값을 우선한다.
  * 둘 다 Garmin 이 쓰는 값이거나 수동 쪽이 없으면 null (Garmin 값끼리의 정합은 Garmin 에 맡긴다).
+ * maxHR 이 비면 API 처럼 `fallbackMaxHR` (resolveMaxHR 의 나이 기반 / 기본값) 과 비교한다 — PR #513 Codex P2.
  */
-export function findHrPairConflict(pair: Record<HrPairField, HrPairSide>): HrPairField | null {
+export function findHrPairConflict(
+  pair: Record<HrPairField, HrPairSide>,
+  fallbackMaxHR: number | null = null
+): HrPairField | null {
   const next = (s: HrPairSide) => (s.garmin !== undefined ? s.garmin : s.current);
-  const nextMaxHR = next(pair.maxHR);
+  const nextMaxHR = next(pair.maxHR) ?? fallbackMaxHR;
   const nextLthr = next(pair.lthr);
   if (nextMaxHR === null || nextLthr === null || nextLthr <= nextMaxHR) return null;
   if (pair.lthr.garmin !== undefined && pair.maxHR.source === "manual") return "lthr";

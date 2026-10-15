@@ -7,6 +7,7 @@ import {
   type MetricReason,
 } from "@/lib/fitness/profile-history";
 import { withRateLimit } from "../utils";
+import { resolveMaxHR } from "@/lib/fitness/zones";
 import { canAutoUpdate, findHrPairConflict } from "../profile-values";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
@@ -129,7 +130,7 @@ async function applyAutoSync(args: {
       source: profile.lthrSource,
       garmin: canWriteLthr && lthrUnprotected ? (args.garminLthr ?? null) : undefined,
     },
-  });
+  }, resolveMaxHR({ maxHR: null, birthDate: profile.birthDate }));
   if (hrPairBlocked) {
     console.warn(
       `[user-profile] ${hrPairBlocked} 갱신 보류 — Garmin 값이 수동 값과 LTHR ≤ maxHR 을 깬다`,

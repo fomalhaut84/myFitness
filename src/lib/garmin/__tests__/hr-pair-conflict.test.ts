@@ -83,6 +83,31 @@ describe("findHrPairConflict", () => {
     ).toBeNull();
   });
 
+  // 회귀: PR #513 Codex P2 — Garmin 이 maxHR 을 비우면 API 와 달리 fallback 과 비교하지 않았다
+  it("Garmin 이 maxHR 을 비우면 fallback(나이 기반) 과 비교해 수동 LTHR 보다 낮으면 보류", () => {
+    expect(
+      findHrPairConflict(
+        {
+          maxHR: { current: 185, source: "garmin", garmin: null },
+          lthr: { current: 178, source: "manual", garmin: keep },
+        },
+        175
+      )
+    ).toBe("maxHR");
+  });
+
+  it("fallback 이 수동 LTHR 이상이면 비우기를 허용", () => {
+    expect(
+      findHrPairConflict(
+        {
+          maxHR: { current: 185, source: "garmin", garmin: null },
+          lthr: { current: 170, source: "manual", garmin: keep },
+        },
+        175
+      )
+    ).toBeNull();
+  });
+
   it("이번 싱크가 아무것도 쓰지 않으면 기존 상태는 판정하지 않는다", () => {
     expect(
       findHrPairConflict({

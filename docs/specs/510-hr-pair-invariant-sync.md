@@ -15,7 +15,7 @@
 - 프로덕션 현재 상태 (두 필드 `garmin`) 에서는 발생하지 않는다.
 
 ## 2. 요구사항
-- [x] R1 순수 `findHrPairConflict` (`src/lib/garmin/profile-values.ts`): 싱크 후 상태가 `LTHR > maxHR` 이면 **수동 값과 충돌하는 Garmin 쪽** 필드를 반환. 둘 다 Garmin 이 쓰거나 수동 쪽이 없으면 null. 같음은 허용 (API 와 같은 기준).
+- [x] R1 순수 `findHrPairConflict` (`src/lib/garmin/profile-values.ts`): 싱크 후 상태가 `LTHR > maxHR` 이면 **수동 값과 충돌하는 Garmin 쪽** 필드를 반환. 둘 다 Garmin 이 쓰거나 수동 쪽이 없으면 null. 같음은 허용 (API 와 같은 기준). maxHR 이 비는 경우 (Garmin 이 null 로 비우는 경우 포함) 는 API 처럼 `resolveMaxHR` fallback (나이 기반 · 기본 190) 과 비교 (PR #513 Codex P2).
 - [x] R2 `applyAutoSync`: 반환된 필드 갱신만 보류 (사용자 입력 우선). LTHR 은 pace · `lthrAutoDetected` · `lthrMeasuredAt` · source 까지 한 쌍으로 보류. `console.warn` 로그. 다음 싱크에서 재판정.
 - [x] R3 프로필 "Garmin 자동 동기화" 카드: 보류 중인 행에 `Garmin N bpm 보류 (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)` — 저장된 러닝 존 값으로 같은 판정을 재현. LTHR 보류 중에는 페이스 · 감지 메타도 갱신되지 않는다 (R2).
 - [x] R4 방어: `getZoneRanges` 는 `maxHR < zone 5 하한` 이면 상한을 비운다 (`N+ bpm`).
