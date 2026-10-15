@@ -2,7 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
-import { findHrPairConflict } from "@/lib/garmin/profile-values";
+import { heldHrField, type GarminSyncCandidates } from "@/lib/garmin/profile-values";
 
 type RevertField = "maxHR" | "lthr";
 
@@ -22,6 +22,9 @@ export interface GarminMeta {
   current: HrValues;
   /** #505: 최근 싱크 기준 Garmin 러닝 존 심박 — 수동 보호 중이어도 비교할 수 있게 */
   garmin: Pick<HrValues, "maxHR" | "lthr">;
+  /** #515: 싱크가 쓸 Garmin 값 (null = 비움 · undefined = 알 수 없음) · maxHR 이 비면 비교할 fallback */
+  syncCandidates: GarminSyncCandidates;
+  fallbackMaxHR: number;
   /** #505: 최신 LT 감지 페이스 (FitnessMetricDaily · YYYY-MM-DD) — 참고 표시만, 비교 대상 아님 */
   ltDetection: { pace: number; date: string } | null;
 }
@@ -78,18 +81,14 @@ async function runProfileSync(stillManual: RevertField[]): Promise<string> {
 }
 
 /**
- * #510: 싱크가 LTHR ≤ maxHR 때문에 보류 중인 필드 — 싱크와 같은 판정을 저장된 Garmin 존 값으로 재현.
- * 수동 필드는 싱크가 쓰지 않으므로 Garmin 값을 넘기지 않는다.
+ * #510 · #515: 싱크가 LTHR ≤ maxHR 때문에 보류 중인 필드 — applyAutoSync 와 같은 판정 (Garmin 이 maxHR 을 비우는 경우 포함).
  */
 function heldField(meta: GarminMeta): RevertField | null {
-  const side = (field: RevertField, source: string | null) => ({
-    current: meta.current[field],
-    source,
-    garmin: source === "manual" ? undefined : (meta.garmin[field] ?? undefined),
-  });
-  return findHrPairConflict({
-    maxHR: side("maxHR", meta.maxHRSource),
-    lthr: side("lthr", meta.lthrSource),
+  return heldHrField({
+    current: { maxHR: meta.current.maxHR, lthr: meta.current.lthr },
+    sources: { maxHR: meta.maxHRSource, lthr: meta.lthrSource },
+    candidates: meta.syncCandidates,
+    fallbackMaxHR: meta.fallbackMaxHR,
   });
 }
 
@@ -231,8 +230,23 @@ function MetricSourceRow({
       )}
       {held && (
         <span className="text-amber-300">
-          · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
-          (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)
+          {field === "lthr" ? (
+            <>
+              · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
+              (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)
+            </>
+          ) : garminBpm === null && currentBpm === null ? (
+            // 이미 비어 있음 — 보류할 변경은 없고 나이 기반 최대심박이 수동 LTHR 보다 낮은 상태만 알린다 (사전 리뷰 info 1)
+            <>· 나이 기반 최대심박이 수동 LTHR보다 낮음 — 수동 값 확인</>
+          ) : garminBpm === null ? (
+            // #515: Garmin 이 maxHR 을 비움 → 나이 기반 최대심박이 수동 LTHR 보다 낮아 비우기 보류
+            <>· Garmin 이 값을 비움 — 보류 (나이 기반 최대심박이 수동 LTHR보다 낮음 · 수동 값 확인)</>
+          ) : (
+            <>
+              · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
+              (수동 LTHR보다 낮음 — 수동 값 확인)
+            </>
+          )}
         </span>
       )}
       {isManual && (
