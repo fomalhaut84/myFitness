@@ -235,6 +235,9 @@ function MetricSourceRow({
               · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
               (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)
             </>
+          ) : garminBpm === null && currentBpm === null ? (
+            // 이미 비어 있음 — 보류할 변경은 없고 나이 기반 최대심박이 수동 LTHR 보다 낮은 상태만 알린다 (사전 리뷰 info 1)
+            <>· 나이 기반 최대심박이 수동 LTHR보다 낮음 — 수동 값 확인</>
           ) : garminBpm === null ? (
             // #515: Garmin 이 maxHR 을 비움 → 나이 기반 최대심박이 수동 LTHR 보다 낮아 비우기 보류
             <>· Garmin 이 값을 비움 — 보류 (나이 기반 최대심박이 수동 LTHR보다 낮음 · 수동 값 확인)</>

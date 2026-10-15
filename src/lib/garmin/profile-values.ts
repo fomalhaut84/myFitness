@@ -64,16 +64,17 @@ export function findHrPairConflict(
   return null;
 }
 
-/**
- * #515: 싱크가 이번에 쓸 Garmin 값 (findHrPairConflict 의 `garmin`). null = Garmin 이 비움 · undefined = 알 수 없음.
- * maxHR: 러닝 존 `maxHeartRateUsed` 키가 있고 null 이면 비운 것 (싱크도 null 을 쓴다).
- * LTHR: 존 값이 없으면 싱크는 user-settings 로 대체하는데 그 값은 저장하지 않으므로 알 수 없음 (스펙 #510 제외 사항).
- */
+/** #515: 싱크가 이번에 쓸 Garmin 값 (findHrPairConflict 의 `garmin`). null = Garmin 이 비움 · undefined = 알 수 없음 */
 export interface GarminSyncCandidates {
   maxHR: number | null | undefined;
   lthr: number | undefined;
 }
 
+/**
+ * #515: 저장된 러닝 존 raw (마지막 hrZonesOk 싱크) → 싱크 후보 값.
+ * maxHR: `maxHeartRateUsed` 키가 있고 null 이면 비운 것 (싱크도 null 을 쓴다) · 키 없음 · 형식 불일치는 알 수 없음.
+ * LTHR: 존 값이 없으면 싱크는 user-settings 로 대체하는데 그 값은 저장하지 않으므로 알 수 없음 (스펙 #510 제외 사항).
+ */
 export function extractGarminSyncCandidates(raw: unknown): GarminSyncCandidates {
   if (typeof raw !== "object" || raw === null || Array.isArray(raw)) {
     return { maxHR: undefined, lthr: undefined };
