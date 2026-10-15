@@ -15,6 +15,7 @@ import {
   YAxis,
 } from "recharts";
 import TrendLineChart from "@/components/ui/TrendLineChart";
+import SourceBadge from "@/components/ui/SourceBadge";
 import BodyDetailCard, { type BodyDetail } from "./body-detail-card";
 import RecentBodyRecords, { type BodyRecord } from "./recent-body-records";
 
@@ -116,7 +117,13 @@ export default function BodyClient({
         <GoalProgressCard progress={goalProgress} />
       )}
 
-      {/* 최근 수치 */}
+      {/* 최근 수치 — 출처는 상세 카드 유무와 무관하게 표시 (PR #519 Codex P2) */}
+      {bodyDetail && (
+        <div className="flex items-center gap-2 text-[11px] text-dim mb-2">
+          최근 측정 {bodyDetail.date}
+          <SourceBadge source={bodyDetail.source} />
+        </div>
+      )}
       <div className="grid grid-cols-3 gap-3 mb-6">
         <Stat label="체중" value={latestWeight?.toFixed(1) ?? "—"} unit="kg" />
         <Stat label="BMI" value={latestBMI?.toFixed(1) ?? "—"} />

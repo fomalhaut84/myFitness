@@ -10,6 +10,14 @@ export interface BodyDetail {
   skeletalMuscleKg: number | null;
 }
 
+/** 골격근률 · 골격근량은 OMRON 이 따로 준다 (코드 261 · 294) — 한쪽만 있어도 표시 (PR #519 Codex P2) */
+function skeletalMuscleText(pct: number | null, kg: number | null): string | null {
+  const parts = [pct === null ? null : `${pct.toFixed(1)}%`, kg === null ? null : `${kg.toFixed(1)}kg`].filter(
+    (p): p is string => p !== null
+  );
+  return parts.length > 0 ? parts.join(" · ") : null;
+}
+
 function Item({ label, value, unit }: { label: string; value: string | null; unit?: string }) {
   if (value === null) return null;
   return (
@@ -27,7 +35,13 @@ function Item({ label, value, unit }: { label: string; value: string | null; uni
 export default function BodyDetailCard({ detail }: { detail: BodyDetail | null }) {
   if (
     detail === null ||
-    [detail.visceralFatLevel, detail.basalMetabolism, detail.bodyAge, detail.skeletalMusclePct].every((v) => v === null)
+    [
+      detail.visceralFatLevel,
+      detail.basalMetabolism,
+      detail.bodyAge,
+      detail.skeletalMusclePct,
+      detail.skeletalMuscleKg,
+    ].every((v) => v === null)
   ) {
     return null;
   }
@@ -41,14 +55,7 @@ export default function BodyDetailCard({ detail }: { detail: BodyDetail | null }
         </div>
       </div>
       <div className="grid grid-cols-2 md:grid-cols-4 gap-4">
-        <Item
-          label="골격근"
-          value={
-            detail.skeletalMusclePct === null
-              ? null
-              : `${detail.skeletalMusclePct.toFixed(1)}%${detail.skeletalMuscleKg === null ? "" : ` · ${detail.skeletalMuscleKg.toFixed(1)}kg`}`
-          }
-        />
+        <Item label="골격근" value={skeletalMuscleText(detail.skeletalMusclePct, detail.skeletalMuscleKg)} />
         <Item label="내장지방 레벨" value={detail.visceralFatLevel === null ? null : String(Math.round(detail.visceralFatLevel * 10) / 10)} />
         <Item label="기초대사" value={detail.basalMetabolism === null ? null : detail.basalMetabolism.toLocaleString("ko-KR")} unit="kcal" />
         <Item label="체연령" value={detail.bodyAge === null ? null : String(detail.bodyAge)} unit="세" />
