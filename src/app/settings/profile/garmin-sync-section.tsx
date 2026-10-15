@@ -232,7 +232,7 @@ function MetricSourceRow({
       {held && (
         <span className="text-amber-300">
           · Garmin <span className="font-[family-name:var(--font-geist-mono)]">{formatBpm(garminBpm)}</span> 보류
-          (LTHR이 최대심박수보다 높아짐 — 수동 값 확인)
+          (LTHR이 최대심박수보다 높아짐 — 페이스 포함 · 수동 값 확인)
         </span>
       )}
       {isManual && (

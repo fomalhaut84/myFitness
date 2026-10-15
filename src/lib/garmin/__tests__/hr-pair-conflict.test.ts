@@ -65,6 +65,24 @@ describe("findHrPairConflict", () => {
     ).toBeNull();
   });
 
+  it("역방향: Garmin maxHR 이 비어 있던 값을 수동 LTHR 보다 낮게 채우면 보류", () => {
+    expect(
+      findHrPairConflict({
+        maxHR: { current: null, source: null, garmin: 170 },
+        lthr: { current: 175, source: "manual", garmin: keep },
+      })
+    ).toBe("maxHR");
+  });
+
+  it("둘 다 수동이면 싱크가 쓰지 않으므로 보류 대상 없음", () => {
+    expect(
+      findHrPairConflict({
+        maxHR: { current: 170, source: "manual", garmin: keep },
+        lthr: { current: 175, source: "manual", garmin: keep },
+      })
+    ).toBeNull();
+  });
+
   it("이번 싱크가 아무것도 쓰지 않으면 기존 상태는 판정하지 않는다", () => {
     expect(
       findHrPairConflict({
