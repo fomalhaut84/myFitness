@@ -54,6 +54,8 @@ function readStoredRefreshToken(): string | null {
 function storeRefreshToken(refreshToken: string): void {
   fs.mkdirSync(TOKEN_DIR, { recursive: true, mode: 0o700 });
   fs.writeFileSync(TOKEN_FILE, JSON.stringify({ refreshToken, savedAt: new Date().toISOString() }), { mode: 0o600 });
+  // mode 는 새로 만들 때만 적용된다 — 기존 파일도 0600 으로 (사전 리뷰 info 4)
+  fs.chmodSync(TOKEN_FILE, 0o600);
 }
 
 function clearStoredRefreshToken(): void {
@@ -86,10 +88,17 @@ export class OmronClient {
 
   constructor(private readonly config: OmronConfig) {}
 
+  /**
+   * 토큰 요청. 자격 증명 거절 (400 · 401) 이면 null, 서버 장애 · rate limit 등 그 외 실패는 OmronHttpError —
+   * 일시 장애로 저장된 refresh token 을 지우거나 "인증 실패" 로 오분류하지 않게 (사전 리뷰 info 1).
+   */
   private async requestToken(body: Record<string, string>): Promise<Session | null> {
     const { status, json } = await postJson(`${this.config.apiBase}/oauth2/token`, baseHeaders(this.config), body);
     const t = (json ?? {}) as TokenResponse;
-    if (status !== 200 || typeof t.access_token !== "string") return null;
+    if (status === 400 || status === 401) return null;
+    if (status !== 200 || typeof t.access_token !== "string") {
+      throw new OmronHttpError(`OMRON 토큰 요청 실패: HTTP ${status}`, status);
+    }
     if (typeof t.refresh_token === "string") storeRefreshToken(t.refresh_token);
     const expiresInSec = typeof t.expires_in === "number" && t.expires_in > 0 ? t.expires_in : 3600;
     return { accessToken: t.access_token, expiresAt: Date.now() + expiresInSec * 1000 };

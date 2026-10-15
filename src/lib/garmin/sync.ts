@@ -18,6 +18,7 @@ import { syncFitnessMetrics } from "./fetchers/fitness-metrics";
 import { syncUserProfile } from "./fetchers/user-profile";
 import { runWeatherBackfill } from "@/lib/weather/enrich";
 import { activityRecheckStart } from "./activity-recheck";
+import { shouldLoadInitialHistory } from "./initial-history";
 import { resolveWeatherBackfillMode, weatherBackfillPlan, type WeatherBackfillMode } from "./weather-backfill-mode";
 
 // #269 Codex P2: syncAll 후 weather 자동 enrich. cron 이외 caller (daily/weekly 리포트 pre-sync
@@ -390,8 +391,8 @@ export async function syncAll(
     }
 
     let startDate: Date;
-    if (!hasSuccessfulSync && options?.bootstrapNewTypes) {
-      // 신규 타입 + bootstrap 모드 (cron): 365일 초기 로드
+    if (shouldLoadInitialHistory({ omron: isOmronDataType(dataType), hasSuccessfulSync, bootstrapNewTypes: options?.bootstrapNewTypes })) {
+      // 신규 타입 + bootstrap 모드 (cron) · OMRON 첫 성공 전 (#514): 365일 초기 로드
       startDate = daysAgo(INITIAL_HISTORY_DAYS);
     } else if (historyShortfall && options?.minHistoryDays) {
       // #209: 기존 타입 + history 부족 → minHistoryDays 만큼 backfill.

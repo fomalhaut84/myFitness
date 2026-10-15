@@ -17,7 +17,7 @@ import {
   type OmronDevice,
   type OmronMeasure,
 } from "./parse";
-import { omronWriteAction, type OmronWriteAction } from "./write-policy";
+import { garminArchive, omronWriteAction, type OmronWriteAction } from "./write-policy";
 
 const DAY_MS = 24 * 60 * 60 * 1000;
 /** 폰 앱이 늦게 올린 측정도 잡도록 요청 창을 항상 이만큼 앞당긴다 (업서트라 중복 무해) */
@@ -92,13 +92,6 @@ function deviceInfo(devices: readonly OmronDevice[]): Prisma.InputJsonValue {
   return devices.map((d) => ({ model: d.model, user: d.user }));
 }
 
-/** 기존 rawData 에서 이미 보존한 Garmin 원본을 꺼낸다 (omron → omron 갱신 시 유지) */
-function keptGarmin(rawData: unknown): Prisma.InputJsonValue | undefined {
-  if (typeof rawData !== "object" || rawData === null) return undefined;
-  const v = (rawData as { replacedGarmin?: unknown }).replacedGarmin;
-  return v === undefined || v === null ? undefined : (v as Prisma.InputJsonValue);
-}
-
 function isUniqueViolation(err: unknown): boolean {
   return (err as { code?: string })?.code === "P2002";
 }
@@ -111,10 +104,10 @@ async function writeBpDay(day: BpDay, devices: readonly OmronDevice[]): Promise<
   const action = omronWriteAction(existing?.source ?? null);
   if (action === "skip") return action;
 
-  const replacedGarmin =
-    action === "replace_garmin"
-      ? ({ rawData: existing?.rawData ?? null, measurements: existing?.measurements ?? null } as Prisma.InputJsonValue)
-      : keptGarmin(existing?.rawData);
+  const replacedGarmin = garminArchive(action, existing?.rawData, {
+    rawData: existing?.rawData ?? null,
+    measurements: existing?.measurements ?? null,
+  }) as Prisma.InputJsonValue | undefined;
   const data = {
     highSystolic: day.highSystolic,
     lowSystolic: day.lowSystolic,
@@ -151,16 +144,13 @@ async function writeScaleDay(day: ScaleDay, devices: readonly OmronDevice[]): Pr
   if (action === "skip") return action;
 
   const r = day.representative;
-  const replacedGarmin =
-    action === "replace_garmin"
-      ? ({
-          weight: existing?.weight ?? null,
-          bmi: existing?.bmi ?? null,
-          bodyFat: existing?.bodyFat ?? null,
-          muscleMass: existing?.muscleMass ?? null,
-          rawData: existing?.rawData ?? null,
-        } as Prisma.InputJsonValue)
-      : keptGarmin(existing?.rawData);
+  const replacedGarmin = garminArchive(action, existing?.rawData, {
+    weight: existing?.weight ?? null,
+    bmi: existing?.bmi ?? null,
+    bodyFat: existing?.bodyFat ?? null,
+    muscleMass: existing?.muscleMass ?? null,
+    rawData: existing?.rawData ?? null,
+  }) as Prisma.InputJsonValue | undefined;
   const data = {
     weight: r.weightKg,
     bmi: r.bmi,
