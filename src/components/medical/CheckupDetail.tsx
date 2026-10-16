@@ -29,12 +29,16 @@ function DeltaText({ r }: { r: CheckupResultDto }) {
   if (!r.previous) return <span className="text-dim">첫 기록</span>;
   const delta = formatDelta(r.itemCode, r, r.previous);
   const prevValue = formatResultValue({ itemCode: r.itemCode, ...r.previous });
+  // 단위가 다르면 차이를 빼고 (formatDelta) 직전 값에 단위 · 표시를 붙여 직접 비교하지 않게 (PR #530 Codex P2)
+  const unitDiffers = (r.previous.unit ?? null) !== (r.unit ?? null);
   return (
     <>
       {delta && <span className="text-sub">{delta} </span>}
       <span className="text-dim">
-        ({r.previous.date.slice(0, 7)} {prevValue})
+        ({r.previous.date.slice(0, 7)} {prevValue}
+        {unitDiffers && r.previous.unit ? ` ${r.previous.unit}` : ""})
       </span>
+      {unitDiffers && <span className="ml-1 text-amber-300">단위 다름</span>}
     </>
   );
 }

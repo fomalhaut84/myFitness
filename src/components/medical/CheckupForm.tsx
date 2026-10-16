@@ -5,7 +5,7 @@
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { CHECKUP_CATEGORIES, OTHER_CATEGORY } from "@/lib/checkup/items";
+import { CHECKUP_CATEGORIES, OTHER_CATEGORY, getCheckupItem } from "@/lib/checkup/items";
 import { parseReference } from "@/lib/checkup/parse";
 import {
   formStateToInput,
@@ -211,6 +211,8 @@ function RowEditor({ row, onChange, onRemove }: { row: FormRow; onChange: (patch
   const [open, setOpen] = useState(Boolean(row.note || row.followUp || row.followUpDue || row.unit));
   const hint = referenceHint(row.ref);
   const id = `row-${row.key}`;
+  // 저장 시 서버가 카탈로그 단위를 붙인다 — 결과지 단위와 같은지 보이게 (PR #530 Codex P2)
+  const catalogUnit = row.itemCode ? (getCheckupItem(row.itemCode)?.unit ?? null) : null;
 
   return (
     <div className="grid grid-cols-2 items-center gap-x-2.5 gap-y-1.5 border-t border-border py-2 first:border-t-0 md:grid-cols-[1.2fr_1fr_1.2fr_.9fr_auto]">
@@ -231,6 +233,7 @@ function RowEditor({ row, onChange, onRemove }: { row: FormRow; onChange: (patch
         ) : (
           <label htmlFor={`${id}-value`} className="text-[13px] text-muted">
             {row.label}
+            {catalogUnit && <small className="ml-1 font-[family-name:var(--font-geist-mono)] text-[11px] text-dim">{catalogUnit}</small>}
           </label>
         )}
       </div>
@@ -258,7 +261,7 @@ function RowEditor({ row, onChange, onRemove }: { row: FormRow; onChange: (patch
       </div>
       {open && (
         <div className="col-span-2 grid gap-1.5 rounded-lg bg-surface/50 p-2 md:col-span-5 md:grid-cols-[1fr_2fr_1.4fr_1fr]">
-          <input aria-label="단위 (결과지 단위가 다를 때)" placeholder="단위 (결과지와 다를 때)" value={row.unit} maxLength={30} onChange={(e) => onChange({ unit: e.target.value })} className={INPUT} />
+          <input aria-label="단위 (결과지 단위가 다를 때)" placeholder={catalogUnit ? `단위 — 기본 ${catalogUnit} (결과지와 다를 때만)` : "단위"} value={row.unit} maxLength={30} onChange={(e) => onChange({ unit: e.target.value })} className={INPUT} />
           <textarea aria-label="판독문 · 설명" placeholder="판독문 · 설명" rows={1} value={row.note} maxLength={5000} onChange={(e) => onChange({ note: e.target.value })} className={INPUT} />
           <input aria-label="추적검사 권고" placeholder="추적검사 권고 (예: 12개월 후)" value={row.followUp} maxLength={500} onChange={(e) => onChange({ followUp: e.target.value })} className={INPUT} />
           <input aria-label="추적검사 예정일" type="date" value={row.followUpDue} onChange={(e) => onChange({ followUpDue: e.target.value })} className={INPUT} />
