@@ -156,3 +156,14 @@ export async function listFollowUps(): Promise<FollowUpDto[]> {
     later.map((l) => ({ itemCode: l.itemCode, date: ymdKST(l.checkup.date) })),
   );
 }
+
+/** 검진에 기록된 카탈로그 밖 항목 (복약 관련 항목 고르기용) — code · 최근 원문 이름 */
+export async function listCustomItems(): Promise<{ code: string; label: string }[]> {
+  const rows = await prisma.checkupResult.findMany({
+    where: { itemCode: { startsWith: "custom:" } },
+    distinct: ["itemCode"],
+    orderBy: [{ itemCode: "asc" }, { checkup: { date: "desc" } }],
+    select: { itemCode: true, label: true },
+  });
+  return rows.map((r) => ({ code: r.itemCode, label: r.label }));
+}

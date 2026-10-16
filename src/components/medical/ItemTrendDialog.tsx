@@ -8,13 +8,20 @@ import type { ItemTrendDto, TrendPointDto } from "@/lib/checkup/dto";
 import { FLAG_LABEL, flagTone, formatResultValue, itemDecimals, splitTrendByUnit, visualRange } from "@/lib/checkup/view";
 import { CHART_AXIS_TICK, CHART_GRID_STROKE, CHART_TOOLTIP_CLASS } from "@/components/trends/chart-format";
 import { FLAG_PILL, valueClass } from "./flag-style";
+import type { CheckupMedication, ItemMedicationsDto } from "@/lib/medication/link";
+import { PILL, medPillClass, medPillText } from "./meds/med-style";
 
 interface ItemTrendDialogProps {
   itemCode: string | null;
   onClose: () => void;
 }
 
-type LoadState = { status: "loading" } | { status: "error"; message: string } | { status: "ready"; trend: ItemTrendDto };
+type LoadState =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; trend: ItemTrendDto; meds: ItemMedicationsDto };
+
+const NO_MEDS: ItemMedicationsDto = { related: [], byCheckup: {} };
 /** 응답을 요청한 항목 code 와 함께 둔다 — 다른 항목을 열면 code 가 달라 곧바로 '불러오는 중' (effect 안 setState 없이) */
 type Loaded = { code: string; state: LoadState };
 
@@ -39,7 +46,10 @@ export default function ItemTrendDialog({ itemCode, onClose }: ItemTrendDialogPr
       .then(async (res) => {
         const body = await res.json().catch(() => ({}));
         if (!res.ok) throw new Error(body.error ?? `불러오지 못했습니다 (${res.status})`);
-        setLoaded({ code: itemCode, state: { status: "ready", trend: body.trend as ItemTrendDto } });
+        setLoaded({
+          code: itemCode,
+          state: { status: "ready", trend: body.trend as ItemTrendDto, meds: (body.medications as ItemMedicationsDto | undefined) ?? NO_MEDS },
+        });
       })
       .catch((err: unknown) => {
         if (controller.signal.aborted) return;
@@ -61,7 +71,7 @@ export default function ItemTrendDialog({ itemCode, onClose }: ItemTrendDialogPr
       <div className="p-5">
         {state.status === "loading" && <p className="text-sm text-dim">불러오는 중…</p>}
         {state.status === "error" && <p className="text-sm text-sub">{state.message}</p>}
-        {state.status === "ready" && <TrendBody trend={state.trend} />}
+        {state.status === "ready" && <TrendBody trend={state.trend} meds={state.meds} />}
         <div className="mt-4 flex justify-end">
           <button type="button" onClick={() => ref.current?.close()} className="rounded-lg px-3 py-1.5 text-sm text-sub hover:text-bright">
             닫기
@@ -72,7 +82,7 @@ export default function ItemTrendDialog({ itemCode, onClose }: ItemTrendDialogPr
   );
 }
 
-function TrendBody({ trend }: { trend: ItemTrendDto }) {
+function TrendBody({ trend, meds }: { trend: ItemTrendDto; meds: ItemMedicationsDto }) {
   const latest = trend.points[trend.points.length - 1];
   const numeric = trend.points.some((p) => p.valueNum !== null);
   const { plotted, excluded } = splitTrendByUnit(trend.points);
@@ -92,7 +102,8 @@ function TrendBody({ trend }: { trend: ItemTrendDto }) {
           차트에서 뺀 회차 {excluded}개 (단위 다름) — 아래 이력 표에서 확인하세요. 값을 직접 비교하지 마세요.
         </p>
       )}
-      <HistoryTable trend={trend} />
+      <RelatedMeds meds={meds} />
+      <HistoryTable trend={trend} meds={meds} />
     </>
   );
 }
@@ -196,7 +207,43 @@ function QualitativeRow({ points, itemCode }: { points: readonly TrendPointDto[]
   );
 }
 
-function HistoryTable({ trend }: { trend: ItemTrendDto }) {
+/** #544: 이 항목을 관련 항목으로 지정한 약 — 기간 · 복용 중 */
+function RelatedMeds({ meds }: { meds: ItemMedicationsDto }) {
+  if (meds.related.length === 0) return null;
+  return (
+    <div className="mt-3 border-t border-border pt-2.5">
+      <h3 className="mb-1.5 text-xs font-medium text-sub">관련 복약</h3>
+      <ul className="space-y-1">
+        {meds.related.map((m) => (
+          <li key={m.id} className="flex flex-wrap items-center gap-2 text-[13px]">
+            <span className={`${PILL} ${medPillClass(m)}`}>{medPillText(m)}</span>
+            <span className="text-bright">{m.name}</span>
+            <span className="font-[family-name:var(--font-geist-mono)] text-xs text-sub">
+              {m.startDate} ~ {m.endDate ?? "복용 중"}
+            </span>
+          </li>
+        ))}
+      </ul>
+    </div>
+  );
+}
+
+function MedBadge({ med }: { med: CheckupMedication }) {
+  const when =
+    med.endedDaysBefore === null ? "" : med.endedDaysBefore === 0 ? " · 검진일 복용" : ` · ${med.endedDaysBefore}일 전까지`;
+  return (
+    <span
+      className={`${PILL} ${medPillClass(med)}`}
+      title={med.regimen === "short_term" ? "검진일 앞 14일 안 단기 복용" : "관련 항목으로 지정한 장기 복용"}
+    >
+      {med.name}
+      {when}
+    </span>
+  );
+}
+
+function HistoryTable({ trend, meds }: { trend: ItemTrendDto; meds: ItemMedicationsDto }) {
+  const showMeds = Object.values(meds.byCheckup).some((list) => list.length > 0);
   return (
     <table className="mt-2 w-full border-collapse text-[13px]">
       <thead>
@@ -205,6 +252,7 @@ function HistoryTable({ trend }: { trend: ItemTrendDto }) {
           <th className="py-1.5 font-normal">결과</th>
           <th className="py-1.5 font-normal">기준범위</th>
           <th className="hidden py-1.5 font-normal sm:table-cell">기관</th>
+          {showMeds && <th className="py-1.5 font-normal">그때 먹던 약</th>}
         </tr>
       </thead>
       <tbody>
@@ -220,6 +268,15 @@ function HistoryTable({ trend }: { trend: ItemTrendDto }) {
               </td>
               <td className="py-1.5 font-[family-name:var(--font-geist-mono)] text-sub">{p.refText ?? ""}</td>
               <td className="hidden py-1.5 text-sub sm:table-cell">{p.institution ?? ""}</td>
+              {showMeds && (
+                <td className="py-1.5">
+                  <span className="flex flex-wrap gap-1">
+                    {(meds.byCheckup[p.checkupId] ?? []).map((m) => (
+                      <MedBadge key={m.id} med={m} />
+                    ))}
+                  </span>
+                </td>
+              )}
             </tr>
           );
         })}

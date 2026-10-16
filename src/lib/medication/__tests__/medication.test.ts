@@ -138,3 +138,16 @@ describe("itemMedications", () => {
     expect([r.byCheckup.c1.length, r.byCheckup.c2.length]).toEqual([0, 1]);
   });
 });
+
+describe("form-model", () => {
+  it("단기 N일분 → 종료일 · 장기 빈칸 → 복용 중 · 다시 시작은 같은 일수", async () => {
+    const { emptyMedForm, medFormToInput, restartFrom, defaultRegimen } = await import("../form-model");
+    const f = { ...emptyMedForm("2032-10-14"), name: "가상 감기약", days: "5" };
+    expect(medFormToInput(f).endDate).toBe("2032-10-18");
+    expect(medFormToInput({ ...f, regimen: "long_term", endMode: "date", endDate: "" }).endDate).toBeNull();
+    expect(defaultRegimen("supplement")).toBe("long_term");
+    const again = restartFrom(med({ regimen: "short_term", startDate: "2031-01-01", endDate: "2031-01-07" }), TODAY);
+    expect([again.startDate, again.endMode, again.days]).toEqual([TODAY, "days", "7"]);
+    expect(restartFrom(med({ endDate: "2031-01-07" }), TODAY).endDate).toBe("");
+  });
+});
