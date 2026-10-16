@@ -105,6 +105,9 @@ describe("matchExtracted", () => {
     expect(matchExtracted("WBC", "소변검사")).toEqual({ itemCode: "urine_wbc", confidence: "fuzzy" });
     expect(matchExtracted("WBC", "요침사")).toEqual({ itemCode: "urine_sed_wbc", confidence: "fuzzy" });
     expect(matchExtracted("WBC", "혈액검사")).toEqual({ itemCode: "wbc", confidence: "exact" });
+    // 이름만으로는 카탈로그에 없지만 소변 한정자를 붙이면 있는 항목
+    expect(matchExtracted("빌리루빈", "소변검사")).toEqual({ itemCode: "urine_bilirubin", confidence: "fuzzy" });
+    expect(matchExtracted("빌리루빈", null).confidence).toBe("none");
   });
 
   it("새 항목 code 가 카탈로그 이름과 겹치면 섹션을 붙인다", () => {

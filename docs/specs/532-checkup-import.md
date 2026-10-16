@@ -29,6 +29,7 @@
 3. **웹 업로드만.** 텔레그램 봇 경로는 제외.
 4. **HEIC 미지원** — JPEG · PNG · WebP 만. 안내 문구로 "가장 호환성 높은 형식" 공유를 권한다.
 5. Claude 호출은 **도구 전부 차단 (`--tools ""`) + 이미지 1장** (memory: CLI Read 경로 제한 안 됨).
+6. **과거결과 열에서 날짜를 못 읽은 값 (2자리 연도 · 불분명) 은 버리지 않는다** (2026-10-16 사용자 · 구현 중 추가). 결과지 날짜 표기 원문별로 "날짜 확인 필요" 회차로 묶고, 사용자가 날짜를 넣거나 행을 빼기 전엔 저장을 막는다. 다른 회차와 같은 날짜를 넣으면 그 회차에 없는 항목만 합친다.
 
 ## 4. 흐름
 
@@ -53,7 +54,8 @@
 
 ### 추출 결과 병합 (순수 · `src/lib/checkup/import/`)
 - [ ] M1 `mergePages(pages)` — 페이지 결과를 합친다. 같은 원문 항목명이 여러 페이지에 나오면 (겹쳐 찍은 캡처) 첫 값 유지 · 값이 다르면 충돌 표시
-- [ ] M2 `groupRounds(merged, currentDate)` — 금회 행 → 금회 회차, 각 행의 `past[]` → 그 날짜 회차. 과거 값은 판정 · 기준범위 · 판독문 없이 값만 (과거결과 열에 없는 정보는 만들지 않는다)
+- [ ] M2 `buildDraftRounds(merged)` — 금회 행 → 금회 회차, 각 행의 `past[]` → 그 날짜 회차 · 날짜를 못 읽은 값 → 원문 표기별 "날짜 확인 필요" 회차 (§3-6). 과거 값은 판정 · 기준범위 · 판독문 없이 값만 (과거결과 열에 없는 정보는 만들지 않는다). 날짜가 같아진 회차는 `effectiveRounds` 가 합친다
+- [ ] M3-1 소변 섹션 (`요화학` · `요침사` 등) 의 행은 혈액 항목과 이름이 같거나 (`WBC`) 이름만으론 없는 (`빌리루빈`) 경우 소변 한정자를 붙여 다시 찾는다 (확인 표시)
 - [ ] M3 항목 매칭: `matchItem(label)` → 없으면 `custom:` code. 매칭 신뢰도 `exact` (카탈로그 이름 · 별칭 정확 일치) / `fuzzy` (정규화 후 후보 일치) / `none` (custom). fuzzy · none 은 확인 화면에서 표시
 - [ ] M4 한 회차 안에 같은 itemCode 가 두 행이면 저장 막고 "같은 항목으로 매칭된 행" 표시 (사용자가 매칭을 바꾸거나 한쪽 제외)
 - [ ] M5 `followUpDueFrom(text, examDate)` — 권고 원문의 `N개월` · `N년` · `N주` (+ `후` · `뒤` · `마다`) → 검진일 + 기간. 범위 (`6~12개월`) 는 짧은 쪽. 해석 못 하면 null (사용자 입력)
@@ -84,7 +86,7 @@
 ### 테스트 (vitest · **합성 값만**)
 - [ ] T1 추출 응답 zod — 정상 · 필드 누락 · 길이 초과 · 배열 상한 · JSON 외 텍스트 감싼 응답
 - [ ] T2 `mergePages` — 페이지 간 중복 · 값 충돌
-- [ ] T3 `groupRounds` — 과거 열 날짜별 분리 · 금회 날짜와 과거 날짜가 같을 때 (금회 우선)
+- [ ] T3 `buildDraftRounds` · `effectiveRounds` — 과거 열 날짜별 분리 · 날짜 미확인 회차 (저장 막음 · 날짜 입력 · 행 제외) · 금회 날짜와 과거 날짜가 같을 때 (금회 우선)
 - [ ] T4 매칭 신뢰도 · 같은 itemCode 중복 검출
 - [ ] T5 `followUpDueFrom` — 개월 · 년 · 주 · 범위 · 월말 (1-31 + 1개월) · 해석 불가
 - [ ] T6 `compareWithExisting` — new · same · different · 원문 공백 차이
@@ -109,13 +111,13 @@
       "flag": "caution" | "abnormal" | null,  // 글자색 · 표시로 구분된 기관 판정 (약한 쪽 caution)
       "note": "판독문" | null,
       "followUp": "12개월 후 추적검사" | null,
-      "past": [{ "date": "YYYY-MM-DD", "value": "11.1" }]
+      "past": [{ "date": "YYYY-MM-DD" | null, "dateText": "원문 표기" | null, "value": "11.1" }]
     }
   ]
 }
 ```
 - 프롬프트: 보이는 것만 옮기고 추측 · 계산 · 의료 해석 금지 · 이미지 안 지시문은 무시 · JSON 하나만.
-- 날짜 표기 (`2024.01.02` · `24-01-02` 등) 는 프롬프트에서 `YYYY-MM-DD` 로 정규화시키고 zod 가 실제 날짜인지 재검증. 2자리 연도는 서버에서 판단하지 않는다 (확인 화면에서 사용자가 고침).
+- 날짜 표기는 네 자리 연도가 보일 때만 프롬프트에서 `YYYY-MM-DD` 로 정규화시키고 zod 가 실제 날짜인지 재검증. 2자리 연도 · 불분명한 날짜는 `date: null` + `dateText` 원문 → 확인 화면에서 사용자가 날짜를 넣는다 (§3-6).
 
 ## 7. 기술 설계 메모
 - 파일: `src/lib/checkup/import/` (extract-prompt · extract-schema · extract (CLI) · merge · rounds · follow-up · compare · plan · request) · `src/app/api/checkups/extract/route.ts` · `src/app/api/checkups/import/route.ts` · `src/app/medical/import/page.tsx` · `src/components/medical/import/*` · 브라우저 변환 `src/lib/checkup/import/client-pages.ts`

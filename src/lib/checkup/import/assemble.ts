@@ -67,7 +67,7 @@ export function effectiveRounds(rounds: readonly DraftRound[], currentDate: stri
     const at = date ? byDate.get(date) : undefined;
     if (at === undefined) {
       if (date) byDate.set(date, out.length);
-      out.push({ ...round, date: date ?? round.date });
+      out.push({ ...round, date });
       continue;
     }
     const target = out[at];
@@ -88,7 +88,7 @@ export function blockingReasons(input: Pick<AssembleInput, "header" | "rounds">)
   if (dupCount > 0) reasons.push(`같은 항목으로 매칭된 행 ${dupCount}개를 정리하세요`);
   const unnamed = rounds.flatMap((r) => r.rows).filter((row) => row.include && !row.itemCode).length;
   if (unnamed > 0) reasons.push(`항목을 알아볼 수 없는 행 ${unnamed}개를 빼거나 매칭하세요`);
-  if (!rounds.some((r) => r.rows.some((row) => row.include))) reasons.push("저장할 행이 없습니다");
+  if (!rounds.some((r) => r.rows.some((row) => row.include))) reasons.push("포함한 행이 없습니다 — 같은 값은 이미 저장돼 있습니다");
   return reasons;
 }
 

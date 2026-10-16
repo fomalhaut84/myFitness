@@ -68,8 +68,13 @@ export function newItemCode(label: string, section: string | null): string | nul
 
 export function matchExtracted(label: string, section: string | null): ItemMatch {
   const code = matchItem(label);
-  if (!code) return { itemCode: newItemCode(label, section), confidence: "none" };
   const qualifier = urineQualifier(section);
+  if (!code) {
+    // 소변 섹션의 `빌리루빈` 처럼 이름만으론 없지만 한정자를 붙이면 소변 항목인 경우
+    const urine = qualifier ? matchItem(`${label}(${qualifier})`) : null;
+    if (urine && getCheckupItem(urine)?.category === "소변") return { itemCode: urine, confidence: "fuzzy" };
+    return { itemCode: newItemCode(label, section), confidence: "none" };
+  }
   if (qualifier && getCheckupItem(code)?.category !== "소변") {
     // 소변 섹션의 `WBC` 가 혈액 백혈구로 가지 않게 — 한정자를 붙여 다시 찾고, 못 찾으면 그대로 두되 확인 표시
     const urine = matchItem(`${label}(${qualifier})`);
