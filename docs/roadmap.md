@@ -469,8 +469,17 @@
 - [x] 추이 차트 단위 혼재 (#531) · Nginx 본문 상한 · 1MB 아래 업로드 (#537) · `/api/checkups` 301 루프 hotfix (#540)
 - [ ] 종이 결과지 샘플로 추출 품질 확인 (샘플 생기면)
 - 이슈: #532 (PR #534 · #538 · hotfix #541/#542) · 후속 #533 · 스펙 `docs/specs/532-checkup-import.md` · 디자인 `docs/designs/532-checkup-import/`
-## M18-3: 복약정보 (처방약 + 영양제 · 기간) — 우선순위 ★★
-## M18-4: 검진 · 복약 AI 연동 (MCP · 리포트 맥락) — 우선순위 ★★
+## M18-3: 복약정보 (처방약 + 영양제 · 기간) — 우선순위 ★★ ✅ (v2.43.0)
+- [x] `Medication` (한 행 = 한 복용 기간 · 처방/영양제 · 장기/단기) · CHECK 제약
+- [x] `/medical` 검진 · 복약 탭 — 복용 중 · 복용 기간 타임라인 · 지난 복약 · 추가/수정 폼
+- [x] 검진 항목 추이에 관련 복약 · 그때 먹던 약 (장기 = 관련 항목 · 단기 = 검진일 앞 14일)
+- [ ] 단기 복용 다시 시작 (#550)
+- 이슈: #544 (PR #545) · 스펙 `docs/specs/544-medication.md` · 디자인 `docs/designs/544-medication/`
+
+## M18-4: 검진 · 복약 AI 연동 (MCP) — 우선순위 ★★ ✅ (v2.43.0)
+- [x] MCP `get_checkup_history` · `get_checkup_item_trend` · `get_medications` (read-only)
+- [x] 어드바이저 allowlist · 시스템 프롬프트 (기관 판정 그대로 · 진단/처방 금지 · 리포트 작성 중에는 호출하지 않음)
+- 이슈: #547 (PR #548) · 스펙 `docs/specs/547-health-records-mcp.md`
 
 ---
 
