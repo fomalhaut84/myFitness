@@ -20,11 +20,12 @@ export interface ExistingRound {
 const NUM_RE = /^-?\d+(?:\.\d+)?$/;
 
 /**
- * 결과지에 단위가 적혀 있고 저장된 단위와 다르면 같은 값이 아니다 — 덮어쓰기로 단위를 고칠 수 있게 (PR #534 Codex P2).
- * 결과지에 단위가 없으면 (온라인 화면) 저장된 단위는 카탈로그 단위라 비교하지 않는다.
+ * 결과지에 단위가 적혀 있고 저장된 단위와 다르거나 저장된 단위가 없으면 같은 값이 아니다 — 덮어쓰기로 단위를 고치거나
+ * 채울 수 있게 (PR #534 · #536 Codex P2). 결과지에 단위가 없으면 (온라인 화면) 비교하지 않는다.
  */
 function sameUnit(unit: string | null, existing: ExistingResult): boolean {
-  if (!unit || !existing.unit) return true;
+  if (!unit) return true;
+  if (!existing.unit) return false;
   return valueKey(unit).toLowerCase() === valueKey(existing.unit).toLowerCase();
 }
 
