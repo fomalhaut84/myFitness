@@ -5,9 +5,8 @@ import type { MedicationDto } from "./dto";
 export interface TimelineBar {
   id: string;
   x0: number;
+  /** 복용 중 · 종료일이 오늘 뒤면 오늘까지 */
   x1: number;
-  /** 복용 중 — 오늘까지 그린다 */
-  open: boolean;
 }
 
 export interface TimelineLane {
@@ -38,7 +37,7 @@ export function buildTimeline(meds: readonly MedicationDto[], checkupDates: read
     const key = `${med.kind}:${med.name}`;
     const lane = lanes.get(key) ?? { key, name: med.name, kind: med.kind, bars: [] };
     const end = med.endDate === null || med.endDate > todayYmd ? todayYmd : med.endDate;
-    lanes.set(key, { ...lane, bars: [...lane.bars, { id: med.id, x0: x(med.startDate), x1: x(end), open: med.endDate === null }] });
+    lanes.set(key, { ...lane, bars: [...lane.bars, { id: med.id, x0: x(med.startDate), x1: x(end) }] });
   }
   return {
     years: Array.from({ length: lastYear - firstYear + 1 }, (_, i) => ({ year: firstYear + i, x: x(`${firstYear + i}-01-01`) })),

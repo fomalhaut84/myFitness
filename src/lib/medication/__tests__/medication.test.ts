@@ -118,7 +118,6 @@ describe("buildTimeline", () => {
     expect(t?.years.map((y) => y.year)).toEqual([2029, 2030, 2031, 2032, 2033]);
     expect(t?.lanes).toHaveLength(1);
     const [, open] = t!.lanes[0].bars;
-    expect(open.open).toBe(true);
     expect(open.x1).toBeLessThan(1);
     expect(open.x1).toBeGreaterThan(0.75);
     expect(t?.shortDots.map((d) => d.id)).toEqual(["c"]);
@@ -149,5 +148,25 @@ describe("form-model", () => {
     const again = restartFrom(med({ regimen: "short_term", startDate: "2031-01-01", endDate: "2031-01-07" }), TODAY);
     expect([again.startDate, again.endMode, again.days]).toEqual([TODAY, "days", "7"]);
     expect(restartFrom(med({ endDate: "2031-01-07" }), TODAY).endDate).toBe("");
+  });
+});
+
+// 회귀: PR 전 리뷰 major — 종료일이 오늘인 장기 복용은 "복용 중" 카드에 종료 버튼이 보이는데 409 였다
+describe("endTodayDecision", () => {
+  it("종료일 = 오늘은 종료 (같은 값) · 어제 끝남은 already · 시작 전은 not_started", async () => {
+    const { endTodayDecision, medicationStatus } = await import("../period");
+    const endsToday = { startDate: "2032-01-01", endDate: TODAY };
+    expect(medicationStatus(endsToday, TODAY)).toBe("active");
+    expect(endTodayDecision(endsToday, TODAY)).toBe("end");
+    expect(endTodayDecision({ startDate: "2032-01-01", endDate: null }, TODAY)).toBe("end");
+    expect(endTodayDecision({ startDate: "2032-01-01", endDate: "2032-12-31" }, TODAY)).toBe("end");
+    expect(endTodayDecision({ startDate: "2032-01-01", endDate: "2032-10-15" }, TODAY)).toBe("already_ended");
+    expect(endTodayDecision({ startDate: "2032-10-17", endDate: null }, TODAY)).toBe("not_started");
+  });
+
+  it("365일 넘는 단기 복용 다시 시작은 종료일 직접 입력으로", async () => {
+    const { restartFrom } = await import("../form-model");
+    const r = restartFrom(med({ regimen: "short_term", startDate: "2030-01-01", endDate: "2031-06-01" }), TODAY);
+    expect([r.endMode, r.endDate]).toEqual(["date", ""]);
   });
 });

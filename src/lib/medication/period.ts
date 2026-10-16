@@ -23,6 +23,18 @@ export function medicationStatus(med: Pick<MedicationDto, "startDate" | "endDate
   return "active";
 }
 
+export type EndDecision = "end" | "already_ended" | "not_started";
+
+/**
+ * 복용 종료 (오늘) 판정 — 화면의 "복용 중" (`medicationStatus` active · 종료일 = 오늘 포함) 과 맞춘다.
+ * 종료일이 오늘이면 같은 값을 다시 쓰는 것이라 종료로 본다 (PR 전 리뷰 major — 카드가 버튼을 보이는데 409 였다).
+ */
+export function endTodayDecision(med: Pick<MedicationDto, "startDate" | "endDate">, todayYmd: string): EndDecision {
+  if (med.startDate > todayYmd) return "not_started";
+  if (med.endDate !== null && med.endDate < todayYmd) return "already_ended";
+  return "end";
+}
+
 /** "N년 N개월째" · "N개월째" · "N일째" (시작일 = 1일째) */
 export function sinceText(startYmd: string, todayYmd: string): string {
   const days = diffDaysYmd(startYmd, todayYmd) + 1;

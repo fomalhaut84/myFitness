@@ -21,9 +21,9 @@ export default function MedTimeline({ timeline }: { timeline: Timeline }) {
             ))}
           </div>
           <div className="pointer-events-none absolute inset-y-0 left-[130px] right-0">
-            {timeline.checkups.map((c) => (
+            {timeline.checkups.map((c, i) => (
               // accent 는 CSS 변수 색이라 tailwind 투명도 수식어가 먹지 않는다 — 녹색 (#22c55e) 60% (1px 점선이라 흐리면 회색으로 보인다)
-              <i key={c.date} title={`${c.date} 검진`} className="absolute bottom-0 top-[18px] border-l border-dashed" style={{ left: pct(c.x), borderColor: "rgba(34,197,94,.6)" }} />
+              <i key={`${i}-${c.date}`} title={`${c.date} 검진`} className="absolute bottom-0 top-[18px] border-l border-dashed" style={{ left: pct(c.x), borderColor: "rgba(34,197,94,.6)" }} />
             ))}
           </div>
           {timeline.lanes.map((lane) => (

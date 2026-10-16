@@ -1,6 +1,6 @@
 // #544: 복약 폼 상태 ↔ API 입력. 단기는 "N일분" 또는 종료일 직접. 순수.
 import type { MedicationDto } from "./dto";
-import { courseDays, endFromDays } from "./period";
+import { MAX_COURSE_DAYS, courseDays, endFromDays } from "./period";
 import type { MedicationInputBody, MedicationKind, MedicationRegimen } from "./schema";
 
 export type EndMode = "days" | "date";
@@ -70,7 +70,9 @@ export function medFormFromDto(dto: MedicationDto): MedFormState {
 export function restartFrom(dto: MedicationDto, todayYmd: string): MedFormState {
   const base = { ...medFormFromDto(dto), startDate: todayYmd, endDate: "" };
   if (dto.regimen === "short_term" && dto.endDate) {
-    return { ...base, endMode: "days", days: String(courseDays(dto.startDate, dto.endDate)) };
+    const days = courseDays(dto.startDate, dto.endDate);
+    // N일분 입력은 365 까지 — 더 길면 종료일 직접 입력으로 (PR 전 리뷰 info 1)
+    return days <= MAX_COURSE_DAYS ? { ...base, endMode: "days", days: String(days) } : base;
   }
   return base;
 }

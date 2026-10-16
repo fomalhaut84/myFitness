@@ -46,7 +46,7 @@ export default function ActiveMedCard({ med, today, related }: ActiveMedCardProp
       <p className="font-[family-name:var(--font-geist-mono)] text-xs text-muted">
         {short && med.endDate
           ? `${med.startDate} ~ ${med.endDate} · ${daysLeft(med.endDate, today) === 0 ? "오늘까지" : `${daysLeft(med.endDate, today)}일 남음`}`
-          : `${med.startDate} 부터 · ${sinceText(med.startDate, today)}`}
+          : `${med.startDate} 부터${med.endDate ? ` ~ ${med.endDate}` : ""} · ${sinceText(med.startDate, today)}`}
       </p>
       {related.length > 0 && (
         <p className="flex flex-wrap gap-1">

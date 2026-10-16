@@ -31,6 +31,8 @@ export default function MedicationForm({ initial, medId, maxDate, itemGroups }: 
   const [state, setState] = useState<MedFormState>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 복용 형태를 직접 고른 뒤에는 종류를 바꿔도 기본값으로 되돌리지 않는다 (PR 전 리뷰 info 4) */
+  const [regimenPicked, setRegimenPicked] = useState(Boolean(medId));
   const set = (patch: Partial<MedFormState>) => setState((s) => ({ ...s, ...patch }));
   const labelOf = (code: string) => itemGroups.flatMap((g) => g.items).find((i) => i.code === code)?.label ?? code.replace(/^custom:/, "");
   const short = state.regimen === "short_term";
@@ -66,11 +68,19 @@ export default function MedicationForm({ initial, medId, maxDate, itemGroups }: 
             name="kind"
             options={KINDS}
             value={state.kind}
-            onChange={(kind) => set(medId ? { kind } : { kind, regimen: defaultRegimen(kind) })}
+            onChange={(kind) => set(regimenPicked ? { kind } : { kind, regimen: defaultRegimen(kind) })}
           />
         </Field>
         <Field label="복용 형태" help={medId ? undefined : "처방약은 단기, 영양제는 장기가 기본입니다"}>
-          <Segment name="regimen" options={REGIMENS} value={state.regimen} onChange={(regimen) => set({ regimen })} />
+          <Segment
+            name="regimen"
+            options={REGIMENS}
+            value={state.regimen}
+            onChange={(regimen) => {
+              setRegimenPicked(true);
+              set({ regimen });
+            }}
+          />
         </Field>
         <Field label="이름" htmlFor="m-name">
           <input id="m-name" required maxLength={100} value={state.name} onChange={(e) => set({ name: e.target.value })} className={INPUT} />
