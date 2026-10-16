@@ -404,3 +404,44 @@ model SystemAlertState {
   lastErrorMsg String?              // 진단용, 200자 이내
   updatedAt    DateTime @updatedAt
 }
+
+// #527 (M18-1): 건강검진 회차. date 는 KST 자정 instant — 하루 한 회차 (결과지 추출 M18-2 의 회차 병합 키).
+model HealthCheckup {
+  id          String          @id @default(cuid())
+  date        DateTime        @unique
+  institution String?
+  kind        String          // "national" | "comprehensive" | "other" (DB CHECK)
+  source      String          @default("manual") // "manual" | "capture" | "pdf" | "photo" (DB CHECK)
+  summary     String?         // 종합 소견
+  findings    Json?           // 섹션 소견 [{ category, text, flag? }]
+  rawData     Json?           // 결과지 추출 원문 (M18-2)
+  results     CheckupResult[]
+  createdAt   DateTime        @default(now())
+  updatedAt   DateTime        @updatedAt
+}
+
+// #527: 회차별 항목 결과. 원문 (label · valueText · refText) 과 해석값 (itemCode · valueNum · refLow/High) 을 함께 보존.
+model CheckupResult {
+  id          String        @id @default(cuid())
+  checkupId   String
+  checkup     HealthCheckup @relation(fields: [checkupId], references: [id], onDelete: Cascade)
+  itemCode    String        // 카탈로그 code 또는 "custom:<slug>"
+  label       String        // 결과지 원문 항목명
+  category    String
+  valueNum    Float?
+  valueText   String?       // 원문 (수치여도 보존) — valueNum · valueText 둘 다 null 금지 (DB CHECK)
+  unit        String?
+  refText     String?       // 기준범위 원문
+  refLow      Float?
+  refHigh     Float?
+  flag        String?       // "normal" | "caution" | "abnormal" (DB CHECK)
+  flagSource  String?       // "institution" | "computed" (DB CHECK)
+  note        String?       // 항목 설명 · 판독문
+  followUp    String?       // 추적검사 권고 원문
+  followUpDue DateTime?     // KST 자정 instant
+  createdAt   DateTime      @default(now())
+
+  @@unique([checkupId, itemCode])
+  @@index([itemCode])
+  @@index([followUpDue])
+}
