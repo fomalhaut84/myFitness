@@ -5,7 +5,7 @@
 import { useEffect, useRef, useState } from "react";
 import { CartesianGrid, Line, LineChart, ReferenceArea, ResponsiveContainer, Tooltip, XAxis, YAxis } from "recharts";
 import type { ItemTrendDto, TrendPointDto } from "@/lib/checkup/dto";
-import { FLAG_LABEL, flagTone, formatResultValue, itemDecimals, visualRange } from "@/lib/checkup/view";
+import { FLAG_LABEL, flagTone, formatResultValue, itemDecimals, splitTrendByUnit, visualRange } from "@/lib/checkup/view";
 import { CHART_AXIS_TICK, CHART_GRID_STROKE, CHART_TOOLTIP_CLASS } from "@/components/trends/chart-format";
 import { FLAG_PILL, valueClass } from "./flag-style";
 
@@ -75,7 +75,7 @@ export default function ItemTrendDialog({ itemCode, onClose }: ItemTrendDialogPr
 function TrendBody({ trend }: { trend: ItemTrendDto }) {
   const latest = trend.points[trend.points.length - 1];
   const numeric = trend.points.some((p) => p.valueNum !== null);
-  const mixedUnits = new Set(trend.points.map((p) => p.unit ?? "")).size > 1;
+  const { plotted, excluded } = splitTrendByUnit(trend.points);
   return (
     <>
       <h2 id="trend-title" className="text-lg font-semibold text-bright">
@@ -86,19 +86,22 @@ function TrendBody({ trend }: { trend: ItemTrendDto }) {
         {trend.unit ? ` · ${trend.unit}` : numeric ? "" : " · 정성 결과"}
         {latest.refText ? ` · 기준범위 ${latest.refText} (최근 회차)` : ""}
       </p>
-      {numeric ? <TrendChart trend={trend} /> : <QualitativeRow points={trend.points} itemCode={trend.itemCode} />}
-      {mixedUnits && <p className="mt-1.5 text-xs text-amber-300">회차마다 단위가 다릅니다 (빈 점). 값을 직접 비교하지 마세요.</p>}
+      {numeric ? <TrendChart trend={trend} points={plotted} /> : <QualitativeRow points={trend.points} itemCode={trend.itemCode} />}
+      {excluded > 0 && (
+        <p className="mt-1.5 text-xs text-amber-300">
+          차트에서 뺀 회차 {excluded}개 (단위 다름) — 아래 이력 표에서 확인하세요. 값을 직접 비교하지 마세요.
+        </p>
+      )}
       <HistoryTable trend={trend} />
     </>
   );
 }
 
-function TrendChart({ trend }: { trend: ItemTrendDto }) {
-  const latest = trend.points[trend.points.length - 1];
+/** points: 최근 회차와 단위가 같은 수치 점만 (splitTrendByUnit · #531) */
+function TrendChart({ trend, points }: { trend: ItemTrendDto; points: readonly TrendPointDto[] }) {
+  const latest = points[points.length - 1];
   const [low, high] = visualRange(latest.refLow, latest.refHigh);
-  const rows = trend.points
-    .filter((p) => p.valueNum !== null)
-    .map((p) => ({ ...p, x: p.date.slice(0, 7), unitMatches: (p.unit ?? "") === (trend.unit ?? latest.unit ?? "") }));
+  const rows = points.map((p) => ({ ...p, x: p.date.slice(0, 7) }));
   const values = rows.map((r) => r.valueNum as number).concat([low, high].filter((v): v is number => v !== null));
   const min = Math.min(...values);
   const max = Math.max(...values);
@@ -160,7 +163,7 @@ function TrendChart({ trend }: { trend: ItemTrendDto }) {
               const color = TONE_COLOR[flagTone(payload.flag) ?? "none"];
               return (
                 <g key={index}>
-                  <circle cx={cx} cy={cy} r={payload.unitMatches ? 5 : 4} fill={payload.unitMatches ? color : "#161616"} stroke={color} strokeWidth={1.5} />
+                  <circle cx={cx} cy={cy} r={5} fill={color} stroke={color} strokeWidth={1.5} />
                   <text x={cx} y={cy - 10} textAnchor="middle" fontSize={12} fill={color} fontFamily="var(--font-geist-mono)">
                     {formatResultValue({ ...payload, itemCode: trend.itemCode })}
                   </text>
