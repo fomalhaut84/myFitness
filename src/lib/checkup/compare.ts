@@ -26,6 +26,22 @@ export function previousResults<T extends DatedResult>(
   return out;
 }
 
+/**
+ * 아직 이행되지 않은 추적검사 — 권고한 회차보다 **뒤의 회차에 같은 항목이 있으면** 이행된 것으로 본다
+ * (재검을 받았는데 옛 권고가 "N일 지남" 으로 남지 않게). 입력 순서 유지.
+ */
+export function pendingFollowUps<T extends { checkupDate: string; itemCode: string }>(
+  followUps: readonly T[],
+  history: readonly DatedResult[],
+): T[] {
+  const latest = new Map<string, string>();
+  for (const r of history) {
+    const cur = latest.get(r.itemCode);
+    if (!cur || r.date > cur) latest.set(r.itemCode, r.date);
+  }
+  return followUps.filter((f) => (latest.get(f.itemCode) ?? "") <= f.checkupDate);
+}
+
 export interface FlagCounts {
   caution: number;
   abnormal: number;
