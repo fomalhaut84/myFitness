@@ -10,7 +10,7 @@ import type { MedicationDto } from "@/lib/medication/dto";
 import { medsForCheckup, medsForItem } from "@/lib/medication/link";
 import { medicationStatus } from "@/lib/medication/period";
 import type { MedicationKind, MedicationRegimen } from "@/lib/medication/schema";
-import { DEFAULT_ROUNDS, MAX_ROUNDS, flagText, medicationView, resolveItemQuery, resultValue } from "./health-records-view";
+import { DEFAULT_ROUNDS, MAX_ROUNDS, flagText, medicationView, resolveItemQuery, resultValue, suggestItems } from "./health-records-view";
 
 function text(payload: unknown) {
   return { content: [{ type: "text" as const, text: JSON.stringify(payload) }] };
@@ -127,7 +127,10 @@ export async function getCheckupItemTrend(args: { item: string }) {
     include: { checkup: { select: { id: true, date: true, institution: true } } },
     orderBy: { checkup: { date: "asc" } },
   });
-  if (rows.length === 0) return text({ error: `이 항목의 검진 기록이 없습니다: ${args.item}`, code: q.code });
+  if (rows.length === 0) {
+    // "콜레스테롤" 처럼 여러 항목에 걸친 이름은 카탈로그 밖 code 로 떨어진다 — 비슷한 항목을 함께 알려 다시 묻게
+    return text({ error: `이 항목의 검진 기록이 없습니다: ${args.item}`, code: q.code, suggestions: suggestItems(args.item) });
+  }
   const meds = await loadMedications();
   const points = rows.map((r) => ({ ...r, date: ymdKST(r.checkup.date) }));
   const { excluded } = splitTrendByUnit(points);
