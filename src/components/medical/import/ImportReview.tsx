@@ -2,6 +2,7 @@
 
 // #532: 확인 화면 — 금회 헤더 · 회차 탭 (새 회차 / 기존 회차 / 날짜 확인 필요) · 행 · 섹션 소견 · 저장 바.
 import { useState } from "react";
+import { isValidYmd } from "@/lib/history/buckets";
 import { KIND_LABEL } from "@/lib/checkup/view";
 import { blockingReasons, effectiveRounds, findingsOnly, roundDate, type ImportFinding, type ImportHeader } from "@/lib/checkup/import/assemble";
 import { duplicateRows, type DraftRound } from "@/lib/checkup/import/draft";
@@ -222,6 +223,8 @@ function SaveBar({ header, rounds, findings, existing, saving, error, lookupErro
   const existingDates = existingDateSet(existing);
   const reasons = blockingReasons({ header, rounds, today: maxDate, findings, existingDates });
   const onlyFindings = findingsOnly({ header, rounds, findings, existingDates });
+  // 금회 행을 모두 빼면 summarizeImport 가 금회 날짜를 기다리지 않는다 — 소견만 채우기는 그 조회에 달려 있어 실패 시 다시 확인을 보인다 (PR #546 Codex P2)
+  const currentPending = isValidYmd(header.date) && !existing.has(header.date);
   const summary = summarizeImport(effectiveRounds(rounds, header.date), (d) => existing.get(d));
   const disabled = saving || reasons.length > 0 || summary.loading;
   return (
@@ -235,7 +238,7 @@ function SaveBar({ header, rounds, findings, existing, saving, error, lookupErro
         {onlyFindings && <p className="mt-0.5 text-xs text-sub">금회 섹션 소견은 기존 회차에 소견이 비어 있을 때만 채웁니다</p>}
         {reasons.length > 0 && <p className="mt-0.5 text-xs text-red-400">{reasons.join(" · ")}</p>}
         {/* 실패한 날짜를 다른 날짜로 바꿔 조회할 것이 없으면 오류도 감춘다 */}
-        {lookupError && summary.loading ? (
+        {lookupError && (summary.loading || currentPending) ? (
           <p role="alert" className="mt-0.5 text-xs text-red-400">
             {lookupError} ·{" "}
             <button type="button" onClick={onRetryLookup} className="underline hover:text-bright">

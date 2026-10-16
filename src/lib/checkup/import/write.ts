@@ -80,6 +80,8 @@ async function applyRound(
 
   // 소견만 온 회차는 기존 회차를 채울 때만 — 결과 없는 새 회차는 만들지 않는다 (#533)
   if (!existing && plan.add.length === 0) return null;
+  // 소견만 온 회차인데 그 사이 다른 저장이 소견을 채웠다 — 바뀐 것이 없으니 성공으로 보고하지 않는다 (PR #546 Codex P2)
+  if (round.rows.length === 0 && !plan.fillFindings) return null;
   if (!existing) {
     const created = await tx.healthCheckup.create({
       data: {
