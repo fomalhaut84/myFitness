@@ -53,6 +53,8 @@ import { getPersonalGoals } from "./tools/personal-goals";
 import { getDataCoverage } from "./tools/coverage";
 import { getFitnessMetricTrend } from "./tools/fitness-metrics";
 import { MAX_QUERY_DAYS, MIN_WINDOW_DAYS } from "./tools/constants";
+import { getCheckupHistory, getCheckupItemTrend, getMedications } from "./tools/health-records";
+import { MAX_ROUNDS } from "./tools/health-records-view";
 
 /**
  * tools/call 요청 처리 스코프. Handler wrapper 가 실행됐는지 tracking 해
@@ -506,6 +508,34 @@ server.tool(
       .describe("조회 일수 (기본 30, 최대 3650). 일별 400행 초과 시 주/월 집계로 자동 승격"),
   },
   async (args) => getBloodPressure(args)
+);
+
+// #547 (M18-4): 건강 기록 — 검진 · 복약 (read-only). 리포트에는 쓰지 않는다 (시스템 프롬프트).
+server.tool(
+  "get_checkup_history",
+  "건강검진 이력 — 회차 목록 (날짜 · 기관 · 주의/이상 건수) · 최근 회차의 주의/이상 항목 (값 · 기준범위 · 기관 판정 · 직전 값) · 아직 받지 않은 추적검사.",
+  {
+    rounds: z.number().int().positive().max(MAX_ROUNDS).optional().describe(`회차 수 (기본 5, 최대 ${MAX_ROUNDS})`),
+  },
+  async (args) => getCheckupHistory(args)
+);
+
+server.tool(
+  "get_checkup_item_trend",
+  "검진 항목 하나의 회차별 값 · 기준범위 · 판정 + 각 검진 때 먹던 약. item 은 항목 이름 (LDL · 공복혈당 · 수축기 혈압) 또는 code (ldl · fbs · sbp).",
+  {
+    item: z.string().min(1).max(100).describe("검진 항목 이름 또는 code"),
+  },
+  async (args) => getCheckupItemTrend(args)
+);
+
+server.tool(
+  "get_medications",
+  "복약 기록 — 처방약 · 영양제, 장기/단기, 기간 (복용 중이면 N개월째), 용량 · 횟수 · 관련 검진 항목.",
+  {
+    status: z.enum(["active", "all"]).optional().describe("active = 복용 중 (기본) · all = 지난 복약 포함"),
+  },
+  async (args) => getMedications(args)
 );
 
 server.tool(
