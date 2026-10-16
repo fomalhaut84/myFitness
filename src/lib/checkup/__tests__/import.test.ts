@@ -431,6 +431,16 @@ describe("encodeSteps", () => {
     expect(Math.min(...steps.map((s) => Math.max(s.width, s.height)))).toBeGreaterThanOrEqual(1400);
     expect(encodeSteps(1000, 800).map((s) => s.width)).toEqual([1000, 1000, 1000]);
   });
+
+  // 회귀: PR #538 Codex P2 — 다음 0.8 배가 하한 아래면 하한 (1400px) 정확히 한 단계를 시도한다
+  it("1600px 쪽도 1400px 를 시도 · 2400px 는 1920 → 1536 → 1400", async () => {
+    const { encodeSteps } = await import("../import/client-pages");
+    const widths = (w: number, h: number) => [...new Set(encodeSteps(w, h).map((s) => Math.max(s.width, s.height)))];
+    expect(widths(1600, 2263)).toEqual([2263, 1810, 1448, 1400]);
+    expect(widths(1600, 900)).toEqual([1600, 1400]);
+    expect(widths(2400, 1200)).toEqual([2400, 1920, 1536, 1400]);
+    expect(widths(1400, 700)).toEqual([1400]);
+  });
 });
 
 describe("sniffImageType", () => {

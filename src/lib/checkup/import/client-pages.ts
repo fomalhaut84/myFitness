@@ -24,17 +24,22 @@ export interface EncodeStep {
   quality: number;
 }
 
-/** 인코딩 시도 순서 — 원래 크기에서 품질을 낮춰 보고, 그래도 크면 해상도를 한 단계씩 줄인다 (긴 변 MIN_LONG_EDGE 까지). 순수. */
+/**
+ * 인코딩 시도 순서 — 원래 크기에서 품질을 낮춰 보고, 그래도 크면 해상도를 0.8 배씩 줄인다. 다음 단계가 하한을 넘어가면
+ * 긴 변 MIN_LONG_EDGE 정확히 한 단계를 마지막으로 (1600px PDF 쪽도 1400px 를 시도한다 · PR #538 Codex P2). 순수.
+ */
 export function encodeSteps(width: number, height: number): EncodeStep[] {
-  const steps: EncodeStep[] = [];
   const long = Math.max(width, height);
-  for (let scale = 1; ; scale *= SCALE_STEP) {
+  const scales: number[] = [1];
+  while (long * scales[scales.length - 1] > MIN_LONG_EDGE) {
+    const next = scales[scales.length - 1] * SCALE_STEP;
+    scales.push(long * next >= MIN_LONG_EDGE ? next : MIN_LONG_EDGE / long);
+  }
+  return scales.flatMap((scale) => {
     const w = Math.max(1, Math.round(width * scale));
     const h = Math.max(1, Math.round(height * scale));
-    for (const quality of JPEG_QUALITIES) steps.push({ width: w, height: h, quality });
-    if (long * scale * SCALE_STEP < MIN_LONG_EDGE) break;
-  }
-  return steps;
+    return JPEG_QUALITIES.map((quality) => ({ width: w, height: h, quality }));
+  });
 }
 
 const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
