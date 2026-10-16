@@ -128,13 +128,29 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** 캔버스 메모리를 바로 돌려준다 — iOS Safari 는 캔버스 backing store 를 늦게 풀어 여러 쪽을 처리하면 한도에 걸린다 */
+function release(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
+}
+
 async function toJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
-  for (const step of encodeSteps(canvas.width, canvas.height)) {
-    const target = step.width === canvas.width ? canvas : resized(canvas, step.width, step.height);
-    const blob = await new Promise<Blob | null>((resolve) => target.toBlob(resolve, "image/jpeg", step.quality));
-    if (blob && blob.size <= MAX_UPLOAD_BYTES) return blob;
+  let target = canvas;
+  try {
+    for (const step of encodeSteps(canvas.width, canvas.height)) {
+      // 해상도 단계마다 한 번만 줄인다 (품질 단계 3개가 같은 캔버스를 쓴다)
+      if (target.width !== step.width) {
+        if (target !== canvas) release(target);
+        target = resized(canvas, step.width, step.height);
+      }
+      const blob = await new Promise<Blob | null>((resolve) => target.toBlob(resolve, "image/jpeg", step.quality));
+      if (blob && blob.size <= MAX_UPLOAD_BYTES) return blob;
+    }
+    throw new Error("이미지를 1MB 아래로 줄이지 못했습니다 — 더 작게 잘라서 올리세요");
+  } finally {
+    if (target !== canvas) release(target);
+    release(canvas);
   }
-  throw new Error("이미지를 1MB 아래로 줄이지 못했습니다 — 더 작게 잘라서 올리세요");
 }
 
 function resized(source: HTMLCanvasElement, width: number, height: number): HTMLCanvasElement {
