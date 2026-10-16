@@ -117,7 +117,8 @@ function TrendChart({ trend, points }: { trend: ItemTrendDto; points: readonly T
   const min = Math.min(...values);
   const max = Math.max(...values);
   const pad = (max - min || Math.abs(max) || 1) * 0.3;
-  const domain: [number, number] = [Math.max(0, min - pad), max + pad];
+  // 0 아래로 내려가지 않게 자르는 건 값이 모두 0 이상일 때만 — 음수 값 · 기준범위 (사용자 항목) 는 그대로 (#533)
+  const domain: [number, number] = [min >= 0 ? Math.max(0, min - pad) : min - pad, max + pad];
 
   return (
     <div className="mt-3 h-[220px]" role="img" aria-label={`${trend.label} 회차별 추이`}>

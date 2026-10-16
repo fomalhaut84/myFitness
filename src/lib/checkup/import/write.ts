@@ -26,8 +26,8 @@ function toRow({ overwrite: _overwrite, given: _given, ...row }: ImportRow): Che
 }
 
 /** 추출 원문은 첫 회차 (보통 금회) 에만 — 회차마다 같은 원문을 반복 저장하지 않는다 (PR 전 리뷰 info 5) */
-function importEntry(prepared: Prepared, at: Date, withPages: boolean) {
-  return { at: at.toISOString(), source: prepared.source, ...(withPages ? { pages: prepared.pages } : { pagesOn: prepared.rounds[0]?.date }) };
+function importEntry(prepared: Prepared, at: Date, withPages: boolean, pagesOn?: string) {
+  return { at: at.toISOString(), source: prepared.source, ...(withPages ? { pages: prepared.pages } : { pagesOn }) };
 }
 
 type ImportEntry = ReturnType<typeof importEntry> & { overwritten?: OverwrittenSnapshot[] };
@@ -61,7 +61,7 @@ async function applyRound(
   round: PreparedRound,
   prepared: Prepared,
   entry: ImportEntry,
-): Promise<ImportRoundOutcome> {
+): Promise<ImportRoundOutcome | null> {
   const date = parseDateOnlyKST(round.date);
   const existing = await tx.healthCheckup.findUnique({
     where: { date },
@@ -78,6 +78,10 @@ async function applyRound(
       : null,
   );
 
+  // 소견만 온 회차는 기존 회차를 채울 때만 — 결과 없는 새 회차는 만들지 않는다 (#533)
+  if (!existing && plan.add.length === 0) return null;
+  // 소견만 온 회차인데 그 사이 다른 저장이 소견을 채웠다 — 바뀐 것이 없으니 성공으로 보고하지 않는다 (PR #546 Codex P2)
+  if (round.rows.length === 0 && !plan.fillFindings) return null;
   if (!existing) {
     const created = await tx.healthCheckup.create({
       data: {
@@ -120,8 +124,10 @@ export async function importCheckups(prepared: Prepared, now: Date = new Date())
   return prisma.$transaction(
     async (tx) => {
       const outcomes: ImportRoundOutcome[] = [];
-      for (const [i, round] of prepared.rounds.entries()) {
-        outcomes.push(await applyRound(tx, round, prepared, importEntry(prepared, now, i === 0)));
+      for (const round of prepared.rounds) {
+        // 추출 원문은 실제로 쓴 첫 회차에 (소견만 온 회차를 건너뛰면 다음 회차로 · #533 사전 리뷰 info)
+        const outcome = await applyRound(tx, round, prepared, importEntry(prepared, now, outcomes.length === 0, outcomes[0]?.date));
+        if (outcome) outcomes.push(outcome);
       }
       return outcomes;
     },

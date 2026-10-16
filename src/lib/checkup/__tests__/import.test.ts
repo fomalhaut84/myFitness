@@ -181,6 +181,7 @@ const row = (over: Partial<DraftRow>): DraftRow => ({
   conflict: false,
   include: true,
   overwrite: false,
+  touchedFor: null,
   ...over,
 });
 
@@ -563,5 +564,80 @@ describe("과거 값 충돌", () => {
       ["2030-01-02", "11", true],
       ["2028-01-02", "10", false],
     ]);
+  });
+});
+
+// #533 확인 화면 후속 — 회귀 테스트 (봇 P2 · 사전 리뷰 info)
+describe("#533", () => {
+  it("직접 바꾼 행은 늦게 온 기존 회차 기본값이 덮지 않는다", () => {
+    const ex: ExistingRound = { id: "x", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12", unit: null }] };
+    const round: DraftRound = {
+      key: "current",
+      current: true,
+      date: null,
+      dateText: null,
+      needsDate: false,
+      rows: [row({ key: "a", value: "12", include: true, touchedFor: "2030-01-02" }), row({ key: "b", itemCode: "alt", include: false, touchedFor: "2030-01-02" })],
+    };
+    expect(applyExistingDefaults(round, ex, "2030-01-02").rows.map((r) => r.include)).toEqual([true, false]);
+  });
+
+  // 회귀: #533 사전 리뷰 major — A 회차에서 체크한 덮어쓰기가 날짜를 B 로 바꾼 뒤 B 값을 덮지 않는다
+  it("직접 바꾼 표시는 그 날짜에만 — 다른 날짜 기본값은 다시 계산 (덮어쓰기 해제)", () => {
+    const b: ExistingRound = { id: "b", date: "2031-01-02", results: [{ itemCode: "ast", valueNum: 99, valueText: "99", unit: null }] };
+    const round: DraftRound = {
+      key: "current",
+      current: true,
+      date: null,
+      dateText: null,
+      needsDate: false,
+      rows: [row({ key: "a", value: "12", overwrite: true, touchedFor: "2030-01-02" })],
+    };
+    expect(applyExistingDefaults(round, b, "2031-01-02").rows[0]).toMatchObject({ include: true, overwrite: false });
+  });
+
+  it("소견이 이미 있는 기존 회차는 소견만 채우기 대상이 아니다", async () => {
+    const { existingDateSet } = await import("../import/status");
+    const map = new Map<string, ExistingRound | null>([
+      ["2030-01-02", { id: "a", date: "2030-01-02", results: [], hasFindings: true }],
+      ["2031-01-02", { id: "b", date: "2031-01-02", results: [], hasFindings: false }],
+      ["2032-01-02", null],
+    ]);
+    expect([...existingDateSet(map)]).toEqual(["2031-01-02"]);
+  });
+
+  it("금회 행을 다 빼도 같은 날짜 과거 회차 행이 합쳐지면 소견만 경로가 아니다", async () => {
+    const { findingsOnly } = await import("../import/assemble");
+    const rounds: DraftRound[] = [
+      { key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a", include: false })] },
+      { key: "2030-01-02", current: false, date: "2030-01-02", dateText: null, needsDate: false, rows: [row({ key: "p", itemCode: "alt" })] },
+    ];
+    const header = { date: "2030-01-02", institution: "", kind: "other" as const };
+    const findings = [{ key: "f", category: "가", text: "가상", include: true }];
+    expect(findingsOnly({ header, rounds, findings, existingDates: new Set(["2030-01-02"]) })).toBe(false);
+  });
+
+  it("미래 날짜로 옮긴 과거 값도 쪽 간 충돌 표시", () => {
+    const merged = mergePages([
+      page({ items: [item("AST", "12", { past: [{ date: "2040-01-02", dateText: null, value: "11" }] })] }),
+      page({ items: [item("AST", "12", { past: [{ date: "2040-01-02", dateText: null, value: "19" }] })] }),
+    ]);
+    const past = buildDraftRounds(merged, TODAY)[1];
+    expect([past.needsDate, past.rows[0].conflict]).toEqual([true, true]);
+  });
+
+  it("금회 행이 모두 빠져도 기존 회차가 있으면 소견만 보낸다 · 없으면 막는다", () => {
+    const rounds: DraftRound[] = [{ key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a", include: false })] }];
+    const header = { date: "2030-01-02", institution: "", kind: "comprehensive" as const };
+    const findings = [{ key: "f", category: "가", text: "가상 소견", include: true }];
+    const res = assembleImport({ today: TODAY, source: "capture", header, rounds, findings, pages: [], existingDates: new Set(["2030-01-02"]) });
+    expect(res.ok && res.body.rounds.map((r) => [r.date, r.results.length, r.findings?.length])).toEqual([["2030-01-02", 0, 1]]);
+    expect(assembleImport({ today: TODAY, source: "capture", header, rounds, findings, pages: [] }).ok).toBe(false);
+  });
+
+  it("서버: 결과 없이 소견만 온 회차는 허용 · 둘 다 없으면 거부", () => {
+    const f = [{ category: "가", text: "가상 소견" }];
+    expect(prepareImport({ source: "capture", rounds: [{ date: "2030-01-02", kind: "other", findings: f, results: [] }] }, "2032-01-01").ok).toBe(true);
+    expect(prepareImport({ source: "capture", rounds: [{ date: "2030-01-02", kind: "other", results: [] }] }, "2032-01-01").ok).toBe(false);
   });
 });

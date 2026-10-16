@@ -26,6 +26,21 @@ export interface AssembleInput {
   rounds: readonly DraftRound[];
   findings: readonly ImportFinding[];
   pages: readonly ExtractedPage[];
+  /** 소견이 빈 기존 회차가 있는 날짜 — 금회 행을 모두 빼도 섹션 소견만 그 회차에 채울 수 있다 (#533) */
+  existingDates?: ReadonlySet<string>;
+}
+
+/** 금회 행이 하나도 없고 포함한 소견이 있으며 그 날짜에 기존 회차가 있으면 소견만 보낸다 */
+export function findingsOnly(input: Pick<AssembleInput, "header" | "rounds" | "findings" | "existingDates">): boolean {
+  const current = input.rounds.find((r) => r.current);
+  const date = isValidYmd(input.header.date) ? input.header.date : null;
+  return (
+    current !== undefined &&
+    date !== null &&
+    !effectiveRounds(input.rounds, input.header.date).some((r) => r.current && r.rows.some((row) => row.include)) &&
+    input.findings.some((f) => f.include) &&
+    (input.existingDates?.has(date) ?? false)
+  );
 }
 
 export type AssembleResult = { ok: true; body: ImportRequestBody } | { ok: false; reasons: string[] };
@@ -79,7 +94,9 @@ export function effectiveRounds(rounds: readonly DraftRound[], currentDate: stri
   return out;
 }
 
-export function blockingReasons(input: Pick<AssembleInput, "header" | "rounds" | "today">): string[] {
+export function blockingReasons(
+  input: Pick<AssembleInput, "header" | "rounds" | "today"> & Partial<Pick<AssembleInput, "findings" | "existingDates">>,
+): string[] {
   const reasons: string[] = [];
   const currentHasRows = input.rounds.some((r) => r.current && r.rows.some((row) => row.include));
   if (currentHasRows && !isValidYmd(input.header.date)) reasons.push("금회 검진일을 입력하세요");
@@ -97,18 +114,20 @@ export function blockingReasons(input: Pick<AssembleInput, "header" | "rounds" |
   if (unnamed > 0) reasons.push(`항목을 알아볼 수 없는 행 ${unnamed}개를 빼거나 매칭하세요`);
   const oversized = rounds.filter((r) => r.rows.filter((row) => row.include).length > MAX_RESULTS_PER_ROUND).length;
   if (oversized > 0) reasons.push(`한 회차에 ${MAX_RESULTS_PER_ROUND}개가 넘는 행이 있습니다 — 나눠서 가져오세요`);
-  if (!rounds.some((r) => r.rows.some((row) => row.include))) reasons.push("포함한 행이 없습니다 — 같은 값은 이미 저장돼 있습니다");
+  const onlyFindings = findingsOnly({ ...input, findings: input.findings ?? [] });
+  if (!onlyFindings && !rounds.some((r) => r.rows.some((row) => row.include))) reasons.push("포함한 행이 없습니다 — 같은 값은 이미 저장돼 있습니다");
   return reasons;
 }
 
 export function assembleImport(input: AssembleInput): AssembleResult {
   const reasons = blockingReasons(input);
   if (reasons.length > 0) return { ok: false, reasons };
+  const onlyFindings = findingsOnly(input);
   const { header } = input;
   const institution = header.institution.trim() || null;
   const rounds = effectiveRounds(input.rounds, header.date)
     .map((round) => ({ round, rows: round.rows.filter((r) => r.include) }))
-    .filter(({ round, rows }) => rows.length > 0 && round.date !== null && isValidYmd(round.date))
+    .filter(({ round, rows }) => (rows.length > 0 || (round.current && onlyFindings)) && round.date !== null && isValidYmd(round.date))
     .map(({ round, rows }) => ({
       date: round.date as string,
       institution,

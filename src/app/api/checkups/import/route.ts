@@ -13,6 +13,10 @@ export async function POST(request: Request) {
     if (!prepared.ok) return NextResponse.json(prepared.body, { status: prepared.status });
 
     const rounds = await importCheckups(prepared);
+    // 소견만 채우려던 기존 회차가 그 사이 지워진 경우 등 — 아무것도 쓰지 않았다 (#533)
+    if (rounds.length === 0) {
+      return NextResponse.json({ error: "저장할 회차가 없습니다 — 기존 기록이 바뀌었을 수 있으니 다시 확인하세요" }, { status: 409 });
+    }
     return NextResponse.json({ rounds }, { status: 201 });
   } catch (error) {
     if (isUniqueViolation(error)) {
