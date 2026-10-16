@@ -22,7 +22,7 @@ const optionalText = (max: number) =>
 
 export const CHECKUP_RESULT_INPUT = z.object({
   /** 생략하면 label 로 카탈로그 매칭 → 없으면 custom code */
-  itemCode: z.string().trim().min(1).max(80).optional(),
+  itemCode: z.string().trim().min(1).max(120).optional(),
   label: z.string().trim().min(1, "항목명이 필요합니다").max(100),
   /** 카탈로그 밖 항목의 분류 (카탈로그 항목은 무시) */
   category: z.string().trim().min(1).max(30).optional(),

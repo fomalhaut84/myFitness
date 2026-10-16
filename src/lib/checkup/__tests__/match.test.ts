@@ -115,9 +115,17 @@ describe("customCode", () => {
     expect(customCode("임의검사-A")).toBe("custom:임의검사a");
   });
 
-  it("정규화 결과가 비면 null · 길이 제한", () => {
+  it("정규화 결과가 비면 null", () => {
     expect(customCode("---")).toBeNull();
-    expect(customCode("가".repeat(100))?.length).toBe("custom:".length + 60);
+  });
+
+  // 회귀: PR #528 Codex P2 — 자르면 앞부분이 같은 두 이름이 한 code 로 합쳐진다
+  it("상한까지는 그대로 · 넘으면 자르지 않고 null", () => {
+    const a = customCode("가".repeat(70) + "A");
+    const b = customCode("가".repeat(70) + "B");
+    expect(a).not.toBe(b);
+    expect(customCode("가".repeat(100))?.length).toBe("custom:".length + 100);
+    expect(customCode("가".repeat(101))).toBeNull();
   });
 
   it("카탈로그 조회", () => {

@@ -8,7 +8,7 @@ interface Params {
   params: Promise<{ code: string }>;
 }
 
-const CODE_RE = /^(?:[a-z0-9_]{1,40}|custom:[0-9a-z가-힣]{1,60})$/;
+const CODE_RE = /^(?:[a-z0-9_]{1,40}|custom:[0-9a-z가-힣]{1,100})$/; // MAX_CUSTOM_SLUG
 
 /** custom code 는 한글 — 세그먼트가 인코딩된 채로 오면 풀고, 잘못된 % 시퀀스는 그대로 둬 정규식이 거른다. */
 function safeDecode(raw: string): string {

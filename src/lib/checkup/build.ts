@@ -25,7 +25,7 @@ export interface CheckupResultRow {
 
 export type BuildResult = { ok: true; rows: CheckupResultRow[] } | { ok: false; error: string };
 
-const CUSTOM_CODE_RE = /^custom:[0-9a-z가-힣]{1,60}$/;
+const CUSTOM_CODE_RE = /^custom:[0-9a-z가-힣]{1,100}$/; // MAX_CUSTOM_SLUG
 
 function resolveCode(input: CheckupResultInput): { code: string } | { error: string } {
   if (input.itemCode) {
@@ -38,7 +38,7 @@ function resolveCode(input: CheckupResultInput): { code: string } | { error: str
     return { error: `알 수 없는 항목 코드입니다: ${input.itemCode}` };
   }
   const code = matchItem(input.label) ?? customCode(input.label);
-  return code ? { code } : { error: `항목명을 알아볼 수 없습니다: ${input.label}` };
+  return code ? { code } : { error: `항목명을 알아볼 수 없거나 너무 깁니다: ${input.label}` };
 }
 
 function buildRow(input: CheckupResultInput, code: string): CheckupResultRow {

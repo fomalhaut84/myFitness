@@ -2,7 +2,8 @@
 // 정규화 + 후보 분해로 맞춘다. 기관별 표기를 별칭으로 하드코딩하지 않는다 (public 저장소 · 스펙 §5). 순수.
 import { CHECKUP_ITEMS, CUSTOM_PREFIX } from "./items";
 
-const MAX_CUSTOM_SLUG = 60;
+/** custom code slug 상한 — 자르지 않는다 (앞부분이 같은 두 이름이 한 code 로 합쳐진다 · PR #528 Codex P2). 넘으면 null */
+export const MAX_CUSTOM_SLUG = 100;
 
 /** 비교용 정규화: NFKC · 소문자 · γ→g · 공백 · 구두점 제거. 한글 · 영숫자만 남긴다. */
 export function normalizeLabel(label: string): string {
@@ -87,8 +88,8 @@ export function lookupNormalized(key: string): string | null {
   return INDEX.get(key) ?? null;
 }
 
-/** 카탈로그 밖 항목 code — 같은 이름은 회차 간 같은 code 로 묶인다. 정규화 결과가 비면 null. */
+/** 카탈로그 밖 항목 code — 같은 이름은 회차 간 같은 code 로 묶인다. 정규화 결과가 비거나 상한을 넘으면 null. */
 export function customCode(label: string): string | null {
-  const slug = normalizeLabel(label).slice(0, MAX_CUSTOM_SLUG);
-  return slug ? `${CUSTOM_PREFIX}${slug}` : null;
+  const slug = normalizeLabel(label);
+  return slug && slug.length <= MAX_CUSTOM_SLUG ? `${CUSTOM_PREFIX}${slug}` : null;
 }
