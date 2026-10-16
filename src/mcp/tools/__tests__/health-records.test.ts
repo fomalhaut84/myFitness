@@ -41,12 +41,21 @@ describe("resolveItemQuery", () => {
     expect(resolveItemQuery("공복혈당")).toEqual({ code: "fbs" });
     expect(resolveItemQuery("custom:가상항목")).toEqual({ code: "custom:가상항목" });
     expect(resolveItemQuery("가상 검사")).toEqual({ code: "custom:가상검사" });
+    expect(resolveItemQuery("custom:가상 항목")).toEqual({ code: "custom:가상항목" });
     expect(resolveItemQuery("  ")).toMatchObject({ error: expect.any(String) });
     expect(resolveItemQuery("※")).toMatchObject({ error: expect.any(String) });
   });
-  it("비슷한 이름 제안", () => {
-    expect(suggestItems("콜레스테롤").length).toBeGreaterThan(0);
-    expect(suggestItems("콜레스테롤").every((s) => s.includes("콜레스테롤"))).toBe(true);
+  // 회귀: #547 사전 리뷰 major — 카탈로그 밖 항목은 원문 전체가 code 라 일부 이름으로 못 찾았고 제안에도 없었다
+  it("기록된 항목만 제안 · 카탈로그 밖 항목 포함 · 짧은 별칭 역매칭 없음", () => {
+    const recorded = [
+      { code: "tc", label: "총콜레스테롤" },
+      { code: "ldl", label: "LDL 콜레스테롤" },
+      { code: "custom:가상검사정량", label: "가상검사(정량)" },
+      { code: "urine_ph", label: "요 pH" },
+    ];
+    expect(suggestItems("콜레스테롤", recorded)).toEqual(["총콜레스테롤 (tc)", "LDL 콜레스테롤 (ldl)"]);
+    expect(suggestItems("가상검사", recorded)).toEqual(["가상검사(정량) (custom:가상검사정량)"]);
+    expect(suggestItems("phosphorus", recorded)).toEqual([]);
   });
 });
 

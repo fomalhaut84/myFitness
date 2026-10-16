@@ -6,10 +6,9 @@ import { getCheckupItem } from "@/lib/checkup/items";
 import { countFlags, pendingFollowUps, previousResults } from "@/lib/checkup/compare";
 import { sortResults, toFindings } from "@/lib/checkup/dto";
 import { splitTrendByUnit } from "@/lib/checkup/view";
-import type { MedicationDto } from "@/lib/medication/dto";
+import { MEDICATION_ORDER, toMedicationDto, type MedicationDto } from "@/lib/medication/dto";
 import { medsForCheckup, medsForItem } from "@/lib/medication/link";
 import { medicationStatus } from "@/lib/medication/period";
-import type { MedicationKind, MedicationRegimen } from "@/lib/medication/schema";
 import { DEFAULT_ROUNDS, MAX_ROUNDS, flagText, medicationView, resolveItemQuery, resultValue, suggestItems } from "./health-records-view";
 
 function text(payload: unknown) {
@@ -17,22 +16,8 @@ function text(payload: unknown) {
 }
 
 async function loadMedications(): Promise<MedicationDto[]> {
-  const rows = await prisma.medication.findMany({ orderBy: { startDate: "desc" } });
-  return rows.map((r) => ({
-    id: r.id,
-    name: r.name,
-    kind: r.kind as MedicationKind,
-    regimen: r.regimen as MedicationRegimen,
-    ingredient: r.ingredient,
-    dose: r.dose,
-    frequency: r.frequency,
-    startDate: ymdKST(r.startDate),
-    endDate: r.endDate ? ymdKST(r.endDate) : null,
-    purpose: r.purpose,
-    prescriber: r.prescriber,
-    note: r.note,
-    relatedItems: r.relatedItems,
-  }));
+  const rows = await prisma.medication.findMany({ orderBy: MEDICATION_ORDER });
+  return rows.map(toMedicationDto);
 }
 
 async function customLabels(): Promise<Record<string, string>> {
@@ -43,6 +28,15 @@ async function customLabels(): Promise<Record<string, string>> {
     select: { itemCode: true, label: true },
   });
   return Object.fromEntries(rows.map((r) => [r.itemCode, r.label]));
+}
+
+/** 검진에 기록된 항목 (카탈로그 · 카탈로그 밖) — code · 표시 이름 */
+async function recordedItems(): Promise<{ code: string; label: string }[]> {
+  const [codes, custom] = await Promise.all([
+    prisma.checkupResult.findMany({ distinct: ["itemCode"], select: { itemCode: true } }),
+    customLabels(),
+  ]);
+  return codes.map(({ itemCode }) => ({ code: itemCode, label: getCheckupItem(itemCode)?.label ?? custom[itemCode] ?? itemCode }));
 }
 
 export async function getCheckupHistory(args: { rounds?: number }) {
@@ -128,8 +122,8 @@ export async function getCheckupItemTrend(args: { item: string }) {
     orderBy: { checkup: { date: "asc" } },
   });
   if (rows.length === 0) {
-    // "콜레스테롤" 처럼 여러 항목에 걸친 이름은 카탈로그 밖 code 로 떨어진다 — 비슷한 항목을 함께 알려 다시 묻게
-    return text({ error: `이 항목의 검진 기록이 없습니다: ${args.item}`, code: q.code, suggestions: suggestItems(args.item) });
+    // "콜레스테롤" 처럼 여러 항목에 걸친 이름 · 카탈로그 밖 항목의 일부 이름 — 기록이 있는 비슷한 항목을 알려 다시 묻게
+    return text({ error: `이 항목의 검진 기록이 없습니다: ${args.item}`, code: q.code, suggestions: suggestItems(args.item, await recordedItems()) });
   }
   const meds = await loadMedications();
   const points = rows.map((r) => ({ ...r, date: ymdKST(r.checkup.date) }));

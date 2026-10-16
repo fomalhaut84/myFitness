@@ -1,5 +1,5 @@
 // #547 (M18-4): 건강 기록 MCP 응답 조립 — 순수 (DB 무관 · 테스트 대상). 조회는 health-records.ts.
-import { CHECKUP_ITEMS, getCheckupItem, isCustomCode } from "@/lib/checkup/items";
+import { getCheckupItem, isCustomCode } from "@/lib/checkup/items";
 import { customCode, matchItem, normalizeLabel } from "@/lib/checkup/match";
 import { FLAG_LABEL, flagTone } from "@/lib/checkup/view";
 import type { MedicationDto } from "@/lib/medication/dto";
@@ -24,23 +24,40 @@ export function resultValue(r: { valueText: string | null; valueNum: number | nu
 
 export type ItemQuery = { code: string } | { error: string; suggestions: string[] };
 
-/** item 인자 → 항목 code. code 형식이면 그대로, 아니면 이름으로 카탈로그 매칭 → 카탈로그 밖 이름은 custom code (있는지는 호출자가 DB 로) */
+/**
+ * item 인자 → 항목 code. code 형식이면 그대로 · `custom:…` 은 slug 를 정규화 · 이름은 카탈로그 매칭 → 카탈로그 밖 이름은
+ * custom code (있는지는 호출자가 DB 로 · 없으면 suggestItems).
+ */
 export function resolveItemQuery(item: string): ItemQuery {
   const q = item.trim();
   if (!q) return { error: "항목을 지정하세요 (예: LDL · 공복혈당 · ldl)", suggestions: [] };
   if (ITEM_CODE_RE.test(q) && (getCheckupItem(q) || isCustomCode(q))) return { code: q };
-  const code = matchItem(q) ?? customCode(q);
+  // `custom:LDL` 처럼 대문자 · 기호가 섞인 code — slug 만 정규화 (`custom:customldl` 이 되지 않게 · #547 사전 리뷰 info 1)
+  const code = isCustomCode(q) ? customCode(q.slice("custom:".length)) : (matchItem(q) ?? customCode(q));
   if (code) return { code };
-  return { error: `항목 이름을 알아볼 수 없습니다: ${q}`, suggestions: suggestItems(q) };
+  return { error: `항목 이름을 알아볼 수 없습니다: ${q}`, suggestions: [] };
 }
 
-/** 이름 일부가 겹치는 카탈로그 항목 (최대 5) */
-export function suggestItems(q: string): string[] {
+const MIN_REVERSE_MATCH = 3;
+
+/**
+ * 기록이 있는 항목 중 이름이 겹치는 것 (최대 5 · "이름 (code)"). 카탈로그 밖 항목도 포함 — 원문 전체가 code 라
+ * 일부 이름으로는 찾을 수 없다 (#547 사전 리뷰 major). 짧은 별칭 (pH 등) 은 질의가 별칭을 품는 쪽으로 매칭하지 않는다.
+ */
+export function suggestItems(q: string, recorded: readonly { code: string; label: string }[]): string[] {
   const key = normalizeLabel(q);
   if (!key) return [];
-  return CHECKUP_ITEMS.filter((i) => [i.label, ...i.aliases].some((n) => normalizeLabel(n).includes(key) || key.includes(normalizeLabel(n))))
+  const matches = (name: string) => {
+    const n = normalizeLabel(name);
+    return n !== "" && (n.includes(key) || (n.length >= MIN_REVERSE_MATCH && key.includes(n)));
+  };
+  return recorded
+    .filter((r) => {
+      const item = getCheckupItem(r.code);
+      return [r.label, ...(item ? [item.label, ...item.aliases] : [])].some(matches);
+    })
     .slice(0, 5)
-    .map((i) => `${i.label} (${i.code})`);
+    .map((r) => `${r.label} (${r.code})`);
 }
 
 export interface MedicationView {
