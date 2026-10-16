@@ -10,11 +10,12 @@ export const DEFAULT_ROUNDS = 5;
 export const MAX_ROUNDS = 20;
 const ITEM_CODE_RE = /^(?:[a-z0-9_]{1,40}|custom:[0-9a-z가-힣]{1,100})$/;
 
-/** 판정 표기 — 기관 판정은 "주의/이상 (기관)", 범위 계산은 "이상 (범위 계산)" · 정상 · 없음은 null */
+/** 판정 표기 — "주의/이상/정상 (기관 판정 | 범위 계산)" · 판정 없음은 null. 정상도 출처를 붙인다 (PR #548 Codex P2) */
 export function flagText(flag: string | null, flagSource: string | null): string | null {
   const tone = flagTone(flag);
-  if (!tone) return flag === "normal" ? "정상" : null;
-  return `${FLAG_LABEL[tone]} (${flagSource === "computed" ? "범위 계산" : "기관 판정"})`;
+  const label = tone ? FLAG_LABEL[tone] : flag === "normal" ? "정상" : null;
+  if (!label) return null;
+  return `${label} (${flagSource === "computed" ? "범위 계산" : "기관 판정"})`;
 }
 
 export function resultValue(r: { valueText: string | null; valueNum: number | null; unit: string | null }): string {

@@ -25,7 +25,8 @@ describe("flagText · resultValue", () => {
   it("기관 판정 · 범위 계산 · 정상 · 없음", () => {
     expect(flagText("caution", "institution")).toBe("주의 (기관 판정)");
     expect(flagText("abnormal", "computed")).toBe("이상 (범위 계산)");
-    expect(flagText("normal", "computed")).toBe("정상");
+    expect(flagText("normal", "computed")).toBe("정상 (범위 계산)");
+    expect(flagText("normal", "institution")).toBe("정상 (기관 판정)");
     expect(flagText(null, null)).toBeNull();
   });
   it("원문 값 + 단위", () => {
