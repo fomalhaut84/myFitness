@@ -231,7 +231,8 @@ function SaveBar({ header, rounds, existing, saving, error, lookupError, maxDate
         <b className="font-[family-name:var(--font-geist-mono)] font-medium text-bright">{summary.overwritten}</b>
         {summary.skipped > 0 && <> · 건너뜀 {summary.skipped}</>}
         {reasons.length > 0 && <p className="mt-0.5 text-xs text-red-400">{reasons.join(" · ")}</p>}
-        {lookupError ? (
+        {/* 실패한 날짜를 다른 날짜로 바꿔 조회할 것이 없으면 오류도 감춘다 */}
+        {lookupError && summary.loading ? (
           <p role="alert" className="mt-0.5 text-xs text-red-400">
             {lookupError} ·{" "}
             <button type="button" onClick={onRetryLookup} className="underline hover:text-bright">

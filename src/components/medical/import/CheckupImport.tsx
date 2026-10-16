@@ -70,7 +70,7 @@ export default function CheckupImport({ today }: { today: string }) {
   const [existing, setExisting] = useState<ReadonlyMap<string, ExistingRound | null>>(new Map());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
-  /** 같은 날짜 기존 회차 조회 실패 — 조회 중 상태에 갇혀 저장이 막히지 않게 원인 + 다시 확인 (#540) */
+  /** 같은 날짜 기존 회차 조회 실패 — 원인 표시 + 다시 확인 (저장은 조회가 성공할 때까지 막힌다 · #540) */
   const [lookupError, setLookupError] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<ImportRoundOutcome[]>([]);
 
