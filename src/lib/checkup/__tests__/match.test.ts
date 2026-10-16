@@ -1,0 +1,93 @@
+// #527: 항목명 매칭 — 정규화 · 괄호 부기 · `_` 결합 표기. 카탈로그 무결성 (code 중복 · 별칭 충돌).
+import { describe, expect, it } from "vitest";
+import { CHECKUP_CATEGORIES, CHECKUP_ITEMS, getCheckupItem } from "../items";
+import { customCode, labelCandidates, matchItem, normalizeLabel } from "../match";
+
+describe("카탈로그 무결성", () => {
+  it("code 중복 없음", () => {
+    const codes = CHECKUP_ITEMS.map((i) => i.code);
+    expect(new Set(codes).size).toBe(codes.length);
+  });
+
+  it("정규화한 이름 · 별칭이 서로 다른 두 항목에 겹치지 않는다", () => {
+    const owner = new Map<string, string>();
+    const clashes: string[] = [];
+    for (const item of CHECKUP_ITEMS) {
+      for (const name of [item.code, item.label, ...item.aliases]) {
+        const key = normalizeLabel(name);
+        const prev = owner.get(key);
+        if (prev && prev !== item.code) clashes.push(`${key}: ${prev} / ${item.code}`);
+        owner.set(key, item.code);
+      }
+    }
+    expect(clashes).toEqual([]);
+  });
+
+  it("모든 항목의 분류가 섹션 목록에 있다", () => {
+    for (const item of CHECKUP_ITEMS) expect(CHECKUP_CATEGORIES).toContain(item.category);
+  });
+
+  it("numeric 항목은 소수 자릿수가 0 이상 정수", () => {
+    for (const item of CHECKUP_ITEMS.filter((i) => i.valueType === "numeric")) {
+      expect(Number.isInteger(item.decimals) && item.decimals >= 0).toBe(true);
+    }
+  });
+});
+
+describe("normalizeLabel", () => {
+  it("대소문자 · 공백 · 구두점 · 그리스 문자", () => {
+    expect(normalizeLabel(" γ-GTP ")).toBe("ggtp");
+    expect(normalizeLabel("HDL 콜레스테롤")).toBe("hdl콜레스테롤");
+    expect(normalizeLabel("ＡＳＴ")).toBe("ast"); // 전각 → NFKC
+  });
+});
+
+describe("matchItem", () => {
+  it("이름 · 별칭 · code", () => {
+    expect(matchItem("공복혈당")).toBe("fbs");
+    expect(matchItem("감마지티피")).toBe("ggt");
+    expect(matchItem("γ-GTP")).toBe("ggt");
+    expect(matchItem("ldl")).toBe("ldl");
+  });
+
+  it("괄호 · 대괄호 부기는 떼고 맞춘다", () => {
+    expect(matchItem("크레아티닌[혈청]")).toBe("creatinine");
+    expect(matchItem("AST (SGOT)")).toBe("ast");
+    expect(matchItem("요단백(정성)")).toBe("urine_protein");
+  });
+
+  it("괄호 안 내용이 항목명인 표기", () => {
+    expect(matchItem("NGSP 검사(당화혈색소)")).toBe("hba1c");
+  });
+
+  it("`_` 로 결합된 표기는 부분별로 맞춘다", () => {
+    expect(matchItem("췌장효소_Lipase")).toBe("lipase");
+    expect(matchItem("간암표지자_AFP(EIA)")).toBe("afp");
+  });
+
+  it("미매칭은 null", () => {
+    expect(matchItem("임의 검사 항목")).toBeNull();
+    expect(matchItem("()")).toBeNull();
+  });
+
+  it("후보는 중복 없이 우선순위 순", () => {
+    expect(labelCandidates("크레아티닌[혈청]")).toEqual(["크레아티닌혈청", "크레아티닌", "혈청"]);
+  });
+});
+
+describe("customCode", () => {
+  it("같은 이름은 표기 차이가 있어도 같은 code", () => {
+    expect(customCode("임의 검사 A")).toBe("custom:임의검사a");
+    expect(customCode("임의검사-A")).toBe("custom:임의검사a");
+  });
+
+  it("정규화 결과가 비면 null · 길이 제한", () => {
+    expect(customCode("---")).toBeNull();
+    expect(customCode("가".repeat(100))?.length).toBe("custom:".length + 60);
+  });
+
+  it("카탈로그 조회", () => {
+    expect(getCheckupItem("hba1c")?.unit).toBe("%");
+    expect(getCheckupItem("custom:x")).toBeUndefined();
+  });
+});
