@@ -1,0 +1,135 @@
+// #532: 병합된 추출 결과 → 확인 화면 초안 (회차별 행 + 항목 매칭). 금회 행 → 금회 회차, 과거결과 열 → 날짜별 회차. 순수.
+import { getCheckupItem } from "../items";
+import { customCode, lookupNormalized, matchItem, normalizeLabel } from "../match";
+import type { CheckupFlag } from "../flag";
+import type { MergedExtraction, MergedItem } from "./merge";
+
+/** exact: 원문 이름이 카탈로그 이름 · 별칭과 그대로 일치 / fuzzy: 부기 제거 · 분해로 찾음 (확인 필요) / none: 카탈로그 밖 (새 항목) */
+export type MatchConfidence = "exact" | "fuzzy" | "none";
+
+export interface ItemMatch {
+  /** null: 이름으로 항목을 만들 수 없다 (기호만 · 너무 김) — 포함할 수 없음 */
+  itemCode: string | null;
+  confidence: MatchConfidence;
+}
+
+export interface DraftRow {
+  key: string;
+  label: string;
+  section: string | null;
+  value: string;
+  unit: string | null;
+  ref: string | null;
+  flag: CheckupFlag | null;
+  note: string | null;
+  followUp: string | null;
+  followUpDue: string | null;
+  itemCode: string | null;
+  confidence: MatchConfidence;
+  /** 같은 행이 쪽마다 다른 값으로 읽혔다 */
+  conflict: boolean;
+  include: boolean;
+  /** 같은 날짜 회차에 같은 항목이 있고 값이 다를 때만 의미 — 체크한 것만 덮어쓴다 (스펙 §3-2) */
+  overwrite: boolean;
+}
+
+export interface DraftRound {
+  /** "current" 또는 과거 회차 날짜 */
+  key: string;
+  current: boolean;
+  /** 금회는 사용자 입력 전 null 일 수 있다 */
+  date: string | null;
+  rows: DraftRow[];
+}
+
+/** 소변 섹션 · 요침사 섹션 — 혈액 항목과 이름이 같은 행 (WBC · RBC) 을 소변 항목으로 다시 찾는다 */
+const URINE_SECTION_RE = /(소변|요검사|뇨검사|요화학|urine|urinalysis)/;
+const SEDIMENT_SECTION_RE = /(요침사|sediment)/;
+
+function urineQualifier(section: string | null): string | null {
+  const s = normalizeLabel(section ?? "");
+  if (SEDIMENT_SECTION_RE.test(s)) return "요침사";
+  if (URINE_SECTION_RE.test(s)) return "요";
+  return null;
+}
+
+/** 카탈로그 밖 항목 code. 이름이 카탈로그 항목과 같아지면 (`custom:wbc` → wbc) 섹션을 붙여 구분, 그래도 겹치면 null */
+export function newItemCode(label: string, section: string | null): string | null {
+  for (const name of [label, `${section ?? ""}${label}`]) {
+    const code = customCode(name);
+    if (code && !lookupNormalized(code.slice("custom:".length))) return code;
+  }
+  return null;
+}
+
+export function matchExtracted(label: string, section: string | null): ItemMatch {
+  const code = matchItem(label);
+  if (!code) return { itemCode: newItemCode(label, section), confidence: "none" };
+  const qualifier = urineQualifier(section);
+  if (qualifier && getCheckupItem(code)?.category !== "소변") {
+    // 소변 섹션의 `WBC` 가 혈액 백혈구로 가지 않게 — 한정자를 붙여 다시 찾고, 못 찾으면 그대로 두되 확인 표시
+    const urine = matchItem(`${label}(${qualifier})`);
+    const urineCode = urine && getCheckupItem(urine)?.category === "소변" ? urine : null;
+    return { itemCode: urineCode ?? code, confidence: "fuzzy" };
+  }
+  const exact = lookupNormalized(normalizeLabel(label)) === code;
+  return { itemCode: code, confidence: exact ? "exact" : "fuzzy" };
+}
+
+function baseRow(item: MergedItem, key: string): Omit<DraftRow, "value" | "ref" | "flag" | "note" | "followUp" | "followUpDue"> {
+  const match = matchExtracted(item.label, item.section);
+  return {
+    key,
+    label: item.label,
+    section: item.section,
+    unit: item.unit,
+    itemCode: match.itemCode,
+    confidence: match.confidence,
+    conflict: item.conflict,
+    include: match.itemCode !== null,
+    overwrite: false,
+  };
+}
+
+/**
+ * 금회 회차 (첫 번째) + 과거결과 열 날짜별 회차 (최근 순). 과거 값은 값만 — 결과지 과거 열에 없는 판정 · 기준범위 ·
+ * 판독문은 만들지 않는다. 금회 검진일이 과거 날짜와 같아지는 경우는 요청 조립 (buildImportRequest) 이 합친다.
+ */
+export function buildDraftRounds(merged: MergedExtraction): DraftRound[] {
+  const currentRows: DraftRow[] = merged.items.map((item, i) => ({
+    ...baseRow(item, `current:${i}`),
+    value: item.value,
+    ref: item.ref,
+    flag: item.flag,
+    note: item.note,
+    followUp: item.followUp,
+    followUpDue: null,
+  }));
+  const past = new Map<string, DraftRow[]>();
+  merged.items.forEach((item, i) => {
+    for (const p of item.past) {
+      const rows = past.get(p.date) ?? [];
+      past.set(p.date, [
+        ...rows,
+        { ...baseRow(item, `${p.date}:${i}`), value: p.value, ref: null, flag: null, note: null, followUp: null, followUpDue: null, conflict: false },
+      ]);
+    }
+  });
+  const pastRounds = [...past.entries()]
+    .sort(([a], [b]) => b.localeCompare(a))
+    .map(([date, rows]) => ({ key: date, current: false, date, rows }));
+  return [{ key: "current", current: true, date: merged.examDate, rows: currentRows }, ...pastRounds];
+}
+
+/** 포함된 행 중 앞 행과 같은 itemCode 로 매칭된 행 → 앞 행의 원문 이름 (저장을 막는다 · `@@unique([checkupId, itemCode])`) */
+export function duplicateRows(rows: readonly DraftRow[]): Map<string, string> {
+  const first = new Map<string, string>();
+  const dups = new Map<string, string>();
+  for (const row of rows) {
+    if (!row.include || !row.itemCode) continue;
+    const prev = first.get(row.itemCode);
+    if (prev === undefined) first.set(row.itemCode, row.label);
+    else dups.set(row.key, prev);
+  }
+  return dups;
+}
