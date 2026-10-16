@@ -24,8 +24,9 @@ export const IMPORT_ROUND_INPUT = z.object({
   institution: CHECKUP_INPUT.shape.institution,
   kind: CHECKUP_INPUT.shape.kind,
   findings: CHECKUP_INPUT.shape.findings,
-  results: z.array(IMPORT_RESULT_INPUT).min(1, "결과가 하나 이상 필요합니다").max(MAX_RESULTS_PER_ROUND),
-});
+  /** 비어 있으면 섹션 소견만 — 같은 날짜 기존 회차의 빈 소견을 채운다 (없는 회차는 만들지 않는다 · #533) */
+  results: z.array(IMPORT_RESULT_INPUT).max(MAX_RESULTS_PER_ROUND),
+}).refine((r) => r.results.length > 0 || (r.findings?.length ?? 0) > 0, { message: "결과나 소견이 하나 이상 필요합니다", path: ["results"] });
 
 export const IMPORT_INPUT = z
   .object({

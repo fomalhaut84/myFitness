@@ -15,6 +15,8 @@ export interface ExistingRound {
   id: string;
   date: string;
   results: readonly ExistingResult[];
+  /** 섹션 소견이 이미 있다 — 소견만 채우기 대상이 아니다 (#533) */
+  hasFindings?: boolean;
 }
 
 const NUM_RE = /^-?\d+(?:\.\d+)?$/;
@@ -51,14 +53,20 @@ export function rowStatus(
  * (체크하지 않으면 저장 때 건너뛴다 · 스펙 §3-2). 회차 날짜가 바뀔 때마다 다시 부른다 — 이전 날짜의 기본값
  * (같은 값이라 뺀 행) 이 새 날짜에 남지 않도록 현재 값이 아니라 처음부터 계산한다 (PR 전 리뷰 major 1).
  */
-export function applyExistingDefaults(round: DraftRound, existing: ExistingRound | null): DraftRound {
+export function applyExistingDefaults(round: DraftRound, existing: ExistingRound | null, date?: string): DraftRound {
   return {
     ...round,
     rows: round.rows.map((row) => {
+      if (date !== undefined && row.touchedFor === date) return row;
       const status = existing ? rowStatus(row, existing).status : "new";
       return { ...row, include: row.itemCode !== null && status !== "same", overwrite: false };
     }),
   };
+}
+
+/** 소견만 채울 수 있는 날짜 — 기존 회차가 있고 소견이 비어 있다 (#533) */
+export function existingDateSet(existing: ReadonlyMap<string, ExistingRound | null>): Set<string> {
+  return new Set([...existing].filter(([, round]) => round !== null && !round.hasFindings).map(([date]) => date));
 }
 
 export interface ImportSummary {

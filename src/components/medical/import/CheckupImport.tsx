@@ -7,7 +7,7 @@ import { prepareFiles, type PendingPage } from "@/lib/checkup/import/client-page
 import type { ExtractedPage } from "@/lib/checkup/import/extract-schema";
 import { mergePages } from "@/lib/checkup/import/merge";
 import { buildDraftRounds, type DraftRound } from "@/lib/checkup/import/draft";
-import { applyExistingDefaults, type ExistingRound } from "@/lib/checkup/import/status";
+import { applyExistingDefaults, existingDateSet, type ExistingRound } from "@/lib/checkup/import/status";
 import { assembleImport, roundDate, type ImportFinding, type ImportHeader } from "@/lib/checkup/import/assemble";
 import type { ImportRoundOutcome } from "@/lib/checkup/import/write";
 import FilePicker, { type ImageSource } from "./FilePicker";
@@ -42,7 +42,7 @@ function applyLoaded(review: ReviewState, loaded: ReadonlyMap<string, ExistingRo
     const date = roundDate(round, review.header.date);
     if (!date || !loaded.has(date) || applied[round.key] === date) return round;
     applied = { ...applied, [round.key]: date };
-    return applyExistingDefaults(round, loaded.get(date) ?? null);
+    return applyExistingDefaults(round, loaded.get(date) ?? null, date);
   });
   return applied === review.applied ? review : { ...review, rounds, applied };
 }
@@ -176,8 +176,13 @@ export default function CheckupImport({ today }: { today: string }) {
         .then(async (index): Promise<ExistingRound | null> => {
           const id = index.get(date);
           if (!id) return null;
-          const body = await fetchJson<{ checkup: { results: ExistingRound["results"] } }>(`/api/checkups/${id}`);
-          return { id, date, results: body.checkup.results.map(({ itemCode, valueNum, valueText, unit }) => ({ itemCode, valueNum, valueText, unit })) };
+          const body = await fetchJson<{ checkup: { results: ExistingRound["results"]; findings: unknown[] } }>(`/api/checkups/${id}`);
+          return {
+            id,
+            date,
+            results: body.checkup.results.map(({ itemCode, valueNum, valueText, unit }) => ({ itemCode, valueNum, valueText, unit })),
+            hasFindings: body.checkup.findings.length > 0,
+          };
         })
         .then((found) => {
           setExisting((m) => new Map(m).set(date, found));
@@ -221,6 +226,7 @@ export default function CheckupImport({ today }: { today: string }) {
       rounds: review.rounds,
       findings: review.findings,
       pages: upload.pages.flatMap((p) => resultsRef.current.get(p.id) ?? []),
+      existingDates: existingDateSet(existing),
     });
     if (!assembled.ok) {
       setSaveError(assembled.reasons.join(" · "));
@@ -290,7 +296,13 @@ export default function CheckupImport({ today }: { today: string }) {
           onRowChange={(roundKey, rowKey, patch: RowPatch) =>
             updateReview((r) => ({
               ...r,
-              rounds: r.rounds.map((x) => (x.key === roundKey ? { ...x, rows: x.rows.map((row) => (row.key === rowKey ? { ...row, ...patch } : row)) } : x)),
+              rounds: r.rounds.map((x) => {
+                if (x.key !== roundKey) return x;
+                // 포함을 바꾸거나 덮어쓰기를 체크하면 그 날짜에 한해 늦게 온 기본값이 덮지 않는다 (#533) — 매칭 변경의 덮어쓰기 해제는 제외
+                const userChoice = "include" in patch || patch.overwrite === true;
+                const date = roundDate(x, r.header.date) ?? "";
+                return { ...x, rows: x.rows.map((row) => (row.key === rowKey ? { ...row, ...patch, touchedFor: userChoice ? date : row.touchedFor } : row)) };
+              }),
             }))
           }
           onFindingToggle={(key) => updateReview((r) => ({ ...r, findings: r.findings.map((f) => (f.key === key ? { ...f, include: !f.include } : f)) }))}

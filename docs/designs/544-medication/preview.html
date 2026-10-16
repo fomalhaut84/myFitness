@@ -1,0 +1,213 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>복약정보 시안 (#544)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --surface-hover:#262626; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e; --accent-bg:rgba(34,197,94,.12);
+    --rx:#a5b4fc; --rx-bg:rgba(99,102,241,.18); --sup:#5eead4; --sup-bg:rgba(20,184,166,.16);
+    --caution:#fcd34d; --caution-bg:rgba(120,53,15,.4); --abnormal:#f87171; --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  .page { max-width:1120px; margin:0 auto; padding:24px 16px 96px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:8px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:48px 0 12px; padding-top:16px; border-top:1px dashed var(--border); }
+  .mono { font-family:var(--mono); }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+  .pagehead h1 { font-size:24px; font-weight:600; color:var(--bright); }
+  .pagehead p { color:var(--sub); font-size:13px; margin-top:2px; }
+  .btn { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 13px; cursor:pointer; font-size:13px; }
+  .btn:hover { border-color:var(--border-hover); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#04130a; font-weight:500; }
+  .btn.small { padding:3px 9px; font-size:12px; }
+  .btn.ghost { background:none; border-color:transparent; color:var(--sub); }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:999px; white-space:nowrap; }
+  .rx { background:var(--rx-bg); color:var(--rx); }
+  .sup { background:var(--sup-bg); color:var(--sup); }
+  .short { background:var(--surface); color:var(--sub); }
+
+  /* 탭 */
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; }
+  .tabs a { padding:8px 14px; color:var(--sub); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; }
+  .tabs a[aria-current] { color:var(--bright); border-color:var(--accent); }
+
+  /* 복용 중 */
+  .section-title { font-size:13px; font-weight:500; color:var(--bright); margin:0 0 10px; display:flex; gap:8px; align-items:baseline; }
+  .section-title small { color:var(--dim); font-weight:400; font-size:12px; }
+  .active { display:grid; grid-template-columns:repeat(auto-fill,minmax(250px,1fr)); gap:10px; margin-bottom:24px; }
+  .med { padding:12px 14px; display:grid; gap:6px; }
+  .med .top { display:flex; justify-content:space-between; gap:8px; align-items:flex-start; }
+  .med .name { color:var(--bright); font-weight:500; }
+  .med .meta { font-size:12px; color:var(--sub); }
+  .med .since { font:12px var(--mono); color:var(--text); }
+  .med .rel { display:flex; gap:4px; flex-wrap:wrap; }
+  .med .rel span { font-size:11px; color:var(--sub); border:1px solid var(--border); border-radius:4px; padding:0 5px; }
+  .med .acts { display:flex; gap:6px; margin-top:2px; }
+  .med.shortterm { border-style:dashed; }
+
+  /* 타임라인 — 이 화면의 강조. 장기는 막대, 단기는 점, 검진은 세로 눈금 */
+  .tl { padding:14px 16px 10px; margin-bottom:24px; overflow-x:auto; }
+  .tl-inner { min-width:640px; }
+  .axis { position:relative; height:18px; margin-left:140px; font:11px var(--mono); color:var(--dim); }
+  .axis span { position:absolute; transform:translateX(-50%); }
+  .lane { display:grid; grid-template-columns:140px 1fr; align-items:center; height:26px; }
+  .lane .lbl { font-size:12px; color:var(--text); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; padding-right:8px; }
+  .track { position:relative; height:100%; }
+  .bar { position:absolute; top:8px; height:10px; border-radius:5px; }
+  .bar.rx { background:var(--rx); opacity:.85; }
+  .bar.sup { background:var(--sup); opacity:.75; }
+  .bar.open::after { content:""; position:absolute; right:-6px; top:-2px; border:7px solid transparent; border-left-color:inherit; }
+  .dot { position:absolute; top:9px; width:8px; height:8px; border-radius:50%; background:var(--sub); transform:translateX(-50%); }
+  .checkups { position:absolute; inset:0 0 0 140px; pointer-events:none; }
+  .checkups i { position:absolute; top:18px; bottom:0; border-left:1px dashed rgba(34,197,94,.45); }
+  .checkups b { position:absolute; top:4px; transform:translateX(-50%); font:500 10px var(--mono); color:var(--accent); }
+  .tl-legend { display:flex; gap:14px; margin:8px 0 0 140px; font-size:11px; color:var(--sub); flex-wrap:wrap; }
+  .tl-legend i { display:inline-block; width:14px; height:6px; border-radius:3px; margin-right:5px; vertical-align:middle; }
+
+  /* 지난 복약 */
+  .past h3 { font:500 12px var(--mono); color:var(--sub); margin:14px 0 6px; }
+  .row { display:grid; grid-template-columns:minmax(0,1.4fr) minmax(0,1fr) auto; gap:10px; padding:8px 12px; border-top:1px solid var(--border); font-size:13px; align-items:center; }
+  .row:first-of-type { border-top:0; }
+  .row .n { color:var(--bright); }
+  .row .p { font:12px var(--mono); color:var(--sub); }
+
+  /* 폼 */
+  .form { padding:18px; max-width:760px; }
+  .grid { display:grid; grid-template-columns:repeat(2,minmax(0,1fr)); gap:12px; }
+  .full { grid-column:1 / -1; }
+  .f label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  .f input, .f select, .f textarea { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 9px; font-size:13px; color:var(--bright); }
+  .seg { display:inline-flex; border:1px solid var(--border); border-radius:8px; overflow:hidden; }
+  .seg label { margin:0; padding:6px 12px; font-size:13px; color:var(--sub); cursor:pointer; }
+  .seg input { display:none; }
+  .seg label:has(input:checked) { background:var(--surface-hover); color:var(--bright); }
+  .help { font-size:11px; color:var(--dim); margin-top:3px; }
+  .days { display:flex; gap:6px; align-items:center; }
+  .days input { width:70px; }
+  .chips { display:flex; gap:6px; flex-wrap:wrap; padding:6px; border:1px solid var(--border); border-radius:6px; background:var(--surface); }
+  .chips span { font-size:12px; background:var(--card); border:1px solid var(--border-hover); border-radius:4px; padding:1px 6px; }
+  .chips input { border:0; background:none; flex:1; min-width:120px; padding:2px; }
+  @media (max-width:640px){ .grid { grid-template-columns:1fr; } }
+
+  /* 추이 다이얼로그 연결 */
+  .dialog { max-width:640px; padding:18px; }
+  .chart { height:150px; border-radius:8px; background:linear-gradient(transparent 49%, var(--border) 50%, transparent 51%); position:relative; margin:10px 0; }
+  .chart svg { position:absolute; inset:0; }
+  .relmeds { border-top:1px solid var(--border); padding-top:10px; margin-top:6px; }
+  .relmeds h4 { font-size:12px; color:var(--sub); font-weight:500; margin-bottom:6px; }
+  .relmeds li { list-style:none; display:flex; gap:8px; align-items:center; font-size:13px; padding:3px 0; }
+  .relmeds ul { padding:0; }
+  table { width:100%; border-collapse:collapse; font-size:13px; margin-top:10px; }
+  th { text-align:left; font-size:11px; color:var(--dim); font-weight:400; padding:6px 4px; }
+  td { padding:6px 4px; border-top:1px solid var(--border); vertical-align:top; }
+  td .badges { display:flex; gap:4px; flex-wrap:wrap; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 · #544 복약정보 · 모든 약 이름 · 기간은 가상 데이터 (실재 제품 아님)</p>
+
+  <!-- A -->
+  <p class="state">A · /medical?tab=meds — 복용 중 · 타임라인 · 지난 복약</p>
+  <div class="pagehead">
+    <div><h1>건강 기록</h1><p>검진 결과와 복약 기간을 함께 봅니다</p></div>
+    <button class="btn primary">복약 추가</button>
+  </div>
+  <nav class="tabs"><a href="#">검진</a><a href="#" aria-current="page">복약</a></nav>
+
+  <h2 class="section-title">복용 중 <small>3개</small></h2>
+  <div class="active">
+    <div class="card med">
+      <div class="top"><span class="name">가상 혈압약 A</span><span class="pill rx">처방 · 장기</span></div>
+      <span class="meta">1정 · 1일 1회 아침 · 가상의원</span>
+      <span class="since">2029-04-02 부터 · 3년 6개월째</span>
+      <span class="rel"><span>수축기 혈압</span><span>이완기 혈압</span></span>
+      <span class="acts"><button class="btn small">복용 종료 (오늘)</button><button class="btn small ghost">수정</button></span>
+    </div>
+    <div class="card med">
+      <div class="top"><span class="name">영양제 B</span><span class="pill sup">영양제 · 장기</span></div>
+      <span class="meta">1캡슐 · 1일 1회</span>
+      <span class="since">2031-01-10 부터 · 1년 9개월째</span>
+      <span class="rel"><span>중성지방</span></span>
+      <span class="acts"><button class="btn small">복용 종료 (오늘)</button><button class="btn small ghost">수정</button></span>
+    </div>
+    <div class="card med shortterm">
+      <div class="top"><span class="name">가상 감기약 C</span><span class="pill short">처방 · 단기</span></div>
+      <span class="meta">1일 3회 식후 · 5일분</span>
+      <span class="since">2032-10-14 ~ 2032-10-18 · 2일 남음</span>
+      <span class="acts"><button class="btn small ghost">수정</button></span>
+    </div>
+  </div>
+
+  <h2 class="section-title">복용 기간 <small>검진 회차는 녹색 점선</small></h2>
+  <div class="card tl">
+    <div class="tl-inner" style="position:relative">
+      <div class="axis"><span style="left:0%">2028</span><span style="left:20%">2029</span><span style="left:40%">2030</span><span style="left:60%">2031</span><span style="left:80%">2032</span><span style="left:100%">2033</span></div>
+      <div class="checkups"><i style="left:13%"></i><b style="left:13%">검진</b><i style="left:52%"></i><b style="left:52%">검진</b><i style="left:91%"></i><b style="left:91%">검진</b></div>
+      <div class="lane"><span class="lbl">가상 혈압약 A</span><span class="track"><span class="bar rx" style="left:26%;width:71%"></span></span></div>
+      <div class="lane"><span class="lbl">가상 지질약 D</span><span class="track"><span class="bar rx" style="left:8%;width:30%"></span></span></div>
+      <div class="lane"><span class="lbl">영양제 B</span><span class="track"><span class="bar sup" style="left:61%;width:36%"></span></span></div>
+      <div class="lane"><span class="lbl">단기 복용 4건</span><span class="track"><span class="dot" style="left:12%"></span><span class="dot" style="left:44%"></span><span class="dot" style="left:50.5%"></span><span class="dot" style="left:96%"></span></span></div>
+      <div class="tl-legend"><span><i style="background:var(--rx)"></i>처방 · 장기</span><span><i style="background:var(--sup)"></i>영양제 · 장기</span><span><i style="background:var(--sub);width:8px;border-radius:50%"></i>단기 복용</span></div>
+    </div>
+  </div>
+
+  <h2 class="section-title">지난 복약</h2>
+  <div class="card past" style="padding:4px 4px 8px">
+    <h3 style="margin-left:12px">2031</h3>
+    <div class="row"><span class="n">가상 지질약 D <span class="pill rx">처방 · 장기</span></span><span class="p">2028-06-01 ~ 2031-07-31</span><span><button class="btn small">다시 시작</button></span></div>
+    <div class="row"><span class="n">가상 항생제 E <span class="pill short">단기</span></span><span class="p">2031-05-20 ~ 05-26 · 7일</span><span></span></div>
+    <h3 style="margin-left:12px">2030</h3>
+    <div class="row"><span class="n">가상 진통제 F <span class="pill short">단기</span></span><span class="p">2030-03-02 ~ 03-04 · 3일</span><span></span></div>
+  </div>
+
+  <!-- B -->
+  <p class="state">B · 복약 추가 (단기 · N일분)</p>
+  <div class="card form">
+    <div class="grid">
+      <div class="f"><label>종류</label><div class="seg"><label><input type="radio" name="k" checked>처방약</label><label><input type="radio" name="k">영양제</label></div></div>
+      <div class="f"><label>복용 형태</label><div class="seg"><label><input type="radio" name="r">장기 복용</label><label><input type="radio" name="r" checked>단기 복용</label></div>
+        <p class="help">처방약은 단기, 영양제는 장기가 기본입니다</p></div>
+      <div class="f"><label>이름</label><input value="가상 감기약 C"></div>
+      <div class="f"><label>성분 (선택)</label><input placeholder="같은 성분 제품을 묶어 봅니다"></div>
+      <div class="f"><label>용량</label><input value="1정"></div>
+      <div class="f"><label>횟수</label><input value="1일 3회 식후"></div>
+      <div class="f"><label>시작일</label><input class="mono" value="2032-10-14"></div>
+      <div class="f"><label>기간</label><div class="days"><input class="mono" value="5"> 일분 → <span class="mono" style="color:var(--bright)">2032-10-18</span> 까지</div>
+        <p class="help">단기 복용은 종료일이 필요합니다 — 날짜로 직접 넣어도 됩니다</p></div>
+      <div class="f"><label>목적 (선택)</label><input value="가상 증상"></div>
+      <div class="f"><label>처방처 (선택)</label><input value="가상의원"></div>
+      <div class="f full"><label>관련 검진 항목 (선택)</label>
+        <div class="chips"><input placeholder="항목 검색 — 예: LDL, 혈압"></div>
+        <p class="help">장기 복용 약을 검진 항목과 이으면 항목 추이에 함께 나옵니다. 단기 복용은 지정하지 않아도 검진일 앞 14일 안이면 표시됩니다</p></div>
+      <div class="f full"><label>메모 (선택)</label><textarea rows="2"></textarea></div>
+    </div>
+    <div style="display:flex;justify-content:flex-end;gap:8px;margin-top:14px"><button class="btn ghost">취소</button><button class="btn primary">저장</button></div>
+  </div>
+
+  <!-- C -->
+  <p class="state">C · 항목 추이 다이얼로그 — 관련 복약 + 검진일 배지</p>
+  <div class="card dialog">
+    <h3 style="color:var(--bright);font-size:18px">수축기 혈압</h3>
+    <p style="font-size:12px;color:var(--sub)">혈압 · mmHg · 기준범위 90-119 (최근 회차)</p>
+    <div class="chart"><svg viewBox="0 0 600 150" preserveAspectRatio="none"><polyline points="60,40 300,70 540,95" fill="none" stroke="#a3a3a3" stroke-width="1.5"/><circle cx="60" cy="40" r="5" fill="#f87171"/><circle cx="300" cy="70" r="5" fill="#fcd34d"/><circle cx="540" cy="95" r="5" fill="#ededed"/></svg></div>
+    <div class="relmeds"><h4>관련 복약</h4>
+      <ul><li><span class="pill rx">처방 · 장기</span> 가상 혈압약 A <span class="mono" style="color:var(--sub);font-size:12px">2029-04-02 ~ 복용 중</span></li></ul></div>
+    <table>
+      <thead><tr><th>검진일</th><th>결과</th><th>그때 먹던 약</th></tr></thead>
+      <tbody>
+        <tr><td class="mono">2032-06-11</td><td class="mono">118</td><td><span class="badges"><span class="pill rx">가상 혈압약 A</span></span></td></tr>
+        <tr><td class="mono">2030-07-03</td><td class="mono" style="color:var(--caution)">131</td><td><span class="badges"><span class="pill rx">가상 혈압약 A</span><span class="pill short" title="검진일 앞 14일 안 단기 복용">가상 감기약 · 6일 전까지</span></span></td></tr>
+        <tr><td class="mono">2028-08-19</td><td class="mono" style="color:var(--abnormal)">147</td><td></td></tr>
+      </tbody>
+    </table>
+  </div>
+</div>
+</body>
+</html>
