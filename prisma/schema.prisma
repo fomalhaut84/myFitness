@@ -445,3 +445,25 @@ model CheckupResult {
   @@index([itemCode])
   @@index([followUpDue])
 }
+
+// #544 (M18-3): 복약 — 한 행 = 한 복용 기간 (다시 먹으면 새 행). 날짜는 KST 자정 instant.
+// 장기 복용은 endDate null = 복용 중 · 단기 복용은 endDate 필수 (DB CHECK).
+model Medication {
+  id           String    @id @default(cuid())
+  name         String
+  kind         String    // "prescription" | "supplement" (DB CHECK)
+  regimen      String    // "long_term" | "short_term" (DB CHECK)
+  ingredient   String?
+  dose         String?
+  frequency    String?
+  startDate    DateTime
+  endDate      DateTime?
+  purpose      String?
+  prescriber   String?
+  note         String?
+  relatedItems String[]  // 관련 검진 항목 code (카탈로그 또는 "custom:<slug>")
+  createdAt    DateTime  @default(now())
+  updatedAt    DateTime  @updatedAt
+
+  @@index([startDate])
+}
