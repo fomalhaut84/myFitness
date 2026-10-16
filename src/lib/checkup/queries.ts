@@ -2,7 +2,7 @@
 import prisma from "@/lib/prisma";
 import { ymdKST } from "@/lib/garmin/utils";
 import { getCheckupItem } from "./items";
-import { countFlags, previousResults } from "./compare";
+import { countFlags, pendingFollowUps, previousResults } from "./compare";
 import {
   sortResults,
   toFindings,
@@ -117,7 +117,7 @@ export async function getItemTrend(itemCode: string): Promise<ItemTrendDto | nul
   };
 }
 
-/** 추적검사 권고 — 예정일 오름차순 (지난 것 포함 · 화면이 강조). */
+/** 아직 이행되지 않은 추적검사 권고 — 예정일 오름차순 (지난 것 포함 · 화면이 강조). 뒤 회차에서 같은 항목을 검사했으면 제외. */
 export async function listFollowUps(): Promise<FollowUpDto[]> {
   const rows = await prisma.checkupResult.findMany({
     where: { followUpDue: { not: null } },
@@ -130,7 +130,12 @@ export async function listFollowUps(): Promise<FollowUpDto[]> {
     },
     orderBy: { followUpDue: "asc" },
   });
-  return rows.flatMap((r) =>
+  if (rows.length === 0) return [];
+  const later = await prisma.checkupResult.findMany({
+    where: { itemCode: { in: [...new Set(rows.map((r) => r.itemCode))] } },
+    select: { itemCode: true, checkup: { select: { date: true } } },
+  });
+  const dtos = rows.flatMap((r) =>
     r.followUpDue
       ? [
           {
@@ -143,5 +148,9 @@ export async function listFollowUps(): Promise<FollowUpDto[]> {
           },
         ]
       : [],
+  );
+  return pendingFollowUps(
+    dtos,
+    later.map((l) => ({ itemCode: l.itemCode, date: ymdKST(l.checkup.date) })),
   );
 }

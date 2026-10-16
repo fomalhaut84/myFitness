@@ -1,7 +1,7 @@
 // #527: 입력 → 저장 행 · 판정 · 직전 회차 비교 · 입력 스키마. 값은 가상.
 import { describe, expect, it } from "vitest";
 import { buildResultRows } from "../build";
-import { countFlags, previousResults } from "../compare";
+import { countFlags, pendingFollowUps, previousResults } from "../compare";
 import { resolveFlag } from "../flag";
 import { CHECKUP_INPUT } from "../schema";
 
@@ -151,6 +151,23 @@ describe("previousResults", () => {
   it("같은 날짜 · 이후 회차는 제외 · 입력 순서 무관", () => {
     const prev = previousResults("2021-05-01", ["ldl"], [...history].reverse());
     expect(prev.get("ldl")?.v).toBe(1);
+  });
+});
+
+describe("pendingFollowUps", () => {
+  it("뒤 회차에 같은 항목이 있으면 이행 — 같은 회차 · 다른 항목은 남는다", () => {
+    const followUps = [
+      { checkupDate: "2023-05-01", itemCode: "abdominal_us", id: 1 },
+      { checkupDate: "2025-05-01", itemCode: "abdominal_us", id: 2 },
+      { checkupDate: "2023-05-01", itemCode: "gastroscopy", id: 3 },
+    ];
+    const history = [
+      { date: "2023-05-01", itemCode: "abdominal_us" },
+      { date: "2025-05-01", itemCode: "abdominal_us" },
+      { date: "2023-05-01", itemCode: "gastroscopy" },
+      { date: "2025-05-01", itemCode: "ldl" },
+    ];
+    expect(pendingFollowUps(followUps, history).map((f) => f.id)).toEqual([2, 3]);
   });
 });
 

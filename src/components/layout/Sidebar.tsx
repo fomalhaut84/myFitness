@@ -67,6 +67,17 @@ const NAV_ITEMS: NavItem[] = [
     ),
   },
   {
+    // #527 (M18-1): 검진 이력 (M18-3 복약이 같은 페이지 탭으로)
+    label: "건강 기록",
+    href: "/medical",
+    icon: (
+      <svg width="20" height="20" viewBox="0 0 20 20" fill="none" stroke="currentColor" strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round">
+        <rect x="4" y="3" width="12" height="15" rx="2" />
+        <path d="M7.5 3V2h5v1M10 7.5v5M7.5 10h5" />
+      </svg>
+    ),
+  },
+  {
     label: "생활 패턴",
     href: "/lifestyle",
     icon: (
