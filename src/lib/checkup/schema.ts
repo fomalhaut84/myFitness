@@ -18,7 +18,8 @@ export const CHECKUP_RESULT_INPUT = z.object({
   label: z.string().trim().min(1, "항목명이 필요합니다").max(100),
   /** 카탈로그 밖 항목의 분류 (카탈로그 항목은 무시) */
   category: z.string().trim().min(1).max(30).optional(),
-  value: z.string().trim().min(1, "결과값이 필요합니다").max(2000),
+  /** 결과값 원문 — 판독문은 note 로 (본문 크기 상한 · #527 사전 리뷰 info) */
+  value: z.string().trim().min(1, "결과값이 필요합니다").max(200),
   unit: optionalText(30),
   ref: optionalText(100),
   flag: z.enum(CHECKUP_FLAGS).nullable().optional(),

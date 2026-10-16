@@ -65,6 +65,29 @@ describe("matchItem", () => {
     expect(matchItem("간암표지자_AFP(EIA)")).toBe("afp");
   });
 
+  // 회귀: #527 사전 리뷰 major 1 — 검체 · 조건 한정자를 떼면 다른 검체의 항목 (혈액 · 공복혈당) 으로 오매칭
+  it("검체 · 조건 한정자가 붙은 이름은 다른 검체 항목으로 가지 않는다", () => {
+    for (const label of ["RBC(요침사)", "Hb(요)", "알부민(요)", "크레아티닌(요)", "혈당(식후)", "혈당(PP2)", "소변_크레아티닌", "적혈구(요)"]) {
+      const code = matchItem(label);
+      expect(["rbc", "hb", "albumin", "creatinine", "fbs"]).not.toContain(code);
+    }
+    expect(matchItem("혈당(식후)")).toBeNull();
+  });
+
+  it("흔한 소변 표기는 소변 항목으로", () => {
+    expect(matchItem("WBC(요)")).toBe("urine_wbc");
+    expect(matchItem("백혈구(요)")).toBe("urine_wbc");
+    expect(matchItem("백혈구(요침사)")).toBe("urine_sed_wbc");
+    expect(matchItem("RBC(요침사)")).toBe("urine_sed_rbc");
+    expect(matchItem("Glucose(요)")).toBe("urine_glucose");
+    expect(matchItem("단백(요)")).toBe("urine_protein");
+  });
+
+  it("한정자가 아닌 부기는 그대로 떼고 맞춘다", () => {
+    expect(matchItem("요단백(정성)")).toBe("urine_protein");
+    expect(matchItem("혈당(공복)")).toBe("fbs");
+  });
+
   it("미매칭은 null", () => {
     expect(matchItem("임의 검사 항목")).toBeNull();
     expect(matchItem("()")).toBeNull();

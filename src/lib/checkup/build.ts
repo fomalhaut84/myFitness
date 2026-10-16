@@ -1,7 +1,7 @@
 // #527: 검증된 입력 → 저장 행. 항목 식별 (code · 매칭 · custom) → 값 · 기준범위 해석 → 판정. 순수 (DB 무관).
 import { kstInstant } from "@/lib/history/buckets";
-import { getCheckupItem, isCustomCode, OTHER_CATEGORY } from "./items";
-import { customCode, matchItem } from "./match";
+import { CUSTOM_PREFIX, getCheckupItem, isCustomCode, OTHER_CATEGORY } from "./items";
+import { customCode, lookupNormalized, matchItem } from "./match";
 import { parseReference, parseResultValue } from "./parse";
 import { resolveFlag, type CheckupFlag, type FlagSource } from "./flag";
 import type { CheckupResultInput } from "./schema";
@@ -30,7 +30,11 @@ const CUSTOM_CODE_RE = /^custom:[0-9a-z가-힣]{1,60}$/;
 function resolveCode(input: CheckupResultInput): { code: string } | { error: string } {
   if (input.itemCode) {
     if (getCheckupItem(input.itemCode)) return { code: input.itemCode };
-    if (isCustomCode(input.itemCode) && CUSTOM_CODE_RE.test(input.itemCode)) return { code: input.itemCode };
+    if (isCustomCode(input.itemCode) && CUSTOM_CODE_RE.test(input.itemCode)) {
+      // `custom:ldl` 처럼 카탈로그 항목과 같은 이름이면 카탈로그 code 로 — 같은 항목이 두 code 로 갈라지지 않게
+      const catalog = lookupNormalized(input.itemCode.slice(CUSTOM_PREFIX.length));
+      return { code: catalog ?? input.itemCode };
+    }
     return { error: `알 수 없는 항목 코드입니다: ${input.itemCode}` };
   }
   const code = matchItem(input.label) ?? customCode(input.label);
@@ -40,8 +44,8 @@ function resolveCode(input: CheckupResultInput): { code: string } | { error: str
 function buildRow(input: CheckupResultInput, code: string): CheckupResultRow {
   const item = getCheckupItem(code);
   const { valueNum, valueText } = parseResultValue(input.value, item?.valueType ?? "numeric");
-  const { refText, refLow, refHigh } = parseReference(input.ref);
-  const { flag, flagSource } = resolveFlag({ flag: input.flag, valueNum, refLow, refHigh });
+  const { refText, refLow, refHigh, lowExclusive, highExclusive } = parseReference(input.ref);
+  const { flag, flagSource } = resolveFlag({ flag: input.flag, valueNum, refLow, refHigh, lowExclusive, highExclusive });
   return {
     itemCode: code,
     label: input.label,

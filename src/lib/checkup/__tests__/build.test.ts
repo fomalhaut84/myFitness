@@ -19,6 +19,15 @@ describe("resolveFlag", () => {
     expect(resolveFlag({ valueNum: 9, refLow: 10, refHigh: null })).toEqual({ flag: "abnormal", flagSource: "computed" });
   });
 
+  // 회귀: #527 사전 리뷰 major 2 — `<5.7` 에 5.7 은 범위 밖
+  it("미포함 경계값은 범위 밖", () => {
+    expect(resolveFlag({ valueNum: 5.7, refLow: null, refHigh: 5.7, highExclusive: true }).flag).toBe("abnormal");
+    expect(resolveFlag({ valueNum: 5.6, refLow: null, refHigh: 5.7, highExclusive: true }).flag).toBe("normal");
+    expect(resolveFlag({ valueNum: 60, refLow: 60, refHigh: null, lowExclusive: true }).flag).toBe("abnormal");
+    const res = buildResultRows([{ label: "당화혈색소", value: "5.7", ref: "<5.7" }]);
+    expect(res.ok && res.rows[0].flag).toBe("abnormal");
+  });
+
   it("수치 · 범위가 없으면 판정 없음 (caution 은 계산하지 않는다)", () => {
     expect(resolveFlag({ valueNum: null, refLow: 10, refHigh: 20 })).toEqual({ flag: null, flagSource: null });
     expect(resolveFlag({ valueNum: 5, refLow: null, refHigh: null })).toEqual({ flag: null, flagSource: null });
@@ -81,6 +90,22 @@ describe("buildResultRows", () => {
     });
     expect(buildResultRows([{ itemCode: "custom:BAD CODE", label: "x", value: "1" }]).ok).toBe(false);
     expect(buildResultRows([{ itemCode: "custom:가상", label: "x", value: "1" }]).ok).toBe(true);
+  });
+
+  it("카탈로그와 같은 이름의 custom code 는 카탈로그 code 로", () => {
+    const res = buildResultRows([{ itemCode: "custom:ldl", label: "LDL", value: "100" }]);
+    expect(res.ok && res.rows[0].itemCode).toBe("ldl");
+  });
+
+  // 회귀: #527 사전 리뷰 major 1 — 혈액 WBC 와 소변 WBC 가 한 회차에 함께 있어도 거부되지 않는다
+  it("혈액 · 소변 같은 이름 항목이 함께 있어도 각자 저장", () => {
+    const res = buildResultRows([
+      { label: "WBC", value: "6.0" },
+      { label: "WBC(요)", value: "-" },
+      { label: "크레아티닌", value: "0.9" },
+      { label: "크레아티닌(요)", value: "100" },
+    ]);
+    expect(res.ok && res.rows.map((r) => r.itemCode)).toEqual(["wbc", "urine_wbc", "creatinine", "custom:크레아티닌요"]);
   });
 
   it("같은 항목 두 번 (표기가 달라도) 은 거부", () => {

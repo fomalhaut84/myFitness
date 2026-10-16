@@ -19,7 +19,7 @@ function checkupData(input: CheckupInput) {
 
 export async function createCheckup(input: CheckupInput, rows: readonly CheckupResultRow[]): Promise<{ id: string }> {
   return prisma.healthCheckup.create({
-    data: { ...checkupData(input), results: { create: [...rows] } },
+    data: { ...checkupData(input), results: { createMany: { data: [...rows] } } },
     select: { id: true },
   });
 }
@@ -34,7 +34,8 @@ export async function replaceCheckup(
     await tx.checkupResult.deleteMany({ where: { checkupId: id } });
     return tx.healthCheckup.update({
       where: { id },
-      data: { ...checkupData(input), results: { create: [...rows] } },
+      // 행 단위 INSERT 대신 한 번에 — 300행에서도 interactive transaction 기본 timeout (5s) 안
+      data: { ...checkupData(input), results: { createMany: { data: [...rows] } } },
       select: { id: true },
     });
   });

@@ -25,10 +25,27 @@ const INDEX: ReadonlyMap<string, string> = (() => {
 })();
 
 /**
+ * 검체 · 조건 한정자 — 괄호 부기나 `_` 부분이 이것이면 떼어 낸 이름이 **다른 검체의 항목**이 된다
+ * (`WBC(요)` → 혈액 WBC · `혈당(식후)` → 공복혈당). 이 경우 전체 이름 일치만 믿는다 (#527 사전 리뷰 major 1).
+ */
+const QUALIFIER_RE = /^(요|뇨|소변|요침사|urine|분변|대변|stool|객담|csf|뇌척수액|식후.*|pp\d*.*|24시간.*|random|수시)$/;
+
+function hasQualifier(label: string): boolean {
+  const inner = [...label.matchAll(/[([]([^)\]]*)[)\]]/g)].map((m) => m[1]);
+  const parts = label.includes("_") ? label.split("_") : [];
+  return [...inner, ...parts].some((t) => QUALIFIER_RE.test(normalizeLabel(t)));
+}
+
+/**
  * 원문 항목명의 비교 후보 (우선순위 순):
  * 전체 → 괄호 · 대괄호 부기 제거 → 괄호 안 내용 → `_` 로 나눈 각 부분 (뒤에서부터 — 보통 약어가 뒤) 과 그 부기 제거형.
+ * 검체 · 조건 한정자가 있으면 전체 이름만.
  */
 export function labelCandidates(label: string): string[] {
+  if (hasQualifier(label)) {
+    const whole = normalizeLabel(label);
+    return whole ? [whole] : [];
+  }
   const stripped = label.replace(/[([][^)\]]*[)\]]/g, " ");
   const inner = [...label.matchAll(/[([]([^)\]]*)[)\]]/g)].map((m) => m[1]);
   const parts = label.includes("_") ? label.split("_").reverse() : [];
@@ -44,6 +61,11 @@ export function matchItem(label: string): string | null {
     if (code) return code;
   }
   return null;
+}
+
+/** 정규화된 이름 → 카탈로그 code (custom slug 가 카탈로그 항목과 겹치는지 확인용). */
+export function lookupNormalized(key: string): string | null {
+  return INDEX.get(key) ?? null;
 }
 
 /** 카탈로그 밖 항목 code — 같은 이름은 회차 간 같은 code 로 묶인다. 정규화 결과가 비면 null. */

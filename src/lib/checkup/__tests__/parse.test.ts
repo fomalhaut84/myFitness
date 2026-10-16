@@ -4,8 +4,8 @@ import { parseReference, parseResultValue } from "../parse";
 
 describe("parseReference", () => {
   it("하한-상한 · 물결 · 공백", () => {
-    expect(parseReference("10.0-20.0")).toEqual({ refText: "10.0-20.0", refLow: 10, refHigh: 20 });
-    expect(parseReference("0.100 - 1.000")).toEqual({ refText: "0.100 - 1.000", refLow: 0.1, refHigh: 1 });
+    expect(parseReference("10.0-20.0")).toMatchObject({ refText: "10.0-20.0", refLow: 10, refHigh: 20 });
+    expect(parseReference("0.100 - 1.000")).toMatchObject({ refText: "0.100 - 1.000", refLow: 0.1, refHigh: 1 });
     expect(parseReference("3~7")).toMatchObject({ refLow: 3, refHigh: 7 });
   });
 
@@ -24,20 +24,46 @@ describe("parseReference", () => {
 
   it("정성 정상값은 원문만", () => {
     for (const t of ["-,음성", "+-,약양성", "정상, (정상)", "정상", "-"]) {
-      expect(parseReference(t)).toEqual({ refText: t, refLow: null, refHigh: null });
+      expect(parseReference(t)).toMatchObject({ refText: t, refLow: null, refHigh: null });
     }
   });
 
   it("빈칸 · 공백 · null 은 기준범위 없음", () => {
-    expect(parseReference("")).toEqual({ refText: null, refLow: null, refHigh: null });
-    expect(parseReference("   ")).toEqual({ refText: null, refLow: null, refHigh: null });
-    expect(parseReference(null)).toEqual({ refText: null, refLow: null, refHigh: null });
+    expect(parseReference("")).toMatchObject({ refText: null, refLow: null, refHigh: null });
+    expect(parseReference("   ")).toMatchObject({ refText: null, refLow: null, refHigh: null });
+    expect(parseReference(null)).toMatchObject({ refText: null, refLow: null, refHigh: null });
   });
 
   it("뒤집힌 범위 · 깨진 입력은 해석하지 않고 원문 보존", () => {
-    expect(parseReference("20-10")).toEqual({ refText: "20-10", refLow: null, refHigh: null });
-    expect(parseReference("10-20-30")).toEqual({ refText: "10-20-30", refLow: null, refHigh: null });
-    expect(parseReference("abc")).toEqual({ refText: "abc", refLow: null, refHigh: null });
+    expect(parseReference("20-10")).toMatchObject({ refText: "20-10", refLow: null, refHigh: null });
+    expect(parseReference("10-20-30")).toMatchObject({ refText: "10-20-30", refLow: null, refHigh: null });
+    expect(parseReference("abc")).toMatchObject({ refText: "abc", refLow: null, refHigh: null });
+  });
+});
+
+describe("parseReference — 미포함 경계 · 표기 정규화", () => {
+  // 회귀: #527 사전 리뷰 major 2 (`<b` · `미만` 은 상한 미포함)
+  it("`<` · `미만` 은 상한 미포함, `≤` · `<=` · `이하` 는 포함", () => {
+    expect(parseReference("<5.7")).toMatchObject({ refHigh: 5.7, highExclusive: true });
+    expect(parseReference("5.7 미만")).toMatchObject({ refHigh: 5.7, highExclusive: true });
+    expect(parseReference("<=5.7")).toMatchObject({ refHigh: 5.7, highExclusive: false });
+    expect(parseReference("≤5.7")).toMatchObject({ refHigh: 5.7, highExclusive: false });
+    expect(parseReference("5.7 이하")).toMatchObject({ refHigh: 5.7, highExclusive: false });
+  });
+
+  it("`>` · `초과` 는 하한 미포함, `≥` · `이상` · `a-` 는 포함", () => {
+    expect(parseReference(">60")).toMatchObject({ refLow: 60, lowExclusive: true });
+    expect(parseReference("60 초과")).toMatchObject({ refLow: 60, lowExclusive: true });
+    expect(parseReference(">=60")).toMatchObject({ refLow: 60, lowExclusive: false });
+    expect(parseReference("60 이상")).toMatchObject({ refLow: 60, lowExclusive: false });
+    expect(parseReference("60-")).toMatchObject({ refLow: 60, lowExclusive: false });
+    expect(parseReference("10-20")).toMatchObject({ lowExclusive: false, highExclusive: false });
+  });
+
+  it("전각 · en dash · 천단위 쉼표는 해석하되 refText 는 원문", () => {
+    expect(parseReference("＜5")).toMatchObject({ refText: "＜5", refHigh: 5, highExclusive: true });
+    expect(parseReference("10.0–20.0")).toMatchObject({ refText: "10.0–20.0", refLow: 10, refHigh: 20 });
+    expect(parseReference("1,000-2,000")).toMatchObject({ refLow: 1000, refHigh: 2000 });
   });
 });
 

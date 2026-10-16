@@ -5,6 +5,9 @@ export interface ParsedReference {
   refText: string | null;
   refLow: number | null;
   refHigh: number | null;
+  /** `<b` · `b 미만` (상한 미포함) / `>a` · `a 초과` (하한 미포함) — 판정 경계 (#527 사전 리뷰 major 2). 저장 컬럼 없음 — refText 가 원문 */
+  lowExclusive: boolean;
+  highExclusive: boolean;
 }
 
 export interface ParsedValue {
@@ -14,13 +17,23 @@ export interface ParsedValue {
 
 const NUM = String.raw`(\d+(?:\.\d+)?)`;
 const RANGE_RE = new RegExp(String.raw`^${NUM}\s*[-~]\s*${NUM}$`);
-const UPPER_RE = new RegExp(String.raw`^(?:[<≤]=?\s*${NUM}|${NUM}\s*(?:이하|미만))$`);
-const LOWER_RE = new RegExp(String.raw`^(?:[>≥]=?\s*${NUM}|${NUM}\s*(?:이상|초과)|${NUM}\s*-)$`);
+const UPPER_RE = new RegExp(String.raw`^(?:([<≤])(=?)\s*${NUM}|${NUM}\s*(이하|미만))$`);
+const LOWER_RE = new RegExp(String.raw`^(?:([>≥])(=?)\s*${NUM}|${NUM}\s*(이상|초과)|${NUM}\s*-)$`);
 const PLAIN_NUM_RE = /^-?\d+(?:\.\d+)?$/;
 
 function clean(text: string | null | undefined): string | null {
   const t = text?.trim();
   return t ? t : null;
+}
+
+const NONE: Omit<ParsedReference, "refText"> = { refLow: null, refHigh: null, lowExclusive: false, highExclusive: false };
+
+/** 해석용 정규화 (원문 refText 는 그대로 저장): 전각 → 반각 · en/em dash → `-` · 숫자 사이 천단위 쉼표 제거 */
+function normalizeForParse(text: string): string {
+  return text
+    .normalize("NFKC")
+    .replace(/[–—−]/g, "-")
+    .replace(/(\d),(?=\d{3}(?!\d))/g, "$1");
 }
 
 /**
@@ -30,19 +43,27 @@ function clean(text: string | null | undefined): string | null {
  */
 export function parseReference(text: string | null | undefined): ParsedReference {
   const refText = clean(text);
-  if (!refText) return { refText: null, refLow: null, refHigh: null };
+  if (!refText) return { refText: null, ...NONE };
+  const t = normalizeForParse(refText);
 
-  const range = RANGE_RE.exec(refText);
+  const range = RANGE_RE.exec(t);
   if (range) {
     const low = Number(range[1]);
     const high = Number(range[2]);
-    return low <= high ? { refText, refLow: low, refHigh: high } : { refText, refLow: null, refHigh: null };
+    return low <= high ? { refText, ...NONE, refLow: low, refHigh: high } : { refText, ...NONE };
   }
-  const upper = UPPER_RE.exec(refText);
-  if (upper) return { refText, refLow: null, refHigh: Number(upper[1] ?? upper[2]) };
-  const lower = LOWER_RE.exec(refText);
-  if (lower) return { refText, refLow: Number(lower[1] ?? lower[2] ?? lower[3]), refHigh: null };
-  return { refText, refLow: null, refHigh: null };
+  const upper = UPPER_RE.exec(t);
+  if (upper) {
+    // `<` (뒤 `=` 없음) · `미만` 은 상한 미포함
+    const exclusive = (upper[1] === "<" && upper[2] === "") || upper[5] === "미만";
+    return { refText, ...NONE, refHigh: Number(upper[3] ?? upper[4]), highExclusive: exclusive };
+  }
+  const lower = LOWER_RE.exec(t);
+  if (lower) {
+    const exclusive = (lower[1] === ">" && lower[2] === "") || lower[5] === "초과";
+    return { refText, ...NONE, refLow: Number(lower[3] ?? lower[4] ?? lower[6]), lowExclusive: exclusive };
+  }
+  return { refText, ...NONE };
 }
 
 /**

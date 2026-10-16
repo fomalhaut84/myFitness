@@ -14,10 +14,15 @@ export function resolveFlag(input: {
   valueNum: number | null;
   refLow: number | null;
   refHigh: number | null;
+  lowExclusive?: boolean;
+  highExclusive?: boolean;
 }): ResolvedFlag {
   if (input.flag) return { flag: input.flag, flagSource: "institution" };
-  const { valueNum, refLow, refHigh } = input;
+  const { valueNum, refLow, refHigh, lowExclusive = false, highExclusive = false } = input;
   if (valueNum === null || (refLow === null && refHigh === null)) return { flag: null, flagSource: null };
-  const out = (refLow !== null && valueNum < refLow) || (refHigh !== null && valueNum > refHigh);
+  // 미포함 경계 (`<5.7` 에 5.7) 는 범위 밖 — #527 사전 리뷰 major 2
+  const belowLow = refLow !== null && (lowExclusive ? valueNum <= refLow : valueNum < refLow);
+  const aboveHigh = refHigh !== null && (highExclusive ? valueNum >= refHigh : valueNum > refHigh);
+  const out = belowLow || aboveHigh;
   return { flag: out ? "abnormal" : "normal", flagSource: "computed" };
 }
