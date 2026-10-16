@@ -126,3 +126,15 @@ describe("buildTimeline", () => {
     expect(buildTimeline([], [], TODAY)).toBeNull();
   });
 });
+
+describe("itemMedications", () => {
+  it("관련 복약 + 회차별 배지", async () => {
+    const { itemMedications } = await import("../link");
+    const r = itemMedications([med({ id: "l", relatedItems: ["ldl"] })], "ldl", [
+      { checkupId: "c1", date: "2029-06-01" },
+      { checkupId: "c2", date: "2031-06-01" },
+    ]);
+    expect(r.related.map((m) => m.id)).toEqual(["l"]);
+    expect([r.byCheckup.c1.length, r.byCheckup.c2.length]).toEqual([0, 1]);
+  });
+});

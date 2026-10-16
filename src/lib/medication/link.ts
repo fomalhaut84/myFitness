@@ -40,6 +40,24 @@ export function medsForCheckup(meds: readonly MedicationDto[], itemCode: string,
     });
 }
 
+export interface ItemMedicationsDto {
+  /** 이 항목을 관련 항목으로 지정한 약 (다이얼로그 "관련 복약") */
+  related: MedicationDto[];
+  /** 회차 id → 그 검진일에 함께 볼 약 (이력 표 배지) */
+  byCheckup: Record<string, CheckupMedication[]>;
+}
+
+export function itemMedications(
+  meds: readonly MedicationDto[],
+  itemCode: string,
+  points: readonly { checkupId: string; date: string }[],
+): ItemMedicationsDto {
+  return {
+    related: medsForItem(meds, itemCode),
+    byCheckup: Object.fromEntries(points.map((p) => [p.checkupId, medsForCheckup(meds, itemCode, p.date)])),
+  };
+}
+
 /** 항목 추이 "관련 복약" — 이 항목을 관련 항목으로 지정한 약, 시작일 순 */
 export function medsForItem(meds: readonly MedicationDto[], itemCode: string): MedicationDto[] {
   return meds.filter((m) => m.relatedItems.includes(itemCode)).sort((a, b) => a.startDate.localeCompare(b.startDate));
