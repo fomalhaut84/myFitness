@@ -113,3 +113,19 @@ export function followUpTiming(dueYmd: string, todayYmd: string): { status: Foll
   if (days <= SOON_DAYS) return { status: "soon", text: `${days}일 남음` };
   return { status: "later", text: `${Math.round(days / 30)}개월 남음` };
 }
+
+/* ── 항목 추이 단위 ───────────────────────────────────── */
+
+/**
+ * 추이 차트에 그릴 점 — 최근 수치 회차와 단위가 같은 수치 점만. 단위가 다른 회차를 같은 선 · 같은 축에 그리면
+ * 거짓 추세가 된다 (#531 · PR #530 Codex P2). 뺀 회차는 이력 표에만 남는다. 단위 변환은 하지 않는다 (스펙 §9).
+ */
+export function splitTrendByUnit<T extends { valueNum: number | null; unit: string | null }>(
+  points: readonly T[],
+): { plotted: T[]; excluded: number } {
+  const numeric = points.filter((p) => p.valueNum !== null);
+  if (numeric.length === 0) return { plotted: [], excluded: 0 };
+  const refUnit = numeric[numeric.length - 1].unit ?? "";
+  const plotted = numeric.filter((p) => (p.unit ?? "") === refUnit);
+  return { plotted, excluded: numeric.length - plotted.length };
+}

@@ -1,6 +1,6 @@
 // #527 (2/2): 화면 계산 — 범위 막대 (하한 0 = 하한 없음) · 표기 · 직전 대비 · 추적검사 · 폼 변환. 값은 가상.
 import { describe, expect, it } from "vitest";
-import { followUpTiming, formatDelta, formatResultValue, railGeometry, visualRange } from "../view";
+import { followUpTiming, formatDelta, formatResultValue, railGeometry, splitTrendByUnit, visualRange } from "../view";
 import { emptyFormState, formStateFromDetail, formStateToInput, groupRowsByCategory, newCustomRow } from "../form-model";
 import { CHECKUP_INPUT } from "../schema";
 import type { CheckupDetailDto, CheckupResultDto } from "../dto";
@@ -139,5 +139,27 @@ describe("폼 변환", () => {
     const input = formStateToInput({ ...state, rows });
     expect(input.results).toEqual([expect.not.objectContaining({ itemCode: expect.anything() })]);
     expect(input.results[0]).toMatchObject({ label: "가상", category: "가상분류", value: "1" });
+  });
+});
+
+// 회귀: #531 (PR #530 Codex P2) — 단위가 다른 회차를 같은 선 · 같은 축에 그리지 않는다
+describe("splitTrendByUnit", () => {
+  const p = (valueNum: number | null, unit: string | null, valueText: string | null = null) => ({ valueNum, unit, valueText });
+
+  it("최근 수치 회차와 단위가 다른 점은 빼고 개수를 센다", () => {
+    const { plotted, excluded } = splitTrendByUnit([p(5.1, "mmol/L"), p(98, "mg/dL"), p(101, "mg/dL")]);
+    expect(plotted.map((x) => x.valueNum)).toEqual([98, 101]);
+    expect(excluded).toBe(1);
+  });
+
+  it("기준 단위는 마지막 수치 회차 — 뒤의 정성 결과는 기준이 아니다", () => {
+    const { plotted, excluded } = splitTrendByUnit([p(5.1, "mmol/L"), p(98, "mg/dL"), p(null, null, "결과지 참조")]);
+    expect(plotted.map((x) => x.valueNum)).toEqual([98]);
+    expect(excluded).toBe(1);
+  });
+
+  it("단위 없음 (null) 끼리는 같은 단위 · 정성만 있으면 빈 결과", () => {
+    expect(splitTrendByUnit([p(1, null), p(2, null)]).excluded).toBe(0);
+    expect(splitTrendByUnit([p(null, null, "음성")])).toEqual({ plotted: [], excluded: 0 });
   });
 });
