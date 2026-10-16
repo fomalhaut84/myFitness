@@ -9,6 +9,8 @@ import { assembleImport, blockingReasons, effectiveRounds } from "../import/asse
 import { prepareImport } from "../import/request";
 import { planRound } from "../import/plan";
 
+const TODAY = "2033-01-01";
+
 const page = (over: Partial<ExtractedPage> = {}): ExtractedPage => ({ institution: null, examDate: null, sections: [], items: [], ...over });
 const item = (label: string, value: string, over: Partial<ExtractedPage["items"][number]> = {}): ExtractedPage["items"][number] => ({
   section: null,
@@ -126,7 +128,7 @@ describe("buildDraftRounds · duplicateRows", () => {
       ],
     }),
   ]);
-  const rounds = buildDraftRounds(merged);
+  const rounds = buildDraftRounds(merged, TODAY);
 
   it("금회 + 과거 날짜별 회차 (최근 순) · 과거 값은 판정 · 기준범위 없이", () => {
     expect(rounds.map((r) => r.key)).toEqual(["current", "2030-01-02", "2028-01-02"]);
@@ -234,7 +236,7 @@ describe("assembleImport", () => {
   const header = { date: "", institution: " 가상검진센터 ", kind: "comprehensive" as const };
 
   it("금회 검진일이 없으면 막는다", () => {
-    expect(blockingReasons({ header, rounds })).toContain("금회 검진일을 입력하세요");
+    expect(blockingReasons({ today: TODAY, header, rounds })).toContain("금회 검진일을 입력하세요");
   });
 
   it("금회 날짜가 과거 회차와 같으면 금회에 없는 항목만 합친다", () => {
@@ -245,6 +247,7 @@ describe("assembleImport", () => {
 
   it("본문: 포함한 행 · 빈 회차 제외 · 금회만 소견 · 기관 trim", () => {
     const res = assembleImport({
+      today: TODAY,
       source: "capture",
       header: { ...header, date: "2032-04-20" },
       rounds,
@@ -267,7 +270,7 @@ describe("assembleImport", () => {
 
   it("중복 매칭 · 항목 없는 행은 막는다", () => {
     const bad: DraftRound[] = [{ key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a" }), row({ key: "b" }), row({ key: "c", itemCode: null })] }];
-    const reasons = blockingReasons({ header: { ...header, date: "2032-04-20" }, rounds: bad });
+    const reasons = blockingReasons({ today: TODAY, header: { ...header, date: "2032-04-20" }, rounds: bad });
     expect(reasons).toEqual(["같은 항목으로 매칭된 행 1개를 정리하세요", "항목을 알아볼 수 없는 행 1개를 빼거나 매칭하세요"]);
   });
 });
@@ -373,7 +376,7 @@ describe("날짜 미확인 과거 회차", () => {
       ],
     }),
   ]);
-  const rounds = buildDraftRounds(merged);
+  const rounds = buildDraftRounds(merged, TODAY);
   const header = { date: "2032-04-20", institution: "", kind: "comprehensive" as const };
 
   it("원문 표기별 회차로 묶어 맨 뒤에 · 날짜 확인 필요", () => {
@@ -385,9 +388,9 @@ describe("날짜 미확인 과거 회차", () => {
   });
 
   it("날짜를 넣기 전에는 저장을 막고, 넣으면 그 날짜 회차로 저장", () => {
-    expect(blockingReasons({ header, rounds })).toEqual(["날짜를 확인하지 않은 과거 회차 1개 — 날짜를 넣거나 행을 빼세요"]);
+    expect(blockingReasons({ today: TODAY, header, rounds })).toEqual(["날짜를 확인하지 않은 과거 회차 1개 — 날짜를 넣거나 행을 빼세요"]);
     const dated = rounds.map((r) => (r.needsDate ? { ...r, date: "2030-01-02" } : r));
-    const res = assembleImport({ source: "photo", header, rounds: dated, findings: [], pages: [] });
+    const res = assembleImport({ today: TODAY, source: "photo", header, rounds: dated, findings: [], pages: [] });
     expect(res.ok && res.body.rounds.map((r) => [r.date, r.results.length])).toEqual([
       ["2032-04-20", 2],
       ["2028-01-02", 1],
@@ -397,7 +400,7 @@ describe("날짜 미확인 과거 회차", () => {
 
   it("행을 모두 빼면 날짜 없이도 저장 가능", () => {
     const off = rounds.map((r) => (r.needsDate ? { ...r, rows: r.rows.map((x) => ({ ...x, include: false })) } : r));
-    expect(blockingReasons({ header, rounds: off })).toEqual([]);
+    expect(blockingReasons({ today: TODAY, header, rounds: off })).toEqual([]);
   });
 
   it("다른 회차와 같은 날짜를 넣으면 그 회차에 없는 항목만 합친다", () => {
@@ -406,6 +409,37 @@ describe("날짜 미확인 과거 회차", () => {
     expect(eff.map((r) => [r.date, r.rows.map((x) => x.itemCode)])).toEqual([
       ["2032-04-20", ["ast", "alt"]],
       ["2028-01-02", ["ast", "alt"]],
+    ]);
+  });
+});
+
+// 회귀: PR 전 리뷰 major 1 — 날짜를 바꾸면 이전 날짜의 기본값 (같은 값이라 뺀 행) 이 남지 않는다
+describe("applyExistingDefaults — 날짜 변경", () => {
+  it("기존 회차 A 에서 뺀 행이 기존 회차 없는 B 에서 다시 포함된다", () => {
+    const a: ExistingRound = { id: "a", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12" }] };
+    const round: DraftRound = { key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "r", value: "12" })] };
+    const onA = applyExistingDefaults(round, a);
+    expect(onA.rows[0].include).toBe(false);
+    expect(applyExistingDefaults(onA, null).rows[0].include).toBe(true);
+    expect(applyExistingDefaults({ ...onA, rows: [row({ key: "n", itemCode: null, include: false })] }, null).rows[0].include).toBe(false);
+  });
+});
+
+// 회귀: PR 전 리뷰 major 3 — 미래로 읽힌 과거 날짜는 날짜 확인 필요 · 미래 날짜 회차는 저장 전에 막는다
+describe("미래 날짜", () => {
+  it("과거결과 열의 오늘 이후 날짜는 날짜 확인 필요 회차 (원문 보존)", () => {
+    const merged = mergePages([page({ items: [item("AST", "12", { past: [{ date: "2040-01-02", dateText: null, value: "11" }] })] })]);
+    const past = buildDraftRounds(merged, TODAY)[1];
+    expect([past.date, past.dateText, past.needsDate]).toEqual([null, "2040-01-02", true]);
+  });
+
+  it("금회 · 과거 회차 날짜가 오늘 이후면 막는다", () => {
+    const rounds: DraftRound[] = [
+      { key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a" })] },
+      { key: "?x", current: false, date: "2034-01-01", dateText: "x", needsDate: true, rows: [row({ key: "b", itemCode: "alt" })] },
+    ];
+    expect(blockingReasons({ today: TODAY, header: { date: "2033-05-05", institution: "", kind: "other" }, rounds })).toEqual([
+      "오늘 이후 날짜의 회차 2개 — 날짜를 고치세요",
     ]);
   });
 });

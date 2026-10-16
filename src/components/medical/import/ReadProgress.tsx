@@ -14,14 +14,16 @@ export interface PageProgress {
 interface ReadProgressProps {
   pages: readonly PageProgress[];
   running: boolean;
-  onRetry: (id: string) => void;
+  onRetry: (ids: string[]) => void;
+  onReset: () => void;
   onCancel: () => void;
   onContinue: () => void;
 }
 
-export default function ReadProgress({ pages, running, onRetry, onCancel, onContinue }: ReadProgressProps) {
+export default function ReadProgress({ pages, running, onRetry, onReset, onCancel, onContinue }: ReadProgressProps) {
   const finished = pages.filter((p) => p.status === "done" || p.status === "error").length;
-  const failed = pages.filter((p) => p.status === "error").length;
+  const failedIds = pages.filter((p) => p.status === "error").map((p) => p.id);
+  const failed = failedIds.length;
   const readable = pages.some((p) => p.status === "done" && p.items > 0);
   const pct = pages.length ? Math.round((finished / pages.length) * 100) : 0;
 
@@ -29,7 +31,7 @@ export default function ReadProgress({ pages, running, onRetry, onCancel, onCont
     <section aria-labelledby="progress-title" className="bg-card border border-border rounded-xl p-4">
       <div className="mb-3 flex flex-wrap items-center justify-between gap-2">
         <h2 id="progress-title" className="text-[15px] font-medium text-bright">
-          {running ? "결과지 읽는 중" : "읽기 끝"} · {finished} / {pages.length}
+          {running ? "결과지 읽는 중" : failed > 0 ? `${failed}쪽 못 읽음` : "읽기 끝"} · {finished} / {pages.length}
         </h2>
         <div className="flex gap-2">
           {running ? (
@@ -37,14 +39,28 @@ export default function ReadProgress({ pages, running, onRetry, onCancel, onCont
               취소
             </button>
           ) : (
-            <button
-              type="button"
-              disabled={!readable}
-              onClick={onContinue}
-              className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-[#04130a] hover:bg-accent-hover disabled:opacity-40"
-            >
-              {failed > 0 ? `실패 ${failed}쪽 빼고 확인하기` : "확인하기"}
-            </button>
+            <>
+              <button type="button" onClick={onReset} className="rounded-lg px-2.5 py-1.5 text-sm text-sub hover:text-bright">
+                다른 파일로
+              </button>
+              {failed > 0 && (
+                <button
+                  type="button"
+                  onClick={() => onRetry(failedIds)}
+                  className="rounded-lg border border-border bg-surface px-3 py-1.5 text-sm hover:border-border-hover"
+                >
+                  남은 {failed}쪽 다시 읽기
+                </button>
+              )}
+              <button
+                type="button"
+                disabled={!readable}
+                onClick={onContinue}
+                className="rounded-lg bg-accent px-3 py-1.5 text-sm font-medium text-[#04130a] hover:bg-accent-hover disabled:opacity-40"
+              >
+                {failed > 0 ? `${failed}쪽 빼고 확인하기` : "확인하기"}
+              </button>
+            </>
           )}
         </div>
       </div>
@@ -56,7 +72,7 @@ export default function ReadProgress({ pages, running, onRetry, onCancel, onCont
         {pages.map((p) => (
           <li key={p.id} className="grid grid-cols-[1fr_auto] items-center gap-3 border-t border-border py-2">
             <span className="truncate text-[13px] text-bright">{p.label}</span>
-            <PageState page={p} onRetry={() => onRetry(p.id)} retryDisabled={running} />
+            <PageState page={p} onRetry={() => onRetry([p.id])} retryDisabled={running} />
           </li>
         ))}
       </ul>

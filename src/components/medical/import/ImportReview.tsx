@@ -215,8 +215,8 @@ function Findings({ findings, onToggle }: { findings: readonly ImportFinding[]; 
   );
 }
 
-function SaveBar({ header, rounds, existing, saving, error, onSave }: ImportReviewProps) {
-  const reasons = blockingReasons({ header, rounds });
+function SaveBar({ header, rounds, existing, saving, error, maxDate, onSave }: ImportReviewProps) {
+  const reasons = blockingReasons({ header, rounds, today: maxDate });
   const summary = summarizeImport(effectiveRounds(rounds, header.date), (d) => existing.get(d));
   const disabled = saving || reasons.length > 0 || summary.loading;
   return (

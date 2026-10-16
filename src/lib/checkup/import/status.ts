@@ -33,18 +33,16 @@ export function rowStatus(row: Pick<DraftRow, "itemCode" | "value">, existing: E
 }
 
 /**
- * 기존 회차를 불러온 뒤 한 번 적용하는 기본값: 같은 값은 빼고, 값이 다르면 포함하되 덮어쓰기는 끈다
- * (체크하지 않으면 저장 때 건너뛴다 · 스펙 §3-2). 사용자가 바꾼 뒤에는 다시 부르지 않는다.
+ * 회차 날짜의 기존 회차 (없으면 null) 기준 기본값 — 같은 값은 빼고, 새 항목 · 값 다름은 포함하되 덮어쓰기는 끈다
+ * (체크하지 않으면 저장 때 건너뛴다 · 스펙 §3-2). 회차 날짜가 바뀔 때마다 다시 부른다 — 이전 날짜의 기본값
+ * (같은 값이라 뺀 행) 이 새 날짜에 남지 않도록 현재 값이 아니라 처음부터 계산한다 (PR 전 리뷰 major 1).
  */
 export function applyExistingDefaults(round: DraftRound, existing: ExistingRound | null): DraftRound {
-  if (!existing) return round;
   return {
     ...round,
     rows: round.rows.map((row) => {
-      const { status } = rowStatus(row, existing);
-      if (status === "same") return { ...row, include: false, overwrite: false };
-      if (status === "different") return { ...row, overwrite: false };
-      return row;
+      const status = existing ? rowStatus(row, existing).status : "new";
+      return { ...row, include: row.itemCode !== null && status !== "same", overwrite: false };
     }),
   };
 }

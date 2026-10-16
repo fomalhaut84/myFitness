@@ -24,8 +24,9 @@ function toRow({ overwrite: _overwrite, ...row }: ImportRow): CheckupResultRow {
   return row;
 }
 
-function importEntry(prepared: Prepared, at: Date) {
-  return { at: at.toISOString(), source: prepared.source, pages: prepared.pages };
+/** 추출 원문은 첫 회차 (보통 금회) 에만 — 회차마다 같은 원문을 반복 저장하지 않는다 (PR 전 리뷰 info 5) */
+function importEntry(prepared: Prepared, at: Date, withPages: boolean) {
+  return { at: at.toISOString(), source: prepared.source, ...(withPages ? { pages: prepared.pages } : { pagesOn: prepared.rounds[0]?.date }) };
 }
 
 /** rawData = { imports: [...] } — 기존 값이 다른 형태면 보존해 둔다 */
@@ -99,11 +100,12 @@ async function applyRound(
 
 /** 하나라도 실패하면 전부 롤백. 같은 날짜 동시 생성은 P2002 (호출자가 409). */
 export async function importCheckups(prepared: Prepared, now: Date = new Date()): Promise<ImportRoundOutcome[]> {
-  const entry = importEntry(prepared, now);
   return prisma.$transaction(
     async (tx) => {
       const outcomes: ImportRoundOutcome[] = [];
-      for (const round of prepared.rounds) outcomes.push(await applyRound(tx, round, prepared, entry));
+      for (const [i, round] of prepared.rounds.entries()) {
+        outcomes.push(await applyRound(tx, round, prepared, importEntry(prepared, now, i === 0)));
+      }
       return outcomes;
     },
     { timeout: TX_TIMEOUT_MS },

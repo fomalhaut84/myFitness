@@ -81,7 +81,14 @@ export default function CheckupImport({ today }: { today: string }) {
     return () => window.removeEventListener("beforeunload", warn);
   }, [step]);
 
-  useEffect(() => () => uploadRef.current?.dispose(), []);
+  // 떠나면 남은 쪽 읽기를 멈춘다 — 클라이언트 이동 (Link) 은 beforeunload 를 거치지 않는다 (PR 전 리뷰 info 3)
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      uploadRef.current?.dispose();
+    },
+    [],
+  );
 
   function patchPage(id: string, patch: Partial<PageProgress>) {
     setProgress((ps) => ps.map((p) => (p.id === id ? { ...p, ...patch } : p)));
@@ -120,6 +127,11 @@ export default function CheckupImport({ today }: { today: string }) {
       }
     };
     await Promise.all(Array.from({ length: CONCURRENCY }, worker));
+    if (controller.signal.aborted) {
+      // 취소된 쪽은 실패로 — "남은 쪽 다시 읽기" · 확인 버튼의 "N쪽 빼고" 에 잡히게 (PR 전 리뷰 major 2)
+      const ids = new Set(pages.map((p) => p.id));
+      setProgress((ps) => ps.map((p) => (ids.has(p.id) && p.status !== "done" ? { ...p, status: "error", error: "취소됨" } : p)));
+    }
     setRunning(false);
     return ok && !controller.signal.aborted;
   }
@@ -177,7 +189,7 @@ export default function CheckupImport({ today }: { today: string }) {
     if (!upload) return;
     const pages = upload.pages.flatMap((p) => resultsRef.current.get(p.id) ?? []);
     const merged = mergePages(pages);
-    const rounds = buildDraftRounds(merged);
+    const rounds = buildDraftRounds(merged, today);
     const header: ImportHeader = { date: merged.examDate && merged.examDate <= today ? merged.examDate : "", institution: merged.institution ?? "", kind: "comprehensive" };
     const findings = merged.sections.flatMap((s, i) => s.findings.map((text, j) => ({ key: `${i}:${j}`, category: s.category, text, include: true })));
     setReview(applyLoaded({ header, rounds, findings, examDateConflict: merged.examDateConflict, applied: {} }, existing));
@@ -195,6 +207,7 @@ export default function CheckupImport({ today }: { today: string }) {
     if (!review || !uploadRef.current) return;
     const upload = uploadRef.current;
     const assembled = assembleImport({
+      today,
       source: upload.source === "pdf" ? "pdf" : imageSource,
       header: review.header,
       rounds: review.rounds,
@@ -279,10 +292,11 @@ export default function CheckupImport({ today }: { today: string }) {
         pages={progress}
         running={running}
         onCancel={() => abortRef.current?.abort()}
-        onRetry={(id) => {
-          const page = uploadRef.current?.pages.find((p) => p.id === id);
-          if (page) void run([page]);
+        onRetry={(ids) => {
+          const pages = uploadRef.current?.pages.filter((p) => ids.includes(p.id)) ?? [];
+          if (pages.length > 0) void run(pages);
         }}
+        onReset={reset}
         onContinue={startReview}
       />
     );

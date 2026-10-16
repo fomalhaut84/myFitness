@@ -10,7 +10,7 @@ export type ImportSource = (typeof IMPORT_SOURCES)[number];
 export const MAX_IMPORT_ROUNDS = 20;
 export const MAX_IMPORT_RESULTS = 600;
 export const MAX_IMPORT_PAGES = 30;
-const MAX_RESULTS_PER_ROUND = 300;
+export const MAX_RESULTS_PER_ROUND = 300;
 
 export const IMPORT_RESULT_INPUT = CHECKUP_RESULT_INPUT.extend({
   /** 확인 화면이 매칭을 정했다 — 서버가 이름으로 다시 매칭하지 않는다 */

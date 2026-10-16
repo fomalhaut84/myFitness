@@ -105,7 +105,7 @@ function baseRow(item: MergedItem, key: string): Omit<DraftRow, "value" | "ref" 
  * 과거 값은 값만 — 결과지 과거 열에 없는 판정 · 기준범위 · 판독문은 만들지 않는다.
  * 날짜가 같아지는 회차 (금회 = 과거 · 날짜를 넣은 미확인 회차) 는 요청 조립 (effectiveRounds) 이 합친다.
  */
-export function buildDraftRounds(merged: MergedExtraction): DraftRound[] {
+export function buildDraftRounds(merged: MergedExtraction, todayYmd: string): DraftRound[] {
   const currentRows: DraftRow[] = merged.items.map((item, i) => ({
     ...baseRow(item, `current:${i}`),
     value: item.value,
@@ -117,7 +117,9 @@ export function buildDraftRounds(merged: MergedExtraction): DraftRound[] {
   }));
   const past = new Map<string, { date: string | null; dateText: string | null; rows: DraftRow[] }>();
   merged.items.forEach((item, i) => {
-    for (const p of item.past) {
+    for (const raw of item.past) {
+      // 오늘 뒤 날짜는 잘못 읽은 것 — 날짜 확인 필요 회차로 (서버가 미래 날짜를 거부한다 · PR 전 리뷰 major 3)
+      const p = raw.date && raw.date > todayYmd ? { ...raw, date: null, dateText: raw.dateText ?? raw.date } : raw;
       const key = pastKey(p);
       const group = past.get(key) ?? { date: p.date, dateText: p.date ? null : p.dateText, rows: [] };
       const row: DraftRow = {
