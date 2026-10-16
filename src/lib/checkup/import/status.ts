@@ -8,6 +8,7 @@ export interface ExistingResult {
   itemCode: string;
   valueNum: number | null;
   valueText: string | null;
+  unit: string | null;
 }
 
 export interface ExistingRound {
@@ -18,6 +19,15 @@ export interface ExistingRound {
 
 const NUM_RE = /^-?\d+(?:\.\d+)?$/;
 
+/**
+ * 결과지에 단위가 적혀 있고 저장된 단위와 다르면 같은 값이 아니다 — 덮어쓰기로 단위를 고칠 수 있게 (PR #534 Codex P2).
+ * 결과지에 단위가 없으면 (온라인 화면) 저장된 단위는 카탈로그 단위라 비교하지 않는다.
+ */
+function sameUnit(unit: string | null, existing: ExistingResult): boolean {
+  if (!unit || !existing.unit) return true;
+  return valueKey(unit).toLowerCase() === valueKey(existing.unit).toLowerCase();
+}
+
 /** 원문 비교 (공백 · 전각 무시) — 둘 다 수치면 값으로 (`12.30` = `12.3`) */
 export function sameValue(value: string, existing: ExistingResult): boolean {
   const a = valueKey(value);
@@ -26,10 +36,13 @@ export function sameValue(value: string, existing: ExistingResult): boolean {
   return NUM_RE.test(a) && NUM_RE.test(b) && Number(a) === Number(b);
 }
 
-export function rowStatus(row: Pick<DraftRow, "itemCode" | "value">, existing: ExistingRound | null): { status: RowStatus; existing: ExistingResult | null } {
+export function rowStatus(
+  row: Pick<DraftRow, "itemCode" | "value"> & { unit?: string | null },
+  existing: ExistingRound | null,
+): { status: RowStatus; existing: ExistingResult | null } {
   const found = row.itemCode ? existing?.results.find((r) => r.itemCode === row.itemCode) ?? null : null;
   if (!found) return { status: "new", existing: null };
-  return { status: sameValue(row.value, found) ? "same" : "different", existing: found };
+  return { status: sameValue(row.value, found) && sameUnit(row.unit ?? null, found) ? "same" : "different", existing: found };
 }
 
 /**

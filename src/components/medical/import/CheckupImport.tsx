@@ -170,7 +170,7 @@ export default function CheckupImport({ today }: { today: string }) {
           const id = index.get(date);
           if (!id) return null;
           const body = await fetchJson<{ checkup: { results: ExistingRound["results"] } }>(`/api/checkups/${id}`);
-          return { id, date, results: body.checkup.results.map(({ itemCode, valueNum, valueText }) => ({ itemCode, valueNum, valueText })) };
+          return { id, date, results: body.checkup.results.map(({ itemCode, valueNum, valueText, unit }) => ({ itemCode, valueNum, valueText, unit })) };
         })
         .then((found) => {
           setExisting((m) => new Map(m).set(date, found));

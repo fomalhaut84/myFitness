@@ -49,7 +49,28 @@ export type ImportRequestBody = z.input<typeof IMPORT_INPUT>;
 export type ImportResultBody = z.input<typeof IMPORT_RESULT_INPUT>;
 export type ImportInput = z.output<typeof IMPORT_INPUT>;
 
-export type ImportRow = CheckupResultRow & { overwrite: boolean };
+/** 결과지가 실제로 준 필드 — 덮어쓰기는 이것만 바꾼다 (빌드가 채운 카탈로그 단위 · 계산 판정과 구분) */
+export interface ProvidedFields {
+  unit: boolean;
+  ref: boolean;
+  flag: boolean;
+  note: boolean;
+  followUp: boolean;
+  followUpDue: boolean;
+}
+
+export type ImportRow = CheckupResultRow & { overwrite: boolean; given: ProvidedFields };
+
+function providedFields(input: ImportInput["rounds"][number]["results"][number]): ProvidedFields {
+  return {
+    unit: input.unit != null,
+    ref: input.ref != null,
+    flag: input.flag != null,
+    note: input.note != null,
+    followUp: input.followUp != null,
+    followUpDue: input.followUpDue != null,
+  };
+}
 
 export interface PreparedRound {
   date: string;
@@ -81,7 +102,7 @@ export function prepareImport(body: unknown, todayYmd: string): PreparedImport {
       kind: round.kind,
       findings: round.findings && round.findings.length > 0 ? round.findings : null,
       // buildResultRows 는 입력 순서를 지킨다
-      rows: built.rows.map((row, i) => ({ ...row, overwrite: round.results[i].overwrite })),
+      rows: built.rows.map((row, i) => ({ ...row, overwrite: round.results[i].overwrite, given: providedFields(round.results[i]) })),
     });
   }
   return { ok: true, source: parsed.data.source, pages: parsed.data.pages, rounds };

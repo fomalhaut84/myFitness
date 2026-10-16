@@ -7,7 +7,7 @@ import { followUpDueFrom } from "../import/follow-up";
 import { applyExistingDefaults, rowStatus, sameValue, type ExistingRound } from "../import/status";
 import { assembleImport, blockingReasons, effectiveRounds } from "../import/assemble";
 import { prepareImport } from "../import/request";
-import { planRound } from "../import/plan";
+import { mergeResultRow, planRound, type StoredResult } from "../import/plan";
 
 const TODAY = "2033-01-01";
 
@@ -189,8 +189,8 @@ describe("rowStatus · applyExistingDefaults", () => {
     id: "x",
     date: "2030-01-02",
     results: [
-      { itemCode: "ast", valueNum: 12.3, valueText: "12.30" },
-      { itemCode: "alt", valueNum: null, valueText: "음 성" },
+      { itemCode: "ast", valueNum: 12.3, valueText: "12.30", unit: null },
+      { itemCode: "alt", valueNum: null, valueText: "음 성", unit: null },
     ],
   };
 
@@ -329,12 +329,83 @@ describe("planRound", () => {
     expect([plan.existingId, plan.add.length, plan.replace.length, plan.skipped, plan.fillFindings]).toEqual([null, 3, 0, 0, true]);
   });
 
-  it("기존 회차: 없는 항목 추가 · overwrite 만 교체 · 나머지 건너뜀 · 소견은 비었을 때만", () => {
-    const plan = planRound(round, { id: "x", hasFindings: true, itemCodes: new Set(["ast", "alt"]) });
+  const stored = (itemCode: string, over: Partial<StoredResult> = {}): StoredResult => ({
+    id: `id-${itemCode}`,
+    itemCode,
+    valueNum: 1,
+    valueText: "1",
+    unit: "U/L",
+    refText: null,
+    refLow: null,
+    refHigh: null,
+    flag: null,
+    flagSource: null,
+    note: null,
+    followUp: null,
+    followUpDue: null,
+    ...over,
+  });
+
+  it("기존 회차: 없는 항목 추가 · overwrite 만 병합 · 나머지 건너뜀 · 소견은 비었을 때만", () => {
+    const plan = planRound(round, { id: "x", hasFindings: true, results: new Map([["ast", stored("ast")], ["alt", stored("alt")]]) });
     expect(plan.add.map((r) => r.itemCode)).toEqual(["ggt"]);
-    expect(plan.replace.map((r) => r.itemCode)).toEqual(["alt"]);
+    expect(plan.replace.map((r) => [r.id, r.itemCode, r.previous.valueText])).toEqual([["id-alt", "alt", "1"]]);
     expect(plan.skipped).toBe(1);
     expect(plan.fillFindings).toBe(false);
+  });
+});
+
+// 회귀: 덮어쓰기가 행을 교체해 과거결과 열 값 (값만 있음) 이 그 회차의 기준범위 · 판정 · 판독문 · 추적 예정일을 지웠다
+// → 결과지가 준 필드만 바꾸는 병합 (2026-10-16 사용자 결정)
+describe("mergeResultRow", () => {
+  const stored: StoredResult = {
+    id: "s",
+    itemCode: "alt",
+    valueNum: 50,
+    valueText: "50",
+    unit: "U/L",
+    refText: "0-40",
+    refLow: 0,
+    refHigh: 40,
+    flag: "abnormal",
+    flagSource: "computed",
+    note: "가상 메모",
+    followUp: "6개월 후",
+    followUpDue: new Date("2030-07-01T15:00:00Z"),
+  };
+  const incoming = (results: Record<string, unknown>) => {
+    const p = prepareImport({ source: "photo", rounds: [{ date: "2030-01-02", kind: "other", results: [{ itemCode: "alt", label: "ALT", overwrite: true, ...results }] }] }, "2032-01-01");
+    if (!p.ok) throw new Error("fixture");
+    return p.rounds[0].rows[0];
+  };
+
+  it("과거결과 열 (값만): 값만 바꾸고 단위 · 기준범위 · 판독문 · 추적은 유지 · 계산 판정은 새 값으로 다시", () => {
+    const m = mergeResultRow(stored, incoming({ value: "30" }));
+    expect(m).toMatchObject({ valueNum: 30, valueText: "30", unit: "U/L", refText: "0-40", note: "가상 메모", followUp: "6개월 후" });
+    expect(m.followUpDue).toEqual(stored.followUpDue);
+    expect([m.flag, m.flagSource]).toEqual(["normal", "computed"]);
+  });
+
+  it("저장된 기관 판정은 유지 · 결과지 판정이 있으면 그것", () => {
+    const inst = { ...stored, flag: "caution", flagSource: "institution" };
+    expect(mergeResultRow(inst, incoming({ value: "30" })).flag).toBe("caution");
+    expect(mergeResultRow(inst, incoming({ value: "30", flag: "abnormal" }))).toMatchObject({ flag: "abnormal", flagSource: "institution" });
+  });
+
+  it("금회 열 (필드 있음): 준 필드는 결과지 것 · 판독문이 없으면 저장된 메모 유지", () => {
+    const m = mergeResultRow(stored, incoming({ value: "45", unit: "IU/L", ref: "0-50", followUp: "12개월 후", followUpDue: "2031-01-02" }));
+    expect(m).toMatchObject({ unit: "IU/L", refText: "0-50", refHigh: 50, flag: "normal", note: "가상 메모", followUp: "12개월 후" });
+    expect(m.followUpDue?.toISOString()).toBe("2031-01-01T15:00:00.000Z");
+  });
+});
+
+// 회귀: PR #534 Codex P2 — 결과지에 적힌 단위가 저장된 단위와 다르면 같은 값이 아니다
+describe("단위 비교", () => {
+  const ex: ExistingRound = { id: "x", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12", unit: "U/L" }] };
+  it("단위가 다르면 다름 · 결과지에 단위가 없거나 표기만 다르면 같음", () => {
+    expect(rowStatus({ itemCode: "ast", value: "12", unit: "IU/L" }, ex).status).toBe("different");
+    expect(rowStatus({ itemCode: "ast", value: "12", unit: null }, ex).status).toBe("same");
+    expect(rowStatus({ itemCode: "ast", value: "12", unit: "u/l" }, ex).status).toBe("same");
   });
 });
 
@@ -352,7 +423,7 @@ describe("sniffImageType", () => {
 describe("summarizeImport", () => {
   it("새 회차 · 기존 회차 추가 · 덮어쓰기 · 건너뜀 · 불러오는 중", async () => {
     const { summarizeImport } = await import("../import/status");
-    const existing: ExistingRound = { id: "x", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12" }, { itemCode: "alt", valueNum: 20, valueText: "20" }] };
+    const existing: ExistingRound = { id: "x", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12", unit: null }, { itemCode: "alt", valueNum: 20, valueText: "20", unit: null }] };
     const rounds = [
       { date: "2032-04-20", rows: [row({ key: "a" }), row({ key: "b", itemCode: "alt", include: false })] },
       {
@@ -416,7 +487,7 @@ describe("날짜 미확인 과거 회차", () => {
 // 회귀: PR 전 리뷰 major 1 — 날짜를 바꾸면 이전 날짜의 기본값 (같은 값이라 뺀 행) 이 남지 않는다
 describe("applyExistingDefaults — 날짜 변경", () => {
   it("기존 회차 A 에서 뺀 행이 기존 회차 없는 B 에서 다시 포함된다", () => {
-    const a: ExistingRound = { id: "a", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12" }] };
+    const a: ExistingRound = { id: "a", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12", unit: null }] };
     const round: DraftRound = { key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "r", value: "12" })] };
     const onA = applyExistingDefaults(round, a);
     expect(onA.rows[0].include).toBe(false);

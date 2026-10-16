@@ -47,7 +47,14 @@ export default function ReviewRows({ round, date, existing, duplicates, onChange
         return (
           <div key={row.key}>
             {newSection && <div className="bg-surface px-3 py-1.5 text-xs text-sub">{row.section ?? "분류 없음"}</div>}
-            <Row row={row} date={date} existing={existing} duplicateOf={duplicates.get(row.key) ?? null} onChange={(p) => onChange(row.key, p)} />
+            <Row
+              row={row}
+              date={date}
+              pastColumn={!round.current}
+              existing={existing}
+              duplicateOf={duplicates.get(row.key) ?? null}
+              onChange={(p) => onChange(row.key, p)}
+            />
           </div>
         );
       })}
@@ -58,12 +65,14 @@ export default function ReviewRows({ round, date, existing, duplicates, onChange
 interface RowProps {
   row: DraftRow;
   date: string | null;
+  /** 과거결과 열에서 온 값 (판정 · 기준범위 없음) */
+  pastColumn: boolean;
   existing: ExistingRound | null | undefined;
   duplicateOf: string | null;
   onChange: (patch: RowPatch) => void;
 }
 
-function Row({ row, date, existing, duplicateOf, onChange }: RowProps) {
+function Row({ row, date, pastColumn, existing, duplicateOf, onChange }: RowProps) {
   const tone = flagTone(row.flag);
   const matchBorder =
     row.confidence === "fuzzy" ? "border-blue-300/50" : row.confidence === "none" ? "border-dashed border-border-hover" : "border-border";
@@ -113,7 +122,7 @@ function Row({ row, date, existing, duplicateOf, onChange }: RowProps) {
       </div>
       <div className={`font-[family-name:var(--font-geist-mono)] text-xs text-sub md:pt-1 ${row.include ? "" : "opacity-45"}`}>{row.ref ?? "—"}</div>
       <div className="col-span-2 md:col-span-1 md:pt-0.5">
-        <Status row={row} existing={existing} duplicateOf={duplicateOf} onChange={onChange} />
+        <Status row={row} pastColumn={pastColumn} existing={existing} duplicateOf={duplicateOf} onChange={onChange} />
         {tone && <span className={`${PILL} ${FLAG_PILL[tone]} mr-1 inline-block`}>{FLAG_LABEL[tone]}</span>}
         {row.conflict && <p className="mt-1 text-xs text-amber-300">쪽마다 다르게 읽혔습니다 — 결과지와 대조하세요</p>}
         {row.note && (
@@ -128,7 +137,7 @@ function Row({ row, date, existing, duplicateOf, onChange }: RowProps) {
   );
 }
 
-function Status({ row, existing, duplicateOf, onChange }: Pick<RowProps, "row" | "existing" | "duplicateOf" | "onChange">) {
+function Status({ row, pastColumn, existing, duplicateOf, onChange }: Pick<RowProps, "row" | "pastColumn" | "existing" | "duplicateOf" | "onChange">) {
   if (!row.itemCode) return <p className="text-xs text-red-400">항목을 알아볼 수 없습니다 — 매칭할 항목을 고르세요</p>;
   if (duplicateOf && row.include) {
     return <p className="text-xs text-red-400">&apos;{duplicateOf}&apos; 와 같은 항목으로 매칭됨 — 매칭을 바꾸거나 한쪽을 빼세요</p>;
@@ -140,11 +149,19 @@ function Status({ row, existing, duplicateOf, onChange }: Pick<RowProps, "row" |
   return (
     <span className="mr-1 inline-block">
       <span className={`${PILL} ${FLAG_PILL.caution}`}>값 다름</span>
-      <span className="ml-1.5 font-[family-name:var(--font-geist-mono)] text-xs text-sub">저장된 값 {found?.valueText ?? found?.valueNum ?? ""}</span>
+      <span className="ml-1.5 font-[family-name:var(--font-geist-mono)] text-xs text-sub">
+        저장된 값 {found?.valueText ?? found?.valueNum ?? ""}
+        {found?.unit && row.unit && found.unit !== row.unit ? ` ${found.unit}` : ""}
+      </span>
       <label className="mt-1 flex cursor-pointer items-center gap-1.5 text-xs text-amber-300">
         <input type="checkbox" checked={row.overwrite} disabled={!row.include} onChange={(e) => onChange({ overwrite: e.target.checked })} />
         결과지 값으로 덮어쓰기
       </label>
+      <span className="mt-0.5 block text-[11px] text-dim">
+        {pastColumn
+          ? "과거결과 열 값입니다 — 원래 회차 결과지 값이 더 정확할 수 있습니다. 값만 바뀌고 기준범위 · 판정 · 판독문은 유지됩니다"
+          : "결과지에 있는 항목만 바뀌고, 결과지에 없는 판독문 · 추적 예정일은 유지됩니다"}
+      </span>
     </span>
   );
 }
