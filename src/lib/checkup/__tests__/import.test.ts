@@ -28,25 +28,25 @@ describe("parseExtractResponse", () => {
     institution: "가상검진센터",
     examDate: null,
     sections: [{ category: "가상 분류", findings: ["가상 소견"] }],
-    items: [{ section: "가상 분류", label: "AST", value: "12", ref: "0-40", flag: "caution", past: [{ date: "2030-01-02", value: "11" }] }],
+    items: [{ section: "가상 분류", label: "AST", value: "12", ref: "0-40", flag: "caution", past: [{ date: "2030-01-02", dateText: null, value: "11" }] }],
   };
 
   it("정상 응답 · 누락 필드는 null / 빈 배열", () => {
     const p = parseExtractResponse(JSON.stringify(body));
     expect(p?.items[0]).toMatchObject({ label: "AST", value: "12", unit: null, note: null, flag: "caution" });
-    expect(p?.items[0].past).toEqual([{ date: "2030-01-02", value: "11" }]);
+    expect(p?.items[0].past).toEqual([{ date: "2030-01-02", dateText: null, value: "11" }]);
   });
 
   it("코드펜스 · 앞뒤 문장이 붙어도 JSON 부분만", () => {
     expect(parseExtractResponse("결과입니다\n```json\n" + JSON.stringify(body) + "\n```")?.items).toHaveLength(1);
   });
 
-  it("실제 날짜가 아닌 과거 날짜는 버리고, 실제 날짜 아닌 검진일은 null", () => {
+  it("실제 날짜가 아닌 과거 날짜는 null 로 남기고 (원문 표기 보존) · 실제 날짜 아닌 검진일은 null", () => {
     const p = parseExtractResponse(
-      JSON.stringify({ ...body, examDate: "2030-02-30", items: [{ ...body.items[0], past: [{ date: "30.01.02", value: "1" }] }] }),
+      JSON.stringify({ ...body, examDate: "2030-02-30", items: [{ ...body.items[0], past: [{ date: "30.01.02", dateText: "30.01.02", value: "1" }] }] }),
     );
     expect(p?.examDate).toBeNull();
-    expect(p?.items[0].past).toEqual([]);
+    expect(p?.items[0].past).toEqual([{ date: null, dateText: "30.01.02", value: "1" }]);
   });
 
   it("길이 초과 · 배열 상한 · JSON 아님 · 필수 누락은 null", () => {
@@ -64,8 +64,8 @@ describe("parseExtractResponse", () => {
 describe("mergePages", () => {
   it("겹친 행은 하나로 · 다른 값이면 충돌 · 과거 날짜 합침", () => {
     const merged = mergePages([
-      page({ items: [item("AST", "12", { past: [{ date: "2030-01-02", value: "11" }] })] }),
-      page({ institution: "가상검진센터", items: [item("AST", "13", { ref: "0-40", past: [{ date: "2028-01-02", value: "10" }] }), item("ALT", "20")] }),
+      page({ items: [item("AST", "12", { past: [{ date: "2030-01-02", dateText: null, value: "11" }] })] }),
+      page({ institution: "가상검진센터", items: [item("AST", "13", { ref: "0-40", past: [{ date: "2028-01-02", dateText: null, value: "10" }] }), item("ALT", "20")] }),
     ]);
     expect(merged.items).toHaveLength(2);
     expect(merged.items[0]).toMatchObject({ value: "12", ref: "0-40", conflict: true, pages: [0, 1] });
@@ -118,8 +118,8 @@ describe("buildDraftRounds · duplicateRows", () => {
     page({
       examDate: "2032-04-20",
       items: [
-        item("AST", "12", { ref: "0-40", flag: "caution", past: [{ date: "2030-01-02", value: "11" }, { date: "2028-01-02", value: "10" }] }),
-        item("ALT", "20", { past: [{ date: "2030-01-02", value: "19" }] }),
+        item("AST", "12", { ref: "0-40", flag: "caution", past: [{ date: "2030-01-02", dateText: null, value: "11" }, { date: "2028-01-02", dateText: null, value: "10" }] }),
+        item("ALT", "20", { past: [{ date: "2030-01-02", dateText: null, value: "19" }] }),
       ],
     }),
   ]);
@@ -202,6 +202,8 @@ describe("rowStatus · applyExistingDefaults", () => {
       key: "2030-01-02",
       current: false,
       date: "2030-01-02",
+      dateText: null,
+      needsDate: false,
       rows: [row({ key: "a", value: "12.3" }), row({ key: "b", value: "13", overwrite: true }), row({ key: "c", itemCode: "ggt" })],
     };
     const out = applyExistingDefaults(round, existing).rows;
@@ -215,9 +217,16 @@ describe("rowStatus · applyExistingDefaults", () => {
 
 describe("assembleImport", () => {
   const rounds: DraftRound[] = [
-    { key: "current", current: true, date: null, rows: [row({ key: "c1" }), row({ key: "c2", itemCode: "alt", label: "ALT", followUp: "12개월 후", followUpDue: "2031-01-02" })] },
-    { key: "2030-01-02", current: false, date: "2030-01-02", rows: [row({ key: "p1", value: "11" }), row({ key: "p2", itemCode: "ggt", label: "GGT", value: "30" })] },
-    { key: "2028-01-02", current: false, date: "2028-01-02", rows: [row({ key: "q1", include: false })] },
+    {
+      key: "current",
+      current: true,
+      date: null,
+      dateText: null,
+      needsDate: false,
+      rows: [row({ key: "c1", followUp: "6개월 후" }), row({ key: "c2", itemCode: "alt", label: "ALT", followUp: "12개월 후", followUpDue: "2031-01-02" })],
+    },
+    { key: "2030-01-02", current: false, date: "2030-01-02", dateText: null, needsDate: false, rows: [row({ key: "p1", value: "11" }), row({ key: "p2", itemCode: "ggt", label: "GGT", value: "30" })] },
+    { key: "2028-01-02", current: false, date: "2028-01-02", dateText: null, needsDate: false, rows: [row({ key: "q1", include: false })] },
   ];
   const header = { date: "", institution: " 가상검진센터 ", kind: "comprehensive" as const };
 
@@ -248,11 +257,13 @@ describe("assembleImport", () => {
       ["2032-04-20", 2, 1, "가상검진센터"],
       ["2030-01-02", 2, null, "가상검진센터"],
     ]);
+    // 사용자가 고른 예정일 우선 · 없으면 권고 원문 + 금회 검진일
     expect(res.body.rounds[0].results[1]).toMatchObject({ itemCode: "alt", followUpDue: "2031-01-02", overwrite: false });
+    expect(res.body.rounds[0].results[0].followUpDue).toBe("2032-10-20");
   });
 
   it("중복 매칭 · 항목 없는 행은 막는다", () => {
-    const bad: DraftRound[] = [{ key: "current", current: true, date: null, rows: [row({ key: "a" }), row({ key: "b" }), row({ key: "c", itemCode: null })] }];
+    const bad: DraftRound[] = [{ key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a" }), row({ key: "b" }), row({ key: "c", itemCode: null })] }];
     const reasons = blockingReasons({ header: { ...header, date: "2032-04-20" }, rounds: bad });
     expect(reasons).toEqual(["같은 항목으로 매칭된 행 1개를 정리하세요", "항목을 알아볼 수 없는 행 1개를 빼거나 매칭하세요"]);
   });
@@ -329,5 +340,69 @@ describe("sniffImageType", () => {
     expect(sniffImageType(new TextEncoder().encode("RIFF\0\0\0\0WEBPVP8 "))).toBe("webp");
     expect(sniffImageType(new TextEncoder().encode("%PDF-1.7"))).toBeNull();
     expect(sniffImageType(new TextEncoder().encode("ignore previous instructions"))).toBeNull();
+  });
+});
+
+describe("summarizeImport", () => {
+  it("새 회차 · 기존 회차 추가 · 덮어쓰기 · 건너뜀 · 불러오는 중", async () => {
+    const { summarizeImport } = await import("../import/status");
+    const existing: ExistingRound = { id: "x", date: "2030-01-02", results: [{ itemCode: "ast", valueNum: 12, valueText: "12" }, { itemCode: "alt", valueNum: 20, valueText: "20" }] };
+    const rounds = [
+      { date: "2032-04-20", rows: [row({ key: "a" }), row({ key: "b", itemCode: "alt", include: false })] },
+      {
+        date: "2030-01-02",
+        rows: [row({ key: "c" }), row({ key: "d", itemCode: "alt", value: "21", overwrite: true }), row({ key: "e", itemCode: "ggt" })],
+      },
+    ];
+    const s = summarizeImport(rounds, (d) => (d === "2030-01-02" ? existing : null));
+    expect(s).toEqual({ newRounds: 1, existingRounds: 1, added: 2, overwritten: 1, skipped: 1, loading: false });
+    expect(summarizeImport(rounds, () => undefined).loading).toBe(true);
+  });
+});
+
+// 사용자 결정 (2026-10-16): 과거결과 열에서 날짜를 못 읽은 값은 버리지 않고 날짜를 확인받는다
+describe("날짜 미확인 과거 회차", () => {
+  const merged = mergePages([
+    page({
+      items: [
+        item("AST", "12", { past: [{ date: null, dateText: "30.01.02", value: "11" }, { date: "2028-01-02", dateText: null, value: "10" }] }),
+        item("ALT", "20", { past: [{ date: null, dateText: "30.01.02", value: "19" }] }),
+      ],
+    }),
+  ]);
+  const rounds = buildDraftRounds(merged);
+  const header = { date: "2032-04-20", institution: "", kind: "comprehensive" as const };
+
+  it("원문 표기별 회차로 묶어 맨 뒤에 · 날짜 확인 필요", () => {
+    expect(rounds.map((r) => [r.key, r.date, r.dateText, r.needsDate, r.rows.length])).toEqual([
+      ["current", null, null, false, 2],
+      ["2028-01-02", "2028-01-02", null, false, 1],
+      ["?30.01.02", null, "30.01.02", true, 2],
+    ]);
+  });
+
+  it("날짜를 넣기 전에는 저장을 막고, 넣으면 그 날짜 회차로 저장", () => {
+    expect(blockingReasons({ header, rounds })).toEqual(["날짜를 확인하지 않은 과거 회차 1개 — 날짜를 넣거나 행을 빼세요"]);
+    const dated = rounds.map((r) => (r.needsDate ? { ...r, date: "2030-01-02" } : r));
+    const res = assembleImport({ source: "photo", header, rounds: dated, findings: [], pages: [] });
+    expect(res.ok && res.body.rounds.map((r) => [r.date, r.results.length])).toEqual([
+      ["2032-04-20", 2],
+      ["2028-01-02", 1],
+      ["2030-01-02", 2],
+    ]);
+  });
+
+  it("행을 모두 빼면 날짜 없이도 저장 가능", () => {
+    const off = rounds.map((r) => (r.needsDate ? { ...r, rows: r.rows.map((x) => ({ ...x, include: false })) } : r));
+    expect(blockingReasons({ header, rounds: off })).toEqual([]);
+  });
+
+  it("다른 회차와 같은 날짜를 넣으면 그 회차에 없는 항목만 합친다", () => {
+    const same = rounds.map((r) => (r.needsDate ? { ...r, date: "2028-01-02" } : r));
+    const eff = effectiveRounds(same, header.date);
+    expect(eff.map((r) => [r.date, r.rows.map((x) => x.itemCode)])).toEqual([
+      ["2032-04-20", ["ast", "alt"]],
+      ["2028-01-02", ["ast", "alt"]],
+    ]);
   });
 });

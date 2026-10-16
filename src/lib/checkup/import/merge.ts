@@ -26,9 +26,14 @@ function itemKey(item: ExtractedItem): string {
   return `${normalizeLabel(item.section ?? "")}|${normalizeLabel(item.label)}`;
 }
 
+/** 과거 값의 회차 키 — 날짜를 못 정한 값은 결과지 표기 원문으로 묶는다 */
+export function pastKey(p: { date: string | null; dateText: string | null }): string {
+  return p.date ?? `?${p.dateText ?? ""}`;
+}
+
 function mergePast(a: ExtractedItem["past"], b: ExtractedItem["past"]): ExtractedItem["past"] {
-  const dates = new Set(a.map((p) => p.date));
-  return [...a, ...b.filter((p) => !dates.has(p.date))];
+  const keys = new Set(a.map(pastKey));
+  return [...a, ...b.filter((p) => !keys.has(pastKey(p)))];
 }
 
 function mergeItem(prev: MergedItem, next: ExtractedItem, page: number): MergedItem {

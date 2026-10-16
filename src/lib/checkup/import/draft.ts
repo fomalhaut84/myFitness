@@ -2,7 +2,7 @@
 import { getCheckupItem } from "../items";
 import { customCode, lookupNormalized, matchItem, normalizeLabel } from "../match";
 import type { CheckupFlag } from "../flag";
-import type { MergedExtraction, MergedItem } from "./merge";
+import { pastKey, type MergedExtraction, type MergedItem } from "./merge";
 
 /** exact: 원문 이름이 카탈로그 이름 · 별칭과 그대로 일치 / fuzzy: 부기 제거 · 분해로 찾음 (확인 필요) / none: 카탈로그 밖 (새 항목) */
 export type MatchConfidence = "exact" | "fuzzy" | "none";
@@ -34,11 +34,15 @@ export interface DraftRow {
 }
 
 export interface DraftRound {
-  /** "current" 또는 과거 회차 날짜 */
+  /** "current" · 과거 회차 날짜 · 날짜 미확인 회차는 "?<원문 표기>" */
   key: string;
   current: boolean;
-  /** 금회는 사용자 입력 전 null 일 수 있다 */
+  /** 금회 · 날짜 미확인 과거 회차는 사용자 입력 전 null */
   date: string | null;
+  /** 과거결과 열에서 날짜를 못 읽은 회차 — 결과지의 날짜 표기 원문 (사용자가 보고 날짜를 넣는다) */
+  dateText: string | null;
+  /** 과거결과 열에서 날짜를 못 읽어 사용자가 날짜를 확인해야 하는 회차 */
+  needsDate: boolean;
   rows: DraftRow[];
 }
 
@@ -92,8 +96,9 @@ function baseRow(item: MergedItem, key: string): Omit<DraftRow, "value" | "ref" 
 }
 
 /**
- * 금회 회차 (첫 번째) + 과거결과 열 날짜별 회차 (최근 순). 과거 값은 값만 — 결과지 과거 열에 없는 판정 · 기준범위 ·
- * 판독문은 만들지 않는다. 금회 검진일이 과거 날짜와 같아지는 경우는 요청 조립 (buildImportRequest) 이 합친다.
+ * 금회 회차 (첫 번째) + 과거결과 열 날짜별 회차 (최근 순) + 날짜를 못 읽은 회차 (원문 표기별 · 맨 뒤 · 사용자가 날짜 입력).
+ * 과거 값은 값만 — 결과지 과거 열에 없는 판정 · 기준범위 · 판독문은 만들지 않는다.
+ * 날짜가 같아지는 회차 (금회 = 과거 · 날짜를 넣은 미확인 회차) 는 요청 조립 (effectiveRounds) 이 합친다.
  */
 export function buildDraftRounds(merged: MergedExtraction): DraftRound[] {
   const currentRows: DraftRow[] = merged.items.map((item, i) => ({
@@ -105,20 +110,31 @@ export function buildDraftRounds(merged: MergedExtraction): DraftRound[] {
     followUp: item.followUp,
     followUpDue: null,
   }));
-  const past = new Map<string, DraftRow[]>();
+  const past = new Map<string, { date: string | null; dateText: string | null; rows: DraftRow[] }>();
   merged.items.forEach((item, i) => {
     for (const p of item.past) {
-      const rows = past.get(p.date) ?? [];
-      past.set(p.date, [
-        ...rows,
-        { ...baseRow(item, `${p.date}:${i}`), value: p.value, ref: null, flag: null, note: null, followUp: null, followUpDue: null, conflict: false },
-      ]);
+      const key = pastKey(p);
+      const group = past.get(key) ?? { date: p.date, dateText: p.date ? null : p.dateText, rows: [] };
+      const row: DraftRow = {
+        ...baseRow(item, `${key}:${i}`),
+        value: p.value,
+        ref: null,
+        flag: null,
+        note: null,
+        followUp: null,
+        followUpDue: null,
+        conflict: false,
+      };
+      past.set(key, { ...group, rows: [...group.rows, row] });
     }
   });
-  const pastRounds = [...past.entries()]
-    .sort(([a], [b]) => b.localeCompare(a))
-    .map(([date, rows]) => ({ key: date, current: false, date, rows }));
-  return [{ key: "current", current: true, date: merged.examDate, rows: currentRows }, ...pastRounds];
+  const pastRounds: DraftRound[] = [...past.entries()]
+    .map(([key, g]) => ({ key, current: false, date: g.date, dateText: g.dateText, needsDate: g.date === null, rows: g.rows }))
+    .sort((a, b) => (a.date && b.date ? b.date.localeCompare(a.date) : a.date ? -1 : b.date ? 1 : a.key.localeCompare(b.key)));
+  return [
+    { key: "current", current: true, date: merged.examDate, dateText: null, needsDate: false, rows: currentRows },
+    ...pastRounds,
+  ];
 }
 
 /** 포함된 행 중 앞 행과 같은 itemCode 로 매칭된 행 → 앞 행의 원문 이름 (저장을 막는다 · `@@unique([checkupId, itemCode])`) */

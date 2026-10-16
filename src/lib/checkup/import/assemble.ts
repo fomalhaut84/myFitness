@@ -2,6 +2,7 @@
 import { isValidYmd } from "@/lib/history/buckets";
 import { duplicateRows, type DraftRound, type DraftRow } from "./draft";
 import type { ExtractedPage } from "./extract-schema";
+import { followUpDueFrom } from "./follow-up";
 import type { ImportRequestBody, ImportResultBody, ImportSource } from "./request";
 
 export interface ImportHeader {
@@ -27,7 +28,12 @@ export interface AssembleInput {
 
 export type AssembleResult = { ok: true; body: ImportRequestBody } | { ok: false; reasons: string[] };
 
-function toResult(row: DraftRow): ImportResultBody {
+/** 사용자가 고른 예정일 → 없으면 권고 원문 + 검진일로 계산한 값 (화면 표시와 같은 규칙) */
+export function effectiveFollowUpDue(row: Pick<DraftRow, "followUp" | "followUpDue">, date: string | null): string | null {
+  return row.followUpDue ?? followUpDueFrom(row.followUp, date);
+}
+
+function toResult(row: DraftRow, date: string): ImportResultBody {
   return {
     itemCode: row.itemCode as string,
     label: row.label,
@@ -38,27 +44,46 @@ function toResult(row: DraftRow): ImportResultBody {
     flag: row.flag,
     note: row.note,
     followUp: row.followUp,
-    followUpDue: row.followUpDue,
+    followUpDue: effectiveFollowUpDue(row, date),
     overwrite: row.overwrite,
   };
 }
 
-/** 금회 검진일과 같은 날짜의 과거 회차는 금회에 합친다 — 금회에 없는 항목만 (금회 행이 판정 · 기준범위를 가진다) */
+/** 회차의 저장 날짜 — 금회는 헤더 입력값 · 그 외는 회차 날짜 (날짜 미확인 회차는 사용자가 넣은 값). 실제 날짜가 아니면 null */
+export function roundDate(round: Pick<DraftRound, "current" | "date">, currentDate: string): string | null {
+  const date = round.current ? currentDate : round.date;
+  return date && isValidYmd(date) ? date : null;
+}
+
+/**
+ * 같은 날짜가 된 회차는 앞 회차 (금회 → 최근 과거 순) 에 합친다 — 앞 회차에 포함된 항목이 없는 행만.
+ * 금회 검진일 = 과거결과 열 날짜, 날짜 미확인 회차에 다른 회차 날짜를 넣은 경우. 날짜가 없는 회차는 그대로 둔다 (저장을 막는다).
+ */
 export function effectiveRounds(rounds: readonly DraftRound[], currentDate: string): DraftRound[] {
-  const current = rounds.find((r) => r.current);
-  const same = rounds.find((r) => !r.current && r.date === currentDate);
-  const rest = rounds.filter((r) => !r.current && r !== same);
-  if (!current) return rest;
-  const codes = new Set(current.rows.filter((r) => r.include).map((r) => r.itemCode));
-  const extra = same ? same.rows.filter((r) => !codes.has(r.itemCode)) : [];
-  return [{ ...current, date: currentDate, rows: [...current.rows, ...extra] }, ...rest];
+  const out: DraftRound[] = [];
+  const byDate = new Map<string, number>();
+  for (const round of rounds) {
+    const date = roundDate(round, currentDate);
+    const at = date ? byDate.get(date) : undefined;
+    if (at === undefined) {
+      if (date) byDate.set(date, out.length);
+      out.push({ ...round, date: date ?? round.date });
+      continue;
+    }
+    const target = out[at];
+    const codes = new Set(target.rows.filter((r) => r.include).map((r) => r.itemCode));
+    out[at] = { ...target, rows: [...target.rows, ...round.rows.filter((r) => !codes.has(r.itemCode))] };
+  }
+  return out;
 }
 
 export function blockingReasons(input: Pick<AssembleInput, "header" | "rounds">): string[] {
   const reasons: string[] = [];
   const currentHasRows = input.rounds.some((r) => r.current && r.rows.some((row) => row.include));
   if (currentHasRows && !isValidYmd(input.header.date)) reasons.push("금회 검진일을 입력하세요");
-  const rounds = isValidYmd(input.header.date) ? effectiveRounds(input.rounds, input.header.date) : input.rounds;
+  const undated = input.rounds.filter((r) => !r.current && !roundDate(r, "") && r.rows.some((row) => row.include)).length;
+  if (undated > 0) reasons.push(`날짜를 확인하지 않은 과거 회차 ${undated}개 — 날짜를 넣거나 행을 빼세요`);
+  const rounds = effectiveRounds(input.rounds, input.header.date);
   const dupCount = rounds.reduce((n, r) => n + duplicateRows(r.rows).size, 0);
   if (dupCount > 0) reasons.push(`같은 항목으로 매칭된 행 ${dupCount}개를 정리하세요`);
   const unnamed = rounds.flatMap((r) => r.rows).filter((row) => row.include && !row.itemCode).length;
@@ -74,7 +99,7 @@ export function assembleImport(input: AssembleInput): AssembleResult {
   const institution = header.institution.trim() || null;
   const rounds = effectiveRounds(input.rounds, header.date)
     .map((round) => ({ round, rows: round.rows.filter((r) => r.include) }))
-    .filter(({ round, rows }) => rows.length > 0 && round.date !== null)
+    .filter(({ round, rows }) => rows.length > 0 && round.date !== null && isValidYmd(round.date))
     .map(({ round, rows }) => ({
       date: round.date as string,
       institution,
@@ -82,7 +107,7 @@ export function assembleImport(input: AssembleInput): AssembleResult {
       findings: round.current
         ? input.findings.filter((f) => f.include).map((f) => ({ category: f.category, text: f.text }))
         : null,
-      results: rows.map(toResult),
+      results: rows.map((row) => toResult(row, round.date as string)),
     }));
   return { ok: true, body: { source: input.source, rounds, pages: [...input.pages] } };
 }

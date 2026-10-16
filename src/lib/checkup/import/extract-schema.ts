@@ -16,7 +16,7 @@ const optionalText = (max: number) =>
     .nullish()
     .transform((v) => (v ? v : null));
 
-/** 실제 날짜가 아니면 null (2자리 연도 · 잘못 읽은 날짜는 확인 화면에서 사용자가 고친다) */
+/** 실제 날짜가 아니면 null — 2자리 연도 · 잘못 읽은 날짜는 버리지 않고 확인 화면이 사용자에게 날짜를 받는다 */
 const optionalYmd = z
   .string()
   .trim()
@@ -25,6 +25,8 @@ const optionalYmd = z
 
 export const EXTRACTED_PAST = z.object({
   date: optionalYmd,
+  /** 결과지의 날짜 표기 원문 — date 를 못 정했을 때 사용자가 보고 고른다 */
+  dateText: optionalText(30),
   value: z.string().trim().min(1).max(200),
 });
 
@@ -37,12 +39,8 @@ export const EXTRACTED_ITEM = z.object({
   flag: z.enum(["caution", "abnormal"]).nullish().transform((v) => v ?? null),
   note: optionalText(5000),
   followUp: optionalText(500),
-  /** 날짜를 못 읽은 과거 값은 회차로 묶을 수 없어 버린다 */
-  past: z
-    .array(EXTRACTED_PAST)
-    .max(MAX_PAST_PER_ITEM)
-    .nullish()
-    .transform((v) => (v ?? []).filter((p): p is { date: string; value: string } => p.date !== null)),
+  /** 날짜를 못 읽은 과거 값도 남긴다 (확인 화면에서 날짜를 받는다 · 옛 종이 결과지) */
+  past: z.array(EXTRACTED_PAST).max(MAX_PAST_PER_ITEM).nullish().transform((v) => v ?? []),
 });
 
 export const EXTRACTED_SECTION = z.object({
