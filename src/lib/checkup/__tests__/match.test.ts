@@ -76,7 +76,9 @@ describe("matchItem", () => {
 
   // 회귀: PR #528 Codex P1 — 한정자에 설명이 덧붙어도 (쉼표 · 영문 복합어 · 접두) 혈액 항목으로 가지 않는다
   it("설명이 덧붙은 검체 한정자도 가드", () => {
-    for (const label of ["WBC(요, 정성)", "WBC(Urine sediment)", "RBC(urine/현미경)", "혈당(식후 2시간)", "WBC_소변 정성", "크레아티닌(Urine, random)"]) {
+    for (const label of ["WBC(요, 정성)", "WBC(Urine sediment)", "RBC(urine/현미경)", "혈당(식후 2시간)", "WBC_소변 정성", "크레아티닌(Urine, random)",
+      // 회귀: PR #528 Codex P1 2회차 — 필드명 접두 (`검체:` · `검체-`)
+      "WBC(검체:요)", "WBC(검체:Urine)", "RBC(검체-소변)", "WBC(specimen=urine)", "WBC(검체 요)"]) {
       expect(["wbc", "rbc", "fbs", "creatinine"]).not.toContain(matchItem(label));
     }
   });
@@ -92,6 +94,8 @@ describe("matchItem", () => {
 
   it("한정자가 아닌 부기는 그대로 떼고 맞춘다", () => {
     expect(matchItem("요단백(정성)")).toBe("urine_protein");
+    expect(matchItem("요산(혈청)")).toBe("uric_acid"); // 한 글자 '요' 는 부분 문자열로 찾지 않는다
+    expect(matchItem("AST(SGOT)")).toBe("ast");
     expect(matchItem("혈당(공복)")).toBe("fbs");
   });
 

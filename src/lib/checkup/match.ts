@@ -30,20 +30,28 @@ const INDEX: ReadonlyMap<string, string> = (() => {
  */
 const QUALIFIER_RE = /^(요|뇨|소변|요침사|urine|분변|대변|stool|객담|csf|뇌척수액|식후.*|pp\d*.*|24시간.*|random|수시)$/;
 
-/** 한정자 뒤에 설명이 붙은 형태 (`urinesediment` · `요침사현미경` · `식후2시간`) — 접두로 판정 */
-const QUALIFIER_PREFIX_RE = /^(urine|소변|요침사|분변|대변|stool|객담|뇌척수액|식후|24시간)/;
+/**
+ * 부분 문자열로 찾는 검체 · 조건 키워드 — 앞뒤에 무엇이 붙어도 (`urinesediment` · `검체소변` · `식후2시간`) 한정자.
+ * `검체` · `specimen` · `sample` 은 검체를 따로 명시했다는 뜻이라 그 자체로 가드 (PR #528 Codex P1 2회차).
+ * 한 글자 `요` · `뇨` 는 부분 문자열로 찾지 않는다 (`요산` 등 오탐) — 구분자로 나뉜 토큰일 때만 (QUALIFIER_RE).
+ */
+const QUALIFIER_KEYWORD_RE = /(urine|소변|요침사|분변|대변|stool|객담|뇌척수액|식후|24시간|검체|specimen|sample)/;
 
 /**
- * 괄호 부기 · `_` 부분을 쉼표 · 슬래시 · 공백으로 다시 나눈 토큰 중 하나라도 한정자면 true.
- * `WBC(요, 정성)` · `WBC(Urine sediment)` 처럼 한정자에 설명이 덧붙은 표기 (PR #528 Codex P1).
+ * 괄호 부기 · `_` 부분에 검체 · 조건 한정자가 있으면 true.
+ * 토큰은 영숫자 · 한글이 아닌 모든 문자 (`,` `/` `:` `-` `=` 공백 …) 로 나눈다 —
+ * `WBC(요, 정성)` · `WBC(Urine sediment)` · `WBC(검체:요)` · `RBC(검체-소변)` (PR #528 Codex P1 1 · 2회차).
  */
 function hasQualifier(label: string): boolean {
   const inner = [...label.matchAll(/[([]([^)\]]*)[)\]]/g)].map((m) => m[1]);
   const parts = label.includes("_") ? label.split("_") : [];
   return [...inner, ...parts].some((segment) => {
     const whole = normalizeLabel(segment);
-    if (QUALIFIER_RE.test(whole) || QUALIFIER_PREFIX_RE.test(whole)) return true;
-    return segment.split(/[,/·;\s]+/).some((token) => QUALIFIER_RE.test(normalizeLabel(token)));
+    if (QUALIFIER_RE.test(whole) || QUALIFIER_KEYWORD_RE.test(whole)) return true;
+    return segment
+      .normalize("NFKC")
+      .split(/[^0-9A-Za-z가-힣]+/)
+      .some((token) => QUALIFIER_RE.test(normalizeLabel(token)));
   });
 }
 
