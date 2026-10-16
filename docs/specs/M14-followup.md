@@ -5,7 +5,42 @@
 >
 > **⚠️ 모든 항목은 착수 시 재검증 필수**. 이 문서의 스코프·주의사항은 작성 시점 관찰 기반이라 코드 변경/API 진화에 따라 stale 될 수 있음. 항목 착수 전에 반드시 해당 파일·라인 확인 · Codex 지적의 근거가 여전히 유효한지 실코드로 재검증.
 
-## 현재 상태 (2026-10-01 · 세션 종료, v2.40.1 배포 · 확인 완료)
+## 현재 상태 (2026-10-15 · 세션 종료, v2.41.1 배포)
+
+**최근 릴리즈:** **v2.41.1** (2026-10-15 · Deploy success). 이번 세션 릴리즈 3개 — **v2.40.2** (#508 의존성 보안 · #510) · **v2.41.0** (#514 OMRON Connect 직접 연동 · migration 1) · **v2.41.1** (#521 · #515). dev = main (+ 이 인계 문서). 열린 PR 0 · 앱 로컬 브랜치 없음 (`integration/*` 2개는 pleiades worktree 용).
+
+### 인계 (다음 세션에서 이어갈 것)
+
+| 항목 | 상태 | 비고 |
+|---|---|---|
+| **v2.41.0 · v2.41.1 배포 후 확인** | 서버 확인 완료: `SyncMetadata` omron 2행 idle · 혈압 omron 32 (garmin 15행 교체 · 2025-10~11 garmin 13행 잔존) · 체성분 omron 47 (garmin 22행 교체). **남은 것**: `/body` 최근 측정 OMRON 배지 · 상세 카드 · `/heart` 배지 화면 · 다음 06:00 싱크 · 모닝 리포트에 OMRON 혈압 반영 · `/settings/profile` 카드 표시 동일 | 사용자는 OMRON → Garmin 수동 입력 중단 가능 (계속 입력해도 같은 날짜는 Garmin 이 omron 행을 덮지 않음) |
+| **#510 · #505 후속 확인** (자연 발생) | 다음 Garmin LT 감지 → 06:00 싱크 뒤 `MetricChange` 에 `garmin` 출처 행 · 프로필 source `garmin` 유지 | 직접 입력하면 `manual` · 한쪽만 수동이면 LTHR ≤ maxHR 충돌 시 Garmin 쪽 보류 (카드에 표시) |
+| **#512 npm audit 잔여 9건** (chore · P2) | `braces` 패치 버전 없음 → tailwindcss 3 · @next/eslint-plugin-next 체인 + postcss-selector-parser 6. **upstream 대기** · Security Audit 계속 실패 | 주간 자동 이슈가 같은 9건뿐이면 #512 에 연결하고 닫는다 (#517 처리 예). 새 패키지가 섞이면 별도 대응 |
+| **혈압 플래그 의미 확정** (이슈 없음) | OMRON 혈압 코드 11 · 12 (0/1 변동 — 불규칙 심박 · 움직임 후보) · 6 · 7 · 8 · 13 ~ 15 미확정. 측정별 원본은 `BloodPressure.measurements[].values` 에 보존 | 앱에서 불규칙 심박 · 움직임 표시가 뜬 측정이 생기면 대조해 확정 → 이슈 |
+| **#486 옛 행 정규화** (chore · P2) | 프로덕션 해당 없음 (KST 호스트) | 필요해질 때만 |
+| **#467 멀티 디바이스 Claude Code 환경** (P2) | 착수 예정 2026-11 ~ 2026-12 — 착수 전 자발 진행 금지 | |
+| **pleiades 하네스 이슈** | #493 · #495 ~ #498 · #500 · `integration/feature-pleiades-1a-3` | pleiades 쪽 흐름에서 처리 |
+| 잔여 후보 (이슈 없음) | `sleep/[date]` 서버 로컬 자정 왕복 검증 · `TZ=UTC` vitest 정례화 판단 · OMRON `warnDropped` 경고가 lookback 으로 매일 반복될 수 있음 (#522 사전 info 3) | 착수 시 이슈 생성 |
+
+**이번 세션 결과 (2026-10-15):**
+- **#508** (PR #511): Security Audit 이 v2.40.1 직후부터 실패 · 이슈 뒤 20건 (critical 2) 으로 증가 → next 16.3.8 · MCP SDK 1.31.0 · overrides 로 9건 (critical 0). 잔여는 #512.
+- **#510** (PR #513): 다른 프로젝트 (pleiades 정기 수용 리뷰) 발견 Codex P2. 지적보다 범위가 넓었다 (혼합 상태 전반 · 역방향) → 이슈 검토 코멘트로 정정 후 `findHrPairConflict` (수동 값과 충돌하는 Garmin 쪽만 보류) · zone 5 상한 역전 방어. 봇 2회차 P2 (카드 표시) → #515.
+- **#514 OMRON Connect 직접 연동** (PR #518 · #519 · 스펙 `docs/specs/514-omron-direct-sync.md`): 한국 계정 = 아시아 v1 서버. PoC 실측 → 사용자 결정 3개 (하루 대표 체중 = 가장 이른 측정 · 체성분 컬럼 4개 · OMRON 우선) → 2 PR. 혈압 category 는 프로덕션 Garmin 행 대조로 AHA 2017 · 그날 최고 단계 확정.
+  - **GPL**: 참고한 omramin 이 GPL-2.0 · myFitness 는 public · 라이선스 없음 → 코드 미사용 · 프로토콜 사실 + 자체 PoC 기준 독자 구현. 앱 ID · 키 · API base 는 env 만 (memory `project-omron-gpl-clean-impl`).
+  - 로컬 첫 실행에서 **`BodyComposition_source_check` DB CHECK 제약**이 `omron` 을 거부 → 같은 migration 에 제약 교체 추가 (memory `project-source-check-constraints`). 같은 실행에서 저장 실패가 "0건 성공" 으로 조용히 끝나 커서가 전진 → 실패 시 throw 로 수정.
+  - 사전 리뷰 major: 배포 직후 cron 보다 다른 경로가 먼저 돌면 OMRON 365일 초기 로드가 영영 안 돎 (→ OMRON 은 첫 성공 전 무조건 초기 로드) · 수동 체중이 OMRON 필드를 남김 · MCP 집계에서 근육량과 골격근량 평균 혼합 (→ `skeletalMuscleMass` 분리).
+- **#521** (PR #522): 릴리즈 PR #520 봇 P2 3건 — backfill 기본 타입 Garmin 만 · Garmin/OMRON 혼합 거부 · OMRON 만이면 Garmin 로그인 생략 · 제외 측정 경고.
+- **#515** (PR #523): 카드가 Garmin 이 maxHR 을 비우는 보류를 표시.
+- vitest 444 → 526.
+
+**세션 관찰:**
+- 다른 프로젝트에서 넘어온 지적 (#510) 은 **이슈 본문 범위를 그대로 믿지 말고 실코드로 재정의**한다 — 제안된 수정 ("함께 되돌리기") 이 역방향을 못 막았다.
+- 비공식 API 연동은 **PoC (저장소 밖 `.runtime/`) → 앱 화면 대조로 코드 매핑 확정 → 스펙** 순서가 빨랐다. 사용자가 앱 값과 대조해 준 1회로 체중계 코드표가 확정됐다 (내장지방은 추정과 달랐다 — 264).
+- 여러 provider 를 한 `syncAll` 루프에 넣으면 커서 · 백필 기계를 공유하는 대신, 스크립트 (`backfill-history`) 처럼 **provider 별 마커를 가정한 곳**에서 어긋난다 — 새 provider 추가 시 `syncAll` 호출자 · `DataType` 을 쓰는 스크립트를 전부 훑을 것.
+
+---
+
+## 이전 상태 (2026-10-01 · 세션 종료, v2.40.1 배포 · 확인 완료)
 
 **최근 릴리즈:** **v2.40.1** (2026-10-01 · Deploy success · 배포 후 확인 완료 — `/body` BMI 표시 · 프로필 maxHR / LTHR "Garmin 자동으로" 되돌림 → 배지 `Garmin 자동`). 포함: **#505** (PR #506) · #480 (PR #485) · #491 (PR #492). dev = main (+ 이 인계 문서). 열린 PR 0 · 앱 로컬 브랜치 없음 (`integration/*` 2개는 pleiades worktree 용).
 

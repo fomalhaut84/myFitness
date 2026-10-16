@@ -1,0 +1,490 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>건강 기록 — 검진 이력 시안 (#527)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --surface-hover:#262626; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e;
+    --caution:#fcd34d; --caution-bg:rgba(120,53,15,.4); --abnormal:#f87171; --abnormal-bg:rgba(127,29,29,.4);
+    --band:rgba(34,197,94,.14); --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  button, input, select { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  .page { max-width:1120px; margin:0 auto; padding:24px 16px 96px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:8px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:48px 0 12px; padding-top:16px; border-top:1px dashed var(--border); }
+  .mono { font-family:var(--mono); }
+
+  /* 페이지 헤더 — 기존 /heart · /body 와 같은 h1 */
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .pagehead h1 { font-size:24px; font-weight:600; color:var(--bright); letter-spacing:-0.01em; }
+  .pagehead p { color:var(--sub); font-size:13px; margin-top:2px; }
+  .btn { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 14px; cursor:pointer; }
+  .btn:hover { background:var(--surface-hover); border-color:var(--border-hover); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#04130a; font-weight:500; }
+  .btn.primary:hover { background:#16a34a; }
+  .btn.ghost { background:none; border-color:transparent; color:var(--sub); }
+
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .label { font-size:11px; color:var(--dim); letter-spacing:.04em; }
+
+  /* 레이아웃: 왼쪽 회차 · 추적검사, 오른쪽 회차 상세 */
+  .layout { display:grid; grid-template-columns:260px 1fr; gap:20px; align-items:start; }
+  .layout > * { min-width:0; }
+  @media (max-width:860px){ .layout { grid-template-columns:minmax(0,1fr); } }
+
+  /* 회차 타임라인 — 날짜 순서라 세로 선을 쓴다 */
+  .rounds { padding:8px; }
+  .rounds ol { list-style:none; padding:0; position:relative; }
+  .rounds ol::before { content:""; position:absolute; left:19px; top:18px; bottom:18px; width:1px; background:var(--border); }
+  .round { position:relative; display:grid; grid-template-columns:24px 1fr; gap:8px; padding:10px 8px; border-radius:8px; cursor:pointer; width:100%; text-align:left; background:none; border:0; }
+  .round:hover { background:var(--surface); }
+  .round[aria-current="true"] { background:var(--surface); }
+  .round .dot { width:9px; height:9px; border-radius:50%; background:var(--card); border:1.5px solid var(--sub); margin:6px 0 0 7px; z-index:1; }
+  .round[aria-current="true"] .dot { background:var(--accent); border-color:var(--accent); }
+  .round .d { color:var(--bright); font:500 13px var(--mono); }
+  .round .m { font-size:12px; color:var(--sub); }
+  .counts { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--surface); color:var(--sub); white-space:nowrap; }
+  .pill.c { background:var(--caution-bg); color:var(--caution); }
+  .pill.a { background:var(--abnormal-bg); color:var(--abnormal); }
+  /* 모바일: 회차는 가로 스크롤 칩 */
+  @media (max-width:860px){
+    .rounds ol { display:flex; gap:6px; overflow-x:auto; }
+    .rounds ol::before { display:none; }
+    .round { grid-template-columns:1fr; min-width:132px; border:1px solid var(--border); }
+    .round .dot { display:none; }
+    .round[aria-current="true"] { border-color:var(--accent); }
+  }
+
+  .followups { padding:14px 16px; margin-top:16px; }
+  .followups h2 { font-size:13px; font-weight:500; color:var(--bright); margin-bottom:10px; }
+  .fu { padding:8px 0; border-top:1px solid var(--border); }
+  .fu:first-of-type { border-top:0; padding-top:0; }
+  .fu .t { color:var(--bright); font-size:13px; }
+  .fu .w { font:12px var(--mono); color:var(--sub); }
+  .fu .w.soon { color:var(--caution); }
+  .fu .w.over { color:var(--abnormal); }
+  .fu .r { font-size:12px; color:var(--dim); }
+
+  /* 회차 상세 */
+  .detail-head { display:flex; justify-content:space-between; align-items:flex-start; gap:12px; flex-wrap:wrap; margin-bottom:14px; }
+  .detail-head h2 { font-size:18px; font-weight:600; color:var(--bright); }
+  .detail-head .sub { font-size:13px; color:var(--sub); }
+  .summary { padding:14px 16px; margin-bottom:20px; }
+  .summary p { color:var(--text); }
+  .watch { display:grid; grid-template-columns:repeat(auto-fill,minmax(min(150px,100%),1fr)); gap:8px; margin-top:12px; }
+  .watch button { text-align:left; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; cursor:pointer; }
+  .watch button:hover { border-color:var(--border-hover); }
+  .watch .n { font-size:12px; color:var(--sub); }
+  .watch .v { font:500 15px var(--mono); }
+  .watch .v .unit { margin-left:4px; font-size:12px; color:var(--dim); }
+
+  .section { margin-top:20px; }
+  .section h3 { font-size:14px; font-weight:500; color:var(--bright); margin-bottom:8px; display:flex; gap:8px; align-items:baseline; }
+  .section h3 small { font-size:12px; color:var(--dim); font-weight:400; }
+  .note-line { font-size:12px; color:var(--sub); margin:-2px 0 8px; }
+  table.results { width:100%; border-collapse:collapse; table-layout:fixed; }
+  .results col.c1 { width:26%; } .results col.c2 { width:20%; } .results col.c3 { width:180px; } .results col.c4 { width:14%; }
+  .results th { font-size:11px; color:var(--dim); font-weight:400; text-align:left; padding:8px 12px; border-bottom:1px solid var(--border); }
+  .results td { padding:9px 12px; border-top:1px solid var(--border); vertical-align:middle; }
+  .results tr:first-child td { border-top:0; }
+  .results tbody tr { cursor:pointer; }
+  .results tbody tr:hover td { background:#1a1a1a; }
+  .results .name { color:var(--bright); }
+  .results .val { font:500 14px var(--mono); white-space:nowrap; }
+  .results .unit { font:12px var(--mono); color:var(--dim); margin-left:4px; }
+  .results .ref { font:12px var(--mono); color:var(--sub); white-space:nowrap; }
+  .results .delta { font:12px var(--mono); color:var(--sub); white-space:nowrap; }
+  .results .delta .prev { color:var(--dim); }
+  .val.c { color:var(--caution); } .val.a { color:var(--abnormal); } .val.n { color:var(--bright); }
+  .flagtxt { font-size:11px; margin-left:6px; }
+  .flagtxt.c { color:var(--caution); } .flagtxt.a { color:var(--abnormal); }
+
+  /* 범위 막대 — 이 화면의 유일한 강조 요소 */
+  .rail { width:150px; height:22px; display:block; }
+  .rail .track { stroke:var(--border-hover); stroke-width:2; }
+  .rail .band { fill:var(--band); }
+  .rail .edge { stroke:rgba(34,197,94,.45); stroke-width:1; }
+  .rail .link { stroke:var(--dim); stroke-width:1.5; }
+  .rail .prev { fill:var(--card); stroke:var(--sub); stroke-width:1.5; }
+
+  .qual { font-size:12px; padding:2px 8px; border-radius:6px; background:var(--surface); color:var(--text); white-space:nowrap; }
+  .qual.c { background:var(--caution-bg); color:var(--caution); }
+  .qual.a { background:var(--abnormal-bg); color:var(--abnormal); }
+
+  details.reading { margin:2px 0 0; }
+  details.reading summary { cursor:pointer; font-size:12px; color:var(--sub); list-style:none; }
+  details.reading summary::before { content:"▸ "; }
+  details.reading[open] summary::before { content:"▾ "; }
+  details.reading pre { white-space:pre-wrap; font:12px/1.6 "Geist",system-ui,sans-serif; color:var(--text); background:var(--surface); border-radius:8px; padding:10px 12px; margin-top:6px; }
+  .fu-inline { font-size:12px; color:var(--caution); margin-top:4px; }
+
+  /* 모바일 표 → 2행 카드 */
+  @media (max-width:640px){
+    table.results, .results tbody { display:block; width:100%; }
+    .results thead, .results colgroup { display:none; }
+    .results tr { display:grid; grid-template-columns:1fr auto; gap:2px 12px; padding:10px 12px; border-top:1px solid var(--border); }
+    .results tr:first-child { border-top:0; }
+    .results td { padding:0; border:0; }
+    .results td.c-rail { grid-column:1 / -1; }
+    .results td.c-ref { display:none; }
+    .results td.c-delta { grid-column:1 / -1; }
+    .rail { width:220px; }
+  }
+
+  /* 항목 추이 패널 */
+  .trend { padding:18px; }
+  .trend-head { display:flex; justify-content:space-between; gap:12px; align-items:flex-start; }
+  .trend-head h2 { font-size:18px; font-weight:600; color:var(--bright); }
+  .trend-head .sub { font-size:12px; color:var(--sub); }
+  .chart { width:100%; height:auto; margin:14px 0 6px; }
+  .chart .grid { stroke:var(--border); }
+  .chart .axis { fill:var(--dim); font:11px var(--mono); }
+  .chart .band { fill:var(--band); }
+  .chart .edge { stroke:rgba(34,197,94,.45); stroke-dasharray:3 3; }
+  .chart .line { fill:none; stroke:var(--text); stroke-width:1.5; }
+  .chart .pt-label { font:12px var(--mono); }
+  .unit-warn { font-size:12px; color:var(--caution); margin-top:6px; }
+  table.hist { width:100%; border-collapse:collapse; margin-top:8px; }
+  .hist td, .hist th { padding:7px 4px; border-top:1px solid var(--border); font-size:13px; text-align:left; }
+  .hist th { color:var(--dim); font-weight:400; font-size:11px; border-top:0; }
+  .hist td.mono { font-family:var(--mono); }
+  .timeline-q { display:flex; gap:10px; flex-wrap:wrap; margin:14px 0; }
+  .timeline-q div { text-align:center; }
+  .timeline-q .y { font:11px var(--mono); color:var(--dim); margin-top:4px; }
+
+  dialog { background:var(--card); color:var(--text); border:1px solid var(--border-hover); border-radius:14px; padding:0; width:min(640px, calc(100vw - 32px)); }
+  dialog::backdrop { background:rgba(0,0,0,.6); }
+  @media (max-width:640px){ dialog { margin:auto 0 0; width:100vw; max-width:100vw; border-radius:14px 14px 0 0; } }
+
+  /* 입력 폼 */
+  .form { padding:18px; }
+  .form .row { display:grid; grid-template-columns:repeat(3,1fr); gap:12px; }
+  @media (max-width:640px){ .form .row { grid-template-columns:1fr; } }
+  .field label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  .field input, .field select { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; }
+  .field input:focus { border-color:var(--accent); outline:none; }
+  .fsec { border:1px solid var(--border); border-radius:10px; margin-top:12px; }
+  .fsec summary { padding:10px 14px; cursor:pointer; color:var(--bright); display:flex; justify-content:space-between; }
+  .fsec summary small { color:var(--dim); font-size:12px; }
+  .fgrid { display:grid; grid-template-columns:1.2fr 1fr 1.2fr .9fr; gap:6px 10px; padding:4px 14px 14px; align-items:center; }
+  .fgrid .h { font-size:11px; color:var(--dim); }
+  .fgrid .n { grid-column:1; color:var(--text); font-size:13px; }
+  .fgrid .parsed:empty { display:none; }
+  .fgrid .n small { color:var(--dim); font:11px var(--mono); margin-left:4px; }
+  .fgrid input, .fgrid select { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; }
+  .fgrid .parsed { grid-column:3; font:11px var(--mono); color:var(--sub); margin-top:-4px; }
+  .fgrid .parsed.bad { color:var(--caution); }
+  @media (max-width:640px){
+    .fgrid { grid-template-columns:1fr 1fr; }
+    .fgrid .h { display:none; }
+    .fgrid .n { grid-column:1 / -1; margin-top:8px; }
+    .fgrid .parsed { grid-column:1 / -1; }
+  }
+  .form-foot { display:flex; justify-content:space-between; align-items:center; gap:12px; margin-top:16px; flex-wrap:wrap; }
+  .form-foot .hint { font-size:12px; color:var(--dim); }
+
+  .empty { padding:40px 24px; text-align:center; }
+  .empty h2 { font-size:16px; color:var(--bright); font-weight:500; }
+  .empty p { color:var(--sub); margin:6px auto 16px; max-width:44ch; }
+  .empty .actions { display:flex; gap:8px; justify-content:center; flex-wrap:wrap; }
+  .empty .later { font-size:12px; color:var(--dim); margin-top:12px; }
+
+  @media (prefers-reduced-motion:no-preference){ dialog[open] { animation:rise .18s ease-out; } @keyframes rise { from { transform:translateY(8px); opacity:0; } } }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">#527 시안 · 모든 값은 가상 데이터 · 행을 누르면 항목 추이가 열린다</p>
+
+  <!-- A -->
+  <div class="state">A · 회차 상세 (기본 화면)</div>
+  <header class="pagehead">
+    <div>
+      <h1>건강 기록</h1>
+      <p>검진 결과를 회차별로 모아 항목 변화를 봅니다</p>
+    </div>
+    <button class="btn primary" type="button" onclick="document.getElementById('stateC').scrollIntoView({behavior:'smooth'})">검진 기록 추가</button>
+  </header>
+
+  <div class="layout">
+    <aside>
+      <nav class="card rounds" aria-label="검진 회차">
+        <ol id="roundList"></ol>
+      </nav>
+      <section class="card followups" aria-labelledby="fuTitle">
+        <h2 id="fuTitle">다가오는 추적검사</h2>
+        <div id="fuList"></div>
+      </section>
+    </aside>
+
+    <main id="detail"></main>
+  </div>
+
+  <!-- B -->
+  <div class="state">B · 항목 추이 (행 클릭 → 데스크톱 다이얼로그 · 모바일 바텀시트)</div>
+  <div class="card trend" id="trendStatic" style="max-width:640px"></div>
+  <div class="card trend" id="trendQual" style="max-width:640px;margin-top:16px"></div>
+
+  <!-- C -->
+  <div class="state" id="stateC">C · 검진 기록 추가 · 수정</div>
+  <form class="card form" onsubmit="return false" aria-labelledby="formTitle">
+    <h2 id="formTitle" style="font-size:18px;font-weight:600;color:var(--bright);margin-bottom:14px">검진 기록 추가</h2>
+    <div class="row">
+      <div class="field"><label for="f-date">검진일</label><input id="f-date" type="date" value="2025-06-11"></div>
+      <div class="field"><label for="f-inst">검진기관</label><input id="f-inst" value="한빛내과의원" placeholder="예: ○○병원 건강증진센터"></div>
+      <div class="field"><label for="f-kind">종류</label>
+        <select id="f-kind"><option>종합검진</option><option>국가검진</option><option>기타</option></select></div>
+    </div>
+    <div id="formSections"></div>
+    <div class="form-foot">
+      <button class="btn" type="button">항목 직접 추가</button>
+      <span class="hint">빈칸은 시행하지 않은 검사로 저장하지 않습니다</span>
+      <div style="display:flex;gap:8px"><button class="btn ghost" type="button">취소</button><button class="btn primary" type="submit">검진 기록 저장</button></div>
+    </div>
+  </form>
+
+  <!-- D -->
+  <div class="state">D · 첫 화면 (기록 없음)</div>
+  <div class="card empty">
+    <h2>아직 검진 기록이 없습니다</h2>
+    <p>결과지를 보고 항목을 입력하면 회차가 쌓일수록 항목별 변화를 볼 수 있습니다.</p>
+    <div class="actions"><button class="btn primary" type="button">검진 기록 추가</button></div>
+    <p class="later">결과지 사진 · PDF 로 불러오기는 다음 단계에서 추가됩니다</p>
+  </div>
+</div>
+
+<dialog id="trendDialog" aria-labelledby="dlgTitle"><div class="trend" id="trendDlg"></div></dialog>
+
+<script>
+/* ── 가상 데이터 (실제 검진과 무관) ─────────────────────────── */
+const CATALOG = [
+  { cat:"신체계측", items:[
+    { code:"waist", label:"허리둘레", unit:"cm", d:1 },
+    { code:"bmi", label:"체질량지수", unit:"kg/m²", d:1 },
+  ]},
+  { cat:"혈압", items:[
+    { code:"sbp", label:"수축기 혈압", unit:"mmHg", d:0 },
+    { code:"dbp", label:"이완기 혈압", unit:"mmHg", d:0 },
+  ]},
+  { cat:"간기능", items:[
+    { code:"ast", label:"AST", unit:"U/L", d:0 },
+    { code:"alt", label:"ALT", unit:"U/L", d:0 },
+    { code:"ggt", label:"γ-GTP", unit:"U/L", d:0 },
+  ]},
+  { cat:"당뇨", items:[
+    { code:"fbs", label:"공복혈당", unit:"mg/dL", d:0 },
+    { code:"hba1c", label:"당화혈색소", unit:"%", d:1 },
+  ]},
+  { cat:"지질", items:[
+    { code:"tc", label:"총콜레스테롤", unit:"mg/dL", d:0 },
+    { code:"tg", label:"중성지방", unit:"mg/dL", d:0 },
+    { code:"hdl", label:"HDL 콜레스테롤", unit:"mg/dL", d:0 },
+    { code:"ldl", label:"LDL 콜레스테롤", unit:"mg/dL", d:0 },
+  ]},
+  { cat:"신장기능", items:[
+    { code:"cr", label:"크레아티닌", unit:"mg/dL", d:2 },
+    { code:"egfr", label:"eGFR", unit:"mL/min/1.73m²", d:0 },
+  ]},
+  { cat:"소변", items:[
+    { code:"uprot", label:"요단백", unit:"", q:true },
+  ]},
+  { cat:"영상", items:[
+    { code:"cxr", label:"흉부 X선", unit:"", q:true },
+    { code:"abdus", label:"상복부 초음파", unit:"", q:true },
+  ]},
+];
+const REF = { waist:[null,90], bmi:[18.5,24.9], sbp:[90,119], dbp:[60,79], ast:[0,40], alt:[0,40], ggt:[0,60],
+  fbs:[70,99], hba1c:[4.0,5.6], tc:[0,199], tg:[0,149], hdl:[40,null], ldl:[0,129], cr:[0.7,1.3], egfr:[60,null] };
+const REF_TXT = { uprot:"-,음성", cxr:"정상", abdus:"정상" };
+
+// 회차: 날짜는 가상
+const ROUNDS = [
+  { id:"r4", date:"2025-06-11", inst:"한빛내과의원", kind:"종합검진",
+    summary:"지질 항목 두 개가 기준을 넘었고 간 수치는 직전보다 낮아졌습니다. 상복부 초음파는 1년 뒤 추적검사가 권고됐습니다.",
+    v:{ waist:88.0, bmi:25.6, sbp:126, dbp:81, ast:28, alt:31, ggt:44, fbs:97, hba1c:5.6, tc:214, tg:171, hdl:47, ldl:128, cr:0.98, egfr:91, uprot:"-", cxr:"정상", abdus:"유소견" },
+    f:{ bmi:"c", sbp:"c", dbp:"c", tc:"c", tg:"c", abdus:"a" },
+    note:{ abdus:"간 실질 에코 경도 증가 (지방간 의심).\n담낭: 5 mm 용종 1개.\n췌장 · 비장 · 신장: 특이소견 없음.\n권고: 12개월 후 추적 초음파." },
+    fu:{ abdus:{ text:"12개월 후 추적 초음파", due:"2026-06-11" } } },
+  { id:"r3", date:"2023-05-30", inst:"한빛내과의원", kind:"종합검진",
+    v:{ waist:91.5, bmi:26.4, sbp:131, dbp:84, ast:35, alt:46, ggt:58, fbs:101, hba1c:5.7, tc:205, tg:132, hdl:44, ldl:135, cr:0.95, egfr:93, uprot:"-", cxr:"정상", abdus:"유소견" },
+    f:{ bmi:"c", sbp:"a", dbp:"a", alt:"c", fbs:"c", hba1c:"c", ldl:"c", abdus:"c" } },
+  { id:"r2", date:"2021-06-02", inst:"서울숲검진센터", kind:"국가검진",
+    v:{ waist:93.0, bmi:27.1, sbp:128, dbp:82, ast:30, alt:39, ggt:52, fbs:95, tc:221, tg:158, hdl:42, ldl:147, cr:0.92, egfr:98, uprot:"+-" },
+    f:{ bmi:"c", sbp:"c", dbp:"c", tc:"c", tg:"c", ldl:"c", uprot:"c" } },
+  { id:"r1", date:"2019-05-14", inst:"서울숲검진센터", kind:"국가검진",
+    v:{ waist:89.5, bmi:25.9, sbp:122, dbp:78, ast:24, alt:27, ggt:38, fbs:92, tc:198, tg:120, hdl:49, ldl:125, cr:0.9, egfr:101, uprot:"-" },
+    f:{ bmi:"c", sbp:"c" } },
+];
+// 한 회차만 단위가 다른 경우 (경고 표시 시연용)
+ROUNDS[3].unitOverride = { egfr:"mL/min" };
+
+const TODAY = new Date("2025-10-16");
+const ITEM = Object.fromEntries(CATALOG.flatMap(s => s.items.map(i => [i.code, { ...i, cat:s.cat }])));
+const FLAG_TXT = { c:"주의", a:"이상" };
+const fmt = (code, v) => typeof v === "number" ? v.toFixed(ITEM[code].d) : v;
+const refText = code => { if (REF_TXT[code]) return REF_TXT[code]; const r = REF[code]; if (!r) return ""; const d = ITEM[code].d;
+  if (r[0] == null) return `≤ ${r[1].toFixed(d)}`; if (r[1] == null) return `≥ ${r[0].toFixed(d)}`; return `${r[0].toFixed(d)}-${r[1].toFixed(d)}`; };
+// 하한 0 (예: 0-129) 은 '하한 없음' 으로 그린다 — 0 까지 축을 늘리면 값 차이가 묻힌다
+const visRef = code => { const r = REF[code] || [null, null]; return [r[0] === 0 ? null : r[0], r[1]]; };
+const prevOf = (roundIdx, code) => { for (let i = roundIdx + 1; i < ROUNDS.length; i++) { const v = ROUNDS[i].v[code]; if (v !== undefined) return { v, r:ROUNDS[i] }; } return null; };
+const counts = r => { const fs = Object.values(r.f || {}); return { c: fs.filter(x => x === "c").length, a: fs.filter(x => x === "a").length }; };
+
+/* ── 범위 막대 ─────────────────────────────────────── */
+function rail(code, cur, prev, flag) {
+  const r = visRef(code);
+  const vals = [cur, prev, r[0], r[1]].filter(x => typeof x === "number");
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo || Math.abs(hi) || 1) * 0.18; lo -= pad; hi += pad;
+  const W = 150, x = v => 6 + (v - lo) / (hi - lo) * (W - 12);
+  const bandL = r[0] == null ? 6 : x(r[0]), bandR = r[1] == null ? W - 6 : x(r[1]);
+  const col = flag === "a" ? "var(--abnormal)" : flag === "c" ? "var(--caution)" : "var(--bright)";
+  const prevSvg = typeof prev === "number"
+    ? `<line class="link" x1="${x(prev)}" y1="11" x2="${x(cur)}" y2="11"/><circle class="prev" cx="${x(prev)}" cy="11" r="3.5"/>` : "";
+  const label = `기준범위 ${refText(code) || "없음"} 에서 이번 값 ${fmt(code, cur)}` + (typeof prev === "number" ? `, 직전 ${fmt(code, prev)}` : "");
+  return `<svg class="rail" viewBox="0 0 ${W} 22" preserveAspectRatio="none" role="img" aria-label="${label}">
+    <line class="track" x1="6" y1="11" x2="${W - 6}" y2="11"/>
+    <rect class="band" x="${bandL}" y="4" width="${Math.max(0, bandR - bandL)}" height="14" rx="3"/>
+    ${r[0] != null ? `<line class="edge" x1="${bandL}" y1="4" x2="${bandL}" y2="18"/>` : ""}
+    ${r[1] != null ? `<line class="edge" x1="${bandR}" y1="4" x2="${bandR}" y2="18"/>` : ""}
+    ${prevSvg}<circle cx="${x(cur)}" cy="11" r="4.5" fill="${col}"/></svg>`;
+}
+
+function deltaCell(code, cur, prev) {
+  if (!prev) return `<span class="prev">첫 기록</span>`;
+  if (typeof cur !== "number") return `<span class="prev">${prev.r.date.slice(0, 4)}</span> ${prev.v}`;
+  const d = cur - prev.v; const s = d === 0 ? "±0" : (d > 0 ? "+" : "−") + Math.abs(d).toFixed(ITEM[code].d);
+  return `${s} <span class="prev">(${prev.r.date.slice(0, 4)} ${fmt(code, prev.v)})</span>`;
+}
+
+/* ── A: 회차 목록 · 추적검사 · 상세 ──────────────────── */
+let current = 0;
+function renderRounds() {
+  document.getElementById("roundList").innerHTML = ROUNDS.map((r, i) => { const c = counts(r);
+    return `<li><button class="round" type="button" aria-current="${i === current}" data-i="${i}">
+      <span class="dot"></span><span><span class="d">${r.date}</span><br><span class="m">${r.inst}</span>
+      <span class="counts"><span class="pill">${r.kind}</span>${c.c ? `<span class="pill c">주의 ${c.c}</span>` : ""}${c.a ? `<span class="pill a">이상 ${c.a}</span>` : ""}</span></span></button></li>`; }).join("");
+  document.querySelectorAll(".round").forEach(b => b.onclick = () => { current = +b.dataset.i; renderRounds(); renderDetail(); });
+}
+
+function renderFollowups() {
+  const list = ROUNDS.flatMap(r => Object.entries(r.fu || {}).map(([code, fu]) => ({ code, fu, r })))
+    .concat([{ code:"gastro", fu:{ text:"2년 후 위내시경 재검", due:"2025-09-30" }, r:{ date:"2023-09-30" }, label:"위내시경" }])
+    .sort((a, b) => a.fu.due.localeCompare(b.fu.due));
+  document.getElementById("fuList").innerHTML = list.map(x => {
+    const days = Math.round((new Date(x.fu.due) - TODAY) / 864e5);
+    const when = days < 0 ? `${-days}일 지남` : days <= 60 ? `${days}일 남음` : `${Math.round(days / 30)}개월 남음`;
+    const cls = days < 0 ? "over" : days <= 60 ? "soon" : "";
+    return `<div class="fu"><div class="t">${x.label || ITEM[x.code].label}</div>
+      <div class="w ${cls}">${x.fu.due} · ${when}</div><div class="r">${x.fu.text} (${x.r.date} 검진)</div></div>`; }).join("");
+}
+
+function renderDetail() {
+  const r = ROUNDS[current]; const c = counts(r);
+  const flagged = Object.entries(r.f || {}).filter(([k]) => typeof r.v[k] === "number");
+  let html = `<div class="detail-head"><div><h2>${r.date} 검진</h2>
+      <div class="sub">${r.inst} · ${r.kind} · 항목 ${Object.keys(r.v).length}개</div></div>
+      <div style="display:flex;gap:6px"><button class="btn" type="button">수정</button></div></div>`;
+  if (r.summary || flagged.length) {
+    html += `<section class="card summary" aria-label="확인할 항목">
+      ${r.summary ? `<p>${r.summary}</p>` : ""}
+      ${flagged.length ? `<div class="watch">${flagged.map(([k, f]) => { const p = prevOf(current, k);
+        return `<button type="button" data-code="${k}"><div class="n">${ITEM[k].label} <span class="flagtxt ${f}">${FLAG_TXT[f]}</span></div>
+          <div class="v ${f === "a" ? "val a" : "val c"}">${fmt(k, r.v[k])}<span class="unit">${ITEM[k].unit}</span></div>
+          <div class="n mono">${p ? deltaCell(k, r.v[k], p) : "첫 기록"}</div></button>`; }).join("")}</div>` : ""}
+    </section>`;
+  }
+  for (const s of CATALOG) {
+    const rows = s.items.filter(i => r.v[i.code] !== undefined); if (!rows.length) continue;
+    const hasNum = rows.some(i => !i.q);
+    html += `<section class="section"><h3>${s.cat}<small>${rows.length}개</small></h3>
+      <div class="card"><table class="results"><colgroup><col class="c1"><col class="c2"><col class="c3"><col class="c4"><col></colgroup><thead><tr><th>항목</th><th>결과</th>${hasNum ? "<th>범위 안 위치</th>" : "<th></th>"}<th>기준범위</th><th>직전 대비</th></tr></thead><tbody>
+      ${rows.map(i => { const v = r.v[i.code], f = r.f?.[i.code], p = prevOf(current, i.code);
+        const valHtml = i.q ? `<span class="qual ${f || ""}">${v}</span>`
+          : `<span class="val ${f || "n"}">${fmt(i.code, v)}</span><span class="unit">${i.unit}</span>${f ? `<span class="flagtxt ${f}">${FLAG_TXT[f]}</span>` : ""}`;
+        const extra = r.note?.[i.code] ? `<details class="reading" onclick="event.stopPropagation()"><summary>판독문</summary><pre>${r.note[i.code]}</pre></details>` : "";
+        const fu = r.fu?.[i.code] ? `<div class="fu-inline">추적검사 ${r.fu[i.code].due} · ${r.fu[i.code].text}</div>` : "";
+        return `<tr data-code="${i.code}" tabindex="0"><td class="name">${i.label}${extra}${fu}</td><td>${valHtml}</td>
+          <td class="c-rail">${i.q ? "" : rail(i.code, v, p?.v, f)}</td><td class="ref c-ref">${refText(i.code)}</td>
+          <td class="delta c-delta">${deltaCell(i.code, v, p)}</td></tr>`; }).join("")}
+      </tbody></table></div></section>`;
+  }
+  const el = document.getElementById("detail"); el.innerHTML = html;
+  el.querySelectorAll("[data-code]").forEach(n => { n.onclick = () => openTrend(n.dataset.code);
+    n.onkeydown = e => { if (e.key === "Enter") openTrend(n.dataset.code); }; });
+}
+
+/* ── B: 항목 추이 ──────────────────────────────────── */
+function trendHtml(code, withClose) {
+  const it = ITEM[code]; const pts = ROUNDS.map(r => ({ r, v:r.v[code], f:r.f?.[code], u:r.unitOverride?.[code] || it.unit }))
+    .filter(p => p.v !== undefined).reverse();
+  const head = `<div class="trend-head"><div><h2 id="dlgTitle">${it.label}</h2>
+    <div class="sub">${it.cat} · ${it.unit || "정성 결과"} · 기준범위 ${refText(code) || "없음"} (최근 회차 기준)</div></div>
+    ${withClose ? `<button class="btn ghost" type="button" onclick="document.getElementById('trendDialog').close()" aria-label="닫기">닫기</button>` : ""}</div>`;
+  if (it.q) {
+    return head + `<div class="timeline-q">${pts.map(p => `<div><span class="qual ${p.f || ""}">${p.v}</span><div class="y">${p.r.date.slice(0, 7)}</div></div>`).join("")}</div>`
+      + histTable(code, pts);
+  }
+  const W = 600, H = 220, L = 44, R = 36, T = 20, B = 28; const r = visRef(code);
+  const vals = pts.map(p => p.v).concat(r.filter(x => x != null));
+  let lo = Math.min(...vals), hi = Math.max(...vals); const pad = (hi - lo || 1) * 0.35; lo = Math.max(0, lo - pad); hi += pad;
+  const x = i => L + (pts.length === 1 ? (W - L - R) / 2 : i / (pts.length - 1) * (W - L - R));
+  const y = v => T + (1 - (v - lo) / (hi - lo)) * (H - T - B);
+  const ticks = [0, .5, 1].map(t => lo + t * (hi - lo));
+  const bandTop = r[1] == null ? T : y(r[1]), bandBot = r[0] == null ? H - B : y(r[0]);
+  const mixed = new Set(pts.map(p => p.u)).size > 1;
+  const svg = `<svg class="chart" viewBox="0 0 ${W} ${H}" role="img" aria-label="${it.label} 회차별 추이">
+    ${ticks.map(t => `<line class="grid" x1="${L}" x2="${W - R}" y1="${y(t)}" y2="${y(t)}"/><text class="axis" x="${L - 8}" y="${y(t) + 4}" text-anchor="end">${t.toFixed(it.d)}</text>`).join("")}
+    <rect class="band" x="${L}" y="${bandTop}" width="${W - L - R}" height="${Math.max(0, bandBot - bandTop)}"/>
+    ${r[1] != null ? `<line class="edge" x1="${L}" x2="${W - R}" y1="${bandTop}" y2="${bandTop}"/>` : ""}
+    ${r[0] != null ? `<line class="edge" x1="${L}" x2="${W - R}" y1="${bandBot}" y2="${bandBot}"/>` : ""}
+    <polyline class="line" points="${pts.map((p, i) => `${x(i)},${y(p.v)}`).join(" ")}"/>
+    ${pts.map((p, i) => { const col = p.f === "a" ? "var(--abnormal)" : p.f === "c" ? "var(--caution)" : "var(--bright)";
+      return `<circle cx="${x(i)}" cy="${y(p.v)}" r="${p.u !== it.unit ? 4 : 5}" fill="${p.u !== it.unit ? "var(--card)" : col}" stroke="${col}" stroke-width="1.5"/>
+      <text class="pt-label" x="${x(i)}" y="${y(p.v) - 10}" text-anchor="middle" fill="${col}">${fmt(code, p.v)}</text>
+      <text class="axis" x="${x(i)}" y="${H - 8}" text-anchor="middle">${p.r.date.slice(0, 7)}</text>`; }).join("")}
+  </svg>`;
+  return head + svg + (mixed ? `<p class="unit-warn">단위가 다른 회차가 있습니다 (빈 점). 값을 직접 비교하지 마세요.</p>` : "") + histTable(code, pts);
+}
+function histTable(code, pts) {
+  return `<table class="hist"><thead><tr><th>검진일</th><th>결과</th><th>기준범위</th><th>기관</th></tr></thead><tbody>
+    ${pts.slice().reverse().map(p => `<tr><td class="mono">${p.r.date}</td>
+      <td class="mono"><span class="val ${p.f || "n"}">${fmt(code, p.v)}</span> <span class="unit">${p.u}</span>${p.f ? `<span class="flagtxt ${p.f}">${FLAG_TXT[p.f]}</span>` : ""}</td>
+      <td class="mono" style="color:var(--sub)">${refText(code)}</td><td style="color:var(--sub)">${p.r.inst}</td></tr>`).join("")}</tbody></table>`;
+}
+function openTrend(code) { document.getElementById("trendDlg").innerHTML = trendHtml(code, true); document.getElementById("trendDialog").showModal(); }
+document.getElementById("trendDialog").addEventListener("click", e => { if (e.target.id === "trendDialog") e.target.close(); });
+
+/* ── C: 입력 폼 ─────────────────────────────────────── */
+function parseRef(t) {
+  if (!t.trim()) return { txt:"기준범위 없음", ok:true };
+  const m = t.match(/^\s*(\d+(?:\.\d+)?)\s*-\s*(\d+(?:\.\d+)?)\s*$/);
+  if (m) return { txt:`하한 ${m[1]} · 상한 ${m[2]}`, ok:true };
+  if (/음성|양성|정상/.test(t)) return { txt:"정성 기준 (원문 그대로 저장)", ok:true };
+  return { txt:"숫자 범위로 읽지 못했습니다 — 원문 그대로 저장합니다", ok:false };
+}
+function renderForm() {
+  const sample = { tc:["214","0-199","자동"], tg:["171","0-149","주의"], hdl:["47","40-","자동"], ldl:["","",""] };
+  document.getElementById("formSections").innerHTML = CATALOG.filter(s => !["영상", "소변"].includes(s.cat)).map((s, si) =>
+    `<details class="fsec" ${si === 4 ? "open" : ""}><summary>${s.cat}<small>${s.items.length}개 항목 · ${si === 4 ? "3개 입력됨" : "입력 없음"}</small></summary>
+      <div class="fgrid"><span class="h">항목</span><span class="h">결과</span><span class="h">기준범위 (결과지 그대로)</span><span class="h">판정</span>
+      ${s.items.map(i => { const v = sample[i.code] || ["", "", ""]; const p = parseRef(v[1]);
+        return `<span class="n">${i.label}<small>${i.unit}</small></span>
+          <input aria-label="${i.label} 결과" inputmode="decimal" value="${v[0]}">
+          <input aria-label="${i.label} 기준범위" value="${v[1]}" oninput="this.nextElementSibling.nextElementSibling.textContent=parseRef(this.value).txt">
+          <select aria-label="${i.label} 판정"><option>자동</option><option>정상</option><option ${v[2] === "주의" ? "selected" : ""}>주의</option><option>이상</option></select>
+          <span class="parsed ${p.ok ? "" : "bad"}">${v[0] || v[1] ? p.txt : ""}</span>`; }).join("")}
+      </div></details>`).join("");
+}
+
+renderRounds(); renderFollowups(); renderDetail(); renderForm();
+document.getElementById("trendStatic").innerHTML = trendHtml("ldl", false);
+document.getElementById("trendQual").innerHTML = trendHtml("abdus", false);
+</script>
+</body>
+</html>

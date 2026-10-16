@@ -1,0 +1,288 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>결과지 가져오기 시안 (#532)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --surface-hover:#262626; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e; --accent-bg:rgba(34,197,94,.12);
+    --caution:#fcd34d; --caution-bg:rgba(120,53,15,.4); --abnormal:#f87171; --abnormal-bg:rgba(127,29,29,.4);
+    --info:#93c5fd; --info-bg:rgba(30,58,138,.35); --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  button, input, select { font:inherit; color:inherit; }
+  :focus-visible { outline:2px solid var(--accent); outline-offset:2px; border-radius:4px; }
+  .page { max-width:1120px; margin:0 auto; padding:24px 16px 96px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:8px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:48px 0 12px; padding-top:16px; border-top:1px dashed var(--border); }
+  .mono { font-family:var(--mono); }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:20px; }
+  .pagehead h1 { font-size:24px; font-weight:600; color:var(--bright); letter-spacing:-0.01em; }
+  .pagehead p { color:var(--sub); font-size:13px; margin-top:2px; }
+  .back { font-size:13px; color:var(--sub); text-decoration:none; }
+  .btn { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 14px; cursor:pointer; }
+  .btn:hover { background:var(--surface-hover); border-color:var(--border-hover); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#04130a; font-weight:500; }
+  .btn.primary:disabled { opacity:.4; cursor:not-allowed; }
+  .btn.small { padding:4px 10px; font-size:12px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:999px; background:var(--surface); color:var(--sub); white-space:nowrap; }
+  .pill.c { background:var(--caution-bg); color:var(--caution); }
+  .pill.a { background:var(--abnormal-bg); color:var(--abnormal); }
+  .pill.new { background:var(--accent-bg); color:var(--accent); }
+  .pill.diff { background:var(--caution-bg); color:var(--caution); }
+  .pill.same { color:var(--dim); }
+  .pill.fuzzy { background:var(--info-bg); color:var(--info); }
+
+  /* A. 파일 선택 */
+  .drop { border:1.5px dashed var(--border-hover); border-radius:12px; padding:36px 20px; text-align:center; }
+  .drop strong { color:var(--bright); font-weight:500; display:block; font-size:15px; }
+  .drop p { font-size:13px; color:var(--sub); margin-top:4px; }
+  .drop .btn { margin-top:14px; }
+  .source { display:flex; gap:8px; margin-top:16px; flex-wrap:wrap; align-items:center; }
+  .source label { display:flex; gap:6px; align-items:center; padding:6px 12px; border:1px solid var(--border); border-radius:8px; cursor:pointer; font-size:13px; }
+  .source label:has(input:checked) { border-color:var(--accent); color:var(--bright); }
+  .hint { font-size:12px; color:var(--dim); margin-top:12px; }
+  .hint.warn { color:var(--caution); }
+
+  /* B. 진행 — 페이지 줄 */
+  .pages { padding:16px; }
+  .pages-head { display:flex; justify-content:space-between; align-items:center; margin-bottom:12px; gap:8px; flex-wrap:wrap; }
+  .pages-head h2 { font-size:15px; font-weight:500; color:var(--bright); }
+  .bar { height:4px; background:var(--surface); border-radius:2px; overflow:hidden; margin-bottom:14px; }
+  .bar i { display:block; height:100%; background:var(--accent); width:58%; }
+  .pagerow { display:grid; grid-template-columns:44px 1fr auto; gap:12px; align-items:center; padding:8px 0; border-top:1px solid var(--border); }
+  .thumb { width:44px; height:58px; border-radius:4px; background:linear-gradient(#2a2a2a 0 8%, transparent 8% 14%, #222 14% 18%, transparent 18% 24%, #222 24% 28%, transparent 28% 34%, #222 34% 38%, transparent 38%), var(--surface); border:1px solid var(--border); }
+  .pagerow .n { color:var(--bright); font-size:13px; }
+  .pagerow .s { font:12px var(--mono); color:var(--sub); }
+  .pagerow .s.ok { color:var(--accent); }
+  .pagerow .s.run { color:var(--info); }
+  .pagerow .s.err { color:var(--abnormal); }
+
+  /* C. 확인 */
+  .review-head { display:grid; grid-template-columns:repeat(3, minmax(0,1fr)); gap:12px; padding:16px; margin-bottom:16px; }
+  .field label { display:block; font-size:12px; color:var(--sub); margin-bottom:4px; }
+  .field input, .field select { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 10px; }
+  .field input.req { border-color:var(--caution); }
+  .field .help { font-size:11px; color:var(--caution); margin-top:3px; }
+  @media (max-width:720px){ .review-head { grid-template-columns:1fr; } }
+
+  /* 회차 탭 — 이 화면의 축. 한 장의 결과지가 여러 회차로 갈라지는 걸 먼저 보여 준다 */
+  .tabs { display:flex; gap:6px; overflow-x:auto; padding-bottom:2px; margin-bottom:12px; }
+  .tab { flex:0 0 auto; text-align:left; background:var(--card); border:1px solid var(--border); border-radius:10px; padding:8px 12px; cursor:pointer; min-width:150px; }
+  .tab[aria-selected="true"] { border-color:var(--accent); background:var(--surface); }
+  .tab .d { font:500 13px var(--mono); color:var(--bright); }
+  .tab .m { display:flex; gap:6px; margin-top:4px; flex-wrap:wrap; }
+  .tab .k { font-size:11px; color:var(--sub); }
+
+  .round-note { font-size:12px; color:var(--sub); margin:0 0 10px; }
+  .round-note b { color:var(--text); font-weight:500; }
+
+  .rows { overflow:hidden; }
+  table { width:100%; border-collapse:collapse; table-layout:fixed; }
+  th { font-size:11px; color:var(--dim); font-weight:400; text-align:left; padding:10px 8px; border-bottom:1px solid var(--border); }
+  td { padding:9px 8px; border-bottom:1px solid var(--border); vertical-align:top; font-size:13px; }
+  tr.sec td { background:var(--surface); color:var(--sub); font-size:12px; padding:6px 12px; }
+  tr.off td:not(:first-child) { opacity:.42; }
+  td.inc, th.inc { width:40px; text-align:center; }
+  .orig { color:var(--sub); font-size:12px; }
+  .match select { width:100%; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:3px 6px; font-size:13px; color:var(--bright); }
+  .match.fuzzy select { border-color:rgba(147,197,253,.5); }
+  .match.none select { border-style:dashed; }
+  .val { font-family:var(--mono); color:var(--bright); }
+  .val.c { color:var(--caution); } .val.a { color:var(--abnormal); }
+  .ref { font-family:var(--mono); color:var(--sub); font-size:12px; }
+  .old { font:12px var(--mono); color:var(--sub); display:block; margin-top:2px; }
+  .ow { display:flex; gap:5px; align-items:center; font-size:12px; color:var(--caution); margin-top:4px; cursor:pointer; }
+  .more { color:var(--sub); font-size:12px; background:none; border:0; cursor:pointer; padding:0; }
+  .note { font-size:12px; color:var(--text); background:var(--surface); border-radius:6px; padding:8px 10px; margin-top:6px; }
+  .fu { display:flex; gap:8px; align-items:center; flex-wrap:wrap; margin-top:6px; font-size:12px; }
+  .fu input { background:var(--card); border:1px solid var(--border); border-radius:6px; padding:2px 6px; font:12px var(--mono); width:130px; }
+  .dup { color:var(--abnormal); font-size:12px; margin-top:3px; }
+  @media (max-width:720px){
+    thead { display:none; }
+    table, tbody, tr, td { display:block; width:100%; }
+    tr.row { display:grid; grid-template-columns:32px 1fr auto; gap:2px 8px; padding:10px 12px; border-bottom:1px solid var(--border); }
+    tr.row td { border:0; padding:0; }
+    tr.row td.inc { grid-row:1 / span 3; text-align:left; width:auto; }
+    tr.row td.c-match { grid-column:2; }
+    tr.row td.c-val { grid-column:3; text-align:right; }
+    tr.row td.c-ref { grid-column:2; }
+    tr.row td.c-st { grid-column:2 / span 2; }
+    tr.row td.c-orig { grid-column:2 / span 2; }
+  }
+
+  .savebar { position:sticky; bottom:0; margin-top:16px; display:flex; justify-content:space-between; align-items:center; gap:12px; flex-wrap:wrap; padding:12px 16px; background:rgba(22,22,22,.96); border:1px solid var(--border-hover); border-radius:12px; backdrop-filter:blur(6px); }
+  .savebar .sum { font-size:13px; color:var(--text); }
+  .savebar .sum b { color:var(--bright); font-weight:500; font-family:var(--mono); }
+  .savebar .warn { color:var(--abnormal); font-size:12px; }
+
+  /* D. 완료 */
+  .done { padding:20px; }
+  .done h2 { font-size:16px; color:var(--bright); font-weight:500; }
+  .done ul { list-style:none; padding:0; margin:12px 0 16px; }
+  .done li { display:flex; gap:10px; align-items:baseline; padding:6px 0; border-top:1px solid var(--border); font-size:13px; }
+  .done li:first-child { border-top:0; }
+  .done .d { font:500 13px var(--mono); color:var(--bright); width:100px; }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 · #532 결과지 가져오기 · 모든 값은 가상 데이터</p>
+
+  <!-- ───────────────── A ───────────────── -->
+  <p class="state">A · 파일 선택</p>
+  <div class="pagehead">
+    <div><a class="back" href="#">← 건강 기록</a><h1>결과지 가져오기</h1>
+      <p>결과지 이미지에서 항목을 읽고, 확인한 뒤 회차별로 저장합니다</p></div>
+  </div>
+  <div class="card" style="padding:20px">
+    <div class="drop">
+      <strong>결과지 캡처 · 사진 · PDF 를 여기에 놓으세요</strong>
+      <p>이미지 여러 장 (JPEG · PNG · WebP, 30장까지) 또는 PDF 1개 (30쪽까지)</p>
+      <button class="btn primary">파일 선택</button>
+    </div>
+    <div class="source" role="radiogroup" aria-label="이미지 출처">
+      <span style="font-size:12px;color:var(--sub)">이미지 출처</span>
+      <label><input type="radio" name="src" checked> 화면 캡처</label>
+      <label><input type="radio" name="src"> 종이 결과지 사진</label>
+    </div>
+    <p class="hint">이미지는 항목을 읽은 뒤 바로 지웁니다. 읽은 내용은 확인 화면에서 고칠 수 있습니다.</p>
+    <p class="hint warn">HEIC 사진은 읽을 수 없습니다 — iPhone 에서 공유할 때 "가장 호환성 높은 형식" 을 고르면 JPEG 로 보내집니다.</p>
+  </div>
+
+  <!-- ───────────────── B ───────────────── -->
+  <p class="state">B · 읽는 중 (PDF 7쪽 · 한 번에 2쪽씩)</p>
+  <div class="card pages">
+    <div class="pages-head">
+      <h2>결과지 읽는 중 · 4 / 7쪽</h2>
+      <button class="btn small">취소</button>
+    </div>
+    <div class="bar"><i></i></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">1쪽</span><span class="s ok">항목 14개</span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">2쪽</span><span class="s ok">항목 18개</span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">3쪽</span><span class="s err">읽지 못함 · <button class="more" style="color:var(--abnormal);text-decoration:underline">다시 읽기</button></span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">4쪽</span><span class="s ok">항목 0개 — 결과 표가 없는 쪽</span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">5쪽</span><span class="s run">읽는 중…</span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">6쪽</span><span class="s run">읽는 중…</span></div>
+    <div class="pagerow"><span class="thumb"></span><span class="n">7쪽</span><span class="s">대기</span></div>
+  </div>
+
+  <!-- ───────────────── C ───────────────── -->
+  <p class="state">C · 확인 — 한 결과지가 금회 + 과거결과 열의 회차들로 나뉜다</p>
+  <div class="pagehead">
+    <div><h1>읽은 결과 확인</h1><p>32개 항목 · 회차 3개. 포함할 행을 고르고 매칭이 맞는지 확인하세요.</p></div>
+  </div>
+
+  <div class="card review-head">
+    <div class="field"><label for="d">금회 검진일</label><input id="d" class="req mono" placeholder="YYYY-MM-DD"><p class="help">결과 화면에 검진일이 없습니다 — 직접 입력하세요</p></div>
+    <div class="field"><label for="i">기관</label><input id="i" value="가상건강검진센터"></div>
+    <div class="field"><label for="k">종류</label><select id="k"><option>종합검진</option><option>국가검진</option><option>기타</option></select></div>
+  </div>
+
+  <div class="tabs" role="tablist" aria-label="회차">
+    <button class="tab" role="tab" aria-selected="true" data-r="0"><span class="d">금회 (검진일 입력)</span>
+      <span class="m"><span class="pill new">새 회차</span><span class="k">28개</span></span></button>
+    <button class="tab" role="tab" aria-selected="false" data-r="1"><span class="d">2030-05-14</span>
+      <span class="m"><span class="pill">기존 회차</span><span class="k">추가 3 · 다름 1 · 같음 17</span></span></button>
+    <button class="tab" role="tab" aria-selected="false" data-r="2"><span class="d">2028-06-02</span>
+      <span class="m"><span class="pill new">새 회차</span><span class="k">6개 · 과거결과 열</span></span></button>
+  </div>
+
+  <!-- 금회 -->
+  <div data-panel="0">
+    <p class="round-note">판정 · 기준범위 · 판독문은 결과지 그대로입니다. <b>파란 테두리</b>는 이름이 정확히 일치하지 않은 매칭입니다.</p>
+    <div class="card rows">
+      <table>
+        <thead><tr><th class="inc">포함</th><th style="width:20%">결과지 항목명</th><th style="width:26%">매칭 항목</th><th style="width:14%">결과</th><th style="width:16%">기준범위</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr class="sec"><td colspan="6">가상 분류 A · 소견 1</td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 가</span></td>
+            <td class="c-match match"><select aria-label="매칭 항목"><option>항목 가</option></select></td>
+            <td class="c-val val">12.3</td><td class="c-ref ref">10.0-20.0</td>
+            <td class="c-st"><span class="pill new">새 항목</span></td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목-나(약칭)</span></td>
+            <td class="c-match match fuzzy"><select aria-label="매칭 항목"><option>항목 나</option><option>새 항목으로</option></select></td>
+            <td class="c-val val c">45</td><td class="c-ref ref">0-40</td>
+            <td class="c-st"><span class="pill c">주의</span> <span class="pill new">새 항목</span></td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 다</span></td>
+            <td class="c-match match none"><select aria-label="매칭 항목"><option>새 항목 — 항목 다</option><option>카탈로그에서 고르기…</option></select></td>
+            <td class="c-val val">음성</td><td class="c-ref ref">음성</td>
+            <td class="c-st"><span class="pill new">새 항목</span></td></tr>
+          <tr class="sec"><td colspan="6">가상 분류 B</td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">영상 검사 가</span></td>
+            <td class="c-match match"><select aria-label="매칭 항목"><option>영상 검사 가</option></select></td>
+            <td class="c-val val a">유소견</td><td class="c-ref ref">정상</td>
+            <td class="c-st"><span class="pill a">이상</span> <span class="pill new">새 항목</span>
+              <div class="note">가상의 판독문 문장입니다. 경계성 소견으로 추적 관찰을 권합니다.</div>
+              <div class="fu"><span style="color:var(--sub)">추적 권고</span> <span>12개월 후 추적검사</span>
+                <label>예정일 <input value="검진일 + 12개월" aria-label="추적검사 예정일"></label></div></td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 라</span></td>
+            <td class="c-match match fuzzy"><select aria-label="매칭 항목"><option>항목 가</option></select></td>
+            <td class="c-val val">7.1</td><td class="c-ref ref">5.0-9.0</td>
+            <td class="c-st"><div class="dup">'항목 가' 와 같은 항목으로 매칭됨 — 매칭을 바꾸거나 한쪽을 빼세요</div></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+
+  <!-- 과거 (기존 회차) -->
+  <div data-panel="1" hidden>
+    <p class="round-note">이미 있는 회차입니다. <b>새 항목만 추가</b>하고, 값이 다른 항목은 덮어쓰기를 체크한 것만 바꿉니다. 과거결과 열에는 값만 있어 판정 · 기준범위는 비워 둡니다.</p>
+    <div class="card rows">
+      <table>
+        <thead><tr><th class="inc">포함</th><th style="width:20%">결과지 항목명</th><th style="width:26%">매칭 항목</th><th style="width:14%">결과</th><th style="width:16%">기준범위</th><th>상태</th></tr></thead>
+        <tbody>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 마</span></td><td class="c-match match"><select aria-label="매칭 항목"><option>항목 마</option></select></td>
+            <td class="c-val val">3.4</td><td class="c-ref ref">—</td><td class="c-st"><span class="pill new">새 항목</span></td></tr>
+          <tr class="row"><td class="inc"><input type="checkbox" checked aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 가</span></td><td class="c-match match"><select aria-label="매칭 항목"><option>항목 가</option></select></td>
+            <td class="c-val val">11.8<span class="old">저장된 값 11.6</span></td><td class="c-ref ref">—</td>
+            <td class="c-st"><span class="pill diff">값 다름</span><label class="ow"><input type="checkbox"> 결과지 값으로 덮어쓰기</label></td></tr>
+          <tr class="row off"><td class="inc"><input type="checkbox" aria-label="포함"></td>
+            <td class="c-orig"><span class="orig">항목 나</span></td><td class="c-match match"><select aria-label="매칭 항목"><option>항목 나</option></select></td>
+            <td class="c-val val">38</td><td class="c-ref ref">—</td><td class="c-st"><span class="pill same">같은 값 · 이미 있음</span></td></tr>
+        </tbody>
+      </table>
+    </div>
+  </div>
+  <div data-panel="2" hidden>
+    <p class="round-note">과거결과 열에서만 나온 회차입니다. 검진 종류 · 기관은 금회 값을 따릅니다 — 다르면 저장 후 회차 수정에서 바꾸세요.</p>
+  </div>
+
+  <div class="savebar">
+    <span class="sum">새 회차 <b>2</b> · 기존 회차에 추가 <b>3</b> · 덮어쓰기 <b>0</b> · 행 <b>37</b><br>
+      <span class="warn">금회 검진일을 입력하고, 같은 항목으로 매칭된 행 1개를 정리하세요</span></span>
+    <button class="btn primary" disabled>저장</button>
+  </div>
+
+  <!-- ───────────────── D ───────────────── -->
+  <p class="state">D · 저장 완료</p>
+  <div class="card done">
+    <h2>3개 회차에 저장했습니다</h2>
+    <ul>
+      <li><span class="d">2032-04-20</span><span>새 회차 · 28개 항목</span></li>
+      <li><span class="d">2030-05-14</span><span>기존 회차 · 3개 추가 · 덮어쓰기 0 · 건너뜀 18</span></li>
+      <li><span class="d">2028-06-02</span><span>새 회차 · 6개 항목</span></li>
+    </ul>
+    <button class="btn primary">금회 결과 보기</button> <button class="btn">다른 결과지 가져오기</button>
+  </div>
+</div>
+<script>
+  document.querySelectorAll('.tab').forEach(t => t.addEventListener('click', () => {
+    document.querySelectorAll('.tab').forEach(x => x.setAttribute('aria-selected', String(x === t)));
+    document.querySelectorAll('[data-panel]').forEach(p => p.hidden = p.dataset.panel !== t.dataset.r);
+  }));
+  document.querySelectorAll('td.inc input').forEach(c => c.addEventListener('change', () => c.closest('tr').classList.toggle('off', !c.checked)));
+</script>
+</body>
+</html>
