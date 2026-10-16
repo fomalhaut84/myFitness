@@ -83,7 +83,7 @@ function TrendBody({ trend }: { trend: ItemTrendDto }) {
       </h2>
       <p className="text-xs text-sub">
         {trend.category}
-        {trend.unit ? ` · ${trend.unit}` : " · 정성 결과"}
+        {trend.unit ? ` · ${trend.unit}` : numeric ? "" : " · 정성 결과"}
         {latest.refText ? ` · 기준범위 ${latest.refText} (최근 회차)` : ""}
       </p>
       {numeric ? <TrendChart trend={trend} /> : <QualitativeRow points={trend.points} itemCode={trend.itemCode} />}

@@ -2,9 +2,10 @@
 
 // #527 (2/2): 검진 기록 추가 · 수정. 회차 헤더 + 섹션별 접이식 항목 (결과 · 기준범위 원문 · 판정) + 항목 상세 (단위 · 판독문 · 추적검사)
 // + 직접 추가. 빈 결과 = 미시행 (보내지 않음). 저장은 POST / PUT — 서버가 매칭 · 해석 · 판정의 정본.
+import Link from "next/link";
 import { useRouter } from "next/navigation";
 import { useMemo, useState } from "react";
-import { CHECKUP_CATEGORIES } from "@/lib/checkup/items";
+import { CHECKUP_CATEGORIES, OTHER_CATEGORY } from "@/lib/checkup/items";
 import { parseReference } from "@/lib/checkup/parse";
 import {
   formStateToInput,
@@ -20,6 +21,8 @@ interface CheckupFormProps {
   initial: FormState;
   /** 수정이면 회차 id */
   checkupId?: string;
+  /** KST 오늘 — 검진일 입력 상한 (서버도 미래 날짜를 거부한다) */
+  maxDate: string;
 }
 
 const INPUT = "w-full rounded-md border border-border bg-surface px-2 py-1.5 text-[13px] text-bright focus:border-accent focus:outline-none";
@@ -40,21 +43,39 @@ function referenceHint(ref: string): { text: string; warn: boolean } | null {
   return { text: "숫자 범위로 읽지 못했습니다 — 원문 그대로 저장합니다", warn: true };
 }
 
-export default function CheckupForm({ initial, checkupId }: CheckupFormProps) {
+/** 입력이 있는 섹션만 처음에 펼친다 — 이후 펼침은 사용자 토글 · 직접 추가만 따른다 (값을 지워도 접히지 않게) */
+function initiallyOpen(rows: readonly FormRow[]): Set<string> {
+  return new Set(groupRowsByCategory(rows).filter((g) => g.rows.some(isRowFilled)).map((g) => g.category));
+}
+
+export default function CheckupForm({ initial, checkupId, maxDate }: CheckupFormProps) {
   const router = useRouter();
   const [state, setState] = useState<FormState>(initial);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [nextKey, setNextKey] = useState(1);
+  // #527 2/2 사전 리뷰 major: `open={filled > 0}` 은 직접 추가 행을 접힌 섹션에 숨기고 마지막 값을 지우면 섹션을 접었다
+  const [openCategories, setOpenCategories] = useState<Set<string>>(() => initiallyOpen(initial.rows));
+  const setCategoryOpen = (category: string, open: boolean) =>
+    setOpenCategories((prev) => {
+      if (prev.has(category) === open) return prev;
+      const next = new Set(prev);
+      if (open) next.add(category);
+      else next.delete(category);
+      return next;
+    });
 
   const groups = useMemo(() => groupRowsByCategory(state.rows), [state.rows]);
   const filledCount = state.rows.filter(isRowFilled).length;
 
-  const updateRow = (key: string, patch: Partial<FormRow>) =>
+  const updateRow = (key: string, patch: Partial<FormRow>) => {
+    if (patch.category) setCategoryOpen(patch.category, true); // 분류를 바꾼 직접 추가 행이 옮겨 간 섹션도 펼친다
     setState((s) => ({ ...s, rows: s.rows.map((r) => (r.key === key ? { ...r, ...patch } : r)) }));
+  };
   const removeRow = (key: string) => setState((s) => ({ ...s, rows: s.rows.filter((r) => r.key !== key) }));
   const addCustom = () => {
     setState((s) => ({ ...s, rows: [...s.rows, newCustomRow(`new-${nextKey}`)] }));
+    setCategoryOpen(OTHER_CATEGORY, true);
     setNextKey((n) => n + 1);
   };
 
@@ -90,7 +111,7 @@ export default function CheckupForm({ initial, checkupId }: CheckupFormProps) {
 
       <div className="grid gap-3 md:grid-cols-3">
         <Field label="검진일" htmlFor="f-date">
-          <input id="f-date" type="date" required value={state.date} onChange={(e) => setState((s) => ({ ...s, date: e.target.value }))} className={INPUT} />
+          <input id="f-date" type="date" required max={maxDate} value={state.date} onChange={(e) => setState((s) => ({ ...s, date: e.target.value }))} className={INPUT} />
         </Field>
         <Field label="검진기관" htmlFor="f-inst">
           <input
@@ -124,7 +145,12 @@ export default function CheckupForm({ initial, checkupId }: CheckupFormProps) {
       {groups.map((g) => {
         const filled = g.rows.filter(isRowFilled).length;
         return (
-          <details key={g.category} className="mt-3 rounded-[10px] border border-border" open={filled > 0}>
+          <details
+            key={g.category}
+            className="mt-3 rounded-[10px] border border-border"
+            open={openCategories.has(g.category)}
+            onToggle={(e) => setCategoryOpen(g.category, e.currentTarget.open)}
+          >
             <summary className="flex cursor-pointer justify-between px-3.5 py-2.5 text-bright">
               {g.category}
               <small className="text-xs text-dim">
@@ -153,9 +179,9 @@ export default function CheckupForm({ initial, checkupId }: CheckupFormProps) {
         </button>
         <span className="text-xs text-dim">빈칸은 시행하지 않은 검사로 보고 저장하지 않습니다 · {filledCount}개 입력됨</span>
         <div className="flex gap-2">
-          <button type="button" onClick={() => router.back()} className="rounded-lg px-3.5 py-2 text-sm text-sub hover:text-bright">
+          <Link href={checkupId ? `/medical?round=${checkupId}` : "/medical"} className="rounded-lg px-3.5 py-2 text-sm text-sub hover:text-bright">
             취소
-          </button>
+          </Link>
           <button type="submit" disabled={saving} className="rounded-lg bg-accent px-3.5 py-2 text-sm font-medium text-[#04130a] hover:bg-accent-hover disabled:opacity-50">
             {saving ? "저장 중…" : "검진 기록 저장"}
           </button>
@@ -193,7 +219,11 @@ function RowEditor({ row, onChange, onRemove }: { row: FormRow; onChange: (patch
           <div className="grid grid-cols-2 gap-1.5">
             <input aria-label="항목명" placeholder="항목명" value={row.label} maxLength={100} onChange={(e) => onChange({ label: e.target.value })} className={INPUT} />
             <select aria-label="분류" value={row.category} onChange={(e) => onChange({ category: e.target.value })} className={INPUT}>
-              {CHECKUP_CATEGORIES.map((c) => (
+              {/* API 로 들어온 카탈로그 밖 분류도 선택값으로 보이게 */}
+              {(CHECKUP_CATEGORIES.includes(row.category as (typeof CHECKUP_CATEGORIES)[number])
+                ? [...CHECKUP_CATEGORIES]
+                : [...CHECKUP_CATEGORIES, row.category]
+              ).map((c) => (
                 <option key={c}>{c}</option>
               ))}
             </select>

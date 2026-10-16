@@ -1,7 +1,8 @@
 // #527 (2/2): 입력 폼 상태 ↔ API 입력 · 상세 응답. 카탈로그 섹션별 행 + 직접 추가 행. 순수.
 import { CHECKUP_CATEGORIES, CHECKUP_ITEMS, OTHER_CATEGORY, getCheckupItem } from "./items";
 import type { CheckupDetailDto } from "./dto";
-import type { CheckupInput } from "./schema";
+import { CHECKUP_FLAGS, type CheckupFlag } from "./flag";
+import { CHECKUP_SOURCES, type CheckupInput } from "./schema";
 
 export type FlagChoice = "" | "normal" | "caution" | "abnormal";
 
@@ -21,12 +22,24 @@ export interface FormRow {
   custom: boolean;
 }
 
+export interface FormFinding {
+  category: string;
+  text: string;
+  flag: CheckupFlag | null;
+}
+
 export interface FormState {
   date: string;
   institution: string;
   kind: "national" | "comprehensive" | "other";
   summary: string;
   rows: FormRow[];
+  /**
+   * 폼이 편집하지 않는 회차 값 — 수정 저장 (PUT 전체 교체) 이 지우거나 바꾸지 않도록 그대로 돌려보낸다
+   * (#527 2/2 사전 리뷰 critical: findings 소실 · source 가 manual 로 바뀜).
+   */
+  findings: FormFinding[];
+  source: CheckupInput["source"];
 }
 
 function emptyRow(code: string): FormRow {
@@ -58,6 +71,8 @@ export function emptyFormState(today: string): FormState {
     kind: "comprehensive",
     summary: "",
     rows: CHECKUP_ITEMS.map((i) => emptyRow(i.code)),
+    findings: [],
+    source: "manual",
   };
 }
 
@@ -89,6 +104,13 @@ export function formStateFromDetail(detail: CheckupDetailDto): FormState {
     kind: (["national", "comprehensive", "other"] as const).find((k) => k === detail.kind) ?? "other",
     summary: detail.summary ?? "",
     rows: [...catalogRows, ...customRows],
+    // 판정 값이 스키마 밖이면 null — 그대로 보내면 PUT 이 400
+    findings: detail.findings.map((f) => ({
+      category: f.category,
+      text: f.text,
+      flag: (CHECKUP_FLAGS as readonly string[]).includes(f.flag ?? "") ? (f.flag as CheckupFlag) : null,
+    })),
+    source: CHECKUP_SOURCES.find((s) => s === detail.source) ?? "manual",
   };
 }
 
@@ -97,13 +119,15 @@ export function isRowFilled(row: FormRow): boolean {
 }
 
 /** 폼 → API 입력. 결과값이 빈 행은 미시행 (보내지 않음). 빈 문자열 선택 칸은 생략. */
-export function formStateToInput(state: FormState): Omit<CheckupInput, "source"> {
+export function formStateToInput(state: FormState): CheckupInput {
   const opt = (v: string) => (v.trim() === "" ? undefined : v.trim());
   return {
     date: state.date,
     institution: opt(state.institution) ?? null,
     kind: state.kind,
+    source: state.source,
     summary: opt(state.summary) ?? null,
+    findings: state.findings.length > 0 ? state.findings : null,
     results: state.rows.filter(isRowFilled).map((row) => ({
       ...(row.itemCode ? { itemCode: row.itemCode } : {}),
       label: row.label.trim(),

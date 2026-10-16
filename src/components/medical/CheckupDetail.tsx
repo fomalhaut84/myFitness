@@ -33,7 +33,7 @@ function DeltaText({ r }: { r: CheckupResultDto }) {
     <>
       {delta && <span className="text-sub">{delta} </span>}
       <span className="text-dim">
-        ({r.previous.date.slice(0, 4)} {prevValue})
+        ({r.previous.date.slice(0, 7)} {prevValue})
       </span>
     </>
   );
@@ -118,7 +118,8 @@ function ResultRow({ r, onOpen }: { r: CheckupResultDto; onOpen: () => void }) {
   const tone = flagTone(r.flag);
   const numeric = r.valueNum !== null;
   const prevNum = r.previous && (r.previous.unit ?? null) === (r.unit ?? null) ? r.previous.valueNum : null;
-  const railLabel = `기준범위 ${r.refText ?? "없음"} 에서 이번 값 ${formatResultValue(r)}${prevNum !== null ? `, 직전 ${prevNum}` : ""}`;
+  const prevText = r.previous && prevNum !== null ? formatResultValue({ itemCode: r.itemCode, ...r.previous }) : null;
+  const railLabel = `기준범위 ${r.refText ?? "없음"} 에서 이번 값 ${formatResultValue(r)}${prevText !== null ? `, 직전 ${prevText}` : ""}`;
 
   return (
     <div

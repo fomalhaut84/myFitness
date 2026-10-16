@@ -12,7 +12,7 @@ export default function NewCheckupPage() {
         <h1 className="text-2xl font-semibold mb-1">건강 기록</h1>
         <p className="text-dim text-sm">결과지에 적힌 대로 입력하세요. 기준범위도 결과지 표기 그대로 넣으면 됩니다</p>
       </div>
-      <CheckupForm initial={emptyFormState(todayKSTString())} />
+      <CheckupForm initial={emptyFormState(todayKSTString())} maxDate={todayKSTString()} />
     </div>
   );
 }

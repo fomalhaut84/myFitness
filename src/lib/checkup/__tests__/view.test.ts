@@ -96,11 +96,14 @@ describe("폼 변환", () => {
       date: "2025-06-11",
       institution: "가상의원",
       kind: "comprehensive",
-      source: "manual",
       resultCount: 3,
       counts: { caution: 1, abnormal: 0 },
       summary: null,
-      findings: [],
+      findings: [
+        { category: "흉부", text: "가상 소견" },
+        { category: "지질", text: "가상 소견 2", flag: "bogus" },
+      ],
+      source: "pdf",
       results: [
         result({ label: "LDL 콜레스테롤[계산]" }),
         result({ id: "r2", itemCode: "tg", label: "중성지방", valueNum: 171, valueText: "171", flag: "caution", flagSource: "institution" }),
@@ -116,6 +119,12 @@ describe("폼 변환", () => {
 
     const input = formStateToInput(state);
     expect(CHECKUP_INPUT.safeParse(input).success).toBe(true);
+    // 회귀: #527 2/2 사전 리뷰 critical — 폼이 편집하지 않는 findings · source 가 수정 저장으로 지워지거나 바뀌지 않는다
+    expect(input.source).toBe("pdf");
+    expect(input.findings).toEqual([
+      { category: "흉부", text: "가상 소견", flag: null },
+      { category: "지질", text: "가상 소견 2", flag: null },
+    ]);
     expect(input.results).toHaveLength(3);
     expect(input.results.find((r) => r.itemCode === "custom:가상")).toMatchObject({ category: "종양표지자", unit: "ng/mL" });
     expect(input.results.find((r) => r.itemCode === "ldl")).toMatchObject({ unit: null, flag: null, ref: "0-129" });
