@@ -61,7 +61,7 @@ async function applyRound(
   round: PreparedRound,
   prepared: Prepared,
   entry: ImportEntry,
-): Promise<ImportRoundOutcome> {
+): Promise<ImportRoundOutcome | null> {
   const date = parseDateOnlyKST(round.date);
   const existing = await tx.healthCheckup.findUnique({
     where: { date },
@@ -78,6 +78,8 @@ async function applyRound(
       : null,
   );
 
+  // 소견만 온 회차는 기존 회차를 채울 때만 — 결과 없는 새 회차는 만들지 않는다 (#533)
+  if (!existing && plan.add.length === 0) return null;
   if (!existing) {
     const created = await tx.healthCheckup.create({
       data: {
@@ -121,7 +123,8 @@ export async function importCheckups(prepared: Prepared, now: Date = new Date())
     async (tx) => {
       const outcomes: ImportRoundOutcome[] = [];
       for (const [i, round] of prepared.rounds.entries()) {
-        outcomes.push(await applyRound(tx, round, prepared, importEntry(prepared, now, i === 0)));
+        const outcome = await applyRound(tx, round, prepared, importEntry(prepared, now, i === 0));
+        if (outcome) outcomes.push(outcome);
       }
       return outcomes;
     },

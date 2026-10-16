@@ -7,7 +7,7 @@ import { prepareFiles, type PendingPage } from "@/lib/checkup/import/client-page
 import type { ExtractedPage } from "@/lib/checkup/import/extract-schema";
 import { mergePages } from "@/lib/checkup/import/merge";
 import { buildDraftRounds, type DraftRound } from "@/lib/checkup/import/draft";
-import { applyExistingDefaults, type ExistingRound } from "@/lib/checkup/import/status";
+import { applyExistingDefaults, existingDateSet, type ExistingRound } from "@/lib/checkup/import/status";
 import { assembleImport, roundDate, type ImportFinding, type ImportHeader } from "@/lib/checkup/import/assemble";
 import type { ImportRoundOutcome } from "@/lib/checkup/import/write";
 import FilePicker, { type ImageSource } from "./FilePicker";
@@ -221,6 +221,7 @@ export default function CheckupImport({ today }: { today: string }) {
       rounds: review.rounds,
       findings: review.findings,
       pages: upload.pages.flatMap((p) => resultsRef.current.get(p.id) ?? []),
+      existingDates: existingDateSet(existing),
     });
     if (!assembled.ok) {
       setSaveError(assembled.reasons.join(" · "));
@@ -290,7 +291,17 @@ export default function CheckupImport({ today }: { today: string }) {
           onRowChange={(roundKey, rowKey, patch: RowPatch) =>
             updateReview((r) => ({
               ...r,
-              rounds: r.rounds.map((x) => (x.key === roundKey ? { ...x, rows: x.rows.map((row) => (row.key === rowKey ? { ...row, ...patch } : row)) } : x)),
+              rounds: r.rounds.map((x) =>
+                x.key === roundKey
+                  ? {
+                      ...x,
+                      rows: x.rows.map((row) =>
+                        // 포함 · 덮어쓰기를 직접 바꾼 행은 늦게 온 기본값이 덮지 않는다 (#533)
+                        row.key === rowKey ? { ...row, ...patch, touched: row.touched || "include" in patch || "overwrite" in patch } : row,
+                      ),
+                    }
+                  : x,
+              ),
             }))
           }
           onFindingToggle={(key) => updateReview((r) => ({ ...r, findings: r.findings.map((f) => (f.key === key ? { ...f, include: !f.include } : f)) }))}

@@ -3,9 +3,9 @@
 // #532: 확인 화면 — 금회 헤더 · 회차 탭 (새 회차 / 기존 회차 / 날짜 확인 필요) · 행 · 섹션 소견 · 저장 바.
 import { useState } from "react";
 import { KIND_LABEL } from "@/lib/checkup/view";
-import { blockingReasons, effectiveRounds, roundDate, type ImportFinding, type ImportHeader } from "@/lib/checkup/import/assemble";
+import { blockingReasons, effectiveRounds, findingsOnly, roundDate, type ImportFinding, type ImportHeader } from "@/lib/checkup/import/assemble";
 import { duplicateRows, type DraftRound } from "@/lib/checkup/import/draft";
-import { rowStatus, summarizeImport, type ExistingRound } from "@/lib/checkup/import/status";
+import { existingDateSet, rowStatus, summarizeImport, type ExistingRound } from "@/lib/checkup/import/status";
 import ReviewRows, { type RowPatch } from "./ReviewRows";
 
 interface ImportReviewProps {
@@ -218,8 +218,10 @@ function Findings({ findings, onToggle }: { findings: readonly ImportFinding[]; 
   );
 }
 
-function SaveBar({ header, rounds, existing, saving, error, lookupError, maxDate, onSave, onRetryLookup }: ImportReviewProps) {
-  const reasons = blockingReasons({ header, rounds, today: maxDate });
+function SaveBar({ header, rounds, findings, existing, saving, error, lookupError, maxDate, onSave, onRetryLookup }: ImportReviewProps) {
+  const existingDates = existingDateSet(existing);
+  const reasons = blockingReasons({ header, rounds, today: maxDate, findings, existingDates });
+  const onlyFindings = findingsOnly({ header, rounds, findings, existingDates });
   const summary = summarizeImport(effectiveRounds(rounds, header.date), (d) => existing.get(d));
   const disabled = saving || reasons.length > 0 || summary.loading;
   return (
@@ -230,6 +232,7 @@ function SaveBar({ header, rounds, existing, saving, error, lookupError, maxDate
         <b className="font-[family-name:var(--font-geist-mono)] font-medium text-bright">{summary.added}</b> · 덮어쓰기{" "}
         <b className="font-[family-name:var(--font-geist-mono)] font-medium text-bright">{summary.overwritten}</b>
         {summary.skipped > 0 && <> · 건너뜀 {summary.skipped}</>}
+        {onlyFindings && <p className="mt-0.5 text-xs text-sub">금회 섹션 소견은 기존 회차에 소견이 비어 있을 때만 채웁니다</p>}
         {reasons.length > 0 && <p className="mt-0.5 text-xs text-red-400">{reasons.join(" · ")}</p>}
         {/* 실패한 날짜를 다른 날짜로 바꿔 조회할 것이 없으면 오류도 감춘다 */}
         {lookupError && summary.loading ? (

@@ -90,8 +90,9 @@ function Row({ row, date, pastColumn, existing, duplicateOf, onChange }: RowProp
           value={row.itemCode ?? ""}
           onChange={(e) => {
             const v = e.target.value;
-            if (v === NEW_ITEM) onChange({ itemCode: newItemCode(row.label, row.section), confidence: "none" });
-            else onChange({ itemCode: v, confidence: "exact" });
+            // 매칭을 바꾸면 덮어쓰기 확인도 새로 — 바꾼 항목의 기존 값을 확인 없이 덮지 않게 (#533)
+            if (v === NEW_ITEM) onChange({ itemCode: newItemCode(row.label, row.section), confidence: "none", overwrite: false });
+            else onChange({ itemCode: v, confidence: "exact", overwrite: false });
           }}
           className={`w-full rounded-md border bg-surface px-1.5 py-1 text-[13px] text-bright focus:border-accent focus:outline-none ${matchBorder}`}
         >

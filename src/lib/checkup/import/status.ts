@@ -55,10 +55,16 @@ export function applyExistingDefaults(round: DraftRound, existing: ExistingRound
   return {
     ...round,
     rows: round.rows.map((row) => {
+      if (row.touched) return row;
       const status = existing ? rowStatus(row, existing).status : "new";
       return { ...row, include: row.itemCode !== null && status !== "same", overwrite: false };
     }),
   };
+}
+
+/** 불러온 기존 회차가 있는 날짜 */
+export function existingDateSet(existing: ReadonlyMap<string, ExistingRound | null>): Set<string> {
+  return new Set([...existing].filter(([, round]) => round !== null).map(([date]) => date));
 }
 
 export interface ImportSummary {

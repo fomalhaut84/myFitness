@@ -31,6 +31,8 @@ export interface DraftRow {
   include: boolean;
   /** 같은 날짜 회차에 같은 항목이 있고 값이 다를 때만 의미 — 체크한 것만 덮어쓴다 (스펙 §3-2) */
   overwrite: boolean;
+  /** 사용자가 포함 · 덮어쓰기를 직접 바꿨다 — 늦게 온 기존 회차 기본값이 덮지 않는다 (#533) */
+  touched: boolean;
 }
 
 export interface DraftRound {
@@ -97,6 +99,7 @@ function baseRow(item: MergedItem, key: string): Omit<DraftRow, "value" | "ref" 
     conflict: item.conflict,
     include: match.itemCode !== null,
     overwrite: false,
+    touched: false,
   };
 }
 
@@ -130,7 +133,8 @@ export function buildDraftRounds(merged: MergedExtraction, todayYmd: string): Dr
         note: null,
         followUp: null,
         followUpDue: null,
-        conflict: item.pastConflicts.includes(key),
+        // 미래 날짜라 날짜 확인 필요로 옮긴 값은 키가 바뀐다 — 원래 키로 기록된 충돌도 본다 (#533 · PR #534 Codex 3회차 P2)
+        conflict: item.pastConflicts.includes(key) || item.pastConflicts.includes(pastKey(raw)),
       };
       past.set(key, { ...group, rows: [...group.rows, row] });
     }
