@@ -443,3 +443,20 @@ describe("미래 날짜", () => {
     ]);
   });
 });
+
+// 회귀: PR #534 Codex P1 — 겹친 쪽의 같은 과거 날짜 값이 다르면 조용히 버리지 않고 충돌로 표시
+describe("과거 값 충돌", () => {
+  it("같은 항목 · 같은 과거 날짜가 쪽마다 다르면 그 회차 행에 충돌", () => {
+    const merged = mergePages([
+      page({ items: [item("AST", "12", { past: [{ date: "2030-01-02", dateText: null, value: "11" }, { date: "2028-01-02", dateText: null, value: "10" }] })] }),
+      page({ items: [item("AST", "12", { past: [{ date: "2030-01-02", dateText: null, value: "17" }, { date: "2028-01-02", dateText: null, value: "1 0" }] })] }),
+    ]);
+    expect(merged.items[0].conflict).toBe(false);
+    expect(merged.items[0].pastConflicts).toEqual(["2030-01-02"]);
+    const rounds = buildDraftRounds(merged, TODAY);
+    expect(rounds.slice(1).map((r) => [r.date, r.rows[0].value, r.rows[0].conflict])).toEqual([
+      ["2030-01-02", "11", true],
+      ["2028-01-02", "10", false],
+    ]);
+  });
+});

@@ -130,7 +130,7 @@ export function buildDraftRounds(merged: MergedExtraction, todayYmd: string): Dr
         note: null,
         followUp: null,
         followUpDue: null,
-        conflict: false,
+        conflict: item.pastConflicts.includes(key),
       };
       past.set(key, { ...group, rows: [...group.rows, row] });
     }

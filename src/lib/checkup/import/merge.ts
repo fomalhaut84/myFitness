@@ -7,6 +7,8 @@ export interface MergedItem extends ExtractedItem {
   pages: number[];
   /** 같은 행이 다른 쪽에서 다른 값으로 읽혔다 */
   conflict: boolean;
+  /** 같은 과거 날짜 (pastKey) 값이 쪽마다 다르게 읽힌 회차 키들 (PR #534 Codex P1) */
+  pastConflicts: string[];
 }
 
 export interface MergedExtraction {
@@ -31,9 +33,22 @@ export function pastKey(p: { date: string | null; dateText: string | null }): st
   return p.date ?? `?${p.dateText ?? ""}`;
 }
 
-function mergePast(a: ExtractedItem["past"], b: ExtractedItem["past"]): ExtractedItem["past"] {
-  const keys = new Set(a.map(pastKey));
-  return [...a, ...b.filter((p) => !keys.has(pastKey(p)))];
+/** 첫 값 유지 · 같은 날짜가 다른 값으로 다시 나오면 충돌 키로 남긴다 (조용히 버리지 않는다 · PR #534 Codex P1) */
+function mergePast(prev: MergedItem, b: ExtractedItem["past"]): Pick<MergedItem, "past" | "pastConflicts"> {
+  const byKey = new Map(prev.past.map((p) => [pastKey(p), p.value]));
+  const conflicts = new Set(prev.pastConflicts);
+  const added: ExtractedItem["past"] = [];
+  for (const p of b) {
+    const key = pastKey(p);
+    const seen = byKey.get(key);
+    if (seen === undefined) {
+      byKey.set(key, p.value);
+      added.push(p);
+    } else if (valueKey(seen) !== valueKey(p.value)) {
+      conflicts.add(key);
+    }
+  }
+  return { past: [...prev.past, ...added], pastConflicts: [...conflicts] };
 }
 
 function mergeItem(prev: MergedItem, next: ExtractedItem, page: number): MergedItem {
@@ -44,7 +59,7 @@ function mergeItem(prev: MergedItem, next: ExtractedItem, page: number): MergedI
     flag: prev.flag ?? next.flag,
     note: prev.note ?? next.note,
     followUp: prev.followUp ?? next.followUp,
-    past: mergePast(prev.past, next.past),
+    ...mergePast(prev, next.past),
     pages: prev.pages.includes(page) ? prev.pages : [...prev.pages, page],
     conflict: prev.conflict || valueKey(prev.value) !== valueKey(next.value),
   };
@@ -67,7 +82,7 @@ export function mergePages(pages: readonly ExtractedPage[]): MergedExtraction {
     for (const item of page.items) {
       const key = itemKey(item);
       const prev = items.get(key);
-      items.set(key, prev ? mergeItem(prev, item, pageIndex) : { ...item, pages: [pageIndex], conflict: false });
+      items.set(key, prev ? mergeItem(prev, item, pageIndex) : { ...item, pages: [pageIndex], conflict: false, pastConflicts: [] });
     }
   });
   const dates = [...new Set(pages.map((p) => p.examDate).filter((d): d is string => d !== null))];
