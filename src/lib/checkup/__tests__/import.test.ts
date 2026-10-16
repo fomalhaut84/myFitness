@@ -407,6 +407,40 @@ describe("단위 비교", () => {
     expect(rowStatus({ itemCode: "ast", value: "12", unit: null }, ex).status).toBe("same");
     expect(rowStatus({ itemCode: "ast", value: "12", unit: "u/l" }, ex).status).toBe("same");
   });
+
+  // 회귀: 릴리즈 PR #536 Codex P2 — 저장된 단위가 없으면 결과지 단위로 채울 수 있게 '다름'
+  it("저장된 단위가 없고 결과지에 단위가 있으면 다름", () => {
+    const noUnit: ExistingRound = { ...ex, results: [{ ...ex.results[0], unit: null }] };
+    expect(rowStatus({ itemCode: "ast", value: "12", unit: "U/L" }, noUnit).status).toBe("different");
+    expect(rowStatus({ itemCode: "ast", value: "12", unit: null }, noUnit).status).toBe("same");
+  });
+});
+
+// 회귀: #537 (릴리즈 PR #536 Codex P1) — 쪽 이미지는 Nginx 기본 1MB 아래로: 품질 → 해상도 순으로 줄이고 긴 변 1400px 아래로는 안 내린다
+describe("encodeSteps", () => {
+  it("원래 크기에서 품질 3단계 → 0.8 배씩 축소 · 하한 1400px", async () => {
+    const { encodeSteps, MAX_UPLOAD_BYTES } = await import("../import/client-pages");
+    expect(MAX_UPLOAD_BYTES).toBeLessThan(1024 * 1024);
+    const steps = encodeSteps(2400, 1200);
+    expect(steps.slice(0, 3).map((s) => [s.width, s.quality])).toEqual([
+      [2400, 0.85],
+      [2400, 0.72],
+      [2400, 0.6],
+    ]);
+    expect(steps[3].width).toBe(1920);
+    expect(Math.min(...steps.map((s) => Math.max(s.width, s.height)))).toBeGreaterThanOrEqual(1400);
+    expect(encodeSteps(1000, 800).map((s) => s.width)).toEqual([1000, 1000, 1000]);
+  });
+
+  // 회귀: PR #538 Codex P2 — 다음 0.8 배가 하한 아래면 하한 (1400px) 정확히 한 단계를 시도한다
+  it("1600px 쪽도 1400px 를 시도 · 2400px 는 1920 → 1536 → 1400", async () => {
+    const { encodeSteps } = await import("../import/client-pages");
+    const widths = (w: number, h: number) => [...new Set(encodeSteps(w, h).map((s) => Math.max(s.width, s.height)))];
+    expect(widths(1600, 2263)).toEqual([2263, 1810, 1448, 1400]);
+    expect(widths(1600, 900)).toEqual([1600, 1400]);
+    expect(widths(2400, 1200)).toEqual([2400, 1920, 1536, 1400]);
+    expect(widths(1400, 700)).toEqual([1400]);
+  });
 });
 
 describe("sniffImageType", () => {

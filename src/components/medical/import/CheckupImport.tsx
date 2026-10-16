@@ -50,7 +50,12 @@ function applyLoaded(review: ReviewState, loaded: ReadonlyMap<string, ExistingRo
 async function fetchJson<T>(url: string, init?: RequestInit): Promise<T> {
   const res = await fetch(url, init);
   const body = await res.json().catch(() => ({}));
-  if (!res.ok) throw new Error(typeof body.error === "string" ? body.error : `요청 실패 (${res.status})`);
+  if (!res.ok) {
+    if (typeof body.error === "string") throw new Error(body.error);
+    // Nginx 가 본문 크기로 막으면 JSON 이 아닌 오류 페이지가 온다 (#537)
+    if (res.status === 413) throw new Error("업로드 크기 제한에 걸렸습니다 — 서버 설정을 확인하세요");
+    throw new Error(`요청 실패 (${res.status})`);
+  }
   return body as T;
 }
 

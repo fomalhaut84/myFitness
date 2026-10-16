@@ -5,11 +5,42 @@
 export const MAX_IMAGE_FILES = 30;
 export const MAX_PDF_PAGES = 30;
 export const MAX_PDF_BYTES = 20 * 1024 * 1024;
-const MAX_UPLOAD_BYTES = 8 * 1024 * 1024;
+/**
+ * 쪽 이미지 상한 — Nginx 기본 `client_max_body_size` 1MB 아래 (multipart 여유 포함). 서버 설정과 무관하게 업로드가
+ * 413 으로 막히지 않게 브라우저가 맞춘다 (#537 · 릴리즈 PR #536 Codex P1).
+ */
+export const MAX_UPLOAD_BYTES = 950 * 1024;
 const MAX_LONG_EDGE = 2400;
 /** PDF 쪽 렌더 폭 — 결과 표 글자가 읽히는 선 */
 const PDF_TARGET_WIDTH = 1600;
-const JPEG_QUALITIES = [0.85, 0.7, 0.5] as const;
+const JPEG_QUALITIES = [0.85, 0.72, 0.6] as const;
+/** 해상도를 줄여도 이 긴 변 아래로는 내리지 않는다 — 결과 표 글자가 읽히는 선 */
+const MIN_LONG_EDGE = 1400;
+const SCALE_STEP = 0.8;
+
+export interface EncodeStep {
+  width: number;
+  height: number;
+  quality: number;
+}
+
+/**
+ * 인코딩 시도 순서 — 원래 크기에서 품질을 낮춰 보고, 그래도 크면 해상도를 0.8 배씩 줄인다. 다음 단계가 하한을 넘어가면
+ * 긴 변 MIN_LONG_EDGE 정확히 한 단계를 마지막으로 (1600px PDF 쪽도 1400px 를 시도한다 · PR #538 Codex P2). 순수.
+ */
+export function encodeSteps(width: number, height: number): EncodeStep[] {
+  const long = Math.max(width, height);
+  const scales: number[] = [1];
+  while (long * scales[scales.length - 1] > MIN_LONG_EDGE) {
+    const next = scales[scales.length - 1] * SCALE_STEP;
+    scales.push(long * next >= MIN_LONG_EDGE ? next : MIN_LONG_EDGE / long);
+  }
+  return scales.flatMap((scale) => {
+    const w = Math.max(1, Math.round(width * scale));
+    const h = Math.max(1, Math.round(height * scale));
+    return JPEG_QUALITIES.map((quality) => ({ width: w, height: h, quality }));
+  });
+}
 
 const IMAGE_MIME = new Set(["image/jpeg", "image/png", "image/webp"]);
 const HEIC_RE = /\.(heic|heif)$/i;
@@ -102,10 +133,33 @@ function makeCanvas(width: number, height: number): HTMLCanvasElement {
   return canvas;
 }
 
+/** 캔버스 메모리를 바로 돌려준다 — iOS Safari 는 캔버스 backing store 를 늦게 풀어 여러 쪽을 처리하면 한도에 걸린다 */
+function release(canvas: HTMLCanvasElement): void {
+  canvas.width = 0;
+  canvas.height = 0;
+}
+
 async function toJpeg(canvas: HTMLCanvasElement): Promise<Blob> {
-  for (const quality of JPEG_QUALITIES) {
-    const blob = await new Promise<Blob | null>((resolve) => canvas.toBlob(resolve, "image/jpeg", quality));
-    if (blob && blob.size <= MAX_UPLOAD_BYTES) return blob;
+  let target = canvas;
+  try {
+    for (const step of encodeSteps(canvas.width, canvas.height)) {
+      // 해상도 단계마다 한 번만 줄인다 (품질 단계 3개가 같은 캔버스를 쓴다)
+      if (target.width !== step.width) {
+        if (target !== canvas) release(target);
+        target = resized(canvas, step.width, step.height);
+      }
+      const blob = await new Promise<Blob | null>((resolve) => target.toBlob(resolve, "image/jpeg", step.quality));
+      if (blob && blob.size <= MAX_UPLOAD_BYTES) return blob;
+    }
+    throw new Error("이미지를 1MB 아래로 줄이지 못했습니다 — 더 작게 잘라서 올리세요");
+  } finally {
+    if (target !== canvas) release(target);
+    release(canvas);
   }
-  throw new Error("이미지가 너무 큽니다");
+}
+
+function resized(source: HTMLCanvasElement, width: number, height: number): HTMLCanvasElement {
+  const canvas = makeCanvas(width, height);
+  canvas.getContext("2d")?.drawImage(source, 0, 0, width, height);
+  return canvas;
 }

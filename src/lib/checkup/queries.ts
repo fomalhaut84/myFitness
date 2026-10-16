@@ -97,11 +97,13 @@ export async function getItemTrend(itemCode: string): Promise<ItemTrendDto | nul
   if (rows.length === 0) return null;
   const item = getCheckupItem(itemCode);
   const latest = rows[rows.length - 1];
+  // 차트는 최근 수치 결과의 단위로 점을 거른다 (splitTrendByUnit) — 표기도 그 단위로 (#537 · 릴리즈 PR #536 Codex P2)
+  const latestNumeric = rows.findLast((r) => r.valueNum !== null) ?? latest;
   return {
     itemCode,
     label: item?.label ?? latest.label,
     category: item?.category ?? latest.category,
-    unit: item?.unit ?? latest.unit,
+    unit: latestNumeric.unit ?? item?.unit ?? null,
     points: rows.map((r) => ({
       checkupId: r.checkup.id,
       date: ymdKST(r.checkup.date),
