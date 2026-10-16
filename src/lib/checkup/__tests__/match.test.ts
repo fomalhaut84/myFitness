@@ -74,6 +74,13 @@ describe("matchItem", () => {
     expect(matchItem("혈당(식후)")).toBeNull();
   });
 
+  // 회귀: PR #528 Codex P1 — 한정자에 설명이 덧붙어도 (쉼표 · 영문 복합어 · 접두) 혈액 항목으로 가지 않는다
+  it("설명이 덧붙은 검체 한정자도 가드", () => {
+    for (const label of ["WBC(요, 정성)", "WBC(Urine sediment)", "RBC(urine/현미경)", "혈당(식후 2시간)", "WBC_소변 정성", "크레아티닌(Urine, random)"]) {
+      expect(["wbc", "rbc", "fbs", "creatinine"]).not.toContain(matchItem(label));
+    }
+  });
+
   it("흔한 소변 표기는 소변 항목으로", () => {
     expect(matchItem("WBC(요)")).toBe("urine_wbc");
     expect(matchItem("백혈구(요)")).toBe("urine_wbc");

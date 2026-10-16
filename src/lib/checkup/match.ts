@@ -30,10 +30,21 @@ const INDEX: ReadonlyMap<string, string> = (() => {
  */
 const QUALIFIER_RE = /^(요|뇨|소변|요침사|urine|분변|대변|stool|객담|csf|뇌척수액|식후.*|pp\d*.*|24시간.*|random|수시)$/;
 
+/** 한정자 뒤에 설명이 붙은 형태 (`urinesediment` · `요침사현미경` · `식후2시간`) — 접두로 판정 */
+const QUALIFIER_PREFIX_RE = /^(urine|소변|요침사|분변|대변|stool|객담|뇌척수액|식후|24시간)/;
+
+/**
+ * 괄호 부기 · `_` 부분을 쉼표 · 슬래시 · 공백으로 다시 나눈 토큰 중 하나라도 한정자면 true.
+ * `WBC(요, 정성)` · `WBC(Urine sediment)` 처럼 한정자에 설명이 덧붙은 표기 (PR #528 Codex P1).
+ */
 function hasQualifier(label: string): boolean {
   const inner = [...label.matchAll(/[([]([^)\]]*)[)\]]/g)].map((m) => m[1]);
   const parts = label.includes("_") ? label.split("_") : [];
-  return [...inner, ...parts].some((t) => QUALIFIER_RE.test(normalizeLabel(t)));
+  return [...inner, ...parts].some((segment) => {
+    const whole = normalizeLabel(segment);
+    if (QUALIFIER_RE.test(whole) || QUALIFIER_PREFIX_RE.test(whole)) return true;
+    return segment.split(/[,/·;\s]+/).some((token) => QUALIFIER_RE.test(normalizeLabel(token)));
+  });
 }
 
 /**

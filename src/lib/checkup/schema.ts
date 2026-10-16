@@ -10,7 +10,15 @@ const MAX_RESULTS = 300;
 const MAX_FINDINGS = 100;
 
 const ymd = z.string().refine(isValidYmd, "YYYY-MM-DD 형식의 실제 날짜여야 합니다");
-const optionalText = (max: number) => z.string().trim().max(max).nullable().optional();
+/** 빈 문자열 · 공백은 "값 없음" (null) — 폼이 비운 칸을 "" 로 보내도 카탈로그 기본값이 쓰이게 (PR #528 Codex P2) */
+const optionalText = (max: number) =>
+  z
+    .string()
+    .trim()
+    .max(max)
+    .transform((v) => (v === "" ? null : v))
+    .nullable()
+    .optional();
 
 export const CHECKUP_RESULT_INPUT = z.object({
   /** 생략하면 label 로 카탈로그 매칭 → 없으면 custom code */

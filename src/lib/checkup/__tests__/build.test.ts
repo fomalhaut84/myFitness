@@ -61,6 +61,17 @@ describe("buildResultRows", () => {
     expect(res.ok && res.rows[0].unit).toBe("mL/min");
   });
 
+  // 회귀: PR #528 Codex P2 — 빈 단위 칸이 카탈로그 단위를 지우지 않는다
+  it("빈 · 공백 단위는 카탈로그 단위로", () => {
+    for (const unit of ["", "   "]) {
+      const parsed = CHECKUP_INPUT.parse({ date: "2025-06-11", kind: "other", results: [{ label: "LDL", value: "100", unit, ref: " " }] });
+      expect(parsed.results[0].unit).toBeNull();
+      expect(parsed.results[0].ref).toBeNull();
+      const res = buildResultRows(parsed.results);
+      expect(res.ok && res.rows[0].unit).toBe("mg/dL");
+    }
+  });
+
   it("정성 항목 · 판독문 · 추적검사 (KST 자정)", () => {
     const res = buildResultRows([
       { label: "상복부 초음파", value: "유소견", ref: "정상", flag: "abnormal", note: "가상 판독문", followUp: "12개월 후 추적", followUpDue: "2027-01-15" },
