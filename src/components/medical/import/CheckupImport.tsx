@@ -42,7 +42,7 @@ function applyLoaded(review: ReviewState, loaded: ReadonlyMap<string, ExistingRo
     const date = roundDate(round, review.header.date);
     if (!date || !loaded.has(date) || applied[round.key] === date) return round;
     applied = { ...applied, [round.key]: date };
-    return applyExistingDefaults(round, loaded.get(date) ?? null);
+    return applyExistingDefaults(round, loaded.get(date) ?? null, date);
   });
   return applied === review.applied ? review : { ...review, rounds, applied };
 }
@@ -176,8 +176,13 @@ export default function CheckupImport({ today }: { today: string }) {
         .then(async (index): Promise<ExistingRound | null> => {
           const id = index.get(date);
           if (!id) return null;
-          const body = await fetchJson<{ checkup: { results: ExistingRound["results"] } }>(`/api/checkups/${id}`);
-          return { id, date, results: body.checkup.results.map(({ itemCode, valueNum, valueText, unit }) => ({ itemCode, valueNum, valueText, unit })) };
+          const body = await fetchJson<{ checkup: { results: ExistingRound["results"]; findings: unknown[] } }>(`/api/checkups/${id}`);
+          return {
+            id,
+            date,
+            results: body.checkup.results.map(({ itemCode, valueNum, valueText, unit }) => ({ itemCode, valueNum, valueText, unit })),
+            hasFindings: body.checkup.findings.length > 0,
+          };
         })
         .then((found) => {
           setExisting((m) => new Map(m).set(date, found));
@@ -291,17 +296,13 @@ export default function CheckupImport({ today }: { today: string }) {
           onRowChange={(roundKey, rowKey, patch: RowPatch) =>
             updateReview((r) => ({
               ...r,
-              rounds: r.rounds.map((x) =>
-                x.key === roundKey
-                  ? {
-                      ...x,
-                      rows: x.rows.map((row) =>
-                        // 포함 · 덮어쓰기를 직접 바꾼 행은 늦게 온 기본값이 덮지 않는다 (#533)
-                        row.key === rowKey ? { ...row, ...patch, touched: row.touched || "include" in patch || "overwrite" in patch } : row,
-                      ),
-                    }
-                  : x,
-              ),
+              rounds: r.rounds.map((x) => {
+                if (x.key !== roundKey) return x;
+                // 포함을 바꾸거나 덮어쓰기를 체크하면 그 날짜에 한해 늦게 온 기본값이 덮지 않는다 (#533) — 매칭 변경의 덮어쓰기 해제는 제외
+                const userChoice = "include" in patch || patch.overwrite === true;
+                const date = roundDate(x, r.header.date) ?? "";
+                return { ...x, rows: x.rows.map((row) => (row.key === rowKey ? { ...row, ...patch, touchedFor: userChoice ? date : row.touchedFor } : row)) };
+              }),
             }))
           }
           onFindingToggle={(key) => updateReview((r) => ({ ...r, findings: r.findings.map((f) => (f.key === key ? { ...f, include: !f.include } : f)) }))}

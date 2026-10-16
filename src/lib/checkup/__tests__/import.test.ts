@@ -181,7 +181,7 @@ const row = (over: Partial<DraftRow>): DraftRow => ({
   conflict: false,
   include: true,
   overwrite: false,
-  touched: false,
+  touchedFor: null,
   ...over,
 });
 
@@ -577,9 +577,44 @@ describe("#533", () => {
       date: null,
       dateText: null,
       needsDate: false,
-      rows: [row({ key: "a", value: "12", include: true, touched: true }), row({ key: "b", itemCode: "alt", include: false, touched: true })],
+      rows: [row({ key: "a", value: "12", include: true, touchedFor: "2030-01-02" }), row({ key: "b", itemCode: "alt", include: false, touchedFor: "2030-01-02" })],
     };
-    expect(applyExistingDefaults(round, ex).rows.map((r) => r.include)).toEqual([true, false]);
+    expect(applyExistingDefaults(round, ex, "2030-01-02").rows.map((r) => r.include)).toEqual([true, false]);
+  });
+
+  // 회귀: #533 사전 리뷰 major — A 회차에서 체크한 덮어쓰기가 날짜를 B 로 바꾼 뒤 B 값을 덮지 않는다
+  it("직접 바꾼 표시는 그 날짜에만 — 다른 날짜 기본값은 다시 계산 (덮어쓰기 해제)", () => {
+    const b: ExistingRound = { id: "b", date: "2031-01-02", results: [{ itemCode: "ast", valueNum: 99, valueText: "99", unit: null }] };
+    const round: DraftRound = {
+      key: "current",
+      current: true,
+      date: null,
+      dateText: null,
+      needsDate: false,
+      rows: [row({ key: "a", value: "12", overwrite: true, touchedFor: "2030-01-02" })],
+    };
+    expect(applyExistingDefaults(round, b, "2031-01-02").rows[0]).toMatchObject({ include: true, overwrite: false });
+  });
+
+  it("소견이 이미 있는 기존 회차는 소견만 채우기 대상이 아니다", async () => {
+    const { existingDateSet } = await import("../import/status");
+    const map = new Map<string, ExistingRound | null>([
+      ["2030-01-02", { id: "a", date: "2030-01-02", results: [], hasFindings: true }],
+      ["2031-01-02", { id: "b", date: "2031-01-02", results: [], hasFindings: false }],
+      ["2032-01-02", null],
+    ]);
+    expect([...existingDateSet(map)]).toEqual(["2031-01-02"]);
+  });
+
+  it("금회 행을 다 빼도 같은 날짜 과거 회차 행이 합쳐지면 소견만 경로가 아니다", async () => {
+    const { findingsOnly } = await import("../import/assemble");
+    const rounds: DraftRound[] = [
+      { key: "current", current: true, date: null, dateText: null, needsDate: false, rows: [row({ key: "a", include: false })] },
+      { key: "2030-01-02", current: false, date: "2030-01-02", dateText: null, needsDate: false, rows: [row({ key: "p", itemCode: "alt" })] },
+    ];
+    const header = { date: "2030-01-02", institution: "", kind: "other" as const };
+    const findings = [{ key: "f", category: "가", text: "가상", include: true }];
+    expect(findingsOnly({ header, rounds, findings, existingDates: new Set(["2030-01-02"]) })).toBe(false);
   });
 
   it("미래 날짜로 옮긴 과거 값도 쪽 간 충돌 표시", () => {

@@ -26,7 +26,7 @@ export interface AssembleInput {
   rounds: readonly DraftRound[];
   findings: readonly ImportFinding[];
   pages: readonly ExtractedPage[];
-  /** 기존 회차가 있는 날짜 — 금회 행을 모두 빼도 섹션 소견만 그 회차에 채울 수 있다 (#533) */
+  /** 소견이 빈 기존 회차가 있는 날짜 — 금회 행을 모두 빼도 섹션 소견만 그 회차에 채울 수 있다 (#533) */
   existingDates?: ReadonlySet<string>;
 }
 

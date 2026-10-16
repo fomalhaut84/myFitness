@@ -31,8 +31,11 @@ export interface DraftRow {
   include: boolean;
   /** 같은 날짜 회차에 같은 항목이 있고 값이 다를 때만 의미 — 체크한 것만 덮어쓴다 (스펙 §3-2) */
   overwrite: boolean;
-  /** 사용자가 포함 · 덮어쓰기를 직접 바꿨다 — 늦게 온 기존 회차 기본값이 덮지 않는다 (#533) */
-  touched: boolean;
+  /**
+   * 사용자가 포함을 바꾸거나 덮어쓰기를 체크한 때의 회차 날짜 — 그 날짜의 기존 회차 기본값이 늦게 와도 덮지 않는다 (#533).
+   * 날짜가 바뀌면 무효 — A 회차에서 체크한 덮어쓰기가 B 회차 값을 덮지 않게 (#533 사전 리뷰 major). null = 직접 바꾼 적 없음
+   */
+  touchedFor: string | null;
 }
 
 export interface DraftRound {
@@ -99,7 +102,7 @@ function baseRow(item: MergedItem, key: string): Omit<DraftRow, "value" | "ref" 
     conflict: item.conflict,
     include: match.itemCode !== null,
     overwrite: false,
-    touched: false,
+    touchedFor: null,
   };
 }
 
