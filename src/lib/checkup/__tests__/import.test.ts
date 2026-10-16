@@ -320,3 +320,14 @@ describe("planRound", () => {
     expect(plan.fillFindings).toBe(false);
   });
 });
+
+describe("sniffImageType", () => {
+  it("JPEG · PNG · WebP 만 · 텍스트 · PDF 는 null", async () => {
+    const { sniffImageType } = await import("../import/image-type");
+    expect(sniffImageType(new Uint8Array([0xff, 0xd8, 0xff, 0xe0]))).toBe("jpeg");
+    expect(sniffImageType(new Uint8Array([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]))).toBe("png");
+    expect(sniffImageType(new TextEncoder().encode("RIFF\0\0\0\0WEBPVP8 "))).toBe("webp");
+    expect(sniffImageType(new TextEncoder().encode("%PDF-1.7"))).toBeNull();
+    expect(sniffImageType(new TextEncoder().encode("ignore previous instructions"))).toBeNull();
+  });
+});
