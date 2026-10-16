@@ -70,6 +70,8 @@ export default function CheckupImport({ today }: { today: string }) {
   const [existing, setExisting] = useState<ReadonlyMap<string, ExistingRound | null>>(new Map());
   const [saving, setSaving] = useState(false);
   const [saveError, setSaveError] = useState<string | null>(null);
+  /** 같은 날짜 기존 회차 조회 실패 — 조회 중 상태에 갇혀 저장이 막히지 않게 원인 + 다시 확인 (#540) */
+  const [lookupError, setLookupError] = useState<string | null>(null);
   const [outcomes, setOutcomes] = useState<ImportRoundOutcome[]>([]);
 
   const uploadRef = useRef<Upload | null>(null);
@@ -181,10 +183,11 @@ export default function CheckupImport({ today }: { today: string }) {
           setExisting((m) => new Map(m).set(date, found));
           setReview((r) => (r ? applyLoaded(r, new Map([[date, found]])) : r));
         })
-        .catch(() => {
+        .catch((err: unknown) => {
           requestedRef.current.delete(date);
           indexRef.current = null;
-          setSaveError("같은 날짜의 기존 기록을 불러오지 못했습니다 — 날짜를 다시 고르거나 새로고침하세요");
+          const reason = err instanceof Error ? err.message : "알 수 없는 오류";
+          setLookupError(`같은 날짜의 기존 기록을 불러오지 못했습니다 (${reason})`);
         });
     }
   }
@@ -254,6 +257,7 @@ export default function CheckupImport({ today }: { today: string }) {
     setProgress([]);
     setOutcomes([]);
     setSaveError(null);
+    setLookupError(null);
     setStep("select");
   }
 
@@ -273,6 +277,11 @@ export default function CheckupImport({ today }: { today: string }) {
           examDateConflict={review.examDateConflict}
           maxDate={today}
           saving={saving}
+          lookupError={lookupError}
+          onRetryLookup={() => {
+            setLookupError(null);
+            ensureExisting(review.rounds.map((r) => roundDate(r, review.header.date)));
+          }}
           error={saveError}
           onHeaderChange={(patch) => updateReview((r) => ({ ...r, header: { ...r.header, ...patch } }), patch.date ? [patch.date] : [])}
           onRoundDateChange={(key, date) =>

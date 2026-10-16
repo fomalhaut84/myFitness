@@ -17,6 +17,9 @@ interface ImportReviewProps {
   maxDate: string;
   saving: boolean;
   error: string | null;
+  /** 같은 날짜 기존 회차 조회 실패 (#540) */
+  lookupError: string | null;
+  onRetryLookup: () => void;
   onHeaderChange: (patch: Partial<ImportHeader>) => void;
   onRoundDateChange: (roundKey: string, date: string | null) => void;
   onRowChange: (roundKey: string, rowKey: string, patch: RowPatch) => void;
@@ -215,7 +218,7 @@ function Findings({ findings, onToggle }: { findings: readonly ImportFinding[]; 
   );
 }
 
-function SaveBar({ header, rounds, existing, saving, error, maxDate, onSave }: ImportReviewProps) {
+function SaveBar({ header, rounds, existing, saving, error, lookupError, maxDate, onSave, onRetryLookup }: ImportReviewProps) {
   const reasons = blockingReasons({ header, rounds, today: maxDate });
   const summary = summarizeImport(effectiveRounds(rounds, header.date), (d) => existing.get(d));
   const disabled = saving || reasons.length > 0 || summary.loading;
@@ -228,7 +231,16 @@ function SaveBar({ header, rounds, existing, saving, error, maxDate, onSave }: I
         <b className="font-[family-name:var(--font-geist-mono)] font-medium text-bright">{summary.overwritten}</b>
         {summary.skipped > 0 && <> · 건너뜀 {summary.skipped}</>}
         {reasons.length > 0 && <p className="mt-0.5 text-xs text-red-400">{reasons.join(" · ")}</p>}
-        {reasons.length === 0 && summary.loading && <p className="mt-0.5 text-xs text-dim">같은 날짜의 기존 기록을 확인하는 중…</p>}
+        {lookupError ? (
+          <p role="alert" className="mt-0.5 text-xs text-red-400">
+            {lookupError} ·{" "}
+            <button type="button" onClick={onRetryLookup} className="underline hover:text-bright">
+              다시 확인
+            </button>
+          </p>
+        ) : (
+          reasons.length === 0 && summary.loading && <p className="mt-0.5 text-xs text-dim">같은 날짜의 기존 기록을 확인하는 중…</p>
+        )}
         {error && (
           <p role="alert" className="mt-0.5 text-xs text-red-400">
             {error}
