@@ -1,4 +1,4 @@
-// #544: 지난 복약 — 종료 연도별. 장기는 다시 시작 (복사해 새 행).
+// #544: 지난 복약 — 종료 연도별. 다시 시작 (복사해 새 행) — 장기 · 단기 모두 (#550: 단기는 같은 일수로 복사 · restartFrom).
 import Link from "next/link";
 import type { MedicationDto } from "@/lib/medication/dto";
 import { courseDays } from "@/lib/medication/period";
@@ -40,11 +40,9 @@ export default function PastMeds({ meds }: { meds: readonly MedicationDto[] }) {
                       {m.regimen === "short_term" && m.endDate ? ` · ${courseDays(m.startDate, m.endDate)}일` : ""}
                     </span>
                     <span>
-                      {m.regimen === "long_term" && (
-                        <Link href={`/medical/meds/new?from=${m.id}`} className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs hover:border-border-hover">
-                          다시 시작
-                        </Link>
-                      )}
+                      <Link href={`/medical/meds/new?from=${m.id}`} className="rounded-lg border border-border bg-surface px-2.5 py-1 text-xs hover:border-border-hover">
+                        다시 시작
+                      </Link>
                     </span>
                   </li>
                 ))}
