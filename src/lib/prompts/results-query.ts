@@ -64,14 +64,26 @@ export function parseLimit(raw: string | null): number {
 
 export interface PickableResult {
   id: string;
+  category: string;
   versionId: string | null;
 }
 
-/** 나란히 비교 기본 선택 — 최신 결과 + 다른 버전의 최신 결과 (없으면 그다음 결과). 결과는 최신순 */
+/**
+ * 나란히 비교 기본 선택 — 최신 결과 + 다른 버전의 최신 결과. 결과는 최신순.
+ * 같은 종류 (카테고리) 를 먼저 — 시스템 프롬프트 결과는 리포트 · 평가 · 채팅이 섞인다 (PR #555 Codex P2).
+ * 순서: 같은 종류 · 다른 버전 (버전 있음) → 같은 종류 · 다른 버전 → 다른 종류 · 다른 버전 (버전 있음) → 다른 버전 → 바로 이전
+ */
 export function pickDefaultPair(results: readonly PickableResult[]): string[] {
   const [latest, ...rest] = results;
   if (!latest) return [];
-  const otherVersion = rest.find((r) => r.versionId !== latest.versionId && r.versionId !== null) ?? rest.find((r) => r.versionId !== latest.versionId);
-  const second = otherVersion ?? rest[0];
+  const otherVersion = (r: PickableResult) => r.versionId !== latest.versionId;
+  const sameKind = (r: PickableResult) => r.category === latest.category;
+  const versioned = (r: PickableResult) => r.versionId !== null;
+  const second =
+    rest.find((r) => sameKind(r) && otherVersion(r) && versioned(r)) ??
+    rest.find((r) => sameKind(r) && otherVersion(r)) ??
+    rest.find((r) => otherVersion(r) && versioned(r)) ??
+    rest.find(otherVersion) ??
+    rest[0];
   return second ? [latest.id, second.id] : [latest.id];
 }

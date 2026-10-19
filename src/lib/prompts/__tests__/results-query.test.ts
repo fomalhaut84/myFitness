@@ -50,19 +50,37 @@ describe("parseLimit", () => {
 describe("pickDefaultPair", () => {
   it("최신 + 다른 버전의 최신 (버전 정보 있는 쪽 우선)", () => {
     const rs = [
-      { id: "r1", versionId: "v4" },
-      { id: "r2", versionId: "v4" },
-      { id: "r3", versionId: null },
-      { id: "r4", versionId: "v3" },
+      { id: "r1", category: "weekly_report", versionId: "v4" },
+      { id: "r2", category: "weekly_report", versionId: "v4" },
+      { id: "r3", category: "weekly_report", versionId: null },
+      { id: "r4", category: "weekly_report", versionId: "v3" },
     ];
     expect(pickDefaultPair(rs)).toEqual(["r1", "r4"]);
   });
+  // 회귀: PR #555 Codex P2 — 시스템 프롬프트 결과는 종류가 섞인다
+  it("같은 종류의 다른 버전을 먼저 (최신 모닝 ↔ 이전 모닝, 사이의 채팅 · 이브닝은 건너뜀)", () => {
+    const rs = [
+      { id: "m2", category: "morning_report", versionId: "s2" },
+      { id: "c1", category: "general", versionId: "s1" },
+      { id: "e1", category: "evening_report", versionId: "s1" },
+      { id: "m1", category: "morning_report", versionId: "s1" },
+    ];
+    expect(pickDefaultPair(rs)).toEqual(["m2", "m1"]);
+  });
+  it("같은 종류에 다른 버전이 없으면 다른 종류의 다른 버전", () => {
+    const rs = [
+      { id: "m2", category: "morning_report", versionId: "s2" },
+      { id: "m1", category: "morning_report", versionId: "s2" },
+      { id: "c1", category: "general", versionId: "s1" },
+    ];
+    expect(pickDefaultPair(rs)).toEqual(["m2", "c1"]);
+  });
   it("다른 버전이 버전 정보 없음뿐이면 그것", () => {
-    expect(pickDefaultPair([{ id: "r1", versionId: "v1" }, { id: "r2", versionId: null }])).toEqual(["r1", "r2"]);
+    expect(pickDefaultPair([{ id: "r1", category: "weekly_report", versionId: "v1" }, { id: "r2", category: "weekly_report", versionId: null }])).toEqual(["r1", "r2"]);
   });
   it("모두 같은 버전이면 바로 이전 결과 · 하나면 하나 · 없으면 빈 배열", () => {
-    expect(pickDefaultPair([{ id: "r1", versionId: "v1" }, { id: "r2", versionId: "v1" }])).toEqual(["r1", "r2"]);
-    expect(pickDefaultPair([{ id: "r1", versionId: "v1" }])).toEqual(["r1"]);
+    expect(pickDefaultPair([{ id: "r1", category: "weekly_report", versionId: "v1" }, { id: "r2", category: "weekly_report", versionId: "v1" }])).toEqual(["r1", "r2"]);
+    expect(pickDefaultPair([{ id: "r1", category: "weekly_report", versionId: "v1" }])).toEqual(["r1"]);
     expect(pickDefaultPair([])).toEqual([]);
   });
 });
