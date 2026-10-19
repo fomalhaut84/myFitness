@@ -40,6 +40,8 @@ export const ASK_ADVISOR_TIMEOUT_MS = TIMEOUT_MS;
 interface ClaudeResponse {
   result: string;
   sessionId: string | null;
+  /** #552 M19-2: 이 응답에 쓴 시스템 프롬프트 버전 (코드 기본값 폴백이면 null) — AIAdvice 에 기록 */
+  systemPromptVersionId: string | null;
   duration_ms?: number;
   num_turns?: number;
 }
@@ -411,12 +413,14 @@ async function askAdvisorOnce(
           sessionId: parsed.session_id ?? currentSessionId,
           duration_ms: durationMs,
           num_turns: parsed.num_turns,
+          systemPromptVersionId: system.versionId,
         });
       } else {
         resolve({
           result: stdout.trim(),
           sessionId: currentSessionId,
           duration_ms: durationMs,
+          systemPromptVersionId: system.versionId,
         });
       }
     });

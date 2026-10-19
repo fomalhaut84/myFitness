@@ -60,30 +60,30 @@ export interface EvalTemplates {
 const DEFAULT_TEMPLATES: EvalTemplates = { full: ACTIVITY_EVAL_PROMPT_DEFAULT, brief: ACTIVITY_EVAL_BRIEF_PROMPT_DEFAULT };
 
 /** 검증을 통과한 템플릿이라 실패하지 않지만, 깨져 있으면 코드 기본값으로 — 평가가 멈추지 않게 (#552 R1) */
-function renderOrDefault(template: string, fallback: string, vars: Record<string, string>): string {
+function renderOrDefault(template: string, fallback: string, vars: Record<string, string>): { prompt: string; templateFallback: boolean } {
   try {
-    return renderPrompt(template, vars);
+    return { prompt: renderPrompt(template, vars), templateFallback: false };
   } catch (error) {
     console.warn("[activity-eval] 프롬프트 템플릿 치환 실패 — 코드 기본값 사용:", error instanceof Error ? error.message : error);
-    return renderPrompt(fallback, vars);
+    return { prompt: renderPrompt(fallback, vars), templateFallback: true };
   }
 }
 
-function fullPrompt(sections: readonly EvalSection[], template: string): string {
+function fullPrompt(sections: readonly EvalSection[], template: string): { prompt: string; templateFallback: boolean } {
   const vars = { sections: renderSections(sections), sectionTitles: sections.map((s) => s.title).join(" · ") };
   return renderOrDefault(template, ACTIVITY_EVAL_PROMPT_DEFAULT, vars);
 }
 
-function briefPrompt(sections: readonly EvalSection[], template: string): string {
+function briefPrompt(sections: readonly EvalSection[], template: string): { prompt: string; templateFallback: boolean } {
   return renderOrDefault(template, ACTIVITY_EVAL_BRIEF_PROMPT_DEFAULT, { sections: renderSections(sections) });
 }
 
 export function buildEvalContext(input: EvalInput, templates: EvalTemplates = DEFAULT_TEMPLATES): EvalContext {
   if (!isRunningType(input.activity.activityType)) {
     const sections = section("basic", basicLines(input));
-    return { mode: "brief", sections, omitted: [], prompt: briefPrompt(sections, templates.brief) };
+    return { mode: "brief", sections, omitted: [], ...briefPrompt(sections, templates.brief) };
   }
   const sections = FULL_ORDER.flatMap((id) => section(id, linesFor(id, input)));
   const omitted: EvalOmitted[] = input.laps === null ? [{ id: "splits", title: EVAL_SECTION_TITLES.splits, reason: SPLITS_FETCH_FAILED_REASON }] : [];
-  return { mode: "full", sections, omitted, prompt: fullPrompt(sections, templates.full) };
+  return { mode: "full", sections, omitted, ...fullPrompt(sections, templates.full) };
 }
