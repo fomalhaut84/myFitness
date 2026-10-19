@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROMPT_DEFINITIONS, PROMPT_NOTE_MAX_LENGTH, type PromptKey } from "@/lib/prompts/definitions";
-import { validatePrompt } from "@/lib/prompts/validate";
+import { removedToolMentions, removedToolsMessage, toolMentions, validatePrompt } from "@/lib/prompts/validate";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import DiffView, { DiffStatsText } from "./DiffView";
 import PromptEditor from "./PromptEditor";
@@ -17,9 +17,20 @@ const PRIMARY = "rounded-lg bg-accent px-3 py-1.5 text-[13px] font-medium text-[
 
 type Message = { kind: "ok" | "error"; text: string } | null;
 
+/** 활성화 · 되돌리기가 TOOLS_REMOVED (409) 로 막혔을 때 — 확인 후 같은 요청을 acknowledgeRemovedTools 로 다시 */
+interface PendingConfirm {
+  text: string;
+  url: string;
+  label: string;
+  success: (data: Record<string, unknown>) => string;
+  fallback: string;
+}
+
 interface Props {
   promptKey: PromptKey;
   versions: readonly PromptVersionDTO[];
+  /** 버전 id → 그 버전으로 만든 결과 수 (M19-2 L5) */
+  resultCounts: Readonly<Record<string, number>>;
 }
 
 async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -36,7 +47,7 @@ function errorText(data: Record<string, unknown>, fallback: string): string {
   return typeof data.error === "string" ? data.error : fallback;
 }
 
-export default function PromptDetailClient({ promptKey, versions }: Props) {
+export default function PromptDetailClient({ promptKey, versions, resultCounts }: Props) {
   const router = useRouter();
   const active = versions.find((v) => v.status === "active") ?? null;
   const baseBody = active?.body ?? PROMPT_DEFINITIONS[promptKey].defaultBody;
@@ -48,6 +59,8 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [jumpTo, setJumpTo] = useState<{ line: number; seq: number } | null>(null);
+  const [toolsAck, setToolsAck] = useState(false);
+  const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
   // 저장 · 활성화 뒤 router.refresh 로 사용 중 본문이 바뀌면 편집 상태를 새로 시작 (메시지는 남긴다)
   const [prevBase, setPrevBase] = useState(baseBody);
@@ -57,9 +70,15 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
     setNote("");
     setReferenceId(null);
     setCompareIds([]);
+    setToolsAck(false);
+    setConfirm(null);
   }
 
   const validation = useMemo(() => validatePrompt(promptKey, body), [promptKey, body]);
+  // #203: 필수 문구 밖의 도구 언급이 빠지면 활성화 전에 확인받는다 (서버도 같은 조건으로 409)
+  const removedTools = useMemo(() => (active ? removedToolMentions(baseBody, body) : []), [active, baseBody, body]);
+  const toolCount = useMemo(() => toolMentions(body).length, [body]);
+  const activateBlocked = removedTools.length > 0 && !toolsAck;
   const dirty = body !== baseBody;
   const byId = (id: string | null) => versions.find((v) => v.id === id) ?? null;
   const reference = byId(referenceId);
@@ -75,12 +94,15 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
     success: (data: Record<string, unknown>) => string,
     fallback: string,
     onSuccess?: () => void,
+    onFailure?: (data: Record<string, unknown>) => boolean,
   ) {
     setBusy(true);
     setMessage(null);
+    setConfirm(null);
     try {
       const { ok, data } = await action();
       if (!ok) {
+        if (onFailure?.(data)) return;
         setMessage({ kind: "error", text: errorText(data, fallback) });
         return;
       }
@@ -96,7 +118,7 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
 
   function save(activate: boolean) {
     return run(
-      () => postJson(`/api/prompts/${promptKey}/versions`, { body, note, basedOnId: active?.id ?? null, activate }),
+      () => postJson(`/api/prompts/${promptKey}/versions`, { body, note, basedOnId: active?.id ?? null, activate, acknowledgeRemovedTools: toolsAck }),
       (d) => (activate ? `v${d.version} 를 사용합니다` : `v${d.version} 초안을 저장했습니다 — 오른쪽 버전 목록에서 활성화할 수 있습니다`),
       "저장하지 못했습니다",
       // 사전 리뷰 info 1: 초안 저장 뒤 편집기를 사용 중 본문으로 — 같은 초안이 반복 저장되지 않게
@@ -108,12 +130,20 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
   }
 
   /** 사전 리뷰 info 2: 활성화 · 되돌리기는 사용 중 본문을 바꿔 편집 중인 내용을 덮는다 — 먼저 저장하거나 되돌리게 */
-  function switchVersion(action: () => Promise<{ ok: boolean; data: Record<string, unknown> }>, success: (data: Record<string, unknown>) => string, fallback: string) {
+  function switchVersion(url: string, label: string, success: (data: Record<string, unknown>) => string, fallback: string) {
     if (dirty) {
       setMessage({ kind: "error", text: "편집 중인 변경이 있습니다. 초안으로 저장하거나 되돌린 뒤 다시 시도하세요" });
       return;
     }
-    return run(action, success, fallback);
+    return run(() => postJson(url), success, fallback, undefined, (data) => {
+      if (data.code !== "TOOLS_REMOVED") return false;
+      setConfirm({ text: errorText(data, fallback), url, label, success, fallback });
+      return true;
+    });
+  }
+
+  function confirmSwitch(pending: PendingConfirm) {
+    return run(() => postJson(pending.url, { acknowledgeRemovedTools: true }), pending.success, pending.fallback);
   }
 
   function toggleCompare(id: string) {
@@ -143,6 +173,17 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
             </button>
           </p>
         )}
+        {confirm && (
+          <div role="alert" className="flex flex-wrap items-center gap-2 rounded-lg bg-amber-900/40 px-3 py-2 text-xs text-amber-100">
+            <span className="min-w-0 flex-1">{confirm.text}. 활성화 뒤 다음 리포트에 그 항목이 나오는지 확인하세요.</span>
+            <button type="button" className="rounded-md border border-amber-300/40 px-2 py-0.5 text-amber-200 hover:border-amber-300" disabled={busy} onClick={() => confirmSwitch(confirm)}>
+              {confirm.label}
+            </button>
+            <button type="button" className="px-1 text-sub hover:text-bright" onClick={() => setConfirm(null)}>
+              취소
+            </button>
+          </div>
+        )}
         {message && (
           <p role="status" className={`rounded-lg px-3 py-2 text-xs ${message.kind === "ok" ? "bg-[rgba(34,197,94,0.12)] text-accent" : "bg-red-950/60 text-red-300"}`}>
             {message.text}
@@ -158,6 +199,9 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
               <span className="font-mono text-bright">v{compared[1].version}</span>
               <StatusPill status={compared[1].status} />
               <DiffStatsText oldText={compared[0].body} newText={compared[1].body} />
+              {removedToolMentions(compared[0].body, compared[1].body).length > 0 && (
+                <span className="text-amber-300">v{compared[1].version} 에서 빠진 도구: {removedToolMentions(compared[0].body, compared[1].body).join(" · ")}</span>
+              )}
               <span className="ml-auto flex flex-wrap gap-1.5">
                 {active && compared.some((v) => v.id === active.id) && compared.some((v) => v.status === "draft") && (
                   <button type="button" className={BTN} onClick={() => editWithReference(compared.find((v) => v.status === "draft")!.id)}>
@@ -167,7 +211,7 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
                 {compared
                   .filter((v) => v.status === "draft")
                   .map((v) => (
-                    <button key={v.id} type="button" className={PRIMARY} disabled={busy} onClick={() => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}>
+                    <button key={v.id} type="button" className={PRIMARY} disabled={busy} onClick={() => switchVersion(`/api/prompts/versions/${v.id}/activate`, `v${v.version} 그래도 활성화`, () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}>
                       v{v.version} 활성화
                     </button>
                   ))}
@@ -203,7 +247,13 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
               )}
             </div>
             <PromptEditor promptKey={promptKey} value={body} onChange={setBody} jumpTo={jumpTo} />
-            <ValidationPanel promptKey={promptKey} validation={validation} onJump={(line) => setJumpTo({ line, seq: Date.now() })} />
+            <ValidationPanel
+              promptKey={promptKey}
+              validation={validation}
+              removedToolsText={removedTools.length > 0 ? removedToolsMessage(removedTools) : null}
+              toolCount={toolCount}
+              onJump={(line) => setJumpTo({ line, seq: Date.now() })}
+            />
             <div className="flex flex-wrap items-center gap-2 border-t border-border px-3.5 py-2.5">
               <input
                 value={note}
@@ -221,7 +271,13 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
               <button type="button" className={BTN} disabled={busy || !dirty || validation.errors.length > 0} onClick={() => save(false)}>
                 초안 저장
               </button>
-              <button type="button" className={PRIMARY} disabled={busy || !dirty || validation.errors.length > 0} onClick={() => save(true)}>
+              {removedTools.length > 0 && (
+                <label className="inline-flex w-full cursor-pointer items-center gap-1.5 text-xs text-amber-300 sm:order-first sm:w-auto">
+                  <input type="checkbox" checked={toolsAck} onChange={(e) => setToolsAck(e.target.checked)} className="accent-amber-300" />
+                  빠진 도구를 확인했습니다 (활성화에 필요)
+                </label>
+              )}
+              <button type="button" className={PRIMARY} disabled={busy || !dirty || validation.errors.length > 0 || activateBlocked} onClick={() => save(true)}>
                 저장하고 활성화
               </button>
             </div>
@@ -242,11 +298,12 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
 
       <VersionRail
         versions={versions}
+        resultCounts={resultCounts}
         compareIds={compareIds}
         busy={busy}
         onToggleCompare={toggleCompare}
-        onActivate={(v) => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}
-        onRestore={(v) => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/restore`), (d) => `v${v.version} 를 v${d.version} 로 되돌렸습니다`, "되돌리지 못했습니다")}
+        onActivate={(v) => switchVersion(`/api/prompts/versions/${v.id}/activate`, `v${v.version} 그래도 활성화`, () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}
+        onRestore={(v) => switchVersion(`/api/prompts/versions/${v.id}/restore`, `v${v.version} 로 그래도 되돌리기`, (d) => `v${v.version} 를 v${d.version} 로 되돌렸습니다`, "되돌리지 못했습니다")}
       />
     </div>
   );
