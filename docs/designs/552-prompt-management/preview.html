@@ -1,0 +1,447 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>프롬프트 관리 시안 (#552)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --surface-hover:#262626; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e; --accent-bg:rgba(34,197,94,.12);
+    --ai:#c4b5fd; --ai-bg:rgba(139,92,246,.16); --caution:#fcd34d; --caution-bg:rgba(120,53,15,.4); --abnormal:#f87171;
+    --add-bg:rgba(34,197,94,.10); --del-bg:rgba(248,113,113,.10); --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  button, input, select, textarea { font:inherit; color:inherit; }
+  button:focus-visible, a:focus-visible, textarea:focus-visible { outline:2px solid var(--accent); outline-offset:2px; }
+  .page { max-width:1120px; margin:0 auto; padding:24px 16px 96px; }
+  .proto-note { font-size:12px; color:var(--dim); margin-bottom:8px; }
+  .state { font:11px var(--mono); color:var(--dim); margin:48px 0 12px; padding-top:16px; border-top:1px dashed var(--border); }
+  .mono { font-family:var(--mono); }
+  .pagehead { display:flex; align-items:flex-end; justify-content:space-between; gap:16px; flex-wrap:wrap; margin-bottom:14px; }
+  .pagehead h1 { font-size:24px; font-weight:600; color:var(--bright); }
+  .pagehead p { color:var(--sub); font-size:13px; margin-top:2px; }
+  .back { font-size:12px; color:var(--sub); text-decoration:none; display:inline-block; margin-bottom:6px; }
+  .btn { background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:7px 13px; cursor:pointer; font-size:13px; }
+  .btn:hover { border-color:var(--border-hover); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#04130a; font-weight:500; }
+  .btn.ai { background:var(--ai-bg); border-color:rgba(139,92,246,.4); color:var(--ai); }
+  .btn.small { padding:3px 9px; font-size:12px; }
+  .btn.ghost { background:none; border-color:transparent; color:var(--sub); }
+  .btn[disabled] { opacity:.45; cursor:not-allowed; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; }
+  .pill { font-size:11px; padding:1px 7px; border-radius:999px; white-space:nowrap; }
+  .p-active { background:var(--accent-bg); color:var(--accent); }
+  .p-draft { background:var(--surface); color:var(--text); border:1px dashed var(--border-hover); }
+  .p-arch { color:var(--dim); }
+  .p-ai { background:var(--ai-bg); color:var(--ai); }
+  .p-code { color:var(--sub); border:1px solid var(--border-hover); }
+  .p-manual { background:var(--surface-hover); color:var(--bright); }
+  .p-warn { background:var(--caution-bg); color:var(--caution); }
+
+  .tabs { display:flex; gap:4px; border-bottom:1px solid var(--border); margin-bottom:20px; overflow-x:auto; }
+  .tabs a { padding:8px 14px; color:var(--sub); text-decoration:none; border-bottom:2px solid transparent; margin-bottom:-1px; white-space:nowrap; }
+  .tabs a[aria-current] { color:var(--bright); border-color:var(--accent); }
+  .tabs a small { color:var(--dim); font:11px var(--mono); margin-left:4px; }
+
+  /* A 목록 */
+  .group { font-size:12px; color:var(--sub); margin:18px 0 8px; }
+  .group:first-of-type { margin-top:0; }
+  .list { display:grid; grid-template-columns:repeat(auto-fill,minmax(320px,1fr)); gap:10px; }
+  .pc { padding:14px 16px; display:grid; gap:8px; text-decoration:none; color:inherit; }
+  .pc:hover { border-color:var(--border-hover); }
+  .pc .top { display:flex; justify-content:space-between; gap:8px; align-items:baseline; }
+  .pc .name { color:var(--bright); font-weight:500; }
+  .pc .ver { font:500 13px var(--mono); color:var(--accent); }
+  .pc .use { font-size:12px; color:var(--sub); }
+  .pc .foot { display:flex; gap:6px; flex-wrap:wrap; align-items:center; font-size:12px; }
+  .pc .when { font:12px var(--mono); color:var(--dim); margin-left:auto; }
+  .pc.wide { grid-column:1 / -1; }
+  .notice { display:flex; gap:10px; align-items:flex-start; padding:10px 14px; border-radius:10px; background:var(--caution-bg); color:#fde68a; font-size:13px; margin-bottom:14px; }
+  .notice b { color:var(--caution); font-weight:500; }
+  .notice .btn { margin-left:auto; flex-shrink:0; }
+
+  /* B 상세 — 편집기 + 계보 레일 */
+  .detail { display:grid; grid-template-columns:minmax(0,1fr) 300px; gap:16px; align-items:start; }
+  @media (max-width:900px){ .detail { grid-template-columns:minmax(0,1fr); } }
+  .edhead { display:flex; justify-content:space-between; gap:8px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--border); font-size:12px; color:var(--sub); flex-wrap:wrap; }
+  .edhead b { color:var(--bright); font-weight:500; }
+  .vars { display:flex; gap:6px; flex-wrap:wrap; }
+  .vars code { font:11px var(--mono); color:var(--caution); background:rgba(252,211,77,.08); border-radius:4px; padding:1px 5px; }
+  .editor { font:12.5px/1.7 var(--mono); color:var(--text); padding:14px 16px; white-space:pre-wrap; overflow-wrap:anywhere; max-height:440px; overflow:auto; counter-reset:ln; }
+  .editor .l { display:block; padding-left:38px; position:relative; }
+  .editor .l::before { counter-increment:ln; content:counter(ln); position:absolute; left:0; width:26px; text-align:right; color:#3a3a3a; }
+  .editor .v { color:var(--caution); background:rgba(252,211,77,.08); border-radius:3px; }
+  .editor .t { color:#93c5fd; }
+  .editor .h { color:var(--bright); }
+  .editor .err { text-decoration:underline wavy var(--abnormal); text-underline-offset:3px; }
+  .check { border-top:1px solid var(--border); padding:10px 14px; display:grid; gap:4px; font-size:12px; }
+  .check li { list-style:none; display:flex; gap:8px; }
+  .check ul { padding:0; display:grid; gap:3px; }
+  .ok { color:var(--accent); } .bad { color:var(--abnormal); } .warn { color:var(--caution); }
+  .savebar { border-top:1px solid var(--border); padding:10px 14px; display:flex; gap:8px; align-items:center; flex-wrap:wrap; }
+  .savebar input { flex:1; min-width:200px; background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:7px 9px; font-size:13px; color:var(--bright); }
+
+  /* 계보 레일 — 이 화면의 강조. 노드 = 버전, 모양 = 출처, 녹색 고리 = 활성 */
+  .rail { padding:14px 14px 6px; }
+  .rail h3 { font-size:13px; font-weight:500; color:var(--bright); margin-bottom:2px; }
+  .rail .hint { font-size:11px; color:var(--dim); margin-bottom:10px; }
+  .node { display:grid; grid-template-columns:22px 1fr; gap:10px; position:relative; padding-bottom:14px; }
+  .node::before { content:""; position:absolute; left:10px; top:18px; bottom:0; border-left:1px solid var(--border-hover); }
+  .node:last-child::before { display:none; }
+  .dot { width:12px; height:12px; border-radius:50%; margin:4px 0 0 5px; position:relative; z-index:1; }
+  .d-code { border:2px solid var(--sub); background:var(--bg); }
+  .d-manual { background:var(--bright); }
+  .d-ai { background:var(--ai); }
+  .d-restore { background:var(--bright); box-shadow:inset 0 0 0 3px var(--card); border:1px solid var(--bright); }
+  .is-active .dot { outline:2px solid var(--accent); outline-offset:3px; }
+  .is-draft .dot { opacity:.9; }
+  .is-arch .dot { opacity:.45; }
+  .nb { display:grid; gap:3px; min-width:0; }
+  .nb .r1 { display:flex; gap:6px; align-items:center; flex-wrap:wrap; }
+  .nb .vn { font:500 13px var(--mono); color:var(--bright); }
+  .is-arch .vn { color:var(--sub); }
+  .nb .memo { font-size:12px; color:var(--text); }
+  .nb .meta { font:11px var(--mono); color:var(--dim); }
+  .nb .from { font-size:11px; color:var(--dim); }
+  .nb .acts { display:flex; gap:4px; flex-wrap:wrap; margin-top:2px; }
+  .nb label { font-size:11px; color:var(--sub); display:inline-flex; gap:4px; align-items:center; cursor:pointer; }
+  .legend { display:flex; gap:10px; flex-wrap:wrap; font-size:11px; color:var(--sub); border-top:1px solid var(--border); padding:8px 14px; }
+  .legend span { display:inline-flex; gap:5px; align-items:center; }
+  .legend .dot { margin:0; width:9px; height:9px; }
+
+  .warnbox { font-size:12px; color:#fde68a; background:var(--caution-bg); border-radius:8px; padding:8px 12px; margin-bottom:12px; }
+
+  /* C diff */
+  .diffhead { display:flex; gap:10px; align-items:center; padding:10px 14px; border-bottom:1px solid var(--border); font-size:12px; color:var(--sub); flex-wrap:wrap; }
+  .diffhead .stat { font-family:var(--mono); }
+  .diff { font:12.5px/1.7 var(--mono); padding:8px 0; overflow-x:auto; }
+  .diff .r { display:grid; grid-template-columns:34px 34px 18px 1fr; white-space:pre-wrap; overflow-wrap:anywhere; }
+  .diff .r span:nth-child(-n+2) { color:#3a3a3a; text-align:right; padding-right:6px; }
+  .diff .r span:nth-child(3) { color:var(--dim); text-align:center; }
+  .diff .add { background:var(--add-bg); } .diff .add span:nth-child(3), .diff .add span:last-child { color:#86efac; }
+  .diff .del { background:var(--del-bg); } .diff .del span:nth-child(3), .diff .del span:last-child { color:#fca5a5; }
+  .diff .fold { color:var(--dim); font-size:11px; padding:4px 0 4px 86px; background:var(--surface); }
+
+  /* D 결과 비교 */
+  .filter { display:flex; gap:6px; flex-wrap:wrap; margin-bottom:12px; }
+  .chip { font:12px var(--mono); padding:3px 10px; border-radius:999px; border:1px solid var(--border); color:var(--sub); background:none; cursor:pointer; }
+  .chip[aria-pressed="true"] { border-color:var(--accent); color:var(--accent); background:var(--accent-bg); }
+  .results { display:grid; grid-template-columns:260px minmax(0,1fr); gap:14px; align-items:start; }
+  @media (max-width:900px){ .results { grid-template-columns:minmax(0,1fr); } }
+  .rlist { padding:4px 0; }
+  .ritem { display:grid; grid-template-columns:auto 1fr; gap:4px 10px; padding:9px 12px; border-top:1px solid var(--border); cursor:pointer; font-size:12px; }
+  .ritem:first-child { border-top:0; }
+  .ritem .d { font:12px var(--mono); color:var(--bright); }
+  .ritem .x { grid-column:1 / -1; color:var(--sub); white-space:nowrap; overflow:hidden; text-overflow:ellipsis; }
+  .ritem[aria-selected="true"] { background:var(--surface); box-shadow:inset 2px 0 0 var(--accent); }
+  .ritem .vb { justify-self:end; }
+  .side { display:grid; grid-template-columns:1fr 1fr; gap:10px; }
+  @media (max-width:700px){ .side { grid-template-columns:minmax(0,1fr); } }
+  .doc { padding:12px 14px; font-size:13px; display:grid; gap:8px; align-content:start; }
+  .doc .dh { display:flex; gap:6px; align-items:center; font:12px var(--mono); color:var(--sub); border-bottom:1px solid var(--border); padding-bottom:8px; flex-wrap:wrap; }
+  .doc h4 { color:var(--bright); font-size:13px; font-weight:500; }
+  .doc p, .doc li { color:var(--text); font-size:13px; }
+  .doc ul { padding-left:16px; }
+  .empty { padding:24px; text-align:center; color:var(--sub); font-size:13px; }
+
+  /* E 개선안 */
+  .why { padding:12px 14px; border-bottom:1px solid var(--border); }
+  .why h4 { font-size:12px; color:var(--ai); font-weight:500; margin-bottom:6px; }
+  .why ol { padding-left:18px; display:grid; gap:4px; font-size:13px; }
+  .running { display:flex; gap:10px; align-items:center; padding:12px 14px; font-size:13px; color:var(--sub); }
+  .spin { width:14px; height:14px; border-radius:50%; border:2px solid var(--border-hover); border-top-color:var(--ai); animation:sp 0.9s linear infinite; }
+  @keyframes sp { to { transform:rotate(360deg); } }
+  @media (prefers-reduced-motion:reduce){ .spin { animation:none; } }
+  .quota { font-size:11px; color:var(--dim); }
+
+  /* F 시험 실행 */
+  .trialbar { display:flex; gap:10px; align-items:center; flex-wrap:wrap; padding:12px 14px; border-bottom:1px solid var(--border); font-size:13px; }
+  .trialbar select { background:var(--surface); border:1px solid var(--border); border-radius:6px; padding:6px 8px; font-size:13px; color:var(--bright); }
+  .trialbar .quota { margin-left:auto; }
+  .split { padding:12px 14px; }
+  .tlist { border-top:1px solid var(--border); padding:8px 14px; font-size:12px; display:grid; gap:4px; }
+  .tlist div { display:flex; gap:8px; align-items:center; }
+  .tlist .mono { color:var(--dim); }
+</style>
+</head>
+<body>
+<div class="page">
+  <p class="proto-note">시안 · #552 프롬프트 관리 · 리포트 결과 문구 · 수치는 가상 데이터</p>
+
+  <!-- A -->
+  <p class="state">A · /settings/prompts — 프롬프트 목록 (코드 기본값 갱신 알림 1건)</p>
+  <div class="pagehead">
+    <div><h1>설정</h1><p>AI 분석에 쓰는 프롬프트를 고치고 버전으로 관리합니다</p></div>
+  </div>
+  <nav class="tabs"><a href="#">프로필</a><a href="#" aria-current="page">프롬프트</a></nav>
+
+  <div class="notice">
+    <span><b>코드 기본값이 바뀌었습니다.</b> 이번 업데이트로 주간 리포트 기본 프롬프트가 바뀌었는데, 지금은 웹에서 고친 v4 를 쓰고 있어 새 기본값 (v5) 을 초안으로 넣어 두었습니다.</span>
+    <a class="btn small" href="#c">차이 보기</a>
+  </div>
+
+  <h2 class="group">공통</h2>
+  <div class="list">
+    <a class="card pc wide" href="#">
+      <span class="top"><span class="name">시스템 프롬프트</span><span class="ver">v2</span></span>
+      <span class="use">모든 AI 응답의 바탕 — 웹 채팅 · 텔레그램 · 리포트 · 운동 평가</span>
+      <span class="foot"><span class="pill p-manual">직접 수정</span><span class="when">10-12 활성화</span></span>
+    </a>
+  </div>
+  <h2 class="group">리포트</h2>
+  <div class="list">
+    <a class="card pc" href="#">
+      <span class="top"><span class="name">모닝 리포트</span><span class="ver">v1</span></span>
+      <span class="use">매일 08:00 텔레그램 · 리포트 화면</span>
+      <span class="foot"><span class="pill p-code">코드 기본값</span><span class="when">10-19 활성화</span></span>
+    </a>
+    <a class="card pc" href="#">
+      <span class="top"><span class="name">이브닝 리포트</span><span class="ver">v3</span></span>
+      <span class="use">매일 23:00 텔레그램 · 리포트 화면</span>
+      <span class="foot"><span class="pill p-ai">AI 제안</span><span class="pill p-draft">초안 1</span><span class="when">10-17 활성화</span></span>
+    </a>
+    <a class="card pc" href="#">
+      <span class="top"><span class="name">주간 리포트</span><span class="ver">v4</span></span>
+      <span class="use">매주 월요일 07:00 텔레그램 · 리포트 화면</span>
+      <span class="foot"><span class="pill p-manual">직접 수정</span><span class="pill p-warn">코드 기본값 갱신</span><span class="when">10-14 활성화</span></span>
+    </a>
+  </div>
+  <h2 class="group">운동 평가</h2>
+  <div class="list">
+    <a class="card pc" href="#">
+      <span class="top"><span class="name">러닝 평가</span><span class="ver">v1</span></span>
+      <span class="use">활동 상세 "AI 평가" — 러닝 계열</span>
+      <span class="foot"><span class="pill p-code">코드 기본값</span><span class="when">10-19 활성화</span></span>
+    </a>
+    <a class="card pc" href="#">
+      <span class="top"><span class="name">기타 운동 평가</span><span class="ver">v1</span></span>
+      <span class="use">활동 상세 "AI 평가" — 러닝 외 (3줄 요약)</span>
+      <span class="foot"><span class="pill p-code">코드 기본값</span><span class="when">10-19 활성화</span></span>
+    </a>
+  </div>
+
+  <!-- B -->
+  <p class="state">B · /settings/prompts/weekly_report — 편집 (검증 오류 1 · 경고 1) + 버전 계보</p>
+  <a class="back" href="#">← 프롬프트 목록</a>
+  <div class="pagehead">
+    <div><h1>주간 리포트</h1><p>매주 월요일 07:00 · 지금 <span class="mono" style="color:var(--accent)">v4</span> 사용 중</p></div>
+    <button class="btn ai">AI 개선안 받기</button>
+  </div>
+  <nav class="tabs"><a href="#" aria-current="page">편집</a><a href="#">결과<small>12</small></a></nav>
+
+  <div class="detail">
+    <div class="card">
+      <div class="edhead">
+        <span><b>v4</b> 에서 고치는 중</span>
+        <span class="vars">변수 <code>{{currentDays}}</code><code>{{baselineDays}}</code><code>{{baselineEndDate}}</code></span>
+      </div>
+<div class="editor"><span class="l"><span class="h">이번 주 피트니스 데이터를 종합 분석해서 주간 리포트를 작성해줘.</span></span><span class="l"> </span><span class="l"><span class="h">## 반드시 아래 MCP 도구를 먼저 호출해 최신 데이터를 수집한 후 리포트 작성</span></span><span class="l"> </span><span class="l">- <span class="t">mcp__myfitness__get_activities</span>(days=<span class="v">{{currentDays}}</span>, type="running") — 이번 주 러닝 활동 + runningSummary</span><span class="l">- <span class="t">mcp__myfitness__get_activities</span>(days=<span class="v">{{baselineDays}}</span>, endDate="<span class="v">{{baselineEndDate}}</span>", type="running") — 직전 4주 기준선</span><span class="l">- <span class="t">mcp__myfitness__get_sleep</span>(days=<span class="v">{{currentDays}}</span>) — 최근 7일 수면 추세</span><span class="l">- <span class="t">mcp__myfitness__get_heart_rate</span>(days=<span class="v">{{currentDays}}</span>) — 최근 7일 심박/HRV 추세</span><span class="l">- <span class="t err">mcp__myfitness__get_weekly_summary</span>() — 주간 요약</span><span class="l">- <span class="t">mcp__myfitness__get_blood_pressure</span>(days=7) — 최근 7일 혈압</span><span class="l"> </span><span class="l"><span class="h">## 리포트 항목 (마크다운, 간결하게)</span></span><span class="l"> </span><span class="l">1. 주간 운동 요약 (러닝 횟수, 총 거리, 평균 페이스)</span><span class="l">2. 존 분포 80/20: 이번 주 easyPct vs 직전 4주</span><span class="l">3. 다음 주 추천 사항을 <span class="v err">{{nextWeekGoal}}</span> 기준으로</span></div>
+      <div class="check">
+        <ul>
+          <li class="bad">✕ <span>모르는 변수 <span class="mono">{{nextWeekGoal}}</span> — 쓸 수 있는 변수는 위 세 개입니다 (15행)</span></li>
+          <li class="warn">! <span><span class="mono">get_weekly_summary</span> 는 어드바이저가 쓸 수 없는 도구입니다. 호출되지 않습니다 (9행)</span></li>
+          <li class="ok">✓ <span>필수 문구 8개 모두 있음 · 필수 변수 3개 모두 있음</span></li>
+        </ul>
+      </div>
+      <div class="savebar">
+        <input placeholder="무엇을 바꿨나요? (예: 혈압 항목을 경고 위주로)" aria-label="변경 메모">
+        <button class="btn" disabled>초안 저장</button>
+        <button class="btn primary" disabled>저장하고 활성화</button>
+      </div>
+    </div>
+
+    <aside class="card">
+      <div class="rail">
+        <h3>버전</h3>
+        <p class="hint">두 개를 고르면 차이를 봅니다</p>
+        <div class="node is-draft">
+          <span class="dot d-code"></span>
+          <div class="nb">
+            <span class="r1"><span class="vn">v5</span><span class="pill p-draft">초안</span><span class="pill p-code">코드 기본값</span></span>
+            <span class="memo">업데이트로 바뀐 기본 프롬프트</span>
+            <span class="meta">10-19 06:02</span>
+            <span class="acts"><label><input type="checkbox" checked> 비교</label><button class="btn small">활성화</button><button class="btn small ghost">시험 실행</button></span>
+          </div>
+        </div>
+        <div class="node is-active">
+          <span class="dot d-manual"></span>
+          <div class="nb">
+            <span class="r1"><span class="vn">v4</span><span class="pill p-active">사용 중</span><span class="pill p-manual">직접 수정</span></span>
+            <span class="memo">혈압 항목을 경고 위주로 줄임</span>
+            <span class="from">v3 에서 고침 · 결과 3건</span>
+            <span class="meta">10-14 21:40</span>
+            <span class="acts"><label><input type="checkbox" checked> 비교</label></span>
+          </div>
+        </div>
+        <div class="node is-arch">
+          <span class="dot d-ai"></span>
+          <div class="nb">
+            <span class="r1"><span class="vn">v3</span><span class="pill p-ai">AI 제안</span></span>
+            <span class="memo">다음 주 추천을 플랜 준수율과 묶음</span>
+            <span class="from">v2 에서 제안 · 결과 4건</span>
+            <span class="meta">10-07 22:15</span>
+            <span class="acts"><label><input type="checkbox"> 비교</label><button class="btn small ghost">이 버전으로 되돌리기</button></span>
+          </div>
+        </div>
+        <div class="node is-arch">
+          <span class="dot d-restore"></span>
+          <div class="nb">
+            <span class="r1"><span class="vn">v2</span><span class="pill p-manual">되돌림</span></span>
+            <span class="memo">v1 로 되돌림</span>
+            <span class="from">결과 5건</span>
+            <span class="meta">09-30 08:10</span>
+            <span class="acts"><label><input type="checkbox"> 비교</label><button class="btn small ghost">이 버전으로 되돌리기</button></span>
+          </div>
+        </div>
+        <div class="node is-arch">
+          <span class="dot d-code"></span>
+          <div class="nb">
+            <span class="r1"><span class="vn">v1</span><span class="pill p-code">코드 기본값</span></span>
+            <span class="memo">처음 가져온 코드 프롬프트</span>
+            <span class="meta">09-29 06:00</span>
+          </div>
+        </div>
+      </div>
+      <div class="legend">
+        <span><i class="dot d-code"></i>코드 기본값</span><span><i class="dot d-manual"></i>직접 수정</span><span><i class="dot d-ai"></i>AI 제안</span><span><i class="dot d-restore"></i>되돌림</span>
+      </div>
+    </aside>
+  </div>
+
+  <p class="state">B′ · 시스템 프롬프트 상세 — 편집기 위 경고</p>
+  <div class="warnbox">저장하고 활성화하면 웹 채팅 · 텔레그램 · 리포트 · 운동 평가에 바로 적용됩니다. 이어지던 대화는 다음 질문부터 새로 시작합니다. 사용자 프로필 · HR 존 · 현재 시각 · 개인 목표는 이 프롬프트 뒤에 자동으로 붙습니다.</div>
+
+  <!-- C -->
+  <p class="state" id="c">C · 버전 비교 — v4 (사용 중) ↔ v5 (코드 기본값 초안)</p>
+  <div class="card">
+    <div class="diffhead">
+      <span class="pill p-active">v4 사용 중</span><span>↔</span><span class="pill p-draft">v5 초안</span>
+      <span class="stat"><span class="ok">+3</span> <span class="bad">−2</span></span>
+      <span style="margin-left:auto;display:flex;gap:6px"><button class="btn small">v5 를 v4 에 합쳐 고치기</button><button class="btn small primary">v5 활성화</button></span>
+    </div>
+    <div class="diff">
+      <div class="r"><span>8</span><span>8</span><span></span><span>- mcp__myfitness__get_heart_rate(days={{currentDays}}) — 최근 7일 심박/HRV 추세</span></div>
+      <div class="r"><span>9</span><span>9</span><span></span><span>- mcp__myfitness__get_daily_stats(days={{currentDays}}) — 최근 7일 걸음, 활동 칼로리, 스트레스</span></div>
+      <div class="r add"><span></span><span>10</span><span>+</span><span>- mcp__myfitness__get_checkup_history() — 최근 검진 주의 항목 (운동 강도 조언에만)</span></div>
+      <div class="r"><span>10</span><span>11</span><span></span><span>- mcp__myfitness__get_trends(period="week") — 전반 트렌드</span></div>
+      <div class="fold">⋯ 같은 줄 18개</div>
+      <div class="r del"><span>29</span><span></span><span>−</span><span>13. 경고 사항 — 혈압은 경고 규칙에 해당할 때만 한 줄</span></div>
+      <div class="r del"><span>30</span><span></span><span>−</span><span>14. 다음 주 추천 사항</span></div>
+      <div class="r add"><span></span><span>30</span><span>+</span><span>13. 경고 사항 (시스템 프롬프트의 경고 규칙에 해당하면 반드시 포함)</span></div>
+      <div class="r add"><span></span><span>31</span><span>+</span><span>14. 다음 주 추천 사항 (Zone 기반 훈련 배분 + 칼로리 밸런스 관리)</span></div>
+    </div>
+  </div>
+
+  <!-- D -->
+  <p class="state">D · 결과 탭 — 버전별 결과 · 나란히 비교</p>
+  <nav class="tabs"><a href="#">편집</a><a href="#" aria-current="page">결과<small>12</small></a></nav>
+  <div class="filter">
+    <button class="chip" aria-pressed="false">전체</button>
+    <button class="chip" aria-pressed="true">v4</button>
+    <button class="chip" aria-pressed="true">v3</button>
+    <button class="chip" aria-pressed="false">v2</button>
+    <button class="chip" aria-pressed="false">버전 정보 없음</button>
+  </div>
+  <div class="results">
+    <div class="card rlist" role="listbox" aria-label="결과 목록">
+      <div class="ritem" aria-selected="true"><span class="d">10-19 (월)</span><span class="pill p-active vb">v4</span><span class="x">주간 러닝 4회 · 32.40 km · 평균 5:42/km</span></div>
+      <div class="ritem"><span class="d">10-12 (월)</span><span class="pill p-manual vb">v3</span><span class="x">주간 러닝 3회 · 27.15 km · 평균 5:48/km</span></div>
+      <div class="ritem" aria-selected="true"><span class="d">10-05 (월)</span><span class="pill p-manual vb">v3</span><span class="x">주간 러닝 5회 · 38.02 km · 평균 5:39/km</span></div>
+      <div class="ritem"><span class="d">09-28 (월)</span><span class="pill p-manual vb">v3</span><span class="x">주간 러닝 4회 · 30.88 km · 평균 5:45/km</span></div>
+    </div>
+    <div class="side">
+      <article class="card doc">
+        <div class="dh"><span class="pill p-active">v4</span>10-19 주간 리포트</div>
+        <h4>주간 운동 요약</h4>
+        <p>러닝 4회 · 총 32.40 km · 평균 페이스 5:42/km. 이지 3회 · 템포 1회.</p>
+        <h4>존 분포 80/20</h4>
+        <p>이번 주 이지 비율 78% (직전 4주 81%). 기준에 가깝습니다.</p>
+        <h4>경고 사항</h4>
+        <p>해당 없음.</p>
+      </article>
+      <article class="card doc">
+        <div class="dh"><span class="pill p-manual">v3</span>10-05 주간 리포트</div>
+        <h4>주간 운동 요약</h4>
+        <p>러닝 5회 · 총 38.02 km · 평균 페이스 5:39/km. 이지 4회 · 인터벌 1회.</p>
+        <h4>존 분포 80/20</h4>
+        <p>이번 주 이지 비율 83% (직전 4주 80%).</p>
+        <h4>경고 사항</h4>
+        <ul><li>혈압 7일 평균은 경고 기준 아래입니다.</li><li>수면 점수가 3일 연속 70 미만입니다.</li></ul>
+      </article>
+    </div>
+  </div>
+
+  <!-- E -->
+  <p class="state">E · AI 개선안 — 받는 중 → 근거 + 차이 → 초안으로 저장</p>
+  <div class="card" style="margin-bottom:10px">
+    <div class="running"><span class="spin" aria-hidden="true"></span>현재 v4 와 최근 결과 5건을 보고 개선안을 만드는 중입니다 <span class="quota">CLI 쿼터 사용 · 최대 1분</span></div>
+  </div>
+  <div class="card">
+    <div class="why">
+      <h4>AI 개선안 · v4 기준</h4>
+      <ol>
+        <li>최근 5건 모두 "경고 사항: 해당 없음" 한 줄로 끝나 항목이 공간만 차지합니다. 해당 없으면 생략하게 바꿨습니다.</li>
+        <li>다이나믹스 항목은 3건에서 n 이 적다는 말만 반복했습니다. 활동 3회 미만이면 건너뛰도록 조건을 넣었습니다.</li>
+        <li>필수 문구와 변수는 그대로 두었습니다.</li>
+      </ol>
+    </div>
+    <div class="diff">
+      <div class="r del"><span>29</span><span></span><span>−</span><span>13. 경고 사항 — 혈압은 경고 규칙에 해당할 때만 한 줄</span></div>
+      <div class="r add"><span></span><span>29</span><span>+</span><span>13. 경고 사항 — 경고 규칙에 해당하는 것이 없으면 항목 전체를 생략</span></div>
+      <div class="fold">⋯ 같은 줄 4개</div>
+      <div class="r del"><span>24</span><span></span><span>−</span><span>7. 러닝 다이나믹스 추세: 이번 주 vs 직전 4주 runningSummary.dynamics</span></div>
+      <div class="r add"><span></span><span>24</span><span>+</span><span>7. 러닝 다이나믹스 추세 (이번 주 러닝 3회 이상일 때만): 이번 주 vs 직전 4주 runningSummary.dynamics</span></div>
+    </div>
+    <div class="check"><ul><li class="ok">✓ <span>검증 통과 — 필수 문구 8개 · 필수 변수 3개</span></li></ul></div>
+    <div class="savebar"><span class="quota">저장해도 바로 쓰이지 않습니다. 초안으로 남고, 시험 실행 후 활성화할 수 있습니다.</span><span style="margin-left:auto;display:flex;gap:8px"><button class="btn ghost">버리기</button><button class="btn primary">초안으로 저장</button></span></div>
+  </div>
+
+  <!-- F -->
+  <p class="state">F · 시험 실행 — 초안 v6 (AI 제안) vs 지금 쓰는 v4 의 최근 결과</p>
+  <div class="card">
+    <div class="trialbar">
+      <span class="pill p-draft">v6 초안</span><span>지금 시점 기준으로 주간 리포트를 한 번 만들어 봅니다. 리포트 목록에는 저장되지 않습니다.</span>
+      <span class="quota">CLI 쿼터 사용 · 최대 3분</span>
+      <button class="btn primary">시험 실행</button>
+    </div>
+    <div class="split side">
+      <article class="card doc">
+        <div class="dh"><span class="pill p-draft">v6 시험</span>10-19 14:22 실행 · 2분 08초</div>
+        <h4>주간 운동 요약</h4>
+        <p>러닝 4회 · 총 32.40 km · 평균 페이스 5:42/km. 이지 3회 · 템포 1회.</p>
+        <h4>존 분포 80/20</h4>
+        <p>이번 주 이지 비율 78% (직전 4주 81%). 기준에 가깝습니다.</p>
+        <h4>다음 주 추천</h4>
+        <p>템포 1회를 유지하고 롱런을 14 km 로 늘리세요.</p>
+      </article>
+      <article class="card doc">
+        <div class="dh"><span class="pill p-active">v4</span>10-19 07:00 실제 리포트</div>
+        <h4>주간 운동 요약</h4>
+        <p>러닝 4회 · 총 32.40 km · 평균 페이스 5:42/km. 이지 3회 · 템포 1회.</p>
+        <h4>러닝 다이나믹스</h4>
+        <p>활동 수가 적어 추세 판단이 어렵습니다.</p>
+        <h4>경고 사항</h4>
+        <p>해당 없음.</p>
+      </article>
+    </div>
+    <div class="tlist">
+      <div><span class="mono">10-19 14:22</span><span class="ok">완료</span><span>v6 · 주간 리포트</span></div>
+      <div><span class="mono">10-19 13:50</span><span class="bad">실패</span><span>v6 · 3분 안에 끝나지 않았습니다. 다시 실행해 보세요.</span></div>
+    </div>
+  </div>
+
+  <p class="state">F′ · 러닝 평가 시험 실행 — 대상 활동 선택</p>
+  <div class="card">
+    <div class="trialbar">
+      <span class="pill p-draft">v2 초안</span>
+      <label>평가할 활동 <select><option>10-18 (토) 러닝 · 12.05 km</option><option>10-16 (목) 러닝 · 8.02 km</option><option>10-14 (화) 러닝 · 6.51 km</option></select></label>
+      <span class="quota">CLI 쿼터 사용 · 최대 3분</span>
+      <button class="btn primary">시험 실행</button>
+    </div>
+    <div class="empty">시험 결과가 여기 나오고, 그 활동의 기존 AI 평가와 나란히 보여 줍니다.</div>
+  </div>
+</div>
+</body>
+</html>
