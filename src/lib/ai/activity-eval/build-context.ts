@@ -1,6 +1,8 @@
 // #440: 활동 AI 평가 컨텍스트 조립 — 순수. 입력 DTO → 섹션 (결측은 생략) → 프롬프트. 러닝 계열은 전체 모드, 그 외는 현행 요약 모드 (3줄).
 // 모델이 없는 섹션을 지어내지 않도록 출력 지시는 **포함된 섹션 제목만** 나열한다.
 import { isRunningType } from "@/lib/activity/running-types";
+import { ACTIVITY_EVAL_BRIEF_PROMPT_DEFAULT, ACTIVITY_EVAL_PROMPT_DEFAULT } from "@/lib/prompts/defaults/activity-eval";
+import { renderPrompt } from "@/lib/prompts/render";
 import { basicLines, comparisonLines, dynamicsLines, environmentLines, extraLines, intensityLines, recoveryLines, splitLines } from "./sections";
 import type { EvalContext, EvalInput, EvalOmitted, EvalSection, EvalSectionId } from "./types";
 
@@ -49,32 +51,39 @@ function renderSections(sections: readonly EvalSection[]): string {
   return sections.map((s) => `## ${s.title}\n${s.lines.map((l) => `- ${l}`).join("\n")}`).join("\n\n");
 }
 
-function fullPrompt(sections: readonly EvalSection[]): string {
-  const titles = sections.map((s) => s.title).join(" · ");
-  return [
-    "아래는 서버가 DB 에서 조립한 이 러닝 활동의 전체 지표입니다. 추가 도구 조회 없이 이 데이터만으로 평가하세요. 아래에 없는 항목은 언급하지 마세요 (없다고 말하지도 마세요).",
-    "",
-    renderSections(sections),
-    "",
-    "## 출력 형식",
-    `- 다음 제목을 이 순서대로 \`### 제목\` 헤딩으로 쓰고 각 1~2문장으로 평가: ${titles}`,
-    "- 위 목록에 없는 제목은 만들지 마세요.",
-    "- 마지막에 `### 종합` — 잘한 점과 개선점을 3~5문장으로, 이어서 `**다음 러닝**` 으로 시작하는 한 줄 제안.",
-    "- 구체적 수치를 인용하고, 강도는 개인 HR 존 (시스템 프롬프트) 기준으로 해석하세요. 비교 섹션의 델타는 음수 페이스 = 빨라짐, 음수 심박 = 낮아짐입니다. 2분 HRR 은 양수 = 회복.",
-    "- 마크다운 · 한국어 · \"~하세요\" 체.",
-  ].join("\n");
+/** #552: 지시문은 DB 활성 버전 (`activity_eval` · `activity_eval_brief`) — 라우트가 `resolvePromptTemplate` 로 넘긴다. 없으면 코드 기본값 */
+export interface EvalTemplates {
+  full: string;
+  brief: string;
 }
 
-function briefPrompt(sections: readonly EvalSection[]): string {
-  return ["다음 운동을 평가해줘.", "", renderSections(sections), "", "간단히 3줄 이내로 평가해줘."].join("\n");
+const DEFAULT_TEMPLATES: EvalTemplates = { full: ACTIVITY_EVAL_PROMPT_DEFAULT, brief: ACTIVITY_EVAL_BRIEF_PROMPT_DEFAULT };
+
+/** 검증을 통과한 템플릿이라 실패하지 않지만, 깨져 있으면 코드 기본값으로 — 평가가 멈추지 않게 (#552 R1) */
+function renderOrDefault(template: string, fallback: string, vars: Record<string, string>): string {
+  try {
+    return renderPrompt(template, vars);
+  } catch (error) {
+    console.warn("[activity-eval] 프롬프트 템플릿 치환 실패 — 코드 기본값 사용:", error instanceof Error ? error.message : error);
+    return renderPrompt(fallback, vars);
+  }
 }
 
-export function buildEvalContext(input: EvalInput): EvalContext {
+function fullPrompt(sections: readonly EvalSection[], template: string): string {
+  const vars = { sections: renderSections(sections), sectionTitles: sections.map((s) => s.title).join(" · ") };
+  return renderOrDefault(template, ACTIVITY_EVAL_PROMPT_DEFAULT, vars);
+}
+
+function briefPrompt(sections: readonly EvalSection[], template: string): string {
+  return renderOrDefault(template, ACTIVITY_EVAL_BRIEF_PROMPT_DEFAULT, { sections: renderSections(sections) });
+}
+
+export function buildEvalContext(input: EvalInput, templates: EvalTemplates = DEFAULT_TEMPLATES): EvalContext {
   if (!isRunningType(input.activity.activityType)) {
     const sections = section("basic", basicLines(input));
-    return { mode: "brief", sections, omitted: [], prompt: briefPrompt(sections) };
+    return { mode: "brief", sections, omitted: [], prompt: briefPrompt(sections, templates.brief) };
   }
   const sections = FULL_ORDER.flatMap((id) => section(id, linesFor(id, input)));
   const omitted: EvalOmitted[] = input.laps === null ? [{ id: "splits", title: EVAL_SECTION_TITLES.splits, reason: SPLITS_FETCH_FAILED_REASON }] : [];
-  return { mode: "full", sections, omitted, prompt: fullPrompt(sections) };
+  return { mode: "full", sections, omitted, prompt: fullPrompt(sections, templates.full) };
 }
