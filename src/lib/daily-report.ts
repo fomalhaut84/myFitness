@@ -71,8 +71,8 @@ async function generateReport(
   // 정상 리포트도 num_turns=2 로 완료 가능. num_turns=1 만 확실한 hallucination
   // (tool 호출 없이 답변). 미달 시 자동 재시도 (askAdvisor 내부 처리).
   // #552: 프롬프트 = DB 사용 중 버전 (카테고리 = 프롬프트 키). 생성 시점에 해석 — job 대기 중 활성화도 반영
-  const { text: prompt } = await resolvePrompt(category);
-  const { result } = await askAdvisor(prompt, { channel, minTurns: 2 });
+  const { text: prompt, versionId: promptVersionId } = await resolvePrompt(category);
+  const { result, systemPromptVersionId } = await askAdvisor(prompt, { channel, minTurns: 2 });
   console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
   // 조용한 실패 차단: 빈 응답이면 명시적 throw → 호출자(cron)가 알아챔
@@ -85,7 +85,7 @@ async function generateReport(
   await prisma.$transaction([
     prisma.aIAdvice.deleteMany({ where: { category, reportDate: targetDate } }),
     prisma.aIAdvice.create({
-      data: { category, reportDate: targetDate, prompt, response: result },
+      data: { category, reportDate: targetDate, prompt, response: result, systemPromptVersionId, promptVersionId },
     }),
   ]);
   console.log(`[${category}] ${targetDate} ${force ? "재생성" : "생성"} 완료`);

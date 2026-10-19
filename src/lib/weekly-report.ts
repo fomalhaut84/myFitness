@@ -144,8 +144,8 @@ async function generateAndSaveWeekly(
   // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
   // num_turns=1 만 확실한 hallucination (tool 없이 답변).
   // #552: 프롬프트 = DB 사용 중 버전 · 이번 주 / 직전 4주 창 값은 코드가 채운다
-  const { text: prompt } = await resolvePrompt("weekly_report", weeklyReportVars(weeklyBaselineEndDate()));
-  const { result } = await askAdvisor(prompt, {
+  const { text: prompt, versionId: promptVersionId } = await resolvePrompt("weekly_report", weeklyReportVars(weeklyBaselineEndDate()));
+  const { result, systemPromptVersionId } = await askAdvisor(prompt, {
     channel: "cron-weekly",
     minTurns: 2,
   });
@@ -163,6 +163,8 @@ async function generateAndSaveWeekly(
         reportDate,
         prompt,
         response: result,
+        systemPromptVersionId,
+        promptVersionId,
       },
     }),
   ]);

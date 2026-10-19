@@ -262,5 +262,8 @@ describe("buildEvalContext — 템플릿 (#552)", () => {
   it("치환할 수 없는 템플릿이면 코드 기본값으로 — 평가가 멈추지 않는다", () => {
     const ctx = buildEvalContext(fullInput(), { full: "{{unknown}}", brief: "{{sections}}" });
     expect(ctx.prompt.startsWith("아래는 서버가 DB 에서 조립한")).toBe(true);
+    // #552 M19-2: 폴백은 결과에 버전을 기록하지 않도록 알린다
+    expect(ctx.templateFallback).toBe(true);
+    expect(buildEvalContext(fullInput()).templateFallback).toBe(false);
   });
 });

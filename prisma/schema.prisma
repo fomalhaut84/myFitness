@@ -260,9 +260,16 @@ model AIAdvice {
   prompt     String
   response   String
   createdAt  DateTime @default(now())
+  // #552 M19-2: 이 결과를 만든 프롬프트 버전. 코드 기본값 폴백 · 연결 이전 행 · AI 아닌 기록은 null
+  systemPromptVersionId String?
+  promptVersionId       String?
+  systemPromptVersion   PromptVersion? @relation("AdviceSystemPrompt", fields: [systemPromptVersionId], references: [id], onDelete: SetNull)
+  promptVersion         PromptVersion? @relation("AdviceTaskPrompt", fields: [promptVersionId], references: [id], onDelete: SetNull)
 
   @@index([category, createdAt])
   @@index([reportDate])
+  @@index([systemPromptVersionId])
+  @@index([promptVersionId])
 }
 
 // M#191: 리포트 생성 비동기 job.
@@ -482,6 +489,8 @@ model PromptVersion {
   codeHash    String?   // source=code_default 만 — 코드 기본값 본문 sha256 (기본값 갱신 감지 · R2)
   createdAt   DateTime  @default(now())
   activatedAt DateTime?
+  systemAdvices AIAdvice[] @relation("AdviceSystemPrompt")
+  taskAdvices   AIAdvice[] @relation("AdviceTaskPrompt")
 
   @@unique([key, version])
   @@index([key, status])

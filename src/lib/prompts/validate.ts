@@ -85,3 +85,32 @@ export function isKnownVariable(key: PromptKey, name: string): boolean {
 export function isKnownTool(fullName: string): boolean {
   return KNOWN_TOOLS.has(fullName);
 }
+
+const SHORT_TOOL_NAMES = ADVISOR_ALLOWED_TOOLS.map((t) => t.replace(/^mcp__myfitness__/, ""));
+
+/** 본문이 언급하는 어드바이저 도구 (접두 `mcp__myfitness__` 유무 무관 — 기본 프롬프트는 둘 다 쓴다) */
+export function toolMentions(body: string): string[] {
+  return SHORT_TOOL_NAMES.filter((name) => new RegExp(`(?:^|[^a-z_]|mcp__myfitness__)${name}(?![a-z_])`).test(body));
+}
+
+/**
+ * 사용 중 버전에 있던 도구 언급 중 새 본문에서 빠진 것. #203: 도구 이름이 없으면 Sonnet 이 호출을 건너뛰어
+ * 그 도구로 만들던 항목이 빠지거나 부정확해진다 — 필수 문구 밖의 도구도 활성화 전에 확인받는다.
+ */
+export function removedToolMentions(before: string, after: string): string[] {
+  const now = new Set(toolMentions(after));
+  return toolMentions(before).filter((name) => !now.has(name));
+}
+
+export function removedToolsMessage(names: readonly string[]): string {
+  return `사용 중 버전에 있던 도구 언급이 빠졌습니다: ${names.join(" · ")} — 이 도구로 만들던 항목이 빠지거나 부정확해질 수 있습니다`;
+}
+
+/** 확인을 받은 시점의 빠진 도구 목록 키 — 목록이 바뀌면 확인이 풀린다 (사전 리뷰 major 1) */
+export function removedToolsKey(names: readonly string[]): string {
+  return [...names].sort().join(",");
+}
+
+export function isRemovedToolsAcknowledged(ackFor: string | null, removed: readonly string[]): boolean {
+  return removed.length === 0 || ackFor === removedToolsKey(removed);
+}

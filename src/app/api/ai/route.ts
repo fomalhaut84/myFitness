@@ -20,7 +20,7 @@ export async function POST(request: Request) {
       );
     }
 
-    const { result, sessionId, duration_ms } = await askAdvisor(prompt, {
+    const { result, sessionId, duration_ms, systemPromptVersionId } = await askAdvisor(prompt, {
       channel: "web",
     });
 
@@ -30,6 +30,8 @@ export async function POST(request: Request) {
         category: body.category ?? "general",
         prompt,
         response: result,
+        // #552 M19-2: 채팅은 시스템 프롬프트만
+        systemPromptVersionId,
       },
     });
 

@@ -12,7 +12,14 @@ export const CreateVersionSchema = z.object({
   note: z.string().trim().max(PROMPT_NOTE_MAX_LENGTH).optional().transform((v) => (v ? v : null)),
   basedOnId: z.string().min(1).max(64).nullable().optional().transform((v) => v ?? null),
   activate: z.boolean().optional().default(false),
+  acknowledgeRemovedTools: z.boolean().optional().default(false),
 });
+
+/** 활성화 · 되돌리기 본문 (선택) — 빠진 도구 언급 확인 */
+export const SwitchVersionSchema = z
+  .object({ acknowledgeRemovedTools: z.boolean().optional().default(false) })
+  .nullable()
+  .transform((v) => ({ acknowledgeRemovedTools: v?.acknowledgeRemovedTools ?? false }));
 
 export const ValidateSchema = z.object({
   key: z.string(),
@@ -26,7 +33,10 @@ export function invalidInput(error: z.ZodError): NextResponse {
 
 export function promptErrorResponse(error: unknown, label: string, fallbackMessage: string): NextResponse {
   if (error instanceof PromptActionError) {
-    return NextResponse.json({ error: error.message, ...(error.issues.length > 0 ? { issues: error.issues } : {}) }, { status: error.status });
+    return NextResponse.json(
+      { error: error.message, ...(error.issues.length > 0 ? { issues: error.issues } : {}), ...(error.detail ?? {}) },
+      { status: error.status },
+    );
   }
   console.error(`[api/prompts] ${label} error:`, error instanceof Error ? error.message : error);
   return NextResponse.json({ error: fallbackMessage }, { status: 500 });
