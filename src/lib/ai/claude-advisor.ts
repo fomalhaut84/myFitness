@@ -2,6 +2,7 @@ import { spawn } from "child_process";
 import { writeFileSync, mkdirSync } from "fs";
 import path from "path";
 import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
+import { resolvePromptTemplate } from "@/lib/prompts/resolve";
 import { ADVISOR_ALLOWED_TOOLS } from "./advisor-tools";
 import * as SessionStore from "./session-store";
 
@@ -251,7 +252,9 @@ async function askAdvisorOnce(
   options: AskOptions = {},
 ): Promise<ClaudeResponse> {
   const channel = options.channel ?? DEFAULT_CHANNEL;
-  const currentSessionId = SessionStore.getSession(channel);
+  // #552 R6: 시스템 프롬프트 = DB 사용 중 버전. 세션을 만든 버전과 다르면 getSession 이 새 세션으로 돌린다.
+  const system = await resolvePromptTemplate("system");
+  const currentSessionId = SessionStore.getSession(channel, system.versionId);
 
   const mcpConfigPath = ensureMcpConfig();
 
@@ -295,7 +298,7 @@ async function askAdvisorOnce(
     args.push("--resume", currentSessionId);
     args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
   } else {
-    const staticPrompt = await buildStaticSystemPrompt();
+    const staticPrompt = await buildStaticSystemPrompt(system.body);
     args[1] = `${dynamicContext}\n\n---\n\n사용자 질문: ${prompt}`;
     args.push("--append-system-prompt", staticPrompt);
     args.push("--exclude-dynamic-system-prompt-sections");
@@ -388,7 +391,7 @@ async function askAdvisorOnce(
             typeof parsed.usage?.input_tokens === "number"
               ? parsed.usage.input_tokens
               : 0;
-          SessionStore.setSession(channel, parsed.session_id, inputTokens);
+          SessionStore.setSession(channel, parsed.session_id, inputTokens, system.versionId);
         }
 
         // 완료 요약 로그 (pm2 logs 에서 채널별 정상 완료 확인용).

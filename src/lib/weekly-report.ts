@@ -7,7 +7,8 @@ import {
 } from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
 // #444: 프롬프트 정본은 report-prompts.ts — 직전 4주 창의 endDate 를 생성 시점에 박는다
-import { buildWeeklyReportPrompt, weeklyBaselineEndDate } from "@/lib/report-prompts";
+import { resolvePrompt } from "@/lib/prompts/resolve";
+import { weeklyBaselineEndDate, weeklyReportVars } from "@/lib/report-prompts";
 import {
   createOrGetReportJob,
   runReportJob,
@@ -142,7 +143,8 @@ async function generateAndSaveWeekly(
   resetSession("cron-weekly");
   // #197: minTurns=2 — num_turns 는 agentic round trip 이라 batched 시 2 로 완료 가능.
   // num_turns=1 만 확실한 hallucination (tool 없이 답변).
-  const prompt = buildWeeklyReportPrompt(weeklyBaselineEndDate());
+  // #552: 프롬프트 = DB 사용 중 버전 · 이번 주 / 직전 4주 창 값은 코드가 채운다
+  const { text: prompt } = await resolvePrompt("weekly_report", weeklyReportVars(weeklyBaselineEndDate()));
   const { result } = await askAdvisor(prompt, {
     channel: "cron-weekly",
     minTurns: 2,
