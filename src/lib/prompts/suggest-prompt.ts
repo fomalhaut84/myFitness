@@ -2,6 +2,9 @@
 import { PROMPT_DEFINITIONS, PROMPT_MAX_LENGTH, type PromptKey } from "./definitions";
 import { validatePrompt, type PromptValidation } from "./validate";
 
+/** 개선안 1회성 CLI 제한 — 화면 안내 "최대 3분" (T5) */
+export const SUGGEST_TIMEOUT_MS = 180_000;
+
 /** 개선안에 넘기는 최근 결과 — 건수 · 건당 길이 상한 (L3) */
 export const SUGGEST_RESULT_LIMIT = 5;
 export const SUGGEST_RESULT_MAX_LENGTH = 4_000;

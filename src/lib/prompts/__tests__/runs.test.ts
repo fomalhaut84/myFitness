@@ -2,16 +2,19 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const db = vi.hoisted(() => ({
-  promptRun: { create: vi.fn(), update: vi.fn(), updateMany: vi.fn() },
+  promptRun: { create: vi.fn(), updateMany: vi.fn() },
 }));
 vi.mock("@/lib/prisma", () => ({ default: db }));
+vi.mock("@/lib/ai/claude-advisor", () => ({ getAskAdvisorMaxTotalBudgetMs: () => 540_000 }));
 
 import { startRun } from "../runs";
 import { PromptActionError } from "../versions";
 
-/** 백그라운드 완료 (finishRun) 가 update 를 부를 때까지 */
+/** 백그라운드 완료 (finishRun) 의 기록 — 첫 updateMany 는 시작 전 오래된 실행 정리 */
+const finishCalls = () => db.promptRun.updateMany.mock.calls.filter(([arg]) => arg.where.id === "run1");
+
 async function settled(): Promise<void> {
-  await vi.waitFor(() => expect(db.promptRun.update).toHaveBeenCalled());
+  await vi.waitFor(() => expect(finishCalls().length).toBeGreaterThan(0));
 }
 
 beforeEach(() => {
@@ -19,7 +22,6 @@ beforeEach(() => {
   vi.spyOn(console, "log").mockImplementation(() => {});
   vi.spyOn(console, "error").mockImplementation(() => {});
   db.promptRun.updateMany.mockResolvedValue({ count: 0 });
-  db.promptRun.update.mockResolvedValue({});
   db.promptRun.create.mockResolvedValue({ id: "run1" });
 });
 
@@ -33,16 +35,20 @@ describe("startRun", () => {
     expect(work).not.toHaveBeenCalled();
   });
 
-  it("시작 전에 끊긴 running 을 failed 로 정리", async () => {
+  it("시작 전에 끊긴 running 을 failed 로 정리 — 기준은 어드바이저 최대 소요 + 여유", async () => {
+    const before = Date.now();
     await startRun({ kind: "suggest", versionId: "v1" }, async () => "ok");
-    expect(db.promptRun.updateMany).toHaveBeenCalledWith(expect.objectContaining({ where: expect.objectContaining({ status: "running" }) }));
+    const sweep = db.promptRun.updateMany.mock.calls[0][0];
+    expect(sweep.where.status).toBe("running");
+    expect(before - sweep.where.startedAt.lt.getTime()).toBeGreaterThanOrEqual(540_000);
   });
 
   it("work 성공 → done + 응답", async () => {
     const run = await startRun({ kind: "trial", versionId: "v1", targetKind: "report", targetRef: "morning_report" }, async () => "결과");
     expect(run).toEqual({ id: "run1" });
     await settled();
-    expect(db.promptRun.update).toHaveBeenCalledWith({ where: { id: "run1" }, data: expect.objectContaining({ status: "done", response: "결과" }) });
+    // 회귀: M19-3 사전 리뷰 info 2 — running 일 때만 바꾼다 (정리가 먼저 failed 로 바꿨으면 뒤집지 않음)
+    expect(finishCalls()[0][0]).toEqual({ where: { id: "run1", status: "running" }, data: expect.objectContaining({ status: "done", response: "결과" }) });
   });
 
   it("work 실패 → failed + 메시지", async () => {
@@ -50,12 +56,15 @@ describe("startRun", () => {
       throw new Error("Claude CLI 실패");
     });
     await settled();
-    expect(db.promptRun.update).toHaveBeenCalledWith({ where: { id: "run1" }, data: expect.objectContaining({ status: "failed", errorMessage: "Claude CLI 실패" }) });
+    expect(finishCalls()[0][0]).toEqual({ where: { id: "run1", status: "running" }, data: expect.objectContaining({ status: "failed", errorMessage: "Claude CLI 실패" }) });
   });
 
   it("실패 기록 저장까지 실패해도 throw 하지 않는다 (unhandled rejection 없음)", async () => {
-    db.promptRun.update.mockRejectedValue(new Error("db down"));
+    db.promptRun.updateMany.mockImplementation(async (arg: { where: { id?: string } }) => {
+      if (arg.where.id) throw new Error("db down");
+      return { count: 0 };
+    });
     await startRun({ kind: "suggest", versionId: "v1" }, async () => "ok");
-    await vi.waitFor(() => expect(db.promptRun.update).toHaveBeenCalledTimes(2));
+    await vi.waitFor(() => expect(finishCalls()).toHaveLength(2));
   });
 });

@@ -6,12 +6,10 @@ import type { PromptKey } from "./definitions";
 import { listPromptResults } from "./results";
 import { categoryLabel, resultDate } from "@/components/prompts/result-labels";
 import { startRun } from "./runs";
-import { SUGGEST_RESULT_LIMIT, buildSuggestPrompt, parseSuggestion, type SuggestSample } from "./suggest-prompt";
+import { SUGGEST_RESULT_LIMIT, SUGGEST_TIMEOUT_MS, buildSuggestPrompt, parseSuggestion, type SuggestSample } from "./suggest-prompt";
 import { PromptActionError } from "./versions";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
-/** 화면 안내 "최대 3분" (T5) */
-export const SUGGEST_TIMEOUT_MS = 180_000;
 
 interface CliResult {
   result?: string;
@@ -30,7 +28,7 @@ export function runSuggestCli(prompt: string, opts: SuggestCliOptions = {}): Pro
   const spawnFn = opts.spawnImpl ?? spawn;
   const args = ["-p", prompt, "--output-format", "json", "--model", "sonnet", "--max-turns", "1", "--tools", ""];
   return new Promise<string>((resolve, reject) => {
-    const child = spawnFn(CLAUDE_BIN, args, { timeout: opts.timeoutMs ?? SUGGEST_TIMEOUT_MS, cwd: process.cwd(), stdio: ["pipe", "pipe", "pipe"] });
+    const child = spawnFn(CLAUDE_BIN, args, { timeout: opts.timeoutMs ?? SUGGEST_TIMEOUT_MS, cwd: process.cwd(), stdio: ["pipe", "pipe", "ignore"] });
     child.stdin?.end();
     let stdout = "";
     child.stdout?.on("data", (d: Buffer) => {

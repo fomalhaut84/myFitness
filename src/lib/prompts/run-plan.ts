@@ -21,8 +21,11 @@ export type TargetResult = { ok: true; target: TrialTarget } | { ok: false; erro
 /** 시스템 프롬프트 초안의 기본 대상 — 도구를 가장 많이 쓰는 리포트 (T3) */
 export const SYSTEM_DEFAULT_TARGET: ReportKey = "morning_report";
 
-/** 실행 중으로 남은 job 을 실패로 정리하는 기준 — 어드바이저 1회 최대 3분 × 재시도 여유. 재시작으로 끊긴 실행이 계속 막지 않게 */
-export const RUN_STALE_MS = 10 * 60_000;
+/**
+ * 실행 중으로 남은 job 을 실패로 정리하는 여유 — 기준은 어드바이저 최대 소요 (`getAskAdvisorMaxTotalBudgetMs`, 재시도 env 반영) + 이 여유.
+ * 고정 10분이면 재시도 3회+ 에서 살아 있는 시험을 실패로 바꾸고 두 번째 CLI 를 띄운다 (사전 리뷰 info 1)
+ */
+export const RUN_STALE_MARGIN_MS = 2 * 60_000;
 
 /** 개선안 · 시험 결과 응답 보관 상한 */
 export const RUN_RESPONSE_MAX_LENGTH = 40_000;
@@ -69,9 +72,9 @@ export function activityMismatchError(key: PromptKey, activityType: string): str
   return key === "activity_eval" ? "러닝 평가 지시문은 러닝 활동으로만 시험할 수 있습니다" : "기타 운동 평가 지시문은 러닝이 아닌 활동으로만 시험할 수 있습니다";
 }
 
-/** 이 시각 이전에 시작해 아직 running 인 job 은 끊긴 것으로 본다 */
-export function staleCutoff(now: Date = new Date()): Date {
-  return new Date(now.getTime() - RUN_STALE_MS);
+/** 이 시각 이전에 시작해 아직 running 인 job 은 끊긴 것으로 본다. `maxRunMs` = 실행 1건의 최대 소요 */
+export function staleCutoff(maxRunMs: number, now: Date = new Date()): Date {
+  return new Date(now.getTime() - maxRunMs - RUN_STALE_MARGIN_MS);
 }
 
 export function clip(text: string, max: number): string {

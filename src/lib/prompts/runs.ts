@@ -1,7 +1,9 @@
 // #552 M19-3: 개선안 · 시험 실행 job (PromptRun). 시작 → 백그라운드 실행 → done/failed. 실행 중은 전체 1건 (DB partial unique).
 // 실행은 웹 프로세스 안에서만 돈다 → 부팅 시 남은 running 은 모두 끊긴 것 (sweepRunsOnBoot).
+import { getAskAdvisorMaxTotalBudgetMs } from "@/lib/ai/claude-advisor";
 import prisma from "@/lib/prisma";
 import type { PromptKey } from "./definitions";
+import { SUGGEST_TIMEOUT_MS } from "./suggest-prompt";
 import { RUN_ERROR_MAX_LENGTH, RUN_RESPONSE_MAX_LENGTH, clip, staleCutoff, type RunKind, type RunStatus } from "./run-plan";
 import { readStoredSuggestion, type SuggestionResult } from "./suggest-prompt";
 import { PromptActionError } from "./versions";
@@ -35,6 +37,9 @@ interface RunRow {
   completedAt: Date | null;
 }
 
+/** 로그에 남기는 실패 메시지 길이 */
+const RUN_LOG_ERROR_MAX_LENGTH = 300;
+
 const BUSY_MESSAGE = "이미 실행 중인 개선안 · 시험 실행이 있습니다. 끝난 뒤 다시 시도하세요";
 
 function toRunDTO(row: RunRow, key: PromptKey): PromptRunDTO {
@@ -65,7 +70,7 @@ function errorMessage(error: unknown): string {
 /** 끊긴 실행 정리 — 시작 전에 오래된 running 을 failed 로 (부팅 정리를 놓친 경우 대비) */
 async function failStaleRuns(): Promise<void> {
   await prisma.promptRun.updateMany({
-    where: { status: "running", startedAt: { lt: staleCutoff() } },
+    where: { status: "running", startedAt: { lt: staleCutoff(Math.max(getAskAdvisorMaxTotalBudgetMs(), SUGGEST_TIMEOUT_MS)) } },
     data: { status: "failed", errorMessage: "시간 초과 — 실행이 끝나지 않았습니다", completedAt: new Date() },
   });
 }
@@ -104,14 +109,15 @@ export async function startRun(
 async function finishRun(id: string, kind: RunKind, work: () => Promise<string>): Promise<void> {
   try {
     const response = await work();
-    await prisma.promptRun.update({ where: { id }, data: { status: "done", response: clip(response, RUN_RESPONSE_MAX_LENGTH), completedAt: new Date() } });
+    // running 일 때만 — 정리 (부팅 · 오래된 실행) 가 먼저 failed 로 바꿨으면 늦은 완료가 뒤집지 않는다 (사전 리뷰 info 2)
+    await prisma.promptRun.updateMany({ where: { id, status: "running" }, data: { status: "done", response: clip(response, RUN_RESPONSE_MAX_LENGTH), completedAt: new Date() } });
     console.log(`[prompt-run] ${kind} ${id} 완료 (length=${response.length})`);
   } catch (error) {
-    const message = errorMessage(error);
-    // 응답 원문은 건강 데이터라 로그에 남기지 않는다 — 실패 메시지만
-    console.error(`[prompt-run] ${kind} ${id} 실패:`, message);
+    // 성공 응답은 로그에 남기지 않는다. 실패 메시지는 CLI 출력 (모델 응답 일부일 수 있음) 을 담을 수 있어 잘라서 남긴다 (사전 리뷰 info 4)
+    const message = clip(errorMessage(error), RUN_ERROR_MAX_LENGTH);
+    console.error(`[prompt-run] ${kind} ${id} 실패:`, clip(message, RUN_LOG_ERROR_MAX_LENGTH));
     try {
-      await prisma.promptRun.update({ where: { id }, data: { status: "failed", errorMessage: clip(message, RUN_ERROR_MAX_LENGTH), completedAt: new Date() } });
+      await prisma.promptRun.updateMany({ where: { id, status: "running" }, data: { status: "failed", errorMessage: message, completedAt: new Date() } });
     } catch (updateError) {
       // 남은 running 은 다음 시작의 failStaleRuns · 부팅 정리가 치운다
       console.error(`[prompt-run] ${id} 실패 기록 저장 실패:`, errorMessage(updateError));

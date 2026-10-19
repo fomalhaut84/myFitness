@@ -1,6 +1,6 @@
 // #552 M19-3 T3: 시험 대상 판정 · 활동 종류 불일치 · 저장 기록 복원 · 끊긴 실행 기준
 import { describe, expect, it } from "vitest";
-import { RUN_STALE_MS, activityMismatchError, resolveTrialTarget, staleCutoff, trialTargetOf } from "../run-plan";
+import { RUN_STALE_MARGIN_MS, activityMismatchError, resolveTrialTarget, staleCutoff, trialTargetOf } from "../run-plan";
 
 describe("resolveTrialTarget", () => {
   it("리포트 키는 자기 리포트 — 요청의 target 은 무시", () => {
@@ -52,10 +52,11 @@ describe("trialTargetOf", () => {
   });
 });
 
+// 회귀: M19-3 사전 리뷰 info 1 — 고정 10분이면 재시도 env 를 늘렸을 때 살아 있는 실행을 끊는다
 describe("staleCutoff", () => {
-  it("지금 − 10분", () => {
+  it("지금 − (실행 최대 소요 + 여유)", () => {
     const now = new Date("2026-10-19T12:00:00Z");
-    expect(staleCutoff(now).getTime()).toBe(now.getTime() - RUN_STALE_MS);
-    expect(RUN_STALE_MS).toBe(600_000);
+    const eighteenMin = 18 * 60_000; // 180초 × (1 + 재시도 5)
+    expect(staleCutoff(eighteenMin, now).getTime()).toBe(now.getTime() - eighteenMin - RUN_STALE_MARGIN_MS);
   });
 });
