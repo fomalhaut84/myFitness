@@ -50,6 +50,7 @@ AI 분석 프롬프트가 전부 TS 상수 · 빌더에 하드코딩돼 있다 (
   - 갱신 초안이 있는 채로 다른 버전을 활성화하면 "코드 기본값 갱신" 경고는 사라지고 초안은 이력에 남는다 (의도 — 사용자가 활성 버전을 직접 정한 것)
   - 호출 시점: **프로세스 시작 시** (웹 · 봇 각각 — 첫 리포트 전에 반영) + 목록 API. idempotent · 동시 호출은 `(key, version)` unique 충돌을 무시하고 재조회
 - [ ] R3 `validatePrompt(key, body)` → `{ errors, warnings }` — 오류: 필수 변수 누락 · 모르는 `{{변수}}` · 필수 문구 누락 · 빈 본문 · 길이 상한 (20,000자). 경고: 본문의 `mcp__myfitness__*` 중 어드바이저 allowlist 에 없는 도구. **저장 · 활성화 · 개선안 수락 모두 이 검증을 통과해야 한다**
+- [ ] R3-1 **빠진 도구 언급 확인** (2026-10-19 사용자 요청 · M19-2 PR 에 포함) — 필수 문구는 키마다 몇 개뿐이라, 그 밖의 도구 언급 (예: 모닝의 `get_weight_loss_status`) 을 지워도 저장됐다. 사용 중 버전에 있던 도구 이름 (접두 `mcp__myfitness__` 유무 무관) 이 새 본문에서 빠지면 경고하고, **활성화 · 되돌리기는 확인 (`acknowledgeRemovedTools`) 을 받아야** 한다 (서버 409 `TOOLS_REMOVED`). 초안 저장은 막지 않는다. 비교 화면에도 빠진 도구 표시
 - [ ] R4 `report-prompts.test.ts` 의 문구 단언을 정의의 필수 문구로 옮기고, 테스트는 "모든 코드 기본값이 `validatePrompt` 를 통과한다" + "필수 문구가 빠지면 오류" 로 바꾼다 (규칙 정본 하나)
 - [ ] R5 기존 호출부 교체 — `daily-report.ts` · `weekly-report.ts` · `activities/[id]/evaluate` · `buildStaticSystemPrompt` 가 `resolvePrompt` 사용. 코드 상수는 기본값으로 남는다 (`definitions.ts` 로 이동, 기존 export 는 재노출)
 
