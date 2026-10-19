@@ -49,6 +49,21 @@ export function resolveTrialTarget(key: PromptKey, request: TrialRequest): Targe
   return target === "activity" ? activityTarget(request.activityId) : { ok: true, target: { kind: "report", key: target } };
 }
 
+/** 시험 실행 상한 — 리포트는 도구 호출 부족 시 재시도 (askAdvisor minTurns 2), 운동 평가는 1회 (minTurns 0) */
+export interface TrialLimits {
+  reportMs: number;
+  activityMs: number;
+}
+
+export function trialMaxMs(kind: TrialTarget["kind"], limits: TrialLimits): number {
+  return kind === "report" ? limits.reportMs : limits.activityMs;
+}
+
+/** 버튼 옆 안내 (T5) — 실제 상한을 분 단위로 올림 (#562: 리포트 시험은 기본 9분 · 재시도 env 최대 18분) */
+export function quotaText(maxMs: number): string {
+  return `CLI 쿼터 사용 · 최대 ${Math.ceil(maxMs / 60_000)}분`;
+}
+
 /** 저장된 시험 기록 (targetKind · targetRef) → 대상. 개선안 · 깨진 기록은 null */
 export function trialTargetOf(run: { kind: string; targetKind: string | null; targetRef: string | null }): TrialTarget | null {
   if (run.kind !== "trial" || !run.targetRef) return null;

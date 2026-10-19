@@ -4,13 +4,13 @@ import { useEffect, useRef, useState } from "react";
 import { useRouter } from "next/navigation";
 import { formatDistance } from "@/lib/format";
 import { PROMPT_DEFINITIONS, type PromptKey } from "@/lib/prompts/definitions";
-import { REPORT_KEYS, evalKeyForActivity, type ReportKey } from "@/lib/prompts/run-plan";
+import { REPORT_KEYS, evalKeyForActivity, quotaText, trialMaxMs, type ReportKey, type TrialLimits } from "@/lib/prompts/run-plan";
 import type { PromptRunDTO } from "@/lib/prompts/runs";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import { formatPromptDate, formatPromptDateTime } from "./format";
 import { categoryLabel } from "./result-labels";
 import ResultDoc from "./ResultDoc";
-import { BTN, PRIMARY, QUOTA_TEXT, Spinner, postJson } from "./run-ui";
+import { BTN, PRIMARY, Spinner, postJson } from "./run-ui";
 import useRunPoll from "./useRunPoll";
 
 /** 시험 대상 후보 — 상세 페이지가 최근 활동을 넘긴다 */
@@ -28,6 +28,8 @@ interface Props {
   activities: readonly TrialActivity[];
   /** 이 버전의 시험 기록 (최신순) */
   runs: readonly PromptRunDTO[];
+  /** 대상별 실행 상한 (서버 설정 — 재시도 env 반영) */
+  limits: TrialLimits;
   onClose: () => void;
 }
 
@@ -50,7 +52,7 @@ function targetText(run: PromptRunDTO, activities: readonly TrialActivity[]): st
   return activity ? activityLabel(activity) : "활동";
 }
 
-export default function TrialPanel({ promptKey, version, activities, runs, onClose }: Props) {
+export default function TrialPanel({ promptKey, version, activities, runs, limits, onClose }: Props) {
   const router = useRouter();
   const isEval = promptKey === "activity_eval" || promptKey === "activity_eval_brief";
   const isSystem = promptKey === "system";
@@ -123,7 +125,7 @@ export default function TrialPanel({ promptKey, version, activities, runs, onClo
         {needsActivity && (candidates.length > 0 ? activitySelect : <span className="text-amber-300">시험할 수 있는 최근 활동이 없습니다</span>)}
         {!needsActivity && <span className="min-w-0 flex-1">지금 시점 기준으로 한 번 만들어 봅니다. 리포트 목록에는 저장되지 않습니다.</span>}
         <span className="ml-auto flex items-center gap-2">
-          <span className="text-[11px] text-dim">{QUOTA_TEXT}</span>
+          <span className="text-[11px] text-dim">{quotaText(trialMaxMs(needsActivity ? "activity" : "report", limits))}</span>
           <button type="button" className={PRIMARY} disabled={busy || pending || (needsActivity && !activityId)} onClick={start}>
             시험 실행
           </button>
