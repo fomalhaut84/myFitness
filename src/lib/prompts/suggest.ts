@@ -8,6 +8,7 @@ import { categoryLabel, resultDate } from "@/components/prompts/result-labels";
 import { startRun } from "./runs";
 import { SUGGEST_RESULT_LIMIT, SUGGEST_TIMEOUT_MS, buildSuggestPrompt, parseSuggestion, type SuggestSample } from "./suggest-prompt";
 import { PromptActionError } from "./versions";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 
@@ -15,6 +16,36 @@ interface CliResult {
   result?: string;
   is_error?: boolean;
   subtype?: string;
+  errors?: unknown;
+  api_error_status?: number | null;
+  permission_denials?: unknown;
+}
+
+/**
+ * CLI 실패 → 사용자 · 로그용 문구. 종료 코드만으로는 원인을 알 수 없다 (#563 — error_max_turns · 거부된 도구가 원인이었다).
+ * 진단 필드만 담는다 — result (응답 본문 · 건강 데이터일 수 있음) 는 넣지 않는다
+ */
+export function cliFailureMessage(stdout: string, code: number | null): string {
+  const head = code === 0 ? "Claude CLI 오류" : "Claude CLI 가 실패했습니다";
+  let parsed: CliResult | null = null;
+  try {
+    parsed = JSON.parse(stdout) as CliResult;
+  } catch {
+    // JSON 아님 — 종료 코드만
+  }
+  if (!parsed || typeof parsed !== "object") return `${head} (code ${code})`;
+  // 외부 입력 — 형식이 달라도 close 핸들러에서 throw 하지 않게 (사전 리뷰 info 2)
+  const denied = Array.isArray(parsed.permission_denials)
+    ? parsed.permission_denials
+        .map((d: unknown) => (d && typeof d === "object" ? (d as { tool_name?: unknown }).tool_name : undefined))
+        .filter((n): n is string => typeof n === "string")
+    : [];
+  const errors = Array.isArray(parsed.errors) ? parsed.errors.filter((e): e is string => typeof e === "string") : [];
+  const parts = [`subtype=${parsed.subtype ?? "unknown"}`];
+  if (typeof parsed.api_error_status === "number") parts.push(`api_status=${parsed.api_error_status}`);
+  if (denied.length > 0) parts.push(`거부된 도구=${denied.join(",")}`);
+  if (errors.length > 0) parts.push(`errors=${errors.join(" ; ")}`);
+  return `${head} (code ${code} · ${parts.join(" · ")})`;
 }
 
 export interface SuggestCliOptions {
@@ -26,7 +57,7 @@ export interface SuggestCliOptions {
 /** 1회성 호출 → 응답 본문. 실패는 사용자에게 보여 줄 문구로 throw (응답 원문은 로그에 남기지 않는다) */
 export function runSuggestCli(prompt: string, opts: SuggestCliOptions = {}): Promise<string> {
   const spawnFn = opts.spawnImpl ?? spawn;
-  const args = ["-p", prompt, "--output-format", "json", "--model", "sonnet", "--max-turns", "1", "--tools", ""];
+  const args = ["-p", prompt, "--output-format", "json", "--model", "sonnet", "--max-turns", "1", "--tools", "", ...CLAUDE_CLI_ISOLATION_ARGS];
   return new Promise<string>((resolve, reject) => {
     const child = spawnFn(CLAUDE_BIN, args, { timeout: opts.timeoutMs ?? SUGGEST_TIMEOUT_MS, cwd: process.cwd(), stdio: ["pipe", "pipe", "ignore"] });
     child.stdin?.end();
@@ -37,14 +68,14 @@ export function runSuggestCli(prompt: string, opts: SuggestCliOptions = {}): Pro
     child.on("error", (err: Error) => reject(new Error(`Claude CLI 를 실행하지 못했습니다: ${err.message}`)));
     child.on("close", (code: number | null, signal: NodeJS.Signals | null) => {
       if (signal === "SIGTERM") return reject(new Error("시간 초과 — 3분 안에 개선안을 받지 못했습니다"));
-      if (code !== 0) return reject(new Error(`Claude CLI 가 실패했습니다 (code ${code})`));
+      if (code !== 0) return reject(new Error(cliFailureMessage(stdout, code)));
       let outer: CliResult;
       try {
         outer = JSON.parse(stdout) as CliResult;
       } catch {
         return reject(new Error("Claude CLI 출력을 읽지 못했습니다"));
       }
-      if (outer.is_error) return reject(new Error(`Claude CLI 오류 (${outer.subtype ?? "unknown"})`));
+      if (outer.is_error) return reject(new Error(cliFailureMessage(stdout, code)));
       resolve(outer.result ?? "");
     });
   });

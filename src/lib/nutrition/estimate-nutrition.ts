@@ -7,6 +7,7 @@
 //     * item 별 P/C/F 모두 non-null 이면 P·4 + C·4 + F·9 ≈ item.kcal (±25%) 검증
 
 import { spawn } from "child_process";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const DEFAULT_TIMEOUT_MS = 18_000; // 매크로 추가로 응답 길이 증가, 여유 마진.
@@ -250,6 +251,8 @@ export async function estimateNutritionFromText(
     "1",
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   return new Promise<NutritionEstimate | null>((resolve) => {
