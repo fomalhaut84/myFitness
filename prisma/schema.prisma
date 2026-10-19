@@ -467,3 +467,22 @@ model Medication {
 
   @@index([startDate])
 }
+
+// #552 (M19-1): 웹에서 관리하는 AI 프롬프트 버전. 본문은 불변 — 바뀌는 건 status · activatedAt 뿐 (스펙 S3).
+// 키당 active 1개는 partial unique index · key/status/source 값은 DB CHECK (Prisma 미추적 — migration 참조).
+model PromptVersion {
+  id          String    @id @default(cuid())
+  key         String    // src/lib/prompts/definitions.ts PROMPT_KEYS (DB CHECK)
+  version     Int
+  body        String
+  note        String?   // 변경 메모
+  status      String    // "draft" | "active" | "archived" (DB CHECK)
+  source      String    // "code_default" | "manual" | "ai_suggestion" | "restore" (DB CHECK)
+  basedOnId   String?   // 편집 · 복원 · 제안의 출발 버전 (같은 key)
+  codeHash    String?   // source=code_default 만 — 코드 기본값 본문 sha256 (기본값 갱신 감지 · R2)
+  createdAt   DateTime  @default(now())
+  activatedAt DateTime?
+
+  @@unique([key, version])
+  @@index([key, status])
+}

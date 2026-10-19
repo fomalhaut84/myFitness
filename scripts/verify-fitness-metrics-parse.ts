@@ -122,7 +122,7 @@ check("firstRecordDate finder 에 fitnessMetricDaily", /fitness_metrics:\s*\(\)\
 check("/api/sync VALID_DATA_TYPES 에 fitness_metrics", /"fitness_metrics"/.test(read("src", "app", "api", "sync", "route.ts")));
 check("backfill-history BACKFILL_TYPES 에 fitness_metrics", /"fitness_metrics"/.test(read("scripts", "backfill-history.ts")));
 check("weekly-report NON_PROFILE_TYPES 에 fitness_metrics (I2: cron 실패 주 gap-fill)", /NON_PROFILE_TYPES = \[[\s\S]*?"fitness_metrics"[\s\S]*?\] as const;/.test(read("src", "lib", "weekly-report.ts")));
-check("claude-advisor allowlist 에 get_fitness_metric_trend", read("src", "lib", "ai", "claude-advisor.ts").includes("mcp__myfitness__get_fitness_metric_trend"));
+check("어드바이저 allowlist (advisor-tools.ts · #552) 에 get_fitness_metric_trend", read("src", "lib", "ai", "advisor-tools.ts").includes("mcp__myfitness__get_fitness_metric_trend"));
 check("server.ts 에 get_fitness_metric_trend 등록", /server\.tool\(\s*"get_fitness_metric_trend"/.test(read("src", "mcp", "server.ts")));
 // #396: 집계는 src/lib/history/coverage.ts 로 이동 (MCP 와 /history 띠 공유). 도구 반환 shape 에 fitness_metrics 가 남아 있는지도 본다.
 check("get_data_coverage 에 fitness_metrics 범위", /fitness_metrics:\s*toRange/.test(read("src", "lib", "history", "coverage.ts")) && /fitness_metrics/.test(read("src", "mcp", "tools", "coverage.ts")));

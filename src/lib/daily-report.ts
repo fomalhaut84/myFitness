@@ -2,8 +2,8 @@ import { askAdvisor, resetSession } from "@/lib/ai/claude-advisor";
 import { syncAll } from "@/lib/garmin/sync";
 import { daysAgoKST, todayKST, todayKSTString as kstDateStr } from "@/lib/garmin/utils";
 import prisma from "@/lib/prisma";
-// #444: 프롬프트 정본은 report-prompts.ts (vitest 가 도구 명시를 회귀 검사)
-import { EVENING_PROMPT, MORNING_PROMPT } from "@/lib/report-prompts";
+// #552: 프롬프트는 DB 사용 중 버전 (`resolvePrompt`) · 코드 기본값은 prompts/defaults/reports.ts
+import { resolvePrompt } from "@/lib/prompts/resolve";
 import {
   createOrGetReportJob,
   runReportJob,
@@ -35,9 +35,10 @@ export async function preSyncForReport(
   }
 }
 
+type DailyCategory = "morning_report" | "evening_report";
+
 async function generateReport(
-  category: string,
-  prompt: string,
+  category: DailyCategory,
   force = false,
   reportDate?: string,
   notifyBot?: import("grammy").Bot,
@@ -69,6 +70,8 @@ async function generateReport(
   // #197: minTurns=2 — num_turns 는 agentic round trip count 라 batched tool call 시
   // 정상 리포트도 num_turns=2 로 완료 가능. num_turns=1 만 확실한 hallucination
   // (tool 호출 없이 답변). 미달 시 자동 재시도 (askAdvisor 내부 처리).
+  // #552: 프롬프트 = DB 사용 중 버전 (카테고리 = 프롬프트 키). 생성 시점에 해석 — job 대기 중 활성화도 반영
+  const { text: prompt } = await resolvePrompt(category);
   const { result } = await askAdvisor(prompt, { channel, minTurns: 2 });
   console.log(`[${category}] askAdvisor 완료 (length=${result?.length ?? 0})`);
 
@@ -97,14 +100,13 @@ async function generateReport(
  * 이미 completed job 이 있으면 (force=false) 그 결과 재사용. force=true 는 항상 새 job.
  */
 async function runReportViaJob(params: {
-  category: string;
-  prompt: string;
+  category: DailyCategory;
   force: boolean;
   reportDate: string;
   background: boolean;
   notifyBot?: import("grammy").Bot;
 }): Promise<{ job: ReportJob; result: string | null }> {
-  const { category, prompt, force, reportDate, background, notifyBot } = params;
+  const { category, force, reportDate, background, notifyBot } = params;
 
   const { job, created } = await createOrGetReportJob({
     category,
@@ -117,7 +119,7 @@ async function runReportViaJob(params: {
 
   if (shouldRun) {
     const runner = runReportJob(job.id, async () => {
-      await generateReport(category, prompt, force, reportDate, notifyBot);
+      await generateReport(category, force, reportDate, notifyBot);
       const advice = await prisma.aIAdvice.findFirst({
         where: { category, reportDate },
         orderBy: { createdAt: "desc" },
@@ -162,11 +164,9 @@ export async function startReportJob(params: {
 }): Promise<ReportJob> {
   const category =
     params.type === "morning" ? "morning_report" : "evening_report";
-  const prompt = params.type === "morning" ? MORNING_PROMPT : EVENING_PROMPT;
   const reportDate = params.reportDate ?? kstDateStr();
   const { job } = await runReportViaJob({
     category,
-    prompt,
     force: params.force,
     reportDate,
     background: true,
@@ -191,7 +191,6 @@ export async function generateMorningReport(
 ): Promise<string> {
   const { result, job } = await runReportViaJob({
     category: "morning_report",
-    prompt: MORNING_PROMPT,
     force,
     reportDate: reportDate ?? kstDateStr(),
     background: false,
@@ -208,7 +207,6 @@ export async function generateEveningReport(
 ): Promise<string> {
   const { result, job } = await runReportViaJob({
     category: "evening_report",
-    prompt: EVENING_PROMPT,
     force,
     reportDate: reportDate ?? kstDateStr(),
     notifyBot: options?.notifyBot,
