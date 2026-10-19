@@ -5,6 +5,7 @@
 import { spawn } from "child_process";
 import { buildExtractPrompt } from "./extract-prompt";
 import { parseExtractResponse, type ExtractedPage } from "./extract-schema";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 /** Nginx proxy_read_timeout 60초 안 — 장당 실측 9~11초 */
@@ -38,6 +39,8 @@ export function extractCheckupPage(imagePath: string, opts: ExtractOptions = {})
     "1",
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   return new Promise<ExtractResult>((resolve) => {
