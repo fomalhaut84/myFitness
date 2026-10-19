@@ -14,6 +14,9 @@ describe("resolveVersionFilter", () => {
   it("다른 키의 버전 id 는 버린다 (러닝 평가 · 기타 운동 평가는 카테고리가 같다)", () => {
     expect(resolveVersionFilter(["x", "a"], keyIds)).toEqual({ versionIds: ["a"], includeNone: false });
   });
+  it("모르는 버전만 요청하면 결과 없음 — 전체로 넓히지 않는다", () => {
+    expect(resolveVersionFilter(["x"], keyIds)).toEqual({ versionIds: [], includeNone: false });
+  });
 });
 
 describe("buildResultsWhere", () => {

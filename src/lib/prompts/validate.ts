@@ -105,3 +105,12 @@ export function removedToolMentions(before: string, after: string): string[] {
 export function removedToolsMessage(names: readonly string[]): string {
   return `사용 중 버전에 있던 도구 언급이 빠졌습니다: ${names.join(" · ")} — 이 도구로 만들던 항목이 빠지거나 부정확해질 수 있습니다`;
 }
+
+/** 확인을 받은 시점의 빠진 도구 목록 키 — 목록이 바뀌면 확인이 풀린다 (사전 리뷰 major 1) */
+export function removedToolsKey(names: readonly string[]): string {
+  return [...names].sort().join(",");
+}
+
+export function isRemovedToolsAcknowledged(ackFor: string | null, removed: readonly string[]): boolean {
+  return removed.length === 0 || ackFor === removedToolsKey(removed);
+}

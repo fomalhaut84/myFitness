@@ -45,7 +45,8 @@ export class PromptActionError extends Error {
 async function assertToolsAcknowledged(key: PromptKey, body: string, acknowledged: boolean): Promise<void> {
   if (acknowledged) return;
   const active = await prisma.promptVersion.findFirst({ where: { key, status: "active" }, select: { body: true } });
-  const removed = active ? removedToolMentions(active.body, body) : [];
+  // 사용 중 버전이 없으면 코드 기본값이 쓰이는 중 (사전 리뷰 info 4)
+  const removed = removedToolMentions(active?.body ?? PROMPT_DEFINITIONS[key].defaultBody, body);
   if (removed.length > 0) {
     throw new PromptActionError(409, removedToolsMessage(removed), [], { code: "TOOLS_REMOVED", removedTools: removed });
   }

@@ -1,6 +1,6 @@
 "use client";
 // #552 M19-2 L4: 결과 탭 — 버전 필터 칩 · 결과 목록 · 두 결과 나란히. 기본 선택은 최신 + 다른 버전의 최신 (pickDefaultPair)
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { PromptKey } from "@/lib/prompts/definitions";
 import type { PromptResultDTO } from "@/lib/prompts/results";
 import { NO_VERSION, pickDefaultPair } from "@/lib/prompts/results-query";
@@ -32,6 +32,8 @@ export default function ResultsTab({ promptKey, versions, initialResults }: Prop
   const [selected, setSelected] = useState<string[]>(() => pickDefaultPair(initialResults));
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  /** 마지막 요청 번호 — 늦게 도착한 이전 필터 응답이 화면을 덮지 않게 (사전 리뷰 major 2) */
+  const requestSeq = useRef(0);
 
   const versionNo = new Map(versions.map((v) => [v.id, v.version]));
   const activeId = versions.find((v) => v.status === "active")?.id ?? null;
@@ -39,6 +41,8 @@ export default function ResultsTab({ promptKey, versions, initialResults }: Prop
   const showCategory = promptKey === "system";
 
   async function applyFilter(next: string[]) {
+    const seq = ++requestSeq.current;
+    const isLatest = () => seq === requestSeq.current;
     setFilter(next);
     setLoading(true);
     setError(null);
@@ -46,6 +50,7 @@ export default function ResultsTab({ promptKey, versions, initialResults }: Prop
       const qs = next.length > 0 ? `?versions=${encodeURIComponent(next.join(","))}` : "";
       const res = await fetch(`/api/prompts/${promptKey}/results${qs}`);
       const data = (await res.json().catch(() => ({}))) as { results?: PromptResultDTO[]; error?: string };
+      if (!isLatest()) return;
       if (!res.ok || !data.results) {
         setError(data.error ?? "결과를 불러오지 못했습니다");
         return;
@@ -53,9 +58,9 @@ export default function ResultsTab({ promptKey, versions, initialResults }: Prop
       setResults(data.results);
       setSelected(pickDefaultPair(data.results));
     } catch {
-      setError("결과를 불러오지 못했습니다 — 네트워크 오류");
+      if (isLatest()) setError("결과를 불러오지 못했습니다 — 네트워크 오류");
     } finally {
-      setLoading(false);
+      if (isLatest()) setLoading(false);
     }
   }
 

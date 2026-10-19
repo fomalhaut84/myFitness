@@ -4,7 +4,7 @@
 import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROMPT_DEFINITIONS, PROMPT_NOTE_MAX_LENGTH, type PromptKey } from "@/lib/prompts/definitions";
-import { removedToolMentions, removedToolsMessage, toolMentions, validatePrompt } from "@/lib/prompts/validate";
+import { isRemovedToolsAcknowledged, removedToolMentions, removedToolsKey, removedToolsMessage, toolMentions, validatePrompt } from "@/lib/prompts/validate";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import DiffView, { DiffStatsText } from "./DiffView";
 import PromptEditor from "./PromptEditor";
@@ -59,7 +59,8 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
   const [busy, setBusy] = useState(false);
   const [message, setMessage] = useState<Message>(null);
   const [jumpTo, setJumpTo] = useState<{ line: number; seq: number } | null>(null);
-  const [toolsAck, setToolsAck] = useState(false);
+  /** 확인한 시점의 빠진 도구 목록 (removedToolsKey) — 목록이 바뀌면 확인이 풀린다 */
+  const [ackFor, setAckFor] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
 
   // 저장 · 활성화 뒤 router.refresh 로 사용 중 본문이 바뀌면 편집 상태를 새로 시작 (메시지는 남긴다)
@@ -70,15 +71,17 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
     setNote("");
     setReferenceId(null);
     setCompareIds([]);
-    setToolsAck(false);
+    setAckFor(null);
     setConfirm(null);
   }
 
   const validation = useMemo(() => validatePrompt(promptKey, body), [promptKey, body]);
   // #203: 필수 문구 밖의 도구 언급이 빠지면 활성화 전에 확인받는다 (서버도 같은 조건으로 409)
-  const removedTools = useMemo(() => (active ? removedToolMentions(baseBody, body) : []), [active, baseBody, body]);
+  // 사용 중 버전이 없으면 코드 기본값이 쓰이는 중이라 baseBody (= 기본값) 와 비교한다 (사전 리뷰 info 4)
+  const removedTools = useMemo(() => removedToolMentions(baseBody, body), [baseBody, body]);
   const toolCount = useMemo(() => toolMentions(body).length, [body]);
-  const activateBlocked = removedTools.length > 0 && !toolsAck;
+  const toolsAck = removedTools.length > 0 && isRemovedToolsAcknowledged(ackFor, removedTools);
+  const activateBlocked = !isRemovedToolsAcknowledged(ackFor, removedTools);
   const dirty = body !== baseBody;
   const byId = (id: string | null) => versions.find((v) => v.id === id) ?? null;
   const reference = byId(referenceId);
@@ -88,6 +91,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
     .map(byId)
     .filter((v): v is PromptVersionDTO => v !== null)
     .sort((a, b) => a.version - b.version);
+  const comparedRemoved = compared.length === 2 ? removedToolMentions(compared[0].body, compared[1].body) : [];
 
   async function run(
     action: () => Promise<{ ok: boolean; data: Record<string, unknown> }>,
@@ -125,6 +129,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
       () => {
         setBody(baseBody);
         setNote("");
+        setAckFor(null);
       },
     );
   }
@@ -143,6 +148,12 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
   }
 
   function confirmSwitch(pending: PendingConfirm) {
+    // 확인 상자를 띄운 뒤 편집했으면 같은 이유로 막는다 (사전 리뷰 info 2)
+    if (dirty) {
+      setConfirm(null);
+      setMessage({ kind: "error", text: "편집 중인 변경이 있습니다. 초안으로 저장하거나 되돌린 뒤 다시 시도하세요" });
+      return;
+    }
     return run(() => postJson(pending.url, { acknowledgeRemovedTools: true }), pending.success, pending.fallback);
   }
 
@@ -199,9 +210,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
               <span className="font-mono text-bright">v{compared[1].version}</span>
               <StatusPill status={compared[1].status} />
               <DiffStatsText oldText={compared[0].body} newText={compared[1].body} />
-              {removedToolMentions(compared[0].body, compared[1].body).length > 0 && (
-                <span className="text-amber-300">v{compared[1].version} 에서 빠진 도구: {removedToolMentions(compared[0].body, compared[1].body).join(" · ")}</span>
-              )}
+              {comparedRemoved.length > 0 && <span className="text-amber-300">v{compared[1].version} 에서 빠진 도구: {comparedRemoved.join(" · ")}</span>}
               <span className="ml-auto flex flex-wrap gap-1.5">
                 {active && compared.some((v) => v.id === active.id) && compared.some((v) => v.status === "draft") && (
                   <button type="button" className={BTN} onClick={() => editWithReference(compared.find((v) => v.status === "draft")!.id)}>
@@ -264,7 +273,10 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
                 className="min-w-[200px] flex-1 rounded-md border border-border bg-surface px-2.5 py-1.5 text-[13px] text-bright placeholder:text-dim"
               />
               {dirty && (
-                <button type="button" className="rounded-lg px-2 py-1.5 text-[13px] text-sub hover:text-bright" disabled={busy} onClick={() => setBody(baseBody)}>
+                <button type="button" className="rounded-lg px-2 py-1.5 text-[13px] text-sub hover:text-bright" disabled={busy} onClick={() => {
+                    setBody(baseBody);
+                    setAckFor(null);
+                  }}>
                   되돌리기
                 </button>
               )}
@@ -273,7 +285,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
               </button>
               {removedTools.length > 0 && (
                 <label className="inline-flex w-full cursor-pointer items-center gap-1.5 text-xs text-amber-300 sm:order-first sm:w-auto">
-                  <input type="checkbox" checked={toolsAck} onChange={(e) => setToolsAck(e.target.checked)} className="accent-amber-300" />
+                  <input type="checkbox" checked={toolsAck} onChange={(e) => setAckFor(e.target.checked ? removedToolsKey(removedTools) : null)} className="accent-amber-300" />
                   빠진 도구를 확인했습니다 (활성화에 필요)
                 </label>
               )}

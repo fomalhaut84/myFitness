@@ -37,10 +37,9 @@ export interface VersionFilter {
  * 러닝 평가 · 기타 운동 평가는 카테고리가 같아서, 다른 키의 버전 id 는 여기서 걸러낸다.
  */
 export function resolveVersionFilter(requested: readonly string[], keyVersionIds: readonly string[]): VersionFilter {
-  const ids = requested.filter((id) => keyVersionIds.includes(id));
-  const includeNone = requested.includes(NO_VERSION);
-  if (ids.length === 0 && !includeNone) return { versionIds: [...keyVersionIds], includeNone: true };
-  return { versionIds: ids, includeNone };
+  if (requested.length === 0) return { versionIds: [...keyVersionIds], includeNone: true };
+  // 요청했지만 이 키에 없는 버전뿐이면 결과 없음 — 전체로 넓히지 않는다 (사전 리뷰 info 1)
+  return { versionIds: requested.filter((id) => keyVersionIds.includes(id)), includeNone: requested.includes(NO_VERSION) };
 }
 
 export function buildResultsWhere(key: PromptKey, filter: VersionFilter): Prisma.AIAdviceWhereInput {
