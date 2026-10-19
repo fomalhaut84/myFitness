@@ -15,7 +15,7 @@ export interface PromptValidation {
   warnings: PromptIssue[];
 }
 
-const TOOL_PATTERN = /mcp__myfitness__([a-z_]+)/g;
+const TOOL_PATTERN = /mcp__myfitness__([a-z0-9_]+)/g;
 const KNOWN_TOOLS = new Set([...ADVISOR_ALLOWED_TOOLS, ...ADVISOR_EXCLUDED_TOOLS]);
 
 function lineAt(body: string, index: number): number {
@@ -90,7 +90,7 @@ const SHORT_TOOL_NAMES = ADVISOR_ALLOWED_TOOLS.map((t) => t.replace(/^mcp__myfit
 
 /** 본문이 언급하는 어드바이저 도구 (접두 `mcp__myfitness__` 유무 무관 — 기본 프롬프트는 둘 다 쓴다) */
 export function toolMentions(body: string): string[] {
-  return SHORT_TOOL_NAMES.filter((name) => new RegExp(`(?:^|[^a-z_]|mcp__myfitness__)${name}(?![a-z_])`).test(body));
+  return SHORT_TOOL_NAMES.filter((name) => new RegExp(`(?:^|[^a-z0-9_]|mcp__myfitness__)${name}(?![a-z0-9_])`).test(body));
 }
 
 /**

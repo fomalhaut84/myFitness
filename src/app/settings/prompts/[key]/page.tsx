@@ -7,12 +7,27 @@ import { isPromptKey, PROMPT_DEFINITIONS } from "@/lib/prompts/definitions";
 import { countResultsByVersion, listPromptResults } from "@/lib/prompts/results";
 import { RESULTS_DEFAULT_LIMIT } from "@/lib/prompts/results-query";
 import { listVersions } from "@/lib/prompts/versions";
+import { listRuns } from "@/lib/prompts/runs";
+import prisma from "@/lib/prisma";
+import type { TrialActivity } from "@/components/prompts/TrialPanel";
 
 export const dynamic = "force-dynamic";
 
 interface Props {
   params: Promise<{ key: string }>;
   searchParams?: Promise<Record<string, string | string[] | undefined>>;
+}
+
+/** 시험 대상 후보 — 최근 활동 (평가 초안은 화면에서 같은 종류만 남긴다) */
+const TRIAL_ACTIVITY_LIMIT = 20;
+
+async function recentActivities(): Promise<TrialActivity[]> {
+  const rows = await prisma.activity.findMany({
+    orderBy: { startTime: "desc" },
+    take: TRIAL_ACTIVITY_LIMIT,
+    select: { id: true, name: true, activityType: true, startTime: true, distance: true },
+  });
+  return rows.map((r) => ({ ...r, startTime: r.startTime.toISOString() }));
 }
 
 const TAB_CLASS = "-mb-px border-b-2 px-3.5 py-2 text-sm";
@@ -24,6 +39,7 @@ export default async function PromptDetailPage({ params, searchParams }: Props) 
   const def = PROMPT_DEFINITIONS[key];
   const [versions, counts] = await Promise.all([listVersions(key), countResultsByVersion(key)]);
   const results = tab === "results" ? await listPromptResults(key, [], RESULTS_DEFAULT_LIMIT) : [];
+  const [runs, activities] = tab === "edit" ? await Promise.all([listRuns(key), key === "system" || key.startsWith("activity_eval") ? recentActivities() : []]) : [[], []];
   const linkedTotal = Object.values(counts).reduce((sum, n) => sum + n, 0);
   const active = versions.find((v) => v.status === "active") ?? null;
 
@@ -50,7 +66,7 @@ export default async function PromptDetailPage({ params, searchParams }: Props) 
       {tab === "results" ? (
         <ResultsTab promptKey={key} versions={versions} initialResults={results} />
       ) : (
-        <PromptDetailClient promptKey={key} versions={versions} resultCounts={counts} />
+        <PromptDetailClient promptKey={key} versions={versions} resultCounts={counts} runs={runs} activities={activities} />
       )}
     </div>
   );

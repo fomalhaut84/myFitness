@@ -32,6 +32,10 @@ interface Props {
   onToggleCompare: (id: string) => void;
   onActivate: (version: PromptVersionDTO) => void;
   onRestore: (version: PromptVersionDTO) => void;
+  /** #552 M19-3 T4: 초안 시험 실행 패널 열기 */
+  onTrial: (version: PromptVersionDTO) => void;
+  /** 시험 패널이 열린 버전 */
+  trialId: string | null;
 }
 
 function origin(v: PromptVersionDTO): string | null {
@@ -41,7 +45,7 @@ function origin(v: PromptVersionDTO): string | null {
   return `v${v.basedOnVersion} 에서 고침`;
 }
 
-export default function VersionRail({ versions, resultCounts, compareIds, busy, onToggleCompare, onActivate, onRestore }: Props) {
+export default function VersionRail({ versions, resultCounts, compareIds, busy, onToggleCompare, onActivate, onRestore, onTrial, trialId }: Props) {
   return (
     <aside className="rounded-xl border border-border bg-card">
       <div className="px-3.5 pb-1.5 pt-3.5">
@@ -73,9 +77,14 @@ export default function VersionRail({ versions, resultCounts, compareIds, busy, 
                       비교
                     </label>
                     {v.status === "draft" && (
-                      <button type="button" className={SMALL_BTN} disabled={busy} onClick={() => onActivate(v)}>
-                        활성화
-                      </button>
+                      <>
+                        <button type="button" className={SMALL_BTN} disabled={busy} onClick={() => onActivate(v)}>
+                          활성화
+                        </button>
+                        <button type="button" aria-pressed={trialId === v.id} className={`${GHOST_BTN} ${trialId === v.id ? "text-bright" : ""}`} onClick={() => onTrial(v)}>
+                          시험 실행
+                        </button>
+                      </>
                     )}
                     {archived && (
                       <button type="button" className={GHOST_BTN} disabled={busy} onClick={() => onRestore(v)}>

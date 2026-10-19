@@ -5,9 +5,12 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROMPT_DEFINITIONS, PROMPT_NOTE_MAX_LENGTH, type PromptKey } from "@/lib/prompts/definitions";
 import { isRemovedToolsAcknowledged, removedToolMentions, removedToolsKey, removedToolsMessage, toolMentions, validatePrompt } from "@/lib/prompts/validate";
+import type { PromptRunDTO } from "@/lib/prompts/runs";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import DiffView, { DiffStatsText } from "./DiffView";
 import PromptEditor from "./PromptEditor";
+import SuggestPanel from "./SuggestPanel";
+import TrialPanel, { type TrialActivity } from "./TrialPanel";
 import { StatusPill } from "./PromptPills";
 import ValidationPanel from "./ValidationPanel";
 import VersionRail from "./VersionRail";
@@ -31,6 +34,10 @@ interface Props {
   versions: readonly PromptVersionDTO[];
   /** 버전 id → 그 버전으로 만든 결과 수 (M19-2 L5) */
   resultCounts: Readonly<Record<string, number>>;
+  /** M19-3: 이 프롬프트의 개선안 · 시험 기록 (최신순) */
+  runs: readonly PromptRunDTO[];
+  /** M19-3 T4: 시험 대상 후보 (최근 활동) */
+  activities: readonly TrialActivity[];
 }
 
 async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -43,11 +50,20 @@ async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; dat
   return { ok: res.ok, data };
 }
 
+/** 다시 열었을 때 이어 볼 개선안 — 사용 중 버전 기준의 최신 기록이 실행 중이거나 30분 안에 끝났을 때만 */
+const SUGGEST_RESUME_MS = 30 * 60_000;
+function latestSuggestRun(runs: readonly PromptRunDTO[], activeId: string | null): PromptRunDTO | null {
+  const latest = runs.find((r) => r.kind === "suggest") ?? null;
+  if (!latest || latest.versionId !== activeId) return null;
+  if (latest.status === "running") return latest;
+  return latest.completedAt && Date.now() - Date.parse(latest.completedAt) < SUGGEST_RESUME_MS ? latest : null;
+}
+
 function errorText(data: Record<string, unknown>, fallback: string): string {
   return typeof data.error === "string" ? data.error : fallback;
 }
 
-export default function PromptDetailClient({ promptKey, versions, resultCounts }: Props) {
+export default function PromptDetailClient({ promptKey, versions, resultCounts, runs, activities }: Props) {
   const router = useRouter();
   const active = versions.find((v) => v.status === "active") ?? null;
   const baseBody = active?.body ?? PROMPT_DEFINITIONS[promptKey].defaultBody;
@@ -62,6 +78,9 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
   /** 확인한 시점의 빠진 도구 목록 (removedToolsKey) — 목록이 바뀌면 확인이 풀린다 */
   const [ackFor, setAckFor] = useState<string | null>(null);
   const [confirm, setConfirm] = useState<PendingConfirm | null>(null);
+  const [trialId, setTrialId] = useState<string | null>(null);
+  // SuggestPanel 은 처음 값만 쓴다 — 첫 렌더 시점 기준 (Date.now 를 렌더마다 부르지 않게)
+  const [suggestRun] = useState(() => latestSuggestRun(runs, active?.id ?? null));
 
   // 저장 · 활성화 뒤 router.refresh 로 사용 중 본문이 바뀌면 편집 상태를 새로 시작 (메시지는 남긴다)
   const [prevBase, setPrevBase] = useState(baseBody);
@@ -91,6 +110,8 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
     .map(byId)
     .filter((v): v is PromptVersionDTO => v !== null)
     .sort((a, b) => a.version - b.version);
+  // 시험 패널은 초안에만 — 활성화 · 되돌리기로 초안이 아니게 되면 닫힌다
+  const trialVersion = versions.find((v) => v.id === trialId && v.status === "draft") ?? null;
   const comparedRemoved = compared.length === 2 ? removedToolMentions(compared[0].body, compared[1].body) : [];
 
   async function run(
@@ -158,6 +179,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
   }
 
   function toggleCompare(id: string) {
+    setTrialId(null);
     setCompareIds((ids) => (ids.includes(id) ? ids.filter((x) => x !== id) : [...ids.slice(-1), id]));
   }
 
@@ -201,7 +223,18 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
           </p>
         )}
 
-        {compared.length === 2 ? (
+        <SuggestPanel promptKey={promptKey} versions={versions} initialRun={suggestRun} />
+
+        {trialVersion ? (
+          <TrialPanel
+            key={trialVersion.id}
+            promptKey={promptKey}
+            version={trialVersion}
+            activities={activities}
+            runs={runs.filter((r) => r.kind === "trial" && r.versionId === trialVersion.id)}
+            onClose={() => setTrialId(null)}
+          />
+        ) : compared.length === 2 ? (
           <section className="min-w-0 rounded-xl border border-border bg-card" aria-label="버전 비교">
             <div className="flex flex-wrap items-center gap-2.5 border-b border-border px-3.5 py-2.5 text-xs text-sub">
               <span className="font-mono text-bright">v{compared[0].version}</span>
@@ -316,6 +349,11 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts }
         onToggleCompare={toggleCompare}
         onActivate={(v) => switchVersion(`/api/prompts/versions/${v.id}/activate`, `v${v.version} 그래도 활성화`, () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}
         onRestore={(v) => switchVersion(`/api/prompts/versions/${v.id}/restore`, `v${v.version} 로 그래도 되돌리기`, (d) => `v${v.version} 를 v${d.version} 로 되돌렸습니다`, "되돌리지 못했습니다")}
+        onTrial={(v) => {
+          setCompareIds([]);
+          setTrialId((id) => (id === v.id ? null : v.id));
+        }}
+        trialId={trialVersion?.id ?? null}
       />
     </div>
   );

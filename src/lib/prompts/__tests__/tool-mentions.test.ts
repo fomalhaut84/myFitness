@@ -1,7 +1,7 @@
 // #552: 필수 문구 밖의 도구 언급이 빠지면 활성화 전에 확인받는다 (#203 — 이름이 없으면 도구 호출을 건너뛴다)
 import { describe, expect, it } from "vitest";
 import { PROMPT_DEFINITIONS } from "../definitions";
-import { isRemovedToolsAcknowledged, removedToolMentions, removedToolsKey, toolMentions } from "../validate";
+import { isRemovedToolsAcknowledged, removedToolMentions, removedToolsKey, toolMentions, validatePrompt } from "../validate";
 
 describe("toolMentions", () => {
   it("접두 유무와 관계없이 잡고, 더 긴 이름의 일부는 잡지 않는다", () => {
@@ -40,5 +40,18 @@ describe("isRemovedToolsAcknowledged", () => {
   it("확인 전이면 막고, 빠진 도구가 없으면 확인 불필요", () => {
     expect(isRemovedToolsAcknowledged(null, ["get_sleep"])).toBe(false);
     expect(isRemovedToolsAcknowledged(null, [])).toBe(true);
+  });
+});
+
+// 회귀: PR #555 Codex P2 (#559) — 숫자도 이름의 일부. get_sleep → get_sleep2 로 바꾸면 get_sleep 이 빠진 것
+describe("도구 이름 경계 — 숫자", () => {
+  it("get_sleep2 · 2get_sleep 은 get_sleep 언급이 아니다", () => {
+    expect(removedToolMentions("get_sleep", "get_sleep2")).toEqual(["get_sleep"]);
+    expect(removedToolMentions("get_sleep", "2get_sleep")).toEqual(["get_sleep"]);
+    expect(removedToolMentions("mcp__myfitness__get_sleep", "mcp__myfitness__get_sleep2")).toEqual(["get_sleep"]);
+  });
+
+  it("allowlist 검사도 숫자 붙은 이름을 모르는 도구로 본다", () => {
+    expect(validatePrompt("system", "mcp__myfitness__get_sleep2 호출").warnings.some((w) => w.message.includes("get_sleep2"))).toBe(true);
   });
 });
