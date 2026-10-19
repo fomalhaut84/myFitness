@@ -26,11 +26,16 @@ function Dot({ source, active, className = "" }: { source: PromptSource; active?
 
 interface Props {
   versions: readonly PromptVersionDTO[];
+  resultCounts: Readonly<Record<string, number>>;
   compareIds: readonly string[];
   busy: boolean;
   onToggleCompare: (id: string) => void;
   onActivate: (version: PromptVersionDTO) => void;
   onRestore: (version: PromptVersionDTO) => void;
+  /** #552 M19-3 T4: 초안 시험 실행 패널 열기 */
+  onTrial: (version: PromptVersionDTO) => void;
+  /** 시험 패널이 열린 버전 */
+  trialId: string | null;
 }
 
 function origin(v: PromptVersionDTO): string | null {
@@ -40,7 +45,7 @@ function origin(v: PromptVersionDTO): string | null {
   return `v${v.basedOnVersion} 에서 고침`;
 }
 
-export default function VersionRail({ versions, compareIds, busy, onToggleCompare, onActivate, onRestore }: Props) {
+export default function VersionRail({ versions, resultCounts, compareIds, busy, onToggleCompare, onActivate, onRestore, onTrial, trialId }: Props) {
   return (
     <aside className="rounded-xl border border-border bg-card">
       <div className="px-3.5 pb-1.5 pt-3.5">
@@ -51,6 +56,8 @@ export default function VersionRail({ versions, compareIds, busy, onToggleCompar
             const archived = v.status === "archived";
             const checked = compareIds.includes(v.id);
             const from = origin(v);
+            const count = resultCounts[v.id] ?? 0;
+            const meta = [from, count > 0 ? `결과 ${count}건` : null].filter(Boolean).join(" · ");
             return (
               <li key={v.id} className="relative grid grid-cols-[22px_minmax(0,1fr)] gap-2.5 pb-3.5">
                 {i < versions.length - 1 && <span aria-hidden className="absolute bottom-0 left-[10px] top-[18px] border-l border-border-hover" />}
@@ -62,7 +69,7 @@ export default function VersionRail({ versions, compareIds, busy, onToggleCompar
                     <SourcePill source={v.source} />
                   </span>
                   {v.note && <span className="text-xs text-muted">{v.note}</span>}
-                  {from && <span className="text-[11px] text-dim">{from}</span>}
+                  {meta && <span className="text-[11px] text-dim">{meta}</span>}
                   <span className="font-mono text-[11px] text-dim">{formatPromptDateTime(v.createdAt)}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1">
                     <label className="mr-1 inline-flex cursor-pointer items-center gap-1 text-[11px] text-sub">
@@ -70,9 +77,14 @@ export default function VersionRail({ versions, compareIds, busy, onToggleCompar
                       비교
                     </label>
                     {v.status === "draft" && (
-                      <button type="button" className={SMALL_BTN} disabled={busy} onClick={() => onActivate(v)}>
-                        활성화
-                      </button>
+                      <>
+                        <button type="button" className={SMALL_BTN} disabled={busy} onClick={() => onActivate(v)}>
+                          활성화
+                        </button>
+                        <button type="button" aria-pressed={trialId === v.id} className={`${GHOST_BTN} ${trialId === v.id ? "text-bright" : ""}`} onClick={() => onTrial(v)}>
+                          시험 실행
+                        </button>
+                      </>
                     )}
                     {archived && (
                       <button type="button" className={GHOST_BTN} disabled={busy} onClick={() => onRestore(v)}>

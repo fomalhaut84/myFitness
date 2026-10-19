@@ -10,6 +10,9 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      # 감사 런타임 (Node · npm) 이 .nvmrc 를 따른다 — 버전 · 워크플로우 변경도 바로 감사 (PR #557 Codex P2)
+      - '.nvmrc'
+      - '.github/workflows/security-audit.yml'
 
 jobs:
   audit:
@@ -24,10 +27,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Node.js
+      - name: Setup Node.js (.nvmrc · #556)
         uses: actions/setup-node@v6
         with:
-          node-version: '20.x'
+          node-version-file: .nvmrc
           cache: 'npm'
 
       - name: Install dependencies

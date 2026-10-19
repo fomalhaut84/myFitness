@@ -3,7 +3,7 @@
 import prisma from "@/lib/prisma";
 import { PROMPT_DEFINITIONS, PROMPT_KEYS, type PromptKey } from "./definitions";
 import { type PromptSource, type PromptStatus } from "./sync-plan";
-import { validatePrompt, type PromptIssue } from "./validate";
+import { removedToolMentions, removedToolsMessage, validatePrompt, type PromptIssue } from "./validate";
 
 export interface PromptVersionDTO {
   id: string;
@@ -31,8 +31,24 @@ export class PromptActionError extends Error {
     readonly status: 400 | 404 | 409,
     message: string,
     readonly issues: PromptIssue[] = [],
+    /** TOOLS_REMOVED: 사용 중 버전에 있던 도구 언급이 빠짐 — 확인 (acknowledgeRemovedTools) 후 재요청 */
+    readonly detail: { code: "TOOLS_REMOVED"; removedTools: string[] } | null = null,
   ) {
     super(message);
+  }
+}
+
+/**
+ * 사용 중이 될 본문이 지금 사용 중 버전의 도구 언급을 빠뜨리면 확인을 받는다 (#203 — 필수 문구 밖 도구 보호).
+ * 초안 저장은 막지 않는다 — 실제로 리포트에 쓰이는 시점 (활성화 · 되돌리기) 에만.
+ */
+async function assertToolsAcknowledged(key: PromptKey, body: string, acknowledged: boolean): Promise<void> {
+  if (acknowledged) return;
+  const active = await prisma.promptVersion.findFirst({ where: { key, status: "active" }, select: { body: true } });
+  // 사용 중 버전이 없으면 코드 기본값이 쓰이는 중 (사전 리뷰 info 4)
+  const removed = removedToolMentions(active?.body ?? PROMPT_DEFINITIONS[key].defaultBody, body);
+  if (removed.length > 0) {
+    throw new PromptActionError(409, removedToolsMessage(removed), [], { code: "TOOLS_REMOVED", removedTools: removed });
   }
 }
 
@@ -149,21 +165,25 @@ export async function createVersion(params: {
   note: string | null;
   basedOnId: string | null;
   activate: boolean;
+  source?: "manual" | "ai_suggestion";
+  acknowledgeRemovedTools: boolean;
 }): Promise<{ id: string; version: number }> {
   assertValid(params.key, params.body);
+  if (params.activate) await assertToolsAcknowledged(params.key, params.body, params.acknowledgeRemovedTools);
   if (params.basedOnId) {
     const base = await findVersion(params.basedOnId);
     if (base.key !== params.key) throw new PromptActionError(400, "다른 프롬프트의 버전에서 고칠 수 없습니다");
   }
-  return insertVersion({ ...params, source: "manual" });
+  return insertVersion({ key: params.key, body: params.body, note: params.note, basedOnId: params.basedOnId, activate: params.activate, source: params.source ?? "manual" });
 }
 
 /** 초안을 사용 중으로. 보관된 버전은 "되돌리기" (새 버전으로 복사) 로만 — 이력이 시간 순으로 읽히게 (A5) */
-export async function activateVersion(id: string): Promise<{ version: number }> {
+export async function activateVersion(id: string, acknowledgeRemovedTools = false): Promise<{ version: number }> {
   const row = await findVersion(id);
   if (row.status === "active") return { version: row.version };
   if (row.status !== "draft") throw new PromptActionError(409, "보관된 버전은 되돌리기로 다시 사용할 수 있습니다");
   assertValid(row.key, row.body);
+  await assertToolsAcknowledged(row.key, row.body, acknowledgeRemovedTools);
   try {
     await prisma.$transaction([
       prisma.promptVersion.updateMany({ where: { key: row.key, status: "active" }, data: { status: "archived" } }),
@@ -176,10 +196,11 @@ export async function activateVersion(id: string): Promise<{ version: number }> 
   return { version: row.version };
 }
 
-export async function restoreVersion(id: string): Promise<{ id: string; version: number }> {
+export async function restoreVersion(id: string, acknowledgeRemovedTools = false): Promise<{ id: string; version: number }> {
   const row = await findVersion(id);
   if (row.status !== "archived") throw new PromptActionError(409, "보관된 버전만 되돌릴 수 있습니다 (초안은 활성화)");
   assertValid(row.key, row.body);
+  await assertToolsAcknowledged(row.key, row.body, acknowledgeRemovedTools);
   return insertVersion({ key: row.key, body: row.body, note: `v${row.version} 로 되돌림`, source: "restore", basedOnId: row.id, activate: true, codeHash: row.codeHash });
 }
 

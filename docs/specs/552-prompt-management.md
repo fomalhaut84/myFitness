@@ -50,6 +50,7 @@ AI 분석 프롬프트가 전부 TS 상수 · 빌더에 하드코딩돼 있다 (
   - 갱신 초안이 있는 채로 다른 버전을 활성화하면 "코드 기본값 갱신" 경고는 사라지고 초안은 이력에 남는다 (의도 — 사용자가 활성 버전을 직접 정한 것)
   - 호출 시점: **프로세스 시작 시** (웹 · 봇 각각 — 첫 리포트 전에 반영) + 목록 API. idempotent · 동시 호출은 `(key, version)` unique 충돌을 무시하고 재조회
 - [ ] R3 `validatePrompt(key, body)` → `{ errors, warnings }` — 오류: 필수 변수 누락 · 모르는 `{{변수}}` · 필수 문구 누락 · 빈 본문 · 길이 상한 (20,000자). 경고: 본문의 `mcp__myfitness__*` 중 어드바이저 allowlist 에 없는 도구. **저장 · 활성화 · 개선안 수락 모두 이 검증을 통과해야 한다**
+- [ ] R3-1 **빠진 도구 언급 확인** (2026-10-19 사용자 요청 · M19-2 PR 에 포함) — 필수 문구는 키마다 몇 개뿐이라, 그 밖의 도구 언급 (예: 모닝의 `get_weight_loss_status`) 을 지워도 저장됐다. 사용 중 버전에 있던 도구 이름 (접두 `mcp__myfitness__` 유무 무관) 이 새 본문에서 빠지면 경고하고, **활성화 · 되돌리기는 확인 (`acknowledgeRemovedTools`) 을 받아야** 한다 (서버 409 `TOOLS_REMOVED`). 초안 저장은 막지 않는다. 비교 화면에도 빠진 도구 표시
 - [ ] R4 `report-prompts.test.ts` 의 문구 단언을 정의의 필수 문구로 옮기고, 테스트는 "모든 코드 기본값이 `validatePrompt` 를 통과한다" + "필수 문구가 빠지면 오류" 로 바꾼다 (규칙 정본 하나)
 - [ ] R5 기존 호출부 교체 — `daily-report.ts` · `weekly-report.ts` · `activities/[id]/evaluate` · `buildStaticSystemPrompt` 가 `resolvePrompt` 사용. 코드 상수는 기본값으로 남는다 (`definitions.ts` 로 이동, 기존 export 는 재노출)
 
@@ -78,21 +79,26 @@ AI 분석 프롬프트가 전부 TS 상수 · 빌더에 하드코딩돼 있다 (
 - [ ] L2 `askAdvisor` 가 사용한 `system` 버전 ID 를 반환하고, 리포트 · 운동 평가 · 웹 채팅 저장부가 두 ID 를 기록 (채팅은 `system` 만). 폴백 (R1) 으로 코드 기본값을 쓴 경우 null
 - [ ] L3 `GET /api/prompts/[key]/results?versionId=&limit=` — 그 키 카테고리의 `AIAdvice` (리포트 날짜 · 생성 시각 · 버전 · 응답). `system` 은 전 카테고리
 - [ ] L4 상세 화면 "결과" 탭 — 버전 필터 · 결과 목록 (날짜 · 버전 배지 · 첫 줄) · 두 결과 **나란히 비교** (같은 카테고리 · 버전이 다른 결과 기본 추천). 버전 정보 없는 결과는 "버전 정보 없음"
+  - 알려진 한계: 러닝 평가 · 기타 운동 평가는 카테고리가 같아 **연결 이전 (버전 정보 없음)** 결과는 두 키 모두에 보인다 (모드 컬럼 없음)
+  - 필터 응답은 요청 순서로 확인해 늦게 온 이전 응답을 버린다 (M19-2 사전 리뷰 major 2 · UI 상태라 회귀 테스트 대신 이 문구로)
 - [ ] L5 버전 이력 각 행에 "결과 N건"
 
 ### M19-3 · AI 개선안 · 시험 실행
 
+> **변경 (2026-10-19 · 구현 계획 승인):** 개선안도 job 으로 돌린다 — 본문 (최대 2만 자) + 결과 5건을 넘기고 전체 본문을 받으면 60초 (Nginx 기본 `proxy_read_timeout`) 를 넘길 수 있어 기술 설계의 "60초를 넘으면 job 패턴" 을 처음부터 적용. 테이블은 `PromptTrial` 대신 **`PromptRun`** 하나 (`kind` = `suggest` · `trial`).
+
 **개선안**
-- [ ] G1 `POST /api/prompts/[key]/suggest` — 활성 버전 본문 + 정의 (변수 · 필수 문구 · 사용처) + 최근 결과 최대 5건 (L3 · 응답 각 4,000자 상한) 을 1회성 Claude 호출 (`--tools ""` · `--max-turns 1` · MCP 없음 — 음식 추정과 같은 방식) 에 넘겨 JSON `{ body, rationale: string[] }` 수신 → 파싱 · `validatePrompt` 검증 → 응답 (**저장하지 않음**)
-- [ ] G2 화면 — "개선안 받기" → 진행 표시 → 근거 목록 + 활성 버전 대비 diff → **"초안으로 저장"** (`ai_suggestion` · `basedOnId` · 메모 = 근거 요약) 또는 버리기. 검증 오류가 있는 제안은 저장 불가 · 오류 표시
-- [ ] G3 개선안 지시문 (메타 프롬프트) 은 코드 상수 — 관리 대상 아님
+- [x] G1 `POST /api/prompts/[key]/suggest` — job 시작 (202 · `runId`). 활성 버전 본문 + 정의 (변수 · 필수 문구 · 사용처) + 최근 결과 최대 5건 (사용 중 버전 결과 우선 · 없으면 버전 무관 · 응답 각 4,000자 상한) 을 1회성 Claude 호출 (`--tools ""` · `--max-turns 1` · MCP 없음 · 최대 3분) 에 넘겨 JSON `{ body, rationale: string[] }` 수신 → 파싱 (JSON · 코드펜스 · 앞뒤 설명) → `PromptRun.response` 에 보관. 검증 (`validatePrompt`) 은 조회 시 다시 계산 (**버전으로 저장하지 않음**)
+- [x] G2 화면 — "AI 개선안 받기" → 진행 표시 → 근거 목록 + 출발 버전 대비 diff + 검증 · 빠진 도구 → **"초안으로 저장"** (`POST versions` · `source: ai_suggestion` · `basedOnId` · 메모 = 근거 요약) 또는 버리기. 검증 오류가 있는 제안은 저장 불가 · 오류 표시. 다시 열면 실행 중 · 30분 안에 끝난 개선안을 이어 보여 준다
+- [x] G3 개선안 지시문 (메타 프롬프트) 은 코드 상수 (`suggest-prompt.ts`) — 관리 대상 아님
 
 **시험 실행**
-- [ ] T1 `PromptTrial` (migration) — `id` · `versionId` (FK) · `targetKind` (`report` · `activity`) · `targetRef` (리포트는 카테고리 · 활동은 activityId) · `status` (`running` · `done` · `failed`) · `response String?` · `errorMessage String?` · `startedAt` · `completedAt`
-- [ ] T2 `POST /api/prompts/versions/[id]/trial` `{ activityId? }` — 백그라운드 실행 후 trialId 반환, `GET /api/prompts/trials/[id]` 폴링 (ReportJob 패턴). **동시 1건** (실행 중이면 409)
-- [ ] T3 실행 — 리포트 키: **지금 시점 기준** 생성 (과거 날짜 재현은 동적 컨텍스트 · 도구가 현재 시각 기준이라 제외) · Garmin 사전 싱크 생략 · 전용 채널 `prompt-trial` 새 세션. `activity_eval*`: 지정 활동. `system` 초안: 고른 대상 (모닝 리포트 기본 · 또는 활동) 을 **그 초안 시스템 프롬프트로** 실행. `AIAdvice` 에 저장하지 않는다
-- [ ] T4 화면 — 초안 버전 행의 "시험 실행" → 대상 선택 (활동 키: 최근 활동 목록) → 결과를 **같은 대상의 최근 실제 결과 (활성 버전)** 와 나란히. 시험 결과 목록은 버전별 보관
-- [ ] T5 두 기능 모두 버튼을 눌렀을 때만 실행 (자동 실행 없음) · 버튼 옆에 "CLI 쿼터 사용 · 최대 3분" 안내
+- [x] T1 `PromptRun` (migration) — `id` · `kind` (`suggest` · `trial`) · `versionId` (FK) · `targetKind` (`report` · `activity`, trial 만) · `targetRef` (리포트 키 · activityId) · `status` (`running` · `done` · `failed`) · `response String?` · `errorMessage String?` · `startedAt` · `completedAt`. 값 CHECK · trial 대상 CHECK · **실행 중 전체 1건** partial unique (개선안 · 시험 모두 CLI 쿼터)
+- [x] T2 `POST /api/prompts/versions/[id]/trial` `{ target?, activityId? }` (초안만) — 백그라운드 실행 후 `runId` 반환, `GET /api/prompts/runs/[id]` 폴링 (끝난 시험은 실제 결과 함께) · `GET /api/prompts/[key]/runs` 기록. 실행 중이면 409. 부팅 시 남은 running · 10분 넘은 running 은 failed
+- [x] T3 실행 — 리포트 키: **지금 시점 기준** 생성 · Garmin 사전 싱크 생략 · 전용 채널 `prompt-trial` 새 세션. `activity_eval*`: 지정 활동 — **같은 종류만** (러닝 평가 = 러닝 활동 · 기타 = 비러닝, 다르면 빌더가 다른 지시문을 골라 초안이 안 쓰이므로 400) · 치환 폴백이면 실패. `system` 초안: 고른 대상 (모닝 리포트 기본 · 다른 리포트 · 활동) 을 **그 초안 시스템 프롬프트로** (`askAdvisor` `systemOverride`) 실행. `AIAdvice` 에 저장하지 않는다
+- [x] T4 화면 — 초안 버전 행의 "시험 실행" → 대상 선택 (활동 키: 최근 활동 20건 중 같은 종류) → 결과를 **같은 대상의 최근 실제 결과** 와 나란히 · 이 버전의 시험 기록 (시각 · 완료/실패 · 사유)
+- [x] T5 두 기능 모두 버튼을 눌렀을 때만 실행 (자동 실행 없음) · 버튼 옆에 "CLI 쿼터 사용 · 최대 3분" 안내
+- 알려진 한계: 활동 평가 결과 (`AIAdvice`) 에 활동 id 가 없어 비교할 "실제 결과" 는 **같은 날짜의 최근 평가** — 하루에 활동이 여럿이면 다른 활동의 평가일 수 있다. 리포트 시험은 지금 시점 기준이라 실제 결과와 날짜가 다를 수 있다 (과거 날짜 재현은 제외 사항). 실제 결과는 사용 중 버전으로 만든 것이 아닐 수도 있다 (최근 결과 그대로)
 
 ## 5. 기술 설계 요약
 
@@ -112,7 +118,7 @@ diff.ts (순수) ── 화면
 
 - M19-1: `prisma/schema.prisma` · `prisma/migrations/<ts>_prompt_version/` · `src/lib/prompts/{definitions,validate,render,diff,resolve}.ts` · `src/lib/report-prompts.ts` · `src/lib/ai/system-prompt.ts` · `src/lib/ai/session-store.ts` · `src/lib/ai/claude-advisor.ts` · `src/lib/daily-report.ts` · `src/lib/weekly-report.ts` · `src/lib/ai/activity-eval/build-context.ts` · `src/app/api/activities/[id]/evaluate/route.ts` · `src/app/api/prompts/**` · `src/app/settings/prompts/**` · `src/app/settings/profile/page.tsx` (탭) · 테스트
 - M19-2: schema · migration · `claude-advisor.ts` · 리포트 · 평가 · `/api/ai` 저장부 · `api/prompts/[key]/results` · 상세 화면 결과 탭
-- M19-3: schema · migration (`PromptTrial`) · `src/lib/prompts/{suggest,trial}.ts` · API · 화면
+- M19-3: schema · migration (`PromptRun`) · `src/lib/ai/claude-advisor.ts` (`systemOverride`) · `src/lib/prompts/{run-plan,suggest-prompt,runs,suggest,trial}.ts` · API (`[key]/suggest` · `[key]/runs` · `versions/[id]/trial` · `runs/[id]`) · 화면 (`SuggestPanel` · `TrialPanel` · `useRunPoll` · `run-ui`)
 
 ## 7. 테스트 계획 (vitest)
 

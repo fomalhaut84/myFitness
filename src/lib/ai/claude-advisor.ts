@@ -40,6 +40,8 @@ export const ASK_ADVISOR_TIMEOUT_MS = TIMEOUT_MS;
 interface ClaudeResponse {
   result: string;
   sessionId: string | null;
+  /** #552 M19-2: 이 응답에 쓴 시스템 프롬프트 버전 (코드 기본값 폴백이면 null) — AIAdvice 에 기록 */
+  systemPromptVersionId: string | null;
   duration_ms?: number;
   num_turns?: number;
 }
@@ -57,6 +59,18 @@ export interface AskOptions {
    * 미달 시 1회 자동 재시도 후에도 미달이면 throw (조용한 실패 방지).
    */
   minTurns?: number;
+  /**
+   * #552 M19-3: 시스템 프롬프트 초안 시험 실행 — 사용 중 버전 대신 이 본문으로 세션을 연다.
+   * 세션은 버전 id 로 구분되므로 같은 채널이라도 새 세션이 된다 (호출자가 전용 채널 · resetSession 권장).
+   */
+  systemOverride?: { body: string; versionId: string };
+}
+
+/** 이번 호출의 시스템 프롬프트 — 시험 실행 override 가 있으면 그것, 없으면 DB 사용 중 버전 (#552 R6) */
+export async function resolveAdvisorSystem(options: Pick<AskOptions, "systemOverride"> = {}): Promise<{ body: string; versionId: string | null }> {
+  if (options.systemOverride) return options.systemOverride;
+  const { body, versionId } = await resolvePromptTemplate("system");
+  return { body, versionId };
 }
 
 /**
@@ -252,8 +266,8 @@ async function askAdvisorOnce(
   options: AskOptions = {},
 ): Promise<ClaudeResponse> {
   const channel = options.channel ?? DEFAULT_CHANNEL;
-  // #552 R6: 시스템 프롬프트 = DB 사용 중 버전. 세션을 만든 버전과 다르면 getSession 이 새 세션으로 돌린다.
-  const system = await resolvePromptTemplate("system");
+  // #552 R6: 시스템 프롬프트 = DB 사용 중 버전 (시험 실행이면 초안). 세션을 만든 버전과 다르면 getSession 이 새 세션으로 돌린다.
+  const system = await resolveAdvisorSystem(options);
   const currentSessionId = SessionStore.getSession(channel, system.versionId);
 
   const mcpConfigPath = ensureMcpConfig();
@@ -411,12 +425,14 @@ async function askAdvisorOnce(
           sessionId: parsed.session_id ?? currentSessionId,
           duration_ms: durationMs,
           num_turns: parsed.num_turns,
+          systemPromptVersionId: system.versionId,
         });
       } else {
         resolve({
           result: stdout.trim(),
           sessionId: currentSessionId,
           duration_ms: durationMs,
+          systemPromptVersionId: system.versionId,
         });
       }
     });

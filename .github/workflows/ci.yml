@@ -29,10 +29,6 @@ jobs:
           --health-timeout 5s
           --health-retries 5
 
-    strategy:
-      matrix:
-        node-version: [20.x]
-
     env:
       DATABASE_URL: postgresql://ci:ci@localhost:5432/myfitness_ci
 
@@ -40,10 +36,10 @@ jobs:
       - name: Checkout repository
         uses: actions/checkout@v6
 
-      - name: Setup Node.js ${{ matrix.node-version }}
+      - name: Setup Node.js (.nvmrc — 운영 서버와 같은 major · #556)
         uses: actions/setup-node@v6
         with:
-          node-version: ${{ matrix.node-version }}
+          node-version-file: .nvmrc
           cache: 'npm'
 
       - name: Install dependencies

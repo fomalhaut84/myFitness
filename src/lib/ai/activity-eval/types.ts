@@ -112,4 +112,6 @@ export interface EvalContext {
   sections: EvalSection[];
   omitted: EvalOmitted[];
   prompt: string;
+  /** #552 M19-2: 넘겨받은 템플릿을 치환하지 못해 코드 기본값을 썼다 — 결과에 버전을 기록하지 않는다 */
+  templateFallback: boolean;
 }
