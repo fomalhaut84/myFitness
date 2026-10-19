@@ -12,6 +12,8 @@ export const CreateVersionSchema = z.object({
   note: z.string().trim().max(PROMPT_NOTE_MAX_LENGTH).optional().transform((v) => (v ? v : null)),
   basedOnId: z.string().min(1).max(64).nullable().optional().transform((v) => v ?? null),
   activate: z.boolean().optional().default(false),
+  /** #552 M19-3 G2: AI 개선안을 초안으로 저장하면 ai_suggestion */
+  source: z.enum(["manual", "ai_suggestion"]).optional().default("manual"),
   acknowledgeRemovedTools: z.boolean().optional().default(false),
 });
 
@@ -20,6 +22,15 @@ export const SwitchVersionSchema = z
   .object({ acknowledgeRemovedTools: z.boolean().optional().default(false) })
   .nullable()
   .transform((v) => ({ acknowledgeRemovedTools: v?.acknowledgeRemovedTools ?? false }));
+
+/** #552 M19-3 T2: 시험 대상 — target 은 시스템 프롬프트 초안만 쓴다 (run-plan resolveTrialTarget) */
+export const TrialSchema = z
+  .object({
+    target: z.enum(["morning_report", "evening_report", "weekly_report", "activity"]).optional(),
+    activityId: z.string().trim().min(1).max(64).optional(),
+  })
+  .nullable()
+  .transform((v) => v ?? {});
 
 export const ValidateSchema = z.object({
   key: z.string(),

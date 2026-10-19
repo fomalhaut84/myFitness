@@ -165,6 +165,7 @@ export async function createVersion(params: {
   note: string | null;
   basedOnId: string | null;
   activate: boolean;
+  source?: "manual" | "ai_suggestion";
   acknowledgeRemovedTools: boolean;
 }): Promise<{ id: string; version: number }> {
   assertValid(params.key, params.body);
@@ -173,7 +174,7 @@ export async function createVersion(params: {
     const base = await findVersion(params.basedOnId);
     if (base.key !== params.key) throw new PromptActionError(400, "다른 프롬프트의 버전에서 고칠 수 없습니다");
   }
-  return insertVersion({ key: params.key, body: params.body, note: params.note, basedOnId: params.basedOnId, activate: params.activate, source: "manual" });
+  return insertVersion({ key: params.key, body: params.body, note: params.note, basedOnId: params.basedOnId, activate: params.activate, source: params.source ?? "manual" });
 }
 
 /** 초안을 사용 중으로. 보관된 버전은 "되돌리기" (새 버전으로 복사) 로만 — 이력이 시간 순으로 읽히게 (A5) */

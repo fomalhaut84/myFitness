@@ -491,7 +491,25 @@ model PromptVersion {
   activatedAt DateTime?
   systemAdvices AIAdvice[] @relation("AdviceSystemPrompt")
   taskAdvices   AIAdvice[] @relation("AdviceTaskPrompt")
+  runs          PromptRun[]
 
   @@unique([key, version])
   @@index([key, status])
+}
+
+/// #552 M19-3: AI 개선안 · 시험 실행 job. 결과는 AIAdvice 에 남기지 않는다. 실행 중은 전체 1건 (partial unique · Prisma 미추적)
+model PromptRun {
+  id           String        @id @default(cuid())
+  kind         String        // "suggest" | "trial" (DB CHECK)
+  versionId    String        // 개선안 = 출발 (사용 중) 버전 · 시험 = 시험한 초안
+  version      PromptVersion @relation(fields: [versionId], references: [id], onDelete: Cascade)
+  targetKind   String?       // trial 만 — "report" | "activity" (DB CHECK)
+  targetRef    String?       // trial 만 — 리포트 키 (morning_report 등) · 활동 id
+  status       String        // "running" | "done" | "failed" (DB CHECK)
+  response     String?       // trial = 결과 본문 · suggest = 제안 JSON
+  errorMessage String?
+  startedAt    DateTime      @default(now())
+  completedAt  DateTime?
+
+  @@index([versionId, kind])
 }
