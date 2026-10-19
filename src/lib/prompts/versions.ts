@@ -109,7 +109,7 @@ interface InsertInput {
   source: Exclude<PromptSource, "code_default">;
   basedOnId: string | null;
   activate: boolean;
-  /** 코드 기본값을 되돌릴 때만 — 이후 코드 기본값 갱신이 자동 적용되게 (isStockDefault) */
+  /** 되돌리기만 — 원본의 codeHash 를 물려받아 이후 코드 기본값 갱신이 자동 적용되게 (isStockDefault). 되돌린 restore 를 다시 되돌려도 유지 (PR #553 Codex P2) · 직접 수정 · AI 제안 행은 원래 null */
   codeHash?: string | null;
 }
 
@@ -180,6 +180,6 @@ export async function restoreVersion(id: string): Promise<{ id: string; version:
   const row = await findVersion(id);
   if (row.status !== "archived") throw new PromptActionError(409, "보관된 버전만 되돌릴 수 있습니다 (초안은 활성화)");
   assertValid(row.key, row.body);
-  return insertVersion({ key: row.key, body: row.body, note: `v${row.version} 로 되돌림`, source: "restore", basedOnId: row.id, activate: true, codeHash: row.source === "code_default" ? row.codeHash : null });
+  return insertVersion({ key: row.key, body: row.body, note: `v${row.version} 로 되돌림`, source: "restore", basedOnId: row.id, activate: true, codeHash: row.codeHash });
 }
 
