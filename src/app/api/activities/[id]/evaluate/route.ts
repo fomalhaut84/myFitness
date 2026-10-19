@@ -4,6 +4,7 @@ import { NextResponse } from "next/server";
 import { ADVISOR_MODEL, askAdvisor, resetSession } from "@/lib/ai/claude-advisor";
 import { buildEvalContext } from "@/lib/ai/activity-eval/build-context";
 import { loadActivityEvalInput } from "@/lib/ai/activity-eval/load";
+import { resolvePromptTemplate } from "@/lib/prompts/resolve";
 import { ACTIVITY_EVAL_CATEGORY, ACTIVITY_EVAL_CHANNEL } from "@/lib/ai/activity-eval/constants";
 import prisma from "@/lib/prisma";
 
@@ -21,7 +22,9 @@ export async function POST(_request: Request, { params }: Params) {
     if (!input) {
       return NextResponse.json({ error: "활동을 찾을 수 없습니다" }, { status: 404 });
     }
-    const ctx = buildEvalContext(input);
+    // #552: 지시문 = DB 사용 중 버전 (러닝 · 기타 두 키). 데이터 섹션은 빌더가 조립
+    const [full, brief] = await Promise.all([resolvePromptTemplate("activity_eval"), resolvePromptTemplate("activity_eval_brief")]);
+    const ctx = buildEvalContext(input, { full: full.body, brief: brief.body });
 
     // 컨텍스트를 프롬프트에 다 넣으므로 도구 호출을 요구하지 않는다 (minTurns 0 → 재시도 없음)
     resetSession(ACTIVITY_EVAL_CHANNEL);

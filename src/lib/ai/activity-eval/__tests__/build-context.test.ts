@@ -240,3 +240,27 @@ describe("buildEvalContext — 요약 모드 (러닝 외)", () => {
     expect(ctx.prompt).not.toContain("평균 페이스");
   });
 });
+
+// #552: 지시문이 DB 활성 버전 (템플릿) 으로 바뀌어도 데이터 섹션 조립은 그대로
+describe("buildEvalContext — 템플릿 (#552)", () => {
+  it("기본 템플릿 출력은 #552 이전 하드코딩 지시문과 같다", () => {
+    const ctx = buildEvalContext(fullInput());
+    const titles = ctx.sections.map((s) => s.title).join(" · ");
+    expect(ctx.prompt.startsWith("아래는 서버가 DB 에서 조립한 이 러닝 활동의 전체 지표입니다.")).toBe(true);
+    expect(ctx.prompt).toContain(`\n\n## 기본 지표\n- `);
+    expect(ctx.prompt).toContain(`- 다음 제목을 이 순서대로 \`### 제목\` 헤딩으로 쓰고 각 1~2문장으로 평가: ${titles}\n- 위 목록에 없는 제목은 만들지 마세요.`);
+  });
+
+  it("넘겨받은 템플릿에 섹션 · 제목을 채운다 — 섹션 안의 {{…}} 는 다시 치환하지 않는다", () => {
+    const input = fullInput();
+    const named = { ...input, activity: { ...input.activity, name: "{{sections}} 러닝" } };
+    const ctx = buildEvalContext(named, { full: "평가:\n{{sections}}\n제목: {{sectionTitles}}", brief: "{{sections}}" });
+    expect(ctx.prompt.startsWith("평가:\n## 기본 지표")).toBe(true);
+    expect(ctx.prompt).toContain(`제목: ${ctx.sections.map((s) => s.title).join(" · ")}`);
+  });
+
+  it("치환할 수 없는 템플릿이면 코드 기본값으로 — 평가가 멈추지 않는다", () => {
+    const ctx = buildEvalContext(fullInput(), { full: "{{unknown}}", brief: "{{sections}}" });
+    expect(ctx.prompt.startsWith("아래는 서버가 DB 에서 조립한")).toBe(true);
+  });
+});

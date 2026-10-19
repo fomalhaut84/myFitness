@@ -240,10 +240,12 @@ check("`.max(365)` / `Math.min(365` 리터럴 0건", offenders.length === 0, off
 // --- 7. Codex 2회차 P1: 새 MCP 도구가 어드바이저 allowlist 에 없으면 -p 비대화형에서 호출 불가
 console.log("\n[7] server.ts 등록 도구 ⊆ claude-advisor allowlist");
 const serverSrc = readFileSync(join(__dirname, "..", "src", "mcp", "server.ts"), "utf8");
-const advisorSrc = readFileSync(join(__dirname, "..", "src", "lib", "ai", "claude-advisor.ts"), "utf8");
+// #552: allowlist 는 advisor-tools.ts 상수로 분리 (claude-advisor.ts 는 그걸 join 한다)
+const advisorSrc = readFileSync(join(__dirname, "..", "src", "lib", "ai", "advisor-tools.ts"), "utf8");
 const registered = [...serverSrc.matchAll(/server\.tool\(\s*"([a-z_]+)"/g)].map((m) => m[1]);
-const allowed = new Set([...advisorSrc.matchAll(/mcp__myfitness__([a-z_]+)/g)].map((m) => m[1]));
-const MUTATING = new Set(["generate_training_plan"]); // 의도적으로 allowlist 제외 (claude-advisor.ts 주석)
+const allowedBlock = advisorSrc.slice(advisorSrc.indexOf("export const ADVISOR_ALLOWED_TOOLS"), advisorSrc.indexOf("];", advisorSrc.indexOf("export const ADVISOR_ALLOWED_TOOLS")));
+const allowed = new Set([...allowedBlock.matchAll(/mcp__myfitness__([a-z_]+)/g)].map((m) => m[1]));
+const MUTATING = new Set(["generate_training_plan"]); // 의도적으로 allowlist 제외 (advisor-tools.ts ADVISOR_EXCLUDED_TOOLS)
 const missing = registered.filter((t) => !MUTATING.has(t) && !allowed.has(t));
 check(`등록 도구 ${registered.length}개 파싱됨 (get_data_coverage 포함)`, registered.length >= 22 && registered.includes("get_data_coverage"));
 check("read-only 도구 전부 allowlist 에 있음", missing.length === 0, missing);
