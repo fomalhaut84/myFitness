@@ -5,9 +5,6 @@ export const GHOST = "rounded-lg px-2 py-1.5 text-[13px] text-sub hover:text-bri
 /** 시안의 AI 제안 색 (보라) */
 export const AI_BTN = "rounded-lg border border-violet-500/40 bg-violet-500/10 px-3 py-1.5 text-[13px] text-violet-300 hover:border-violet-400 disabled:cursor-not-allowed disabled:opacity-45";
 
-/** 두 기능 모두 버튼을 눌렀을 때만 실행 — 버튼 옆 안내 (T5) */
-export const QUOTA_TEXT = "CLI 쿼터 사용 · 최대 3분";
-
 export function Spinner() {
   return <span aria-hidden className="inline-block h-3.5 w-3.5 animate-spin rounded-full border-2 border-border-hover border-t-violet-300 motion-reduce:animate-none" />;
 }

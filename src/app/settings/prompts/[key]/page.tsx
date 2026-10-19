@@ -9,6 +9,7 @@ import { RESULTS_DEFAULT_LIMIT } from "@/lib/prompts/results-query";
 import { listVersions } from "@/lib/prompts/versions";
 import { listRuns } from "@/lib/prompts/runs";
 import prisma from "@/lib/prisma";
+import { ASK_ADVISOR_TIMEOUT_MS, getAskAdvisorMaxTotalBudgetMs } from "@/lib/ai/claude-advisor";
 import type { TrialActivity } from "@/components/prompts/TrialPanel";
 
 export const dynamic = "force-dynamic";
@@ -66,7 +67,15 @@ export default async function PromptDetailPage({ params, searchParams }: Props) 
       {tab === "results" ? (
         <ResultsTab promptKey={key} versions={versions} initialResults={results} />
       ) : (
-        <PromptDetailClient promptKey={key} versions={versions} resultCounts={counts} runs={runs} activities={activities} />
+        <PromptDetailClient
+          promptKey={key}
+          versions={versions}
+          resultCounts={counts}
+          runs={runs}
+          activities={activities}
+          // #562: 리포트 시험은 재시도 포함 상한 · 운동 평가는 1회
+          trialLimits={{ reportMs: getAskAdvisorMaxTotalBudgetMs(), activityMs: ASK_ADVISOR_TIMEOUT_MS }}
+        />
       )}
     </div>
   );

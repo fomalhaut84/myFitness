@@ -1,6 +1,6 @@
 // #552 M19-3 T3: 시험 대상 판정 · 활동 종류 불일치 · 저장 기록 복원 · 끊긴 실행 기준
 import { describe, expect, it } from "vitest";
-import { RUN_STALE_MARGIN_MS, activityMismatchError, resolveTrialTarget, staleCutoff, trialTargetOf } from "../run-plan";
+import { RUN_STALE_MARGIN_MS, activityMismatchError, quotaText, trialMaxMs, resolveTrialTarget, staleCutoff, trialTargetOf } from "../run-plan";
 
 describe("resolveTrialTarget", () => {
   it("리포트 키는 자기 리포트 — 요청의 target 은 무시", () => {
@@ -58,5 +58,17 @@ describe("staleCutoff", () => {
     const now = new Date("2026-10-19T12:00:00Z");
     const eighteenMin = 18 * 60_000; // 180초 × (1 + 재시도 5)
     expect(staleCutoff(eighteenMin, now).getTime()).toBe(now.getTime() - eighteenMin - RUN_STALE_MARGIN_MS);
+  });
+});
+
+// 회귀: #562 (릴리즈 PR #561 Codex P2) — 리포트 시험은 재시도로 3분을 넘을 수 있다
+describe("시험 실행 상한 안내", () => {
+  const limits = { reportMs: 540_000, activityMs: 180_000 };
+  it("리포트는 재시도 포함 상한 · 운동 평가는 1회", () => {
+    expect(quotaText(trialMaxMs("report", limits))).toBe("CLI 쿼터 사용 · 최대 9분");
+    expect(quotaText(trialMaxMs("activity", limits))).toBe("CLI 쿼터 사용 · 최대 3분");
+  });
+  it("분 단위 올림", () => {
+    expect(quotaText(61_000)).toBe("CLI 쿼터 사용 · 최대 2분");
   });
 });
