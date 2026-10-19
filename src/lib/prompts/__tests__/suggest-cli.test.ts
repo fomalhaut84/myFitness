@@ -65,4 +65,11 @@ describe("cliFailureMessage", () => {
     expect(cliFailureMessage("boom", 1)).toBe("Claude CLI 가 실패했습니다 (code 1)");
     expect(cliFailureMessage(JSON.stringify({ subtype: "error", api_error_status: 529 }), 1)).toContain("api_status=529");
   });
+
+  it("형식이 다른 permission_denials 에도 throw 하지 않는다 · 종료 코드 0 의 is_error 는 '오류'", () => {
+    expect(() => cliFailureMessage(JSON.stringify({ subtype: "x", permission_denials: [null, 3, { tool_name: "t" }] }), 1)).not.toThrow();
+    expect(cliFailureMessage(JSON.stringify({ subtype: "x", permission_denials: "nope" }), 1)).toContain("subtype=x");
+    expect(cliFailureMessage(JSON.stringify({ subtype: "x", permission_denials: [null, { tool_name: "t" }] }), 1)).toContain("거부된 도구=t");
+    expect(cliFailureMessage(JSON.stringify({ subtype: "error_max_turns", is_error: true }), 0)).toMatch(/^Claude CLI 오류 \(code 0/);
+  });
 });

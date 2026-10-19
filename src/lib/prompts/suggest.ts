@@ -18,7 +18,7 @@ interface CliResult {
   subtype?: string;
   errors?: unknown;
   api_error_status?: number | null;
-  permission_denials?: Array<{ tool_name?: string }>;
+  permission_denials?: unknown;
 }
 
 /**
@@ -26,20 +26,26 @@ interface CliResult {
  * 진단 필드만 담는다 — result (응답 본문 · 건강 데이터일 수 있음) 는 넣지 않는다
  */
 export function cliFailureMessage(stdout: string, code: number | null): string {
+  const head = code === 0 ? "Claude CLI 오류" : "Claude CLI 가 실패했습니다";
   let parsed: CliResult | null = null;
   try {
     parsed = JSON.parse(stdout) as CliResult;
   } catch {
     // JSON 아님 — 종료 코드만
   }
-  if (!parsed || typeof parsed !== "object") return `Claude CLI 가 실패했습니다 (code ${code})`;
-  const denied = (parsed.permission_denials ?? []).map((d) => d.tool_name).filter((n): n is string => typeof n === "string");
+  if (!parsed || typeof parsed !== "object") return `${head} (code ${code})`;
+  // 외부 입력 — 형식이 달라도 close 핸들러에서 throw 하지 않게 (사전 리뷰 info 2)
+  const denied = Array.isArray(parsed.permission_denials)
+    ? parsed.permission_denials
+        .map((d: unknown) => (d && typeof d === "object" ? (d as { tool_name?: unknown }).tool_name : undefined))
+        .filter((n): n is string => typeof n === "string")
+    : [];
   const errors = Array.isArray(parsed.errors) ? parsed.errors.filter((e): e is string => typeof e === "string") : [];
   const parts = [`subtype=${parsed.subtype ?? "unknown"}`];
   if (typeof parsed.api_error_status === "number") parts.push(`api_status=${parsed.api_error_status}`);
   if (denied.length > 0) parts.push(`거부된 도구=${denied.join(",")}`);
   if (errors.length > 0) parts.push(`errors=${errors.join(" ; ")}`);
-  return `Claude CLI 가 실패했습니다 (code ${code} · ${parts.join(" · ")})`;
+  return `${head} (code ${code} · ${parts.join(" · ")})`;
 }
 
 export interface SuggestCliOptions {
