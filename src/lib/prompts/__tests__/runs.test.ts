@@ -7,7 +7,7 @@ const db = vi.hoisted(() => ({
 vi.mock("@/lib/prisma", () => ({ default: db }));
 vi.mock("@/lib/ai/claude-advisor", () => ({ getAskAdvisorMaxTotalBudgetMs: () => 540_000 }));
 
-import { startRun } from "../runs";
+import { startRun, sweepRunsOnBoot } from "../runs";
 import { PromptActionError } from "../versions";
 
 /** 백그라운드 완료 (finishRun) 의 기록 — 첫 updateMany 는 시작 전 오래된 실행 정리 */
@@ -66,5 +66,19 @@ describe("startRun", () => {
     });
     await startRun({ kind: "suggest", versionId: "v1" }, async () => "ok");
     await vi.waitFor(() => expect(finishCalls()).toHaveLength(2));
+  });
+});
+
+// 회귀: PR #560 Codex P2 — 부팅 정리는 이 프로세스 시작 전 실행만 (새 워커가 정리 전에 받은 실행을 끊지 않게)
+describe("sweepRunsOnBoot", () => {
+  it("bootedAt 이전에 시작된 running 만 failed", async () => {
+    const bootedAt = new Date("2026-10-19T06:00:00Z");
+    await sweepRunsOnBoot(bootedAt);
+    expect(db.promptRun.updateMany).toHaveBeenCalledWith({ where: { status: "running", startedAt: { lt: bootedAt } }, data: expect.objectContaining({ status: "failed" }) });
+  });
+
+  it("새 실행은 앱 시계로 startedAt 을 넣는다 (부팅 시각과 같은 시계로 비교)", async () => {
+    await startRun({ kind: "suggest", versionId: "v1" }, async () => "ok");
+    expect(db.promptRun.create.mock.calls[0][0].data.startedAt).toBeInstanceOf(Date);
   });
 });

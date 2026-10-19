@@ -62,8 +62,9 @@ export default function TrialPanel({ promptKey, version, activities, runs, onClo
   const [error, setError] = useState<string | null>(null);
   const { run, actual, error: pollError, pending, track } = useRunPoll(runs[0] ?? null);
 
-  // 이번에 실행한 시험이 끝나면 서버 목록 (시험 기록) 을 다시 받는다 — 처음 받은 기록으로는 새로고침하지 않는다
-  const initialId = useRef(runs[0]?.id ?? null);
+  // 시험이 끝나면 서버 목록 (시험 기록) 을 다시 받는다 — 처음부터 끝나 있던 기록으로는 새로고침하지 않는다.
+  // 열 때 실행 중이던 기록은 끝났을 때 새로고침해야 목록의 "실행 중" 이 바뀐다 (PR #560 Codex P2)
+  const initialId = useRef(runs[0] && runs[0].status !== "running" ? runs[0].id : null);
   const settledId = run && run.status !== "running" ? run.id : null;
   useEffect(() => {
     if (settledId && settledId !== initialId.current) router.refresh();

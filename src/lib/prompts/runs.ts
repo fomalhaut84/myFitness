@@ -75,9 +75,13 @@ async function failStaleRuns(): Promise<void> {
   });
 }
 
-export async function sweepRunsOnBoot(): Promise<void> {
+/**
+ * 부팅 정리 — 이 프로세스가 뜨기 전에 시작된 running 만. pm2 startOrReload 로 새 워커가 정리 전에 요청을 받으면
+ * 방금 시작한 실행까지 failed 로 바꿔 결과를 잃는다 (PR #560 Codex P2). startedAt 은 startRun 이 앱 시계로 넣는다
+ */
+export async function sweepRunsOnBoot(bootedAt: Date): Promise<void> {
   const { count } = await prisma.promptRun.updateMany({
-    where: { status: "running" },
+    where: { status: "running", startedAt: { lt: bootedAt } },
     data: { status: "failed", errorMessage: "서버 재시작으로 중단됐습니다", completedAt: new Date() },
   });
   if (count > 0) console.warn(`[prompt-run] 재시작으로 끊긴 실행 ${count}건을 실패로 정리`);
@@ -95,7 +99,7 @@ export async function startRun(
   let run: { id: string };
   try {
     run = await prisma.promptRun.create({
-      data: { kind: data.kind, versionId: data.versionId, targetKind: data.targetKind ?? null, targetRef: data.targetRef ?? null, status: "running" },
+      data: { kind: data.kind, versionId: data.versionId, targetKind: data.targetKind ?? null, targetRef: data.targetRef ?? null, status: "running", startedAt: new Date() },
       select: { id: true },
     });
   } catch (error) {
