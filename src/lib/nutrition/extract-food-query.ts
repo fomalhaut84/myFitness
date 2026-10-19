@@ -3,6 +3,7 @@
 // - 결과 items 를 caller (MFDS estimator) 가 각각 API 조회 → scale.
 
 import { spawn } from "child_process";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const DEFAULT_TIMEOUT_MS = 18_000;
@@ -151,6 +152,8 @@ export async function extractFoodQuery(
     "1",
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   return new Promise<FoodQueryItem[] | null>((resolve) => {

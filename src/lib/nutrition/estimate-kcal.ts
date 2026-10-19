@@ -4,6 +4,7 @@
 // - 프롬프트: 한국 음식 · 1인분 기준 · JSON 응답 강제. 이상값 (음수 / 5000 kcal 초과) reject.
 
 import { spawn } from "child_process";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 const DEFAULT_TIMEOUT_MS = 15_000;
@@ -183,6 +184,8 @@ export async function estimateKcalFromText(
     // MCP 도구 필요 없음. --tools "" 로 built-in 도 차단.
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   return new Promise<KcalEstimate | null>((resolve) => {

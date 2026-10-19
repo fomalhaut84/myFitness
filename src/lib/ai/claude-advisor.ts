@@ -5,6 +5,7 @@ import { buildStaticSystemPrompt, buildDynamicContext } from "./system-prompt";
 import { resolvePromptTemplate } from "@/lib/prompts/resolve";
 import { ADVISOR_ALLOWED_TOOLS } from "./advisor-tools";
 import * as SessionStore from "./session-store";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "./cli-isolation";
 
 const RUNTIME_CONFIG_DIR = path.resolve(process.cwd(), ".runtime");
 const RUNTIME_MCP_CONFIG = path.resolve(RUNTIME_CONFIG_DIR, "mcp-config.json");
@@ -296,6 +297,8 @@ async function askAdvisorOnce(
     // --tools "" 로 근본 차단하고 mcp__myfitness__* 만 allowedTools 로 남겨 승인 없이 실행되게 함.
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   // 기존 세션이 있으면 --resume (CLI가 세션의 기존 system 유지).

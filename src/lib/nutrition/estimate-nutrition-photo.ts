@@ -6,6 +6,7 @@
 
 import { spawn } from "child_process";
 import { parseNutritionResponse, type NutritionEstimate } from "./estimate-nutrition";
+import { CLAUDE_CLI_ISOLATION_ARGS } from "@/lib/ai/cli-isolation";
 
 const CLAUDE_BIN = process.env.CLAUDE_BIN || "claude";
 // Vision 은 텍스트 estimator (18s) 보다 느림. 45s 여유 마진.
@@ -106,6 +107,8 @@ export async function estimateNutritionFromPhoto(
     "1",
     "--tools",
     "",
+    // #563: claude.ai 커넥터 등 넘기지 않은 MCP 차단
+    ...CLAUDE_CLI_ISOLATION_ARGS,
   ];
 
   return new Promise<NutritionEstimate | null>((resolve) => {
