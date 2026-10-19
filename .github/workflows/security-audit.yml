@@ -10,6 +10,9 @@ on:
     paths:
       - 'package.json'
       - 'package-lock.json'
+      # 감사 런타임 (Node · npm) 이 .nvmrc 를 따른다 — 버전 · 워크플로우 변경도 바로 감사 (PR #557 Codex P2)
+      - '.nvmrc'
+      - '.github/workflows/security-audit.yml'
 
 jobs:
   audit:
