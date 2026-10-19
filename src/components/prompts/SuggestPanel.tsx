@@ -5,11 +5,12 @@ import { useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROMPT_NOTE_MAX_LENGTH, type PromptKey } from "@/lib/prompts/definitions";
 import type { PromptRunDTO } from "@/lib/prompts/runs";
-import { suggestionNote } from "@/lib/prompts/suggest-prompt";
+import { quotaText } from "@/lib/prompts/run-plan";
+import { SUGGEST_TIMEOUT_MS, suggestionNote } from "@/lib/prompts/suggest-prompt";
 import { removedToolMentions } from "@/lib/prompts/validate";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import DiffView, { DiffStatsText } from "./DiffView";
-import { AI_BTN, GHOST, PRIMARY, QUOTA_TEXT, Spinner, postJson } from "./run-ui";
+import { AI_BTN, GHOST, PRIMARY, Spinner, postJson } from "./run-ui";
 import useRunPoll from "./useRunPoll";
 
 interface Props {
@@ -81,7 +82,7 @@ export default function SuggestPanel({ promptKey, versions, initialRun }: Props)
         <button type="button" className={AI_BTN} disabled={busy || pending || !active} onClick={start}>
           AI 개선안 받기
         </button>
-        <span className="text-[11px] text-dim">{QUOTA_TEXT} · 사용 중 버전과 최근 결과 5건을 봅니다</span>
+        <span className="text-[11px] text-dim">{quotaText(SUGGEST_TIMEOUT_MS)} · 사용 중 버전과 최근 결과 5건을 봅니다</span>
       </div>
       {message && (
         <p role="status" className={`rounded-lg px-3 py-2 text-xs ${message.kind === "ok" ? "bg-[rgba(34,197,94,0.12)] text-accent" : "bg-red-950/60 text-red-300"}`}>

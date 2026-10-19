@@ -5,6 +5,7 @@ import { useMemo, useState } from "react";
 import { useRouter } from "next/navigation";
 import { PROMPT_DEFINITIONS, PROMPT_NOTE_MAX_LENGTH, type PromptKey } from "@/lib/prompts/definitions";
 import { isRemovedToolsAcknowledged, removedToolMentions, removedToolsKey, removedToolsMessage, toolMentions, validatePrompt } from "@/lib/prompts/validate";
+import type { TrialLimits } from "@/lib/prompts/run-plan";
 import type { PromptRunDTO } from "@/lib/prompts/runs";
 import type { PromptVersionDTO } from "@/lib/prompts/versions";
 import DiffView, { DiffStatsText } from "./DiffView";
@@ -38,6 +39,8 @@ interface Props {
   runs: readonly PromptRunDTO[];
   /** M19-3 T4: 시험 대상 후보 (최근 활동) */
   activities: readonly TrialActivity[];
+  /** #562: 시험 실행 상한 안내 */
+  trialLimits: TrialLimits;
 }
 
 async function postJson(url: string, body?: unknown): Promise<{ ok: boolean; data: Record<string, unknown> }> {
@@ -63,7 +66,7 @@ function errorText(data: Record<string, unknown>, fallback: string): string {
   return typeof data.error === "string" ? data.error : fallback;
 }
 
-export default function PromptDetailClient({ promptKey, versions, resultCounts, runs, activities }: Props) {
+export default function PromptDetailClient({ promptKey, versions, resultCounts, runs, activities, trialLimits }: Props) {
   const router = useRouter();
   const active = versions.find((v) => v.status === "active") ?? null;
   const baseBody = active?.body ?? PROMPT_DEFINITIONS[promptKey].defaultBody;
@@ -232,6 +235,7 @@ export default function PromptDetailClient({ promptKey, versions, resultCounts, 
             version={trialVersion}
             activities={activities}
             runs={runs.filter((r) => r.kind === "trial" && r.versionId === trialVersion.id)}
+            limits={trialLimits}
             onClose={() => setTrialId(null)}
           />
         ) : compared.length === 2 ? (
