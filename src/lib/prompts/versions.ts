@@ -2,7 +2,7 @@
 // 저장 · 활성화 · 되돌리기 모두 validatePrompt 를 다시 통과해야 한다 (R3).
 import prisma from "@/lib/prisma";
 import { PROMPT_DEFINITIONS, PROMPT_KEYS, type PromptKey } from "./definitions";
-import type { PromptSource, PromptStatus } from "./sync-plan";
+import { type PromptSource, type PromptStatus } from "./sync-plan";
 import { validatePrompt, type PromptIssue } from "./validate";
 
 export interface PromptVersionDTO {
@@ -38,6 +38,7 @@ export class PromptActionError extends Error {
 
 interface VersionRow {
   id: string;
+  codeHash: string | null;
   key: string;
   version: number;
   body: string;
@@ -70,7 +71,8 @@ export function summarize(key: PromptKey, rows: readonly Pick<VersionRow, "versi
     key,
     active: active ? { version: active.version, source: active.source as PromptSource, activatedAt: active.activatedAt?.toISOString() ?? null } : null,
     draftCount: drafts.length,
-    pendingCodeDefault: active !== null && active.source !== "code_default" && drafts.some((d) => d.source === "code_default" && d.version > active.version),
+    // 사용 중보다 새 코드 기본값 초안은 사용 중이 웹 수정본일 때만 생긴다 (R2). 그 뒤 다른 버전을 활성화하면 경고는 사라지고 초안은 이력에 남는다
+    pendingCodeDefault: active !== null && drafts.some((d) => d.source === "code_default" && d.version > active.version),
   };
 }
 
@@ -107,6 +109,8 @@ interface InsertInput {
   source: Exclude<PromptSource, "code_default">;
   basedOnId: string | null;
   activate: boolean;
+  /** 코드 기본값을 되돌릴 때만 — 이후 코드 기본값 갱신이 자동 적용되게 (isStockDefault) */
+  codeHash?: string | null;
 }
 
 /** 다음 번호로 새 버전 — activate 면 같은 트랜잭션에서 이전 사용 중을 보관으로 */
@@ -127,6 +131,7 @@ async function insertVersion(input: InsertInput): Promise<{ id: string; version:
           status: input.activate ? "active" : "draft",
           source: input.source,
           basedOnId: input.basedOnId,
+          codeHash: input.codeHash ?? null,
           activatedAt: input.activate ? new Date() : null,
         },
         select: { id: true, version: true },
@@ -175,6 +180,6 @@ export async function restoreVersion(id: string): Promise<{ id: string; version:
   const row = await findVersion(id);
   if (row.status !== "archived") throw new PromptActionError(409, "보관된 버전만 되돌릴 수 있습니다 (초안은 활성화)");
   assertValid(row.key, row.body);
-  return insertVersion({ key: row.key, body: row.body, note: `v${row.version} 로 되돌림`, source: "restore", basedOnId: row.id, activate: true });
+  return insertVersion({ key: row.key, body: row.body, note: `v${row.version} 로 되돌림`, source: "restore", basedOnId: row.id, activate: true, codeHash: row.source === "code_default" ? row.codeHash : null });
 }
 

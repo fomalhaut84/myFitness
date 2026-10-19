@@ -47,11 +47,14 @@ interface Props {
 export default function PromptEditor({ promptKey, value, onChange, jumpTo }: Props) {
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [scroll, setScroll] = useState({ top: 0, left: 0 });
+  const handledSeq = useRef<number | null>(jumpTo?.seq ?? null);
   const lines = value.split("\n");
 
+  // 한 요청은 한 번만 — 비교를 닫고 다시 마운트될 때 옛 요청으로 포커스를 뺏지 않게 (사전 리뷰 info 3)
   useEffect(() => {
     const el = textareaRef.current;
-    if (!jumpTo || !el) return;
+    if (!jumpTo || !el || handledSeq.current === jumpTo.seq) return;
+    handledSeq.current = jumpTo.seq;
     const offset = el.value
       .split("\n")
       .slice(0, Math.max(0, jumpTo.line - 1))

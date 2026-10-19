@@ -66,7 +66,7 @@ export default function VersionRail({ versions, compareIds, busy, onToggleCompar
                   <span className="font-mono text-[11px] text-dim">{formatPromptDateTime(v.createdAt)}</span>
                   <span className="mt-0.5 flex flex-wrap items-center gap-1">
                     <label className="mr-1 inline-flex cursor-pointer items-center gap-1 text-[11px] text-sub">
-                      <input type="checkbox" checked={checked} onChange={() => onToggleCompare(v.id)} className="accent-[var(--accent)]" />
+                      <input type="checkbox" checked={checked} onChange={() => onToggleCompare(v.id)} aria-label={`v${v.version} 비교`} className="accent-[var(--accent)]" />
                       비교
                     </label>
                     {v.status === "draft" && (

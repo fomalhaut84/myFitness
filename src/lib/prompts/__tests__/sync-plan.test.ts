@@ -36,6 +36,17 @@ describe("planDefaultsSync", () => {
     expect(planDefaultsSync(rows, "h2")).toEqual({ kind: "none" });
   });
 
+  // 사전 리뷰 info 5: 최신 기본값으로 되돌린 건 "기본값 그대로" — 다음 갱신도 자동 적용
+  it("최신 코드 기본값을 되돌린 버전 (codeHash 승계) 을 쓰는 중이면 새 기본값을 바로 사용", () => {
+    const rows = [row({ version: 1 }), row({ version: 2, source: "manual", codeHash: null }), row({ version: 3, status: "active", source: "restore", codeHash: "h1" })];
+    expect(planDefaultsSync(rows, "h2")).toEqual({ kind: "insert", version: 4, status: "active", archiveId: "v3" });
+  });
+
+  it("더 옛 코드 기본값으로 되돌린 건 사용자가 고른 문구 — 새 기본값은 초안", () => {
+    const rows = [row({ version: 1, codeHash: "h0" }), row({ version: 2, codeHash: "h1" }), row({ version: 3, status: "active", source: "restore", codeHash: "h0" })];
+    expect(planDefaultsSync(rows, "h2")).toEqual({ kind: "insert", version: 4, status: "draft", archiveId: null });
+  });
+
   it("사용 중이 없으면 새 기본값을 사용 중으로", () => {
     const rows = [row({ version: 1 })];
     expect(planDefaultsSync(rows, "h2")).toEqual({ kind: "insert", version: 2, status: "active", archiveId: null });

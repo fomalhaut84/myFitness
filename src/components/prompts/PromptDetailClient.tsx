@@ -64,16 +64,18 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
   const byId = (id: string | null) => versions.find((v) => v.id === id) ?? null;
   const reference = byId(referenceId);
   // R2: 웹에서 고친 버전을 쓰는 중에 들어온 더 새 코드 기본값 초안
-  const pendingDefault =
-    active && active.source !== "code_default"
-      ? (versions.find((v) => v.status === "draft" && v.source === "code_default" && v.version > active.version) ?? null)
-      : null;
+  const pendingDefault = active ? (versions.find((v) => v.status === "draft" && v.source === "code_default" && v.version > active.version) ?? null) : null;
   const compared = compareIds
     .map(byId)
     .filter((v): v is PromptVersionDTO => v !== null)
     .sort((a, b) => a.version - b.version);
 
-  async function run(action: () => Promise<{ ok: boolean; data: Record<string, unknown> }>, success: (data: Record<string, unknown>) => string, fallback: string) {
+  async function run(
+    action: () => Promise<{ ok: boolean; data: Record<string, unknown> }>,
+    success: (data: Record<string, unknown>) => string,
+    fallback: string,
+    onSuccess?: () => void,
+  ) {
     setBusy(true);
     setMessage(null);
     try {
@@ -83,6 +85,7 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
         return;
       }
       setMessage({ kind: "ok", text: success(data) });
+      onSuccess?.();
       router.refresh();
     } catch {
       setMessage({ kind: "error", text: `${fallback} — 네트워크 오류` });
@@ -94,9 +97,23 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
   function save(activate: boolean) {
     return run(
       () => postJson(`/api/prompts/${promptKey}/versions`, { body, note, basedOnId: active?.id ?? null, activate }),
-      (d) => (activate ? `v${d.version} 를 사용합니다` : `v${d.version} 초안을 저장했습니다`),
+      (d) => (activate ? `v${d.version} 를 사용합니다` : `v${d.version} 초안을 저장했습니다 — 오른쪽 버전 목록에서 활성화할 수 있습니다`),
       "저장하지 못했습니다",
+      // 사전 리뷰 info 1: 초안 저장 뒤 편집기를 사용 중 본문으로 — 같은 초안이 반복 저장되지 않게
+      () => {
+        setBody(baseBody);
+        setNote("");
+      },
     );
+  }
+
+  /** 사전 리뷰 info 2: 활성화 · 되돌리기는 사용 중 본문을 바꿔 편집 중인 내용을 덮는다 — 먼저 저장하거나 되돌리게 */
+  function switchVersion(action: () => Promise<{ ok: boolean; data: Record<string, unknown> }>, success: (data: Record<string, unknown>) => string, fallback: string) {
+    if (dirty) {
+      setMessage({ kind: "error", text: "편집 중인 변경이 있습니다. 초안으로 저장하거나 되돌린 뒤 다시 시도하세요" });
+      return;
+    }
+    return run(action, success, fallback);
   }
 
   function toggleCompare(id: string) {
@@ -150,7 +167,7 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
                 {compared
                   .filter((v) => v.status === "draft")
                   .map((v) => (
-                    <button key={v.id} type="button" className={PRIMARY} disabled={busy} onClick={() => run(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}>
+                    <button key={v.id} type="button" className={PRIMARY} disabled={busy} onClick={() => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}>
                       v{v.version} 활성화
                     </button>
                   ))}
@@ -228,8 +245,8 @@ export default function PromptDetailClient({ promptKey, versions }: Props) {
         compareIds={compareIds}
         busy={busy}
         onToggleCompare={toggleCompare}
-        onActivate={(v) => run(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}
-        onRestore={(v) => run(() => postJson(`/api/prompts/versions/${v.id}/restore`), (d) => `v${v.version} 를 v${d.version} 로 되돌렸습니다`, "되돌리지 못했습니다")}
+        onActivate={(v) => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/activate`), () => `v${v.version} 를 사용합니다`, "활성화하지 못했습니다")}
+        onRestore={(v) => switchVersion(() => postJson(`/api/prompts/versions/${v.id}/restore`), (d) => `v${v.version} 를 v${d.version} 로 되돌렸습니다`, "되돌리지 못했습니다")}
       />
     </div>
   );
