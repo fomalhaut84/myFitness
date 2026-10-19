@@ -75,3 +75,13 @@ export function requirementCounts(key: PromptKey): { snippets: number; variables
   const def = PROMPT_DEFINITIONS[key];
   return { snippets: def.requiredSnippets.length, variables: def.variables.length };
 }
+
+/** 편집기 강조용 — 이 키에서 쓸 수 있는 변수인가 */
+export function isKnownVariable(key: PromptKey, name: string): boolean {
+  return PROMPT_DEFINITIONS[key].variables.some((v) => v.name === name);
+}
+
+/** 편집기 강조용 — 경고 대상이 아닌 도구인가 (allowlist + 일부러 뺀 mutating) */
+export function isKnownTool(fullName: string): boolean {
+  return KNOWN_TOOLS.has(fullName);
+}
