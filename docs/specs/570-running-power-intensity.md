@@ -60,14 +60,14 @@
 
 **싱크 · 재계산 경로**
 - [ ] P1 `fetchers/activities.ts` — 프로필에서 `lthr` 와 함께 `intensityBasis` · `thresholdPower` 1회 조회 → 계산 → `intensityBasis` 컬럼 함께 저장
-- [ ] P2 `src/lib/fitness/recompute-intensity.ts` — 전체 활동을 현재 설정으로 재계산 (rawData 만 · 배치 update). 변경된 행 수 반환. `scripts/backfill-intensity.ts` 는 이 함수를 쓰도록 교체 (`--force` 의미 유지)
+- [ ] P2 `src/lib/fitness/recompute-intensity.ts` — 전체 활동을 현재 설정으로 재계산 (rawData 만 · 배치 update · 같은 프로세스 안 직렬화). 변경된 행 수 반환. `scripts/backfill-intensity.ts` 는 이 함수를 쓰도록 교체 — 바뀐 행만 갱신하므로 반복 실행해도 안전하고, 이전 `--force` 는 이 동작에 포함됐다 (구현 중 변경)
 - [ ] P3 `PATCH /api/profile` — `intensityBasis` (zod enum) · `thresholdPower` (50~1000 정수 · `null` 허용) · `revertToGarmin` enum 에 `thresholdPower` 추가 (`max(3)`). `intensityBasis` 가 실제로 바뀌면 같은 요청에서 P2 재계산 실행 · 응답에 `recomputed: N`. 재계산 실패는 설정 저장을 되돌리지 않고 `{ error }` 대신 `recomputeError` 로 알린다 (설정은 이미 저장 — 다음 싱크/수동 재계산으로 복구)
 - [ ] P4 동시성: 재계산 중 다른 재계산 요청 (설정 연타) 은 마지막 설정으로 다시 돈다 — 재계산은 실행 시점에 프로필을 다시 읽는다 (idempotent)
 
 **MCP · AI 컨텍스트**
 - [ ] M1 `get_user_profile` 에 `thresholdPower: { value, source, autoDetected, measuredAt } | null` · `powerZones: ZoneRange[] (W) | null` · `powerZoneSource: "garmin" | "calculated" | null` · `intensityBasis` 추가. Garmin 존은 `thresholdPowerSource = garmin` 이고 원본 FTP 가 현재 값과 같을 때만 (심박 존 규칙과 같다)
-- [ ] M2 `get_activities` — 활동별 `intensityBasis` · `avgPower` · `normPower` (있으면). `runningSummary` 에 기준 구성 (`basisCounts: { hr, power }`) — 80/20 해석 시 기준이 섞였는지 알 수 있게
-- [ ] M3 `get_activity_context` · 운동 평가 섹션 (`activity-eval/sections.ts` `intensityLines`) — "강도 기준: 파워 (역치 NNN W)" 줄 · 파워 기준이면 존 이름을 파워 존 이름으로
+- [ ] M2 `get_activities` — 활동별 `intensityBasis`. `runningSummary` 에 기준 구성 (`basisCounts: { hr, power }`) — 80/20 해석 시 기준이 섞였는지 알 수 있게. 활동별 파워 값 (`avgPower` · `normPower`) 은 `rawData` 에만 있어 목록 조회 전체가 원본 JSON 을 읽게 되므로 **제외** (구현 중 변경 — 활동 단위 파워는 `get_activity_context` 의 기존 파워 줄)
+- [ ] M3 `get_activity_context` · 운동 평가 섹션 (`activity-eval/sections.ts` `intensityLines`) — "강도 기준" 줄 · 파워 기준이면 존 이름을 파워 존 이름으로 (역치 W 값은 시스템 프롬프트 파워 존 표가 준다)
 - [ ] M4 `system-prompt.ts` 동적 프로필 섹션 — 강도 기준 줄 + 파워 존 표 (W) 를 심박 존 표 옆에. 기준이 `power`/`auto` 면 "강도 판단은 파워 기준 우선 · 심박은 참고" 문장. **프롬프트 버전 본문 (DB) 은 건드리지 않는다** — 동적 섹션은 코드가 붙이는 부분 (#552 §3)
 - [ ] M5 코드 기본값 프롬프트 (`prompts/defaults/*.ts`) 중 "개인 HR zone 으로 판단" 처럼 **심박을 유일 기준으로 못 박은 문구**만 "프로필의 강도 기준 (심박 또는 파워) 으로" 로 고친다. 고치면 R2 로 새 `code_default` 버전이 자동 추가된다 (웹 수정본이면 초안) — 변경 범위를 PR 에 명시
 
