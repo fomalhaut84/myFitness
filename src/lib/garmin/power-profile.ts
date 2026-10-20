@@ -90,8 +90,10 @@ export function planPowerSync(profile: PowerProfileState, input: PowerSyncInput)
       change = { oldValue: profile.thresholdPower, newValue: garminValue };
     }
     if (profile.thresholdPowerSource !== "garmin") updates.thresholdPowerSource = "garmin";
-    // 시각은 latest 값이 같은 FTP 를 가리킬 때만 (존 원본과 다른 시점 값이면 신뢰하지 않음)
+    // 시각은 latest 값이 같은 FTP 를 가리킬 때만 (존 원본과 다른 시점 값이면 신뢰하지 않음).
+    // 값이 바뀌었는데 맞는 시각이 없으면 비운다 — 새 FTP 에 이전 FTP 의 감지 시각이 붙지 않게 (PR #571 Codex P2)
     if (latest && latest.value === garminValue) updates.thresholdPowerMeasuredAt = latest.measuredAt;
+    else if (change) updates.thresholdPowerMeasuredAt = null;
     if (input.ftpAutoDetected !== undefined) updates.thresholdPowerAutoDetected = input.ftpAutoDetected;
   }
 

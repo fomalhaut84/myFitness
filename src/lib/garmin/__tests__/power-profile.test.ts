@@ -47,9 +47,17 @@ describe("planPowerSync", () => {
     expect(plan.warnings[0]).toContain("범위 밖");
   });
 
-  it("latest 가 다른 값이면 시각을 쓰지 않는다", () => {
-    const plan = planPowerSync(EMPTY, { powerZones: ZONES, latest: { ...LATEST, functionalThresholdPower: 290 }, ftpAutoDetected: undefined });
-    expect(plan.updates.thresholdPower).toBe(300);
+  // 회귀: PR #571 Codex P2 — 새 FTP 에 이전 FTP 의 감지 시각이 남았다
+  it("값이 바뀌었는데 latest 가 다른 값 · 실패면 시각을 비운다", () => {
+    const prev = { thresholdPower: 280, thresholdPowerSource: "garmin" };
+    const mismatch = planPowerSync(prev, { powerZones: ZONES, latest: { ...LATEST, functionalThresholdPower: 290 }, ftpAutoDetected: undefined });
+    expect(mismatch.updates.thresholdPower).toBe(300);
+    expect(mismatch.updates.thresholdPowerMeasuredAt).toBeNull();
+    expect(planPowerSync(prev, { powerZones: ZONES, latest: undefined, ftpAutoDetected: undefined }).updates.thresholdPowerMeasuredAt).toBeNull();
+  });
+
+  it("값이 그대로면 latest 가 달라도 기존 시각 유지", () => {
+    const plan = planPowerSync({ thresholdPower: 300, thresholdPowerSource: "garmin" }, { powerZones: ZONES, latest: undefined, ftpAutoDetected: undefined });
     expect(plan.updates.thresholdPowerMeasuredAt).toBeUndefined();
   });
 });
