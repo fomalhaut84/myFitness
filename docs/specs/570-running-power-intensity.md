@@ -33,6 +33,7 @@
 6. **역치파워 동기화는 LTHR 과 같은 패턴** — Garmin 자동 (`thresholdPowerSource = garmin`) · 수동 입력 (`manual`, 자동 싱크가 덮어쓰지 않음) · "Garmin 값으로 되돌리기". 변경은 `MetricChange` (`field = thresholdPower`) 이력.
 7. 수동 입력 시 존 경계는 Garmin 실측 비율 (65 · 80 · 90 · 100 · 115%) 로 계산한다. 경계 직접 편집은 제외 (§7).
 8. **강도 라벨 분류 규칙 (`classifyIntensity` 비율 임계) 은 기준과 무관하게 같다.** 보정 규칙만 기준별 — 심박: 평균 심박의 LTHR 존 ≥ 4 → `threshold` 이상 (현행). 파워: **정규화 파워 (`normPower`, 없으면 `avgPower`) ≥ 역치파워** (= 파워 Z4 이상) → `threshold` 이상. 임계 조정은 운영 관찰 뒤 별도 이슈.
+9. **파워 기준은 러닝 계열에만** — 역치파워 · 파워 존이 Garmin RUNNING 프로필이므로 사이클 등은 설정과 무관하게 심박 기준 (PR #571 Codex P2 · `effectiveBasisSetting`).
 
 ## 3. 요구사항
 

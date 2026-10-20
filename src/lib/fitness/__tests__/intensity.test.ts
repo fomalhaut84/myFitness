@@ -70,3 +70,18 @@ describe("parseIntensityBasisSetting", () => {
     expect(parseIntensityBasisSetting(null)).toBe("hr");
   });
 });
+
+// 회귀: PR #571 Codex P2 — 사이클 파워가 러닝 역치파워 기준으로 분류됐다
+describe("러닝이 아닌 활동은 심박 기준", () => {
+  const raw = { ...HR_EASY, ...POWER_THRESHOLD };
+
+  it("cycling 은 power · auto 설정이어도 심박", () => {
+    expect(computeIntensityFromRawData({ rawData: raw, basis: "power", activityType: "cycling" })?.basis).toBe("hr");
+    expect(computeIntensityFromRawData({ rawData: raw, basis: "auto", activityType: "indoor_cycling" })?.basis).toBe("hr");
+  });
+
+  it("러닝 계열 (trail_running · track_running) 은 설정대로", () => {
+    expect(computeIntensityFromRawData({ rawData: raw, basis: "power", activityType: "trail_running" })?.basis).toBe("power");
+    expect(computeIntensityFromRawData({ rawData: raw, basis: "auto", activityType: "track_running" })?.basis).toBe("power");
+  });
+});

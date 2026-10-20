@@ -38,6 +38,7 @@ async function runRecompute(): Promise<RecomputeResult> {
     const rows = await prisma.activity.findMany({
       select: {
         id: true,
+        activityType: true,
         avgHR: true,
         rawData: true,
         zoneDistribution: true,
@@ -62,6 +63,7 @@ async function runRecompute(): Promise<RecomputeResult> {
           lthr: profile?.lthr ?? null,
           basis,
           thresholdPower: profile?.thresholdPower ?? null,
+          activityType: row.activityType,
         })
       );
       return sameIntensityColumns(row, next) ? [] : [{ id: row.id, next }];

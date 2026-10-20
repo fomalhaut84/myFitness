@@ -3,6 +3,7 @@ import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import {
   computeIntensityFromRawData,
+  effectiveBasisSetting,
   parseIntensityBasisSetting,
   type IntensityBasisSetting,
 } from "@/lib/fitness/intensity";
@@ -113,6 +114,7 @@ export async function syncActivities(
         lthr,
         basis,
         thresholdPower,
+        activityType: data.activityType,
       });
       const columns = toIntensityColumns(intensity);
       const intensityDataCreate: Record<string, unknown> = {
@@ -123,7 +125,9 @@ export async function syncActivities(
             : (columns.zoneDistribution as unknown as Prisma.InputJsonValue),
       };
       const intensityData: Record<string, unknown> =
-        intensity || shouldClearOnMissing(basis) ? intensityDataCreate : {};
+        intensity || shouldClearOnMissing(effectiveBasisSetting(basis, data.activityType))
+          ? intensityDataCreate
+          : {};
 
       const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },

@@ -16,6 +16,7 @@
 
 import { calculateHRZone } from "./zones";
 import { calculatePowerZone } from "./power-zones";
+import { isRunningType } from "@/lib/activity/running-types";
 
 export type HRZone = 1 | 2 | 3 | 4 | 5;
 export type IntensityLabel =
@@ -234,9 +235,22 @@ export interface BasisIntensity extends IntensityClassification {
 }
 
 /**
+ * 이 활동에 적용할 기준. 역치파워 · 파워 존은 Garmin RUNNING 프로필이라 러닝 계열에만 —
+ * 사이클 등은 설정과 무관하게 심박 (PR #571 Codex P2: 자전거 파워를 러닝 역치와 비교하지 않게).
+ * 종류를 모르는 호출 (activityType 생략) 은 설정 그대로.
+ */
+export function effectiveBasisSetting(
+  setting: IntensityBasisSetting,
+  activityType: string | null | undefined
+): IntensityBasisSetting {
+  if (activityType === undefined || activityType === null) return setting;
+  return isRunningType(activityType) ? setting : "hr";
+}
+
+/**
  * Activity.rawData로부터 전체 분류 결과 산출.
  * 기준(#570): hr = 심박 존 · power = 파워 존 (없으면 null — 심박으로 대체하지 않음) · auto = 파워 있으면 파워, 없으면 심박.
- * 분포 데이터 없으면 null.
+ * 러닝이 아닌 활동은 심박 (effectiveBasisSetting). 분포 데이터 없으면 null.
  */
 export function computeIntensityFromRawData(args: {
   rawData: Record<string, unknown> | null | undefined;
@@ -244,8 +258,9 @@ export function computeIntensityFromRawData(args: {
   lthr?: number | null;
   basis?: IntensityBasisSetting;
   thresholdPower?: number | null;
+  activityType?: string | null;
 }): BasisIntensity | null {
-  const setting = args.basis ?? "hr";
+  const setting = effectiveBasisSetting(args.basis ?? "hr", args.activityType);
   if (setting !== "hr" && args.rawData) {
     const powerDist = extractPowerZoneDistribution(args.rawData);
     if (powerDist) {
