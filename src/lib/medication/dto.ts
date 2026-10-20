@@ -16,6 +16,8 @@ export interface MedicationDto {
   prescriber: string | null;
   note: string | null;
   relatedItems: string[];
+  /** #570: 심박 반응에 영향 (강도 기준 "자동" 판단 근거) */
+  affectsHeartRate: boolean;
 }
 
 /** DB 행 → DTO (앱 · MCP 공용 — MCP 는 자기 prisma 를 쓰므로 조회는 따로, 매핑은 여기 하나) */
@@ -33,6 +35,7 @@ export function toMedicationDto(r: {
   prescriber: string | null;
   note: string | null;
   relatedItems: string[];
+  affectsHeartRate: boolean;
 }): MedicationDto {
   return {
     id: r.id,
@@ -48,6 +51,7 @@ export function toMedicationDto(r: {
     prescriber: r.prescriber,
     note: r.note,
     relatedItems: r.relatedItems,
+    affectsHeartRate: r.affectsHeartRate,
   };
 }
 

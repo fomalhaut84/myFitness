@@ -76,6 +76,7 @@ const med = (over: Partial<MedicationDto>): MedicationDto => ({
   prescriber: null,
   note: null,
   relatedItems: [],
+  affectsHeartRate: false,
   ...over,
 });
 
@@ -168,5 +169,14 @@ describe("endTodayDecision", () => {
     const { restartFrom } = await import("../form-model");
     const r = restartFrom(med({ regimen: "short_term", startDate: "2030-01-01", endDate: "2031-06-01" }), TODAY);
     expect([r.endMode, r.endDate]).toEqual(["date", ""]);
+  });
+});
+
+// #570: 심박 영향 표시는 수정 폼을 왕복해도 유지 (zod 기본 false 라 폼이 빠뜨리면 저장이 지운다)
+describe("affectsHeartRate 폼 왕복", () => {
+  it("DTO → 폼 → 입력에서 그대로", async () => {
+    const { medFormFromDto, medFormToInput, restartFrom } = await import("../form-model");
+    expect(medFormToInput(medFormFromDto(med({ affectsHeartRate: true }))).affectsHeartRate).toBe(true);
+    expect(restartFrom(med({ affectsHeartRate: true }), TODAY).affectsHeartRate).toBe(true);
   });
 });

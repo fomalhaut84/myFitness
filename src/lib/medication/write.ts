@@ -19,6 +19,7 @@ function data(input: MedicationInput) {
     prescriber: input.prescriber ?? null,
     note: input.note ?? null,
     relatedItems: input.relatedItems,
+    affectsHeartRate: input.affectsHeartRate,
   };
 }
 
