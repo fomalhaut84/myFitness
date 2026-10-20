@@ -132,3 +132,9 @@ export function resolveProfilePowerZones(profile: {
   }
   return { thresholdPower: ftp, zones: getPowerZoneRanges(ftp), source: "calculated" };
 }
+
+/**
+ * 화면 색 — 번호가 아니라 의미로. 파워 존은 심박 존보다 한 칸 위라 파워 Z1 (이지) = 심박 Z2 녹색 · Z3 (역치) = 심박 Z4 주황.
+ * 심박 · 파워 막대를 나란히 놓으면 같은 색 = 같은 강도 (시안 `docs/designs/570-running-power-intensity`).
+ */
+export const POWER_ZONE_COLORS = ["#22c55e", "#60a5fa", "#f59e0b", "#ef4444", "#b91c1c"] as const;
