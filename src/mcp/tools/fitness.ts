@@ -18,6 +18,8 @@ import { splitMuscleMass } from "@/lib/data-source";
 import { sleepRegularity } from "@/lib/sleep/regularity";
 // #444: 러닝 창 요약 (존 80/20 · 2분 HRR 중앙값) — 주간 리포트가 이번 주 vs 직전 4주를 같은 정의로 비교
 import { summarizeRunningWindow, toZonePct, toZoneSec } from "@/lib/fitness/running-window";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 
 // #377: 장기 조회 공통 인자. granularity 생략 시 days 기준 자동 (aggregate.ts).
 // endDate (Codex P1 PR #379): 과거 특정 시기를 daily 로 재조회할 때의 종료일 (KST, 포함). 생략 시 오늘.
@@ -99,9 +101,9 @@ const GRANULARITY_NOTE =
 const ACTIVITY_DAILY_NOTES = {
   // 릴리즈 PR #457 Codex P2: hrrDrop10 은 "10bpm 까지 걸린 초" 가 아니라 종료 − 10분 후 심박 (bpm) — recoveryCurve().drop10
   hrr2: "종료 후 2분 심박 회복 = 종료 심박 − 2분 후 심박 (bpm, 양수 = 회복 · 클수록 좋음). hrrDrop10 은 같은 방식의 10분 후 값 (bpm). null 은 종료 후 시계열 없음 (2026-04 이전 · 미착용) 또는 그 시점 샘플 부족.",
-  zones: "zones 는 존별 초 (개인 HR 존), zonePct 는 존 시간 합 기준 % (존마다 반올림이라 합이 99~101 일 수 있음 — 언급하지 말 것). 둘 다 null 이면 그 활동에 존 분포 없음.",
+  zones: "zones 는 존별 초 (intensityBasis 가 hr 이면 개인 심박 존, power 면 러닝 파워 존 — 역치파워 기준 · 심박 존보다 한 칸 위: Z1 이지 · Z3 역치 · Z4 인터벌. intensityBasisReason = 그 기준을 고른 이유: medication 심박 영향 복약 기간 · heat 더위 · no_power 파워 없어 심박 · no_hr 심박 없어 파워), zonePct 는 존 시간 합 기준 % (존마다 반올림이라 합이 99~101 일 수 있음 — 언급하지 말 것). 둘 다 null 이면 그 활동에 존 분포 없음.",
   runningSummary:
-    "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. dynamics 는 창 안 러닝의 중앙값 (cadence spm · strideLengthM m (옛 cm 행 정규화) · groundContactTimeMs · verticalOscillationCm), 각 n 건 — 값 없는 활동은 제외. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
+    "daily 응답에만 — 창 안 러닝 계열 요약. easyPct = Z1+Z2 시간 비율 (%), hardPct = Z4+Z5, Z3 은 중간 — 파워 기준 활동은 심박 존 등가로 옮겨 합산 (파워 Z1→Z2 · Z3 역치→Z4 · Z4+Z5→Z5) 하므로 zoneTotalsSec 도 심박 등가. 80/20 = 이지 비율 80% 안팎이 polarized 기준. hrr2 는 창 안 러닝의 2분 HRR 중앙값 (n 건). withZones 가 n 보다 작으면 존 없는 활동은 비율에서 빠진 것. basisCounts 는 존 기준별 활동 수 (hr · power) — 둘 다 0 이 아니면 심박 · 파워 존이 섞인 비율이라 기간 비교 시 언급. dynamics 는 창 안 러닝의 중앙값 (cadence spm · strideLengthM m (옛 cm 행 정규화) · groundContactTimeMs · verticalOscillationCm), 각 n 건 — 값 없는 활동은 제외. endDate 없는 창은 오늘 포함 — 직전 기간과 비교하려면 endDate 로 창을 나눠 두 번 조회.",
 };
 
 /** M2: daily 요청이 행 상한을 넘어 집계로 승격됐을 때 _context 에 붙일 안내. */
@@ -129,7 +131,7 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
   const typeWhere = activityTypeWhere(args.type);
   const where = typeWhere ? { AND: [{ startTime: dateFilter(since, until) }, typeWhere] } : { startTime: dateFilter(since, until) };
 
-  const activities = await prisma.activity.findMany({
+  const rows = await prisma.activity.findMany({
     where,
     orderBy: { startTime: "desc" },
     select: {
@@ -147,10 +149,8 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
       elevationGain: true,
       trainingEffect: true,
       vo2maxEstimate: true,
-      // M4-5: 강도 자동 분류
-      estimatedZone: true,
-      intensityLabel: true,
-      intensityScore: true,
+      // M4-5: 강도 자동 분류 · #570 러닝 파워 기준 (프로필 기준에 맞춰 applyIntensityBasis 가 고른다)
+      ...INTENSITY_SELECT,
       // #275: M2 러닝 다이나믹스 — 스키마·웹 UI 엔 있지만 AI 응답에 안 실려 "누락" 오답 발생.
       avgCadence: true,
       avgStrideLength: true,
@@ -173,9 +173,11 @@ export async function getActivities(args: RangeArgs & { type?: string }) {
       // #444 (A1 · A2): 2분 HRR (#425) · 존 분포 (M4-5) — 리포트가 볼 수 있게. daily 행 + runningSummary 에만 (집계 경로는 Phase 2 제외)
       hrr2: true,
       hrrDrop10: true,
-      zoneDistribution: true,
     },
   });
+  // #570: 강도 4필드를 프로필 기준 (심박 / 파워 / 자동) 값으로 + intensityBasis
+  const basis = await loadIntensityContext(prisma);
+  const activities = rows.map((r) => applyIntensityBasis(r, basis));
 
   const { granularity, context } = finalizeGranularity(requested, days, activities.length, {
     granularity:

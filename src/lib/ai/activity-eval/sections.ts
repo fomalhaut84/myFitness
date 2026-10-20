@@ -1,5 +1,6 @@
 // #440: 섹션별 근거 줄 — 순수. 값이 null 인 항목은 줄 자체를 내지 않는다 (프롬프트에 "없음" 을 쓰지 않는다 — 모델이 결측을 언급하지 않게).
 // 각 함수는 `string[]` 을 돌려주고, 빈 배열이면 빌더가 섹션을 뺀다.
+import { POWER_ZONE_LABELS } from "@/lib/fitness/power-zones";
 import { isRunningType } from "@/lib/activity/running-types";
 import { formatClock, formatDurationShort, formatEpochKST, formatPace } from "@/lib/format";
 import { median } from "@/lib/insights/stats";
@@ -77,22 +78,40 @@ export function splitLines(laps: readonly EvalLap[]): string[] {
 }
 
 const ZONE_NAMES = ["회복", "이지", "에어로빅", "역치", "VO2max"];
+// #570: 러닝 파워 존 이름 (power-zones.ts — 역치파워 대비 65 · 80 · 90 · 100 · 115%, 심박 존보다 한 칸 위)
+const POWER_ZONE_NAMES = POWER_ZONE_LABELS;
+const BASIS_REASON_TEXT: Record<string, string> = {
+  medication: "심박 영향 복약 기간",
+  heat: "더위 (체감온도 높음)",
+  no_hr: "심박 기록 없음",
+};
 
 export function intensityLines(input: EvalInput): string[] {
   const a = input.activity;
   const z = a.zoneDistribution;
   const values = z ? [z.z1, z.z2, z.z3, z.z4, z.z5] : [];
   const total = values.reduce((s, v) => s + v, 0);
+  const isPower = a.intensityBasis === "power";
+  const names = isPower ? POWER_ZONE_NAMES : ZONE_NAMES;
+  const reason = a.intensityBasisReason ? BASIS_REASON_TEXT[a.intensityBasisReason] : undefined;
+  const basisLine =
+    total > 0
+      ? [
+          isPower
+            ? `강도 기준 러닝 파워 존 (역치파워 대비${reason ? ` · ${reason}` : ""} — 심박은 참고)`
+            : "강도 기준 심박 존",
+        ]
+      : [];
   const zoneLine =
     total > 0
-      ? [`존 분포 ${values.map((sec, i) => `Z${i + 1} ${ZONE_NAMES[i]} ${formatClock(sec)} (${Math.round((sec / total) * 100)}%)`).join(" · ")}`]
+      ? [`존 분포 ${values.map((sec, i) => `Z${i + 1} ${names[i]} ${formatClock(sec)} (${Math.round((sec / total) * 100)}%)`).join(" · ")}`]
       : [];
   const label = a.intensityLabel !== null ? [`강도 라벨 ${INTENSITY_LABEL_KO[a.intensityLabel] ?? a.intensityLabel} (${a.intensityLabel})`] : [];
   const score = [
     ...(a.intensityScore !== null ? [`강도 점수 ${Math.round(a.intensityScore)} / 100`] : []),
     ...(a.estimatedZone !== null ? [`추정 대표 존 Z${a.estimatedZone}`] : []),
   ];
-  return [...zoneLine, ...label, ...score];
+  return [...basisLine, ...zoneLine, ...label, ...score];
 }
 
 /** 종료 후 유효 점이 이보다 적으면 곡선을 말할 수 없다 (#418 F9) */

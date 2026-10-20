@@ -1,4 +1,6 @@
 import prisma from "../prisma";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { todayKST, daysAgoKST, todayKSTString, ymdKST } from "../../lib/garmin/utils";
 
 type FactorName =
@@ -199,7 +201,7 @@ export async function getInjuryRiskScore() {
 
   // 모든 윈도우 오늘 포함. preSyncForReport 후 today KST 날짜로
   // 어젯밤 수면 + 오늘 daily/activity 가 sync되어 있으므로 stale 1일 방지.
-  const [sleeps14d, dailies28d, activities28d] = await Promise.all([
+  const [sleeps14d, dailies28d, activityRows, intensityBasis] = await Promise.all([
     prisma.sleepRecord.findMany({
       where: { date: { gte: sleepWindowStart, lt: tomorrow } },
       select: { date: true, hrvOvernight: true, restingHR: true, sleepScore: true },
@@ -210,9 +212,12 @@ export async function getInjuryRiskScore() {
     }),
     prisma.activity.findMany({
       where: { startTime: { gte: longWindowStart, lt: tomorrow } },
-      select: { startTime: true, intensityScore: true },
+      // #570: 강도 점수는 프로필 기준 (심박 / 파워 / 자동) 값
+      select: { startTime: true, weatherApparentTempC: true, ...INTENSITY_SELECT },
     }),
+    loadIntensityContext(prisma),
   ]);
+  const activities28d = activityRows.map((r) => applyIntensityBasis(r, intensityBasis));
 
   const factors: Record<FactorName, FactorResult> = {
     hrv_decline: computeHrvDecline(sleeps14d),

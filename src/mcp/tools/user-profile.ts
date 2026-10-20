@@ -1,10 +1,7 @@
 import prisma from "../prisma";
-import {
-  garminZoneRanges,
-  getZoneRanges,
-  resolveMaxHR,
-  type GarminZonesRaw,
-} from "@/lib/fitness/zones";
+import { resolveMaxHR, resolveProfileHrZones } from "@/lib/fitness/zones";
+import { resolveProfilePowerZones } from "@/lib/fitness/power-zones";
+import { parseIntensityBasisSetting } from "@/lib/fitness/intensity";
 import { formatDateLocal } from "@/lib/format";
 import { ymdKST } from "@/lib/garmin/utils";
 
@@ -14,6 +11,7 @@ const FIELD_LABELS: Record<string, string> = {
   lthrPace: "LTHR 페이스",
   vo2maxRunning: "VO2max",
   restingHRBase: "안정시 심박",
+  thresholdPower: "러닝 역치파워",
 };
 
 function fmtPace(secPerKm: number | null): string | null {
@@ -59,34 +57,24 @@ export async function getUserProfile() {
     maxHRSource = "estimated";
   }
 
-  // Zone 결정:
-  // - maxHR/lthr 둘 다 Garmin source일 때만 Garmin zone1~5Floor 사용
-  // - manual override 또는 zonesRaw가 현재 maxHR/lthr와 불일치(stale)면 calculated로 fallback
-  //   (heartRateZones 실패 + user-settings 통한 lthr 갱신 등으로 zonesRaw가 뒤쳐진 경우)
-  const bothGarminOwned =
-    profile.maxHRSource === "garmin" && profile.lthrSource === "garmin";
-  const rawZones = profile.heartRateZonesRaw as unknown as
-    | (GarminZonesRaw & { lactateThresholdHeartRateUsed?: number | null })
-    | null;
-  const zonesRawFresh =
-    rawZones !== null &&
-    rawZones.maxHeartRateUsed === profile.maxHR &&
-    rawZones.lactateThresholdHeartRateUsed === profile.lthr;
-  const garminZones =
-    bothGarminOwned && zonesRawFresh && rawZones
-      ? garminZoneRanges(rawZones)
-      : null;
+  // Zone 결정 (resolveProfileHrZones — 활동 상세와 같은 규칙):
+  // - maxHR/lthr 둘 다 Garmin source + zonesRaw 가 현재 값과 같을 때만 Garmin zone1~5Floor
+  // - manual override 또는 zonesRaw 가 뒤처지면 (heartRateZones 실패 + user-settings 로 lthr 갱신 등) calculated
   const lthrValue =
     profile.lthr && profile.lthr > 0
       ? profile.lthr
       : Math.round(maxHRValue * 0.9);
-  const zones = garminZones ?? getZoneRanges(lthrValue, maxHRValue);
-  const zoneSource: "garmin" | "calculated" = garminZones ? "garmin" : "calculated";
+  const { zones, source: zoneSource } = resolveProfileHrZones(profile, { maxHR: maxHRValue, lthr: lthrValue });
+  // #570: 러닝 파워 존 (W) · 강도 평가 기준
+  const power = resolveProfilePowerZones(profile);
 
   const response = {
     _context:
       "사용자 프로필 + Garmin 자동 동기화된 maxHR/LTHR/Zone. " +
-      "각 값에 source가 표시됨 (manual=사용자 수동, garmin=자동, activity=DB 추정, estimated=공식).",
+      "각 값에 source가 표시됨 (manual=사용자 수동, garmin=자동, activity=DB 추정, estimated=공식). " +
+      "intensityBasis = 활동 강도(라벨 · 존 분포 · 점수)를 읽는 기준: hr=심박 존, power=러닝 파워 존 우선 (파워 없는 활동은 심박), " +
+      "auto=심박 영향 복약 기간 · 더위(체감 28°C+) 의 러닝만 파워, 그 밖엔 심박. 파워 존은 심박 존보다 한 칸 위 (Z3=역치 · Z4=인터벌). " +
+      "활동별 실제 기준 · 이유는 get_activities 의 intensityBasis · intensityBasisReason.",
     name: profile.name,
     // 날짜는 로컬 기준으로 직렬화 (toISOString은 UTC 변환으로 ±1일 어긋남 가능)
     birthDate: profile.birthDate ? formatDateLocal(profile.birthDate) : null,
@@ -114,6 +102,18 @@ export async function getUserProfile() {
     targetDate: profile.targetDate ? formatDateLocal(profile.targetDate) : null,
     heartRateZones: zones,
     zoneSource,
+    thresholdPower: profile.thresholdPower
+      ? {
+          value: profile.thresholdPower,
+          unit: "W",
+          source: profile.thresholdPowerSource ?? "manual",
+          autoDetected: profile.thresholdPowerAutoDetected ?? false,
+          measuredAt: profile.thresholdPowerMeasuredAt?.toISOString() ?? null,
+        }
+      : null,
+    powerZones: power?.zones ?? null,
+    powerZoneSource: power?.source ?? null,
+    intensityBasis: parseIntensityBasisSetting(profile.intensityBasis),
     garminSyncedAt: profile.garminSyncedAt?.toISOString() ?? null,
   };
 

@@ -4,6 +4,8 @@ import prisma from "@/lib/prisma";
 import { RUNNING_ACTIVITY_WHERE, isRunningType } from "@/lib/activity/running-types";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { INTENSITY_SELECT, selectIntensity, selectIntensityLabel, type IntensityContext } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { fetchActivitySplits } from "@/lib/garmin/activity-splits";
 import { ymdKST } from "@/lib/garmin/utils";
 import { loadActivityRecovery } from "@/lib/heart/load-recovery";
@@ -47,10 +49,7 @@ const ACTIVITY_SELECT = {
   avgRespirationRate: true,
   lapCount: true,
   vo2maxEstimate: true,
-  zoneDistribution: true,
-  estimatedZone: true,
-  intensityScore: true,
-  intensityLabel: true,
+  ...INTENSITY_SELECT,
   routeTag: true,
   wristTempMaxC: true,
   wristTempMinC: true,
@@ -75,6 +74,8 @@ const COMPARISON_SELECT = {
   avgCadence: true,
   hrr2: true,
   intensityLabel: true,
+  powerIntensityLabel: true,
+  weatherApparentTempC: true,
   routeTag: true,
 } as const;
 
@@ -84,7 +85,9 @@ function findActivity(id: string) {
   return prisma.activity.findUnique({ where: { id }, select: ACTIVITY_SELECT });
 }
 
-function toEvalActivity(row: ActivityRow): EvalActivity {
+function toEvalActivity(row: ActivityRow, basis: IntensityContext): EvalActivity {
+  // #570: 강도는 프로필 기준 (심박 / 파워 / 자동) 값
+  const intensity = selectIntensity(row, basis);
   return {
     id: row.id,
     name: row.name,
@@ -107,10 +110,12 @@ function toEvalActivity(row: ActivityRow): EvalActivity {
     avgRespirationRate: row.avgRespirationRate,
     lapCount: row.lapCount,
     vo2maxEstimate: row.vo2maxEstimate,
-    zoneDistribution: parseZoneDistribution(row.zoneDistribution),
-    estimatedZone: row.estimatedZone,
-    intensityScore: row.intensityScore,
-    intensityLabel: row.intensityLabel,
+    zoneDistribution: parseZoneDistribution(intensity.zoneDistribution),
+    estimatedZone: intensity.estimatedZone,
+    intensityScore: intensity.intensityScore,
+    intensityLabel: intensity.intensityLabel,
+    intensityBasis: intensity.basis,
+    intensityBasisReason: intensity.reason,
     routeTag: row.routeTag,
     wristTempMaxC: row.wristTempMaxC,
     wristTempMinC: row.wristTempMinC,
@@ -125,7 +130,12 @@ function toEvalActivity(row: ActivityRow): EvalActivity {
   };
 }
 
-function toComparisonRun(r: {
+function toComparisonRun(basis: IntensityContext) {
+  return (r: Parameters<typeof comparisonRun>[0]): ComparisonRun =>
+    comparisonRun({ ...r, intensityLabel: selectIntensityLabel(r, basis).label });
+}
+
+function comparisonRun(r: {
   id: string;
   startTime: Date;
   name: string;
@@ -135,6 +145,8 @@ function toComparisonRun(r: {
   avgCadence?: number | null;
   hrr2?: number | null;
   intensityLabel: string | null;
+  powerIntensityLabel?: string | null;
+  weatherApparentTempC: number | null;
   routeTag: string | null;
 }): ComparisonRun {
   return {
@@ -169,7 +181,11 @@ export function similarDistanceWhere(row: { id: string; startTime: Date; distanc
 }
 
 /** 비슷한 거리 · 최근순 · 상한. 같은 코스는 쿼리에서 이미 빠져 있으므로 상한이 다른 코스로 채워진다 */
-async function loadSimilarDistance(row: ActivityRow, excludeIds: readonly string[]): Promise<ComparisonRun[]> {
+async function loadSimilarDistance(
+  row: ActivityRow,
+  excludeIds: readonly string[],
+  basis: IntensityContext
+): Promise<ComparisonRun[]> {
   if (row.distance === null || row.distance <= 0) return [];
   const rows = await prisma.activity.findMany({
     where: similarDistanceWhere({ id: row.id, startTime: row.startTime, distance: row.distance }, excludeIds),
@@ -177,7 +193,7 @@ async function loadSimilarDistance(row: ActivityRow, excludeIds: readonly string
     take: SIMILAR_LIMIT,
     select: COMPARISON_SELECT,
   });
-  return rows.map(toComparisonRun);
+  return rows.map(toComparisonRun(basis));
 }
 
 /** 같은 해 (KST) 러닝의 2분 HRR 중앙값 — 패널 E 와 같은 5건 규칙 */
@@ -222,7 +238,8 @@ async function loadLaps(row: ActivityRow): Promise<EvalLap[] | null> {
 export async function loadActivityEvalInput(id: string): Promise<EvalInput | null> {
   const row = await findActivity(id);
   if (!row) return null;
-  const base = { activity: toEvalActivity(row), extras: extractRawExtras(row.rawData) };
+  const basis = await loadIntensityContext(prisma);
+  const base = { activity: toEvalActivity(row, basis), extras: extractRawExtras(row.rawData) };
   if (!isRunningType(row.activityType)) {
     return { ...base, recovery: null, laps: null, sameCourse: [], similarDistance: [], hrrBaseline: null, bucketBest: null };
   }
@@ -233,12 +250,12 @@ export async function loadActivityEvalInput(id: string): Promise<EvalInput | nul
   const [recovery, sameRaw, similarRaw, hrrBaseline, bucketBest, laps] = await Promise.all([
     loadActivityRecovery(id),
     sameCoursePromise,
-    sameCoursePromise.then((same) => loadSimilarDistance(row, same.map((r) => r.id))),
+    sameCoursePromise.then((same) => loadSimilarDistance(row, same.map((r) => r.id), basis)),
     loadHrrBaseline(row),
     loadBucketBest(row),
     loadLaps(row),
   ]);
   // 쿼리에서 이미 뺐지만 순수 선별을 그대로 둔다 (표시 상한 · 안전망)
-  const picked = selectComparisons(sameRaw.map(toComparisonRun), similarRaw, { sameCourse: SAME_COURSE_LIMIT, similarDistance: SIMILAR_LIMIT });
+  const picked = selectComparisons(sameRaw.map(toComparisonRun(basis)), similarRaw, { sameCourse: SAME_COURSE_LIMIT, similarDistance: SIMILAR_LIMIT });
   return { ...base, recovery, laps, ...picked, hrrBaseline, bucketBest };
 }

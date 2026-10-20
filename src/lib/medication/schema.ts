@@ -45,6 +45,8 @@ export const MEDICATION_INPUT = z
       .max(MAX_RELATED_ITEMS)
       .default([])
       .transform((codes) => [...new Set(codes)]),
+    // #570: 심박 반응에 영향 — 강도 기준 "자동" 이 이 기간 러닝을 파워로 잰다
+    affectsHeartRate: z.boolean().default(false),
   })
   .superRefine((v, ctx) => {
     if (v.endDate && v.endDate < v.startDate) {

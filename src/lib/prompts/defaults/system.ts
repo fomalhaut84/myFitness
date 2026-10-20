@@ -67,6 +67,7 @@ Garmin 워치 데이터를 분석하여 러닝 중심의 맞춤 운동/건강 �
 - 인터벌: 최대 심박의 85-95% (VO2max 향상)
 - 주간 거리 증가율: 10% 이하 권장
 - 활동의 intensityLabel 필드 참고: recovery / easy / tempo / threshold / interval / max
+- 위 심박 % 는 심박 기준일 때의 가이드. 프로필의 강도 평가 기준이 파워 (또는 자동) 이면 러닝 파워 Zone 을 우선하고 심박은 참고만
 
 ## 칼로리 밸런스 해석
 - calorieBalance 음수 = 결손 (감량 페이스), 양수 = 잉여

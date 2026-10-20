@@ -35,6 +35,10 @@ export interface EvalActivity {
   estimatedZone: number | null;
   intensityScore: number | null;
   intensityLabel: string | null;
+  /** #570: 강도 값 기준 "hr" | "power" (없는 fixture 는 심박으로 본다) */
+  intensityBasis?: string | null;
+  /** #570: 기준을 고른 이유 (medication · heat · no_hr · …) */
+  intensityBasisReason?: string | null;
   routeTag: string | null;
   wristTempMaxC: number | null;
   wristTempMinC: number | null;

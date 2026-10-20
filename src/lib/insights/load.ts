@@ -1,7 +1,9 @@
 // #397 F2: 러닝 활동 조회 1회 — 4 패널이 같은 배열을 쓴다. 서버 전용 (prisma). 캐시 래퍼는 `history/cache.ts`.
 import prisma from "@/lib/prisma";
 import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
-import type { ZoneDistribution } from "@/lib/fitness/intensity";
+import { toComparableZones, type ZoneDistribution } from "@/lib/fitness/intensity";
+import { INTENSITY_SELECT, selectIntensity } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { RACE_EVENT_TYPE } from "@/lib/garmin/parse-event-type";
 import { ymdKST } from "@/lib/garmin/utils";
 import { kstDayRange } from "@/lib/history/buckets";
@@ -15,7 +17,12 @@ function toZones(raw: unknown): ZoneDistribution | null {
   return zones.z1 + zones.z2 + zones.z3 + zones.z4 + zones.z5 > 0 ? zones : null;
 }
 
+function comparable(zones: ZoneDistribution | null, basis: "hr" | "power" | null): ZoneDistribution | null {
+  return zones === null ? null : toComparableZones(zones, basis);
+}
+
 export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]> {
+  const basis = await loadIntensityContext(prisma);
   const rows = await prisma.activity.findMany({
     where: {
       AND: [
@@ -34,13 +41,16 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       avgHR: true,
       weatherTempC: true,
       weatherHumidityPct: true,
-      zoneDistribution: true,
+      // #570: 존 분포는 프로필 강도 기준 (심박 / 파워 / 자동) 값
+      ...INTENSITY_SELECT,
+      weatherApparentTempC: true,
       eventType: true,
       hrr2: true,
     },
   });
   return rows.map((r) => {
     const ymd = ymdKST(r.startTime);
+    const intensity = selectIntensity(r, basis);
     return {
       id: r.id,
       ymd,
@@ -51,7 +61,9 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       avgHR: r.avgHR,
       tempC: r.weatherTempC,
       humidityPct: r.weatherHumidityPct,
-      zones: toZones(r.zoneDistribution),
+      // #570: 월별 존 비율은 기준이 섞이므로 파워 존을 심박 등가로 (toComparableZones)
+      zones: comparable(toZones(intensity.zoneDistribution), intensity.basis),
+      zoneBasis: intensity.basis,
       race: r.eventType === RACE_EVENT_TYPE,
       hrr2: r.hrr2,
     };

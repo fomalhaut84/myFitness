@@ -40,6 +40,13 @@ model UserProfile {
   lthrMeasuredAt       DateTime? // firstbeatRunningLtTimestamp 변환
   heartRateZonesRaw    Json?     // Garmin 원본 zone1~5Floor + maxHR (러닝)
   garminSyncedAt       DateTime? // 마지막 user-settings/biometric 싱크
+  // #570: 러닝 역치파워 · 파워 존 (Garmin powerZones RUNNING) + 강도 평가 기준
+  thresholdPower             Int?      // 러닝 역치파워 (W)
+  thresholdPowerSource       String?   // "manual" | "garmin"
+  thresholdPowerAutoDetected Boolean?  // Garmin user-settings ftpAutoDetected
+  thresholdPowerMeasuredAt   DateTime? // latestFunctionalThresholdPower calendarDate 변환
+  powerZonesRaw              Json?     // Garmin 원본 functionalThresholdPower + zone1~5Floor (러닝)
+  intensityBasis             String    @default("hr") // "hr" | "power" | "auto"
   createdAt      DateTime  @default(now())
   updatedAt      DateTime  @updatedAt
 }
@@ -105,6 +112,12 @@ model Activity {
   estimatedZone   Int?                // 대표 Zone (1~5, 가중 평균)
   intensityScore  Float?              // 강도 점수 (0~100, TRIMP 유사)
   intensityLabel  String?             // recovery|easy|tempo|threshold|interval|max
+  // #570: 러닝 파워 기준 강도 (Garmin powerTimeInZone_1~5 · 역치파워). 심박 기준 4개 컬럼은 그대로 두고 따로 저장 —
+  // 프로필 intensityBasis 에 따라 읽는 쪽이 고른다 (selectIntensity). 러닝 아닌 활동 · 파워 없는 활동은 null.
+  powerZoneDistribution Json?        // {z1..z5} 초 단위
+  powerEstimatedZone    Int?
+  powerIntensityScore   Float?
+  powerIntensityLabel   String?
   // #261: 사용자 커스텀 코스명 태그. 같은 GPS/거리 클러스터 + 같은 태그 = 같은 코스로 취급.
   routeTag        String?
   // #396: Garmin eventType.typeKey ("race" · "training" · "uncategorized" …) 원문. rawData 에서 승격 — 레이스 마커 · 개인 기록 배지.
@@ -469,6 +482,8 @@ model Medication {
   prescriber   String?
   note         String?
   relatedItems String[]  // 관련 검진 항목 code (카탈로그 또는 "custom:<slug>")
+  // #570: 심박 반응에 영향을 주는 약 — 강도 기준 "자동" 이 이 기간의 러닝을 파워로 잰다
+  affectsHeartRate Boolean @default(false)
   createdAt    DateTime  @default(now())
   updatedAt    DateTime  @updatedAt
 

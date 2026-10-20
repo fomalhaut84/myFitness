@@ -21,6 +21,8 @@ export interface MedFormState {
   prescriber: string;
   note: string;
   relatedItems: string[];
+  /** #570: 심박 반응에 영향 — 폼이 왕복시켜야 수정 저장이 값을 지우지 않는다 */
+  affectsHeartRate: boolean;
 }
 
 /** 종류에 따른 복용 형태 기본값 — 처방약은 단기, 영양제는 장기 (스펙 §2-5) */
@@ -44,6 +46,7 @@ export function emptyMedForm(todayYmd: string): MedFormState {
     prescriber: "",
     note: "",
     relatedItems: [],
+    affectsHeartRate: false,
   };
 }
 
@@ -63,6 +66,7 @@ export function medFormFromDto(dto: MedicationDto): MedFormState {
     prescriber: dto.prescriber ?? "",
     note: dto.note ?? "",
     relatedItems: dto.relatedItems,
+    affectsHeartRate: dto.affectsHeartRate,
   };
 }
 
@@ -99,5 +103,6 @@ export function medFormToInput(state: MedFormState): MedicationInputBody {
     prescriber: state.prescriber,
     note: state.note,
     relatedItems: state.relatedItems,
+    affectsHeartRate: state.affectsHeartRate,
   };
 }

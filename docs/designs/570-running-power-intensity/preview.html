@@ -1,0 +1,244 @@
+<!doctype html>
+<html lang="ko">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<title>러닝 파워 강도 기준 시안 (#570)</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Geist:wght@400;500;600&family=Geist+Mono:wght@400;500&display=swap" rel="stylesheet">
+<style>
+  :root { --bg:#0a0a0a; --card:#161616; --surface:#1e1e1e; --surface-hover:#262626; --border:#262626; --border-hover:#333;
+    --dim:#525252; --sub:#737373; --text:#a3a3a3; --bright:#ededed; --accent:#22c55e; --accent-bg:rgba(34,197,94,.12);
+    --garmin:#93c5fd; --garmin-bg:rgba(30,58,138,.4); --manual:#fcd34d; --manual-bg:rgba(120,53,15,.4); --abnormal:#f87171;
+    --z1:#a3a3a3; --z2:#22c55e; --z3:#60a5fa; --z4:#f59e0b; --z5:#ef4444;
+    --mono:"Geist Mono",ui-monospace,monospace; }
+  * { box-sizing:border-box; margin:0; }
+  body { background:var(--bg); color:var(--text); font:14px/1.55 "Geist",system-ui,sans-serif; }
+  button, input { font:inherit; color:inherit; }
+  button:focus-visible, input:focus-visible, label:focus-within { outline:2px solid var(--accent); outline-offset:2px; }
+  .page { max-width:760px; margin:0 auto; padding:24px 16px 96px; }
+  .proto-note { font-size:12px; color:var(--dim); }
+  .state { font:11px var(--mono); color:var(--dim); margin:48px 0 12px; padding-top:16px; border-top:1px dashed var(--border); }
+  .mono { font-family:var(--mono); }
+  h1 { font-size:24px; font-weight:600; color:var(--bright); }
+  h2 { font-size:15px; font-weight:600; color:var(--bright); }
+  .lede { color:var(--sub); font-size:13px; margin-top:2px; }
+  .card { background:var(--card); border:1px solid var(--border); border-radius:12px; padding:16px; }
+  .stack > * + * { margin-top:12px; }
+  .row { display:flex; align-items:center; gap:8px; flex-wrap:wrap; }
+  .badge { font-size:10px; padding:2px 6px; border-radius:4px; white-space:nowrap; }
+  .b-garmin { background:var(--garmin-bg); color:var(--garmin); }
+  .b-manual { background:var(--manual-bg); color:var(--manual); }
+  .b-basis { background:var(--surface-hover); color:var(--bright); font-size:11px; padding:2px 8px; }
+  .b-basis.power { background:rgba(245,158,11,.14); color:#fbbf24; }
+  .btn { background:var(--surface); border:1px solid var(--border-hover); border-radius:8px; padding:6px 12px; cursor:pointer; font-size:13px; }
+  .btn:hover { border-color:rgba(34,197,94,.6); }
+  .btn.primary { background:var(--accent); border-color:var(--accent); color:#04130a; font-weight:500; }
+  .btn.small { padding:2px 8px; font-size:11px; border-radius:6px; }
+  .btn[disabled] { opacity:.45; cursor:not-allowed; }
+  .field label { display:block; font-size:13px; color:var(--text); margin-bottom:6px; }
+  .field input { width:100%; max-width:220px; background:var(--surface); border:1px solid var(--border); border-radius:8px; padding:8px 10px; font-family:var(--mono); }
+  .hint { font-size:12px; color:var(--dim); margin-top:4px; }
+  .muted { color:var(--sub); font-size:12px; }
+  .val { color:var(--bright); font-family:var(--mono); }
+  .warn { color:var(--manual); }
+
+  /* 존 자 — 이 시안의 중심. 같은 5개 존을 두 단위로 잰다 */
+  .ruler { margin-top:4px; }
+  .ruler .scale { display:grid; grid-template-columns:44px 1fr; align-items:center; gap:10px; }
+  .ruler .scale + .scale { margin-top:10px; }
+  .ruler .unit { font-size:12px; color:var(--sub); text-align:right; }
+  .ruler .bar { display:grid; grid-template-columns:var(--cols); height:28px; border-radius:6px; overflow:hidden; }
+  .ruler .seg { position:relative; display:flex; align-items:center; padding-left:6px; font:11px var(--mono); color:#0a0a0a; }
+  .ruler .seg.pz4, .ruler .seg.pz5 { color:#fff; }
+  .ruler .seg span { white-space:nowrap; overflow:hidden; }
+  .ruler .ticks { display:grid; grid-template-columns:var(--cols); margin-left:54px; font:11px var(--mono); color:var(--sub); }
+  .ruler .ticks span { border-left:1px solid var(--border-hover); padding-left:4px; padding-top:2px; }
+  .ruler.dim-hr .scale.hr .bar { opacity:.35; }
+  .ruler.dim-power .scale.power .bar { opacity:.35; }
+  .z1 { background:var(--z1); }
+  /* 파워 존은 의미가 심박 존보다 한 칸 위 → 같은 의미 = 같은 색 (파워 Z1 이지 = 심박 Z2 녹색 …) */
+  .pz1 { background:var(--z2); } .pz2 { background:var(--z3); } .pz3 { background:var(--z4); } .pz4 { background:var(--z5); } .pz5 { background:#b91c1c; } .z2 { background:var(--z2); } .z3 { background:var(--z3); } .z4 { background:var(--z4); } .z5 { background:var(--z5); }
+
+  /* 기준 선택 */
+  .choices { display:grid; grid-template-columns:repeat(3,1fr); gap:8px; }
+  @media (max-width:560px){ .choices { grid-template-columns:1fr; } }
+  .choice { display:block; border:1px solid var(--border); border-radius:10px; padding:10px 12px; cursor:pointer; background:var(--surface); }
+  .choice input { position:absolute; opacity:0; pointer-events:none; }
+  .choice b { display:block; color:var(--bright); font-weight:500; font-size:13px; }
+  .choice small { display:block; color:var(--sub); font-size:12px; margin-top:2px; line-height:1.45; }
+  .choice.on { border-color:var(--accent); background:var(--accent-bg); }
+  .choice .now { float:right; font-size:10px; color:var(--accent); }
+  .consequence { border-left:2px solid var(--border-hover); padding:6px 0 6px 12px; font-size:12px; color:var(--sub); }
+  .toast { display:flex; gap:10px; align-items:center; padding:10px 14px; border-radius:10px; font-size:13px; }
+  .toast.ok { background:var(--accent-bg); color:#86efac; }
+  .toast.err { background:rgba(127,29,29,.35); color:#fca5a5; }
+  .toast .btn { margin-left:auto; }
+
+  /* 활동 상세 강도 분석 */
+  .dist { height:16px; border-radius:4px; overflow:hidden; display:flex; background:var(--surface); }
+  .zl { display:grid; grid-template-columns:auto 1fr auto auto; gap:4px 12px; font-size:12px; margin-top:14px; align-items:center; }
+  .zl .dot { width:8px; height:8px; border-radius:2px; display:inline-block; margin-right:6px; }
+  .zl .rng { color:var(--dim); font-family:var(--mono); }
+  .zl .t { font-family:var(--mono); color:var(--bright); text-align:right; }
+  .zl .p { font-family:var(--mono); color:var(--sub); text-align:right; width:40px; }
+  .label { font-size:11px; font-weight:500; padding:2px 8px; border-radius:4px; background:rgba(120,53,15,.4); color:#fcd34d; }
+  .empty { text-align:center; padding:28px 12px; color:var(--sub); font-size:13px; }
+  .empty p + p { margin-top:4px; font-size:12px; color:var(--dim); }
+  .cmp { display:grid; gap:10px; }
+  .cmp-row { display:grid; grid-template-columns:44px 1fr auto 40px; gap:10px; align-items:center; }
+  @media (max-width:420px){ .cmp-row { grid-template-columns:40px 1fr; } .cmp-row .label, .cmp-row .mono { display:none; } }
+  .two { display:grid; grid-template-columns:1fr 1fr; gap:12px; }
+  @media (max-width:640px){ .two { grid-template-columns:1fr; } }
+</style>
+</head>
+<body>
+<main class="page">
+  <h1>러닝 파워 강도 기준 시안</h1>
+  <p class="lede">#570-2 · 숫자는 모두 가상 값 (역치파워 300 W · LTHR 165 bpm)</p>
+
+  <!-- ───────────── A ───────────── -->
+  <div class="state">A · 프로필 설정 — 러닝 파워 카드 (Garmin 자동) + 강도 평가 기준</div>
+  <div class="stack">
+    <section class="card stack" aria-labelledby="pw-h">
+      <div class="row" style="justify-content:space-between">
+        <h2 id="pw-h">러닝 파워</h2>
+        <span class="muted">Garmin 워치가 산출한 역치파워를 06:00 싱크로 가져옵니다</span>
+      </div>
+      <div class="row">
+        <span class="muted" style="width:64px">역치파워</span>
+        <span class="badge b-garmin">Garmin 자동</span>
+        <span class="val">300 W</span>
+        <span class="muted">· 2026-01-02 자동 감지</span>
+      </div>
+
+      <div class="ruler" style="--cols:45fr 30fr 30fr 45fr 55fr" aria-label="존 경계">
+        <div class="scale power">
+          <span class="unit">파워</span>
+          <div class="bar" style="--cols:45fr 30fr 30fr 45fr 55fr">
+            <div class="seg pz1"><span>Z1</span></div>
+            <div class="seg pz2"><span>Z2</span></div>
+            <div class="seg pz3"><span>Z3</span></div>
+            <div class="seg pz4"><span>Z4</span></div>
+            <div class="seg pz5"><span>Z5</span></div>
+          </div>
+        </div>
+        <div class="ticks"><span>195</span><span>240</span><span>270</span><span>300</span><span>345 W</span></div>
+      </div>
+      <p class="hint">Z1 이지 · Z2 중강도 · Z3 역치 · Z4 인터벌 · Z5 반복 — 역치 대비 65 · 80 · 90 · 100 · 115% (Garmin 존). 심박 존보다 한 칸 위라, 역치는 Z3 입니다.</p>
+    </section>
+
+    <section class="card stack" aria-labelledby="basis-h">
+      <div>
+        <h2 id="basis-h">강도 평가 기준</h2>
+        <p class="muted" style="margin-top:2px">활동의 강도 라벨 · 존 분포 · 훈련 부하를 무엇으로 잴지 고릅니다. AI 리포트와 운동 평가도 이 기준을 따릅니다.</p>
+      </div>
+      <div class="choices" role="radiogroup" aria-label="강도 평가 기준">
+        <label class="choice"><input type="radio" name="b1" checked><span class="now">사용 중</span><b>심박</b><small>모든 활동을 심박 존 (LTHR 기준) 으로 잽니다.</small></label>
+        <label class="choice"><input type="radio" name="b1"><b>파워</b><small>러닝 파워 기록이 있으면 파워로, 없는 활동 (러닝 외 · 파워 없는 러닝) 은 심박으로 잽니다.</small></label>
+        <label class="choice on"><input type="radio" name="b1"><b>자동</b><small>평소엔 심박으로 잽니다. 심박에 영향을 주는 약을 먹는 기간이나 체감 28°C 이상인 날의 러닝만 파워로 잽니다.</small></label>
+      </div>
+      <p class="consequence">기록은 심박 · 파워 두 가지로 모두 저장돼 있어 바뀌지 않습니다. 활동 강도 · 훈련 부하 · 부상 위험 (ACWR) · AI 리포트가 읽는 기준만 바뀌고, 언제든 되돌릴 수 있습니다.</p>
+      <div class="row"><button class="btn primary">자동으로 바꾸기</button><button class="btn">취소</button></div>
+    </section>
+  </div>
+
+  <!-- ───────────── B ───────────── -->
+  <div class="state">B · 기준을 바꾼 직후 · 복약 폼의 "심박에 영향"</div>
+  <div class="stack">
+    <div class="toast ok" role="status">기준을 자동으로 바꿨습니다. 지난 활동도 이 기준으로 보입니다.</div>
+    <section class="card stack">
+      <h2>복약 수정</h2>
+      <label class="row" style="gap:10px;cursor:pointer"><input type="checkbox" checked style="width:16px;height:16px;accent-color:var(--accent)"><span style="color:var(--bright)">심박에 영향을 주는 약</span></label>
+      <p class="hint" style="margin-top:0">강도 기준이 자동이면 이 약을 먹는 기간의 러닝은 러닝 파워로 잽니다. 심박을 낮추거나 높이는 약이면 표시하세요.</p>
+    </section>
+  </div>
+
+  <!-- ───────────── C ───────────── -->
+  <div class="state">C · 역치파워 수동 입력 중 (Garmin 값과 다름)</div>
+  <section class="card stack">
+    <h2>러닝 파워</h2>
+    <div class="row">
+      <span class="muted" style="width:64px">역치파워</span>
+      <span class="badge b-manual">수동</span>
+      <span class="val">310 W</span>
+      <span class="mono warn" style="font-size:12px">· Garmin 300 W</span>
+      <button class="btn small" style="margin-left:auto">Garmin 자동으로</button>
+    </div>
+    <div class="field">
+      <label for="ftp">역치파워 (W)</label>
+      <input id="ftp" type="number" value="310" min="50" max="1000">
+      <p class="hint">수동으로 넣으면 싱크가 덮어쓰지 않습니다. 존 경계는 역치 대비 비율로 계산합니다 (Z3 역치 279–309 W).</p>
+    </div>
+  </section>
+
+  <!-- ───────────── D ───────────── -->
+  <div class="state">D · 파워 기준을 골랐지만 역치파워가 없음</div>
+  <section class="card stack">
+    <h2>강도 평가 기준</h2>
+    <div class="choices">
+      <label class="choice"><input type="radio" name="b2"><b>심박</b><small>모든 활동을 심박 존으로.</small></label>
+      <label class="choice on"><input type="radio" name="b2" checked><span class="now">사용 중</span><b>파워</b><small>파워 기록이 있으면 파워, 없으면 심박.</small></label>
+      <label class="choice"><input type="radio" name="b2"><b>자동</b><small>약 · 더위로 심박이 흔들릴 때만 파워.</small></label>
+    </div>
+    <p class="consequence warn">역치파워가 아직 없어 지난 러닝의 파워 기준 값을 채우지 못했습니다. 그동안은 심박으로 보입니다. 러닝 파워 카드에서 값을 넣거나 다음 싱크 (06:00) 를 기다리세요.</p>
+  </section>
+
+  <!-- ───────────── E ───────────── -->
+  <div class="state">E · 활동 상세 강도 분석 — 파워 기준 (이유 표시) · 심박 · 파워 나란히</div>
+  <div class="stack">
+    <section>
+      <div class="row" style="justify-content:space-between;margin-bottom:10px">
+        <h2 style="font-size:18px">강도 분석</h2>
+        <div class="row"><span class="label">한계치 런</span><span class="muted">Zone 3 · 74점</span></div>
+      </div>
+      <div class="card">
+        <div class="row" style="margin-bottom:12px"><span class="badge b-basis power">파워 기준</span><span class="muted">심박 영향 복약 기간 · 역치파워 300 W · 정규화 파워 292 W</span></div>
+        <div class="dist" aria-label="파워 존 분포"><div class="pz1" style="width:14%"></div><div class="pz2" style="width:20%"></div><div class="pz3" style="width:52%"></div><div class="pz4" style="width:12%"></div><div class="pz5" style="width:2%"></div></div>
+        <div class="zl">
+          <span><i class="dot pz1"></i>Z1 이지</span><span class="rng">195–239 W</span><span class="t">5:36</span><span class="p">14%</span>
+          <span><i class="dot pz2"></i>Z2 중강도</span><span class="rng">240–269 W</span><span class="t">8:00</span><span class="p">20%</span>
+          <span><i class="dot pz3"></i>Z3 역치</span><span class="rng">270–299 W</span><span class="t">20:48</span><span class="p">52%</span>
+          <span><i class="dot pz4"></i>Z4 인터벌</span><span class="rng">300–344 W</span><span class="t">4:48</span><span class="p">12%</span>
+          <span><i class="dot pz5"></i>Z5 반복</span><span class="rng">345+ W</span><span class="t">0:48</span><span class="p">2%</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="card">
+      <div class="row" style="justify-content:space-between;margin-bottom:12px"><h2>심박 · 파워 나란히</h2><span class="muted">같은 러닝을 두 기준으로</span></div>
+      <div class="cmp">
+        <div class="cmp-row"><span class="badge b-basis power">파워</span><div class="dist"><div class="pz1" style="width:14%"></div><div class="pz2" style="width:20%"></div><div class="pz3" style="width:52%"></div><div class="pz4" style="width:12%"></div><div class="pz5" style="width:2%"></div></div><span class="label">한계치 런</span><span class="mono muted">74점</span></div>
+        <div class="cmp-row"><span class="badge b-basis">심박</span><div class="dist"><div class="z1" style="width:18%"></div><div class="z2" style="width:55%"></div><div class="z3" style="width:22%"></div><div class="z4" style="width:5%"></div></div><span class="label" style="background:rgba(20,83,45,.5);color:#86efac">이지 런</span><span class="mono muted">42점</span></div>
+      </div>
+      <p class="hint" style="margin-top:12px">평균 심박 142 bpm (LTHR 대비 86%). 두 기준이 크게 다르면 심박이 평소와 다르게 반응한 날입니다.</p>
+    </section>
+
+    <div class="card">
+      <div class="row" style="margin-bottom:12px"><span class="badge b-basis">심박 기준</span><span class="muted">파워 기록 없음 · LTHR 165 bpm</span></div>
+      <div class="dist"><div class="z1" style="width:12%"></div><div class="z2" style="width:58%"></div><div class="z3" style="width:24%"></div><div class="z4" style="width:6%"></div></div>
+      <p class="hint" style="margin-top:10px">파워 기준이어도 러닝 파워 기록이 없는 활동은 심박으로 잽니다 (부하에서 빠지지 않게).</p>
+    </div>
+  </div>
+
+  <!-- ───────────── F ───────────── -->
+  <div class="state">F · 인사이트 존 분포 문구 · 비교 표</div>
+  <div class="stack">
+    <div class="card">
+      <div class="row" style="justify-content:space-between"><h2>월별 강도 존</h2><span class="muted">파워 38건 · 심박 12건</span></div>
+      <p class="muted" style="margin-top:4px">달마다 강도 존 1~5 에 머문 시간의 비율. 강도 기준 (자동) 에 따라 복약 기간 · 더운 날의 러닝은 파워 존, 나머지는 심박 존으로 셉니다.</p>
+    </div>
+    <div class="card">
+      <p class="muted">비교 표 (같은 코스 이전 기록) — 라벨 옆에 기준을 짧게</p>
+      <div class="row" style="margin-top:8px;font-size:13px"><span class="mono" style="color:var(--sub)">09-22</span><span class="label">한계치 런</span><span class="muted">파워</span><span style="margin-left:16px" class="mono">10-19</span><span class="label" style="background:rgba(30,58,138,.4);color:#93c5fd">템포 런</span><span class="muted">심박</span></div>
+    </div>
+  </div>
+</main>
+<script>
+  // 선택 상태 표시만 (시안)
+  document.querySelectorAll('.choices').forEach((g) => {
+    g.addEventListener('change', () => g.querySelectorAll('.choice').forEach((c) => c.classList.toggle('on', c.querySelector('input').checked)));
+  });
+</script>
+</body>
+</html>

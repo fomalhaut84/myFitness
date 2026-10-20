@@ -141,6 +141,22 @@ export default function MedicationForm({ initial, medId, maxDate, itemGroups }: 
         <Field label="처방처 (선택)" htmlFor="m-pres">
           <input id="m-pres" maxLength={100} value={state.prescriber} onChange={(e) => set({ prescriber: e.target.value })} className={INPUT} />
         </Field>
+        {/* #570: 강도 기준 "자동" 의 판단 근거 */}
+        <Field
+          label="강도 평가"
+          className="md:col-span-2"
+          help="강도 기준이 자동이면 이 약을 먹는 기간의 러닝은 러닝 파워로 잽니다. 심박을 낮추거나 높이는 약이면 표시하세요"
+        >
+          <label className="flex cursor-pointer items-center gap-2 text-[13px] text-bright">
+            <input
+              type="checkbox"
+              checked={state.affectsHeartRate}
+              onChange={(e) => set({ affectsHeartRate: e.target.checked })}
+              className="h-4 w-4 accent-[var(--accent)]"
+            />
+            심박에 영향을 주는 약
+          </label>
+        </Field>
         <Field
           label="관련 검진 항목 (선택)"
           className="md:col-span-2"

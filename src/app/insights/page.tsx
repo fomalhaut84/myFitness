@@ -108,6 +108,17 @@ export default async function InsightsPage() {
   const zoneMonths = zoneShareByMonth(allRuns, ctx);
   const zoneCmp = zoneShareCompare(zoneMonths, ctx);
   const zoneFrom = zoneMonths[0]?.key.replace("-", ".") ?? null;
+  // #570: 존 기준별 러닝 수 — 파워 기준 러닝은 심박 존 등가로 합산 (insights/load.ts)
+  const zoneRuns = allRuns.filter((r) => r.zones !== null);
+  const zonePowerRuns = zoneRuns.filter((r) => r.zoneBasis === "power").length;
+  const zoneHrRuns = zoneRuns.filter((r) => r.zoneBasis === "hr").length;
+  // PR #573 Codex P2: 심박 기준만이어도 기준 · 건수를 보여 준다
+  const zoneBasisNote =
+    zonePowerRuns > 0
+      ? ` 러닝 파워 기준 러닝 ${zonePowerRuns}건은 같은 강도의 심박 존으로 옮겨 셉니다 (파워 존은 심박 존보다 한 칸 위 · 심박 ${zoneHrRuns}건).`
+      : zoneHrRuns > 0
+        ? ` 심박 기준 ${zoneHrRuns}건.`
+        : "";
 
   // D
   const lagRs = lagCorrelations(weeks.buckets, LAGS, ctx);
@@ -219,7 +230,7 @@ export default async function InsightsPage() {
 
       <InsightPanel
         question="강도 배분이 달라졌나?"
-        how={`달마다 심박 존 1~5 에 머문 시간의 비율.${zoneFrom ? ` 존 분포는 ${zoneFrom} 부터 있습니다` : ""}`}
+        how={`달마다 강도 존 1~5 에 머문 시간의 비율.${zoneBasisNote}${zoneFrom ? ` 존 분포는 ${zoneFrom} 부터 있습니다` : ""}`}
         foot="존 있는 러닝이 그 달 러닝의 절반 미만이면 흐리게, 존 없는 달은 점선 빈 칸, 이번 달은 점선 막대. 비교 값은 절반 미만인 달을 뺀 달 평균입니다 (이번 달은 진행 중이어도 비율은 의미가 있어 포함)."
       >
         {zoneMonths.length > 0 ? (
@@ -236,7 +247,7 @@ export default async function InsightsPage() {
             </ul>
           </>
         ) : (
-          <p className="py-10 text-center text-[13px] text-dim">심박 존 분포가 있는 러닝이 없습니다.</p>
+          <p className="py-10 text-center text-[13px] text-dim">존 분포가 있는 러닝이 없습니다.</p>
         )}
         <ReadoutRow
           items={[

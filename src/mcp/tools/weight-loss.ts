@@ -1,7 +1,9 @@
 import prisma from "../prisma";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
 import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
-import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { parseZoneDistribution, toComparableZones } from "@/lib/fitness/intensity";
 import { ymdKST } from "@/lib/garmin/utils";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -80,6 +82,7 @@ export function toActivityRow(a: {
   startTime: Date;
   intensityLabel: string | null;
   estimatedZone: number | null;
+  intensityBasis?: string | null;
   routeTag: string | null;
 }) {
   return {
@@ -88,6 +91,8 @@ export function toActivityRow(a: {
     date: ymdKST(a.startTime),
     label: a.intensityLabel,
     zone: a.estimatedZone,
+    // #570: zone 이 심박 존인지 러닝 파워 존인지
+    intensityBasis: a.intensityBasis ?? null,
     routeTag: a.routeTag,
   };
 }
@@ -108,7 +113,7 @@ export async function getWeightLossStatus() {
   const kstRawWindowStart = new Date(kstTodayMidnight.getTime() - 6 * DAY_MS);
   const fourteenDaysAgo = daysAgo(13);
 
-  const [balances, weights, latestWeightRow, activities, profile] =
+  const [balances, weights, latestWeightRow, activityRows, profile] =
     await Promise.all([
       prisma.dailySummary.findMany({
         where: { date: { gte: kstRiskWindowStart } },
@@ -142,10 +147,10 @@ export async function getWeightLossStatus() {
           distance: true,
           duration: true,
           calories: true,
-          intensityLabel: true,
-          estimatedZone: true,
           // Codex P2 (PR #300): 실제 Z4/Z5 초를 합해야 함 (activity duration 전체를 세면 과대 산정).
-          zoneDistribution: true,
+          // #570: 라벨 · 존 · 분포는 프로필 기준 (심박 / 파워 / 자동) 값
+          ...INTENSITY_SELECT,
+          weatherApparentTempC: true,
           // #267: 코스 태그도 노출 (AI 가 코스별 반복 러닝 인식)
           routeTag: true,
         },
@@ -153,6 +158,8 @@ export async function getWeightLossStatus() {
       }),
       prisma.userProfile.findFirst(),
     ]);
+  const intensityContext = await loadIntensityContext(prisma);
+  const activities = activityRows.map((r) => applyIntensityBasis(r, intensityContext));
 
   // Codex P2 (PR #300 14회차): raw 요약은 today 포함 7일 (today-6..today) 만 사용.
   // 위 fetch 는 risk 를 위해 8일 (today-7..today) 을 가져오지만, 사용자에게 보여주는 요약은
@@ -233,7 +240,9 @@ export async function getWeightLossStatus() {
   // 여전히 today 포함 7일 (activitiesRaw) 기준 — 사용자 표시 정책 유지.
   let missingZoneCountRisk = 0;
   const highIntensitySecondsRisk = activitiesCompleted.reduce((s, a) => {
-    const dist = parseZoneDistribution(a.zoneDistribution);
+    // #570: 파워 존은 심박 등가로 (파워 Z3 역치부터 고강도)
+    const parsed = parseZoneDistribution(a.zoneDistribution);
+    const dist = parsed && toComparableZones(parsed, a.intensityBasis);
     if (!dist) {
       missingZoneCountRisk++;
       return s;
@@ -244,7 +253,8 @@ export async function getWeightLossStatus() {
   // 30.33 분 → assessor 가 > 30 true → 점수 반영. 이전엔 Math.round 로 30 → false negative.
   const highIntensityMinutesRiskExact = highIntensitySecondsRisk / 60;
   const highIntensitySecondsDisplay = activitiesRaw.reduce((s, a) => {
-    const dist = parseZoneDistribution(a.zoneDistribution);
+    const parsed = parseZoneDistribution(a.zoneDistribution);
+    const dist = parsed && toComparableZones(parsed, a.intensityBasis);
     if (!dist) return s;
     return s + dist.z4 + dist.z5;
   }, 0);
