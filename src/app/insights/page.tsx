@@ -112,10 +112,13 @@ export default async function InsightsPage() {
   const zoneRuns = allRuns.filter((r) => r.zones !== null);
   const zonePowerRuns = zoneRuns.filter((r) => r.zoneBasis === "power").length;
   const zoneHrRuns = zoneRuns.filter((r) => r.zoneBasis === "hr").length;
+  // PR #573 Codex P2: 심박 기준만이어도 기준 · 건수를 보여 준다
   const zoneBasisNote =
     zonePowerRuns > 0
       ? ` 러닝 파워 기준 러닝 ${zonePowerRuns}건은 같은 강도의 심박 존으로 옮겨 셉니다 (파워 존은 심박 존보다 한 칸 위 · 심박 ${zoneHrRuns}건).`
-      : "";
+      : zoneHrRuns > 0
+        ? ` 심박 기준 ${zoneHrRuns}건.`
+        : "";
 
   // D
   const lagRs = lagCorrelations(weeks.buckets, LAGS, ctx);
