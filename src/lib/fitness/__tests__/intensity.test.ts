@@ -12,7 +12,11 @@ const HR_EASY = { hrTimeInZone_1: 600, hrTimeInZone_2: 2400, hrTimeInZone_3: 300
 const POWER_Z3 = { powerTimeInZone_1: 300, powerTimeInZone_2: 600, powerTimeInZone_3: 1500, powerTimeInZone_4: 600, powerTimeInZone_5: 0 };
 const z = (z1: number, z2: number, z3: number, z4: number, z5: number) => ({ z1, z2, z3, z4, z5 });
 const power = (rawData: Record<string, unknown>, extra: { thresholdPower?: number | null; activityType?: string } = {}) =>
-  computePowerIntensityFromRawData({ rawData, activityType: extra.activityType ?? "running", thresholdPower: extra.thresholdPower });
+  computePowerIntensityFromRawData({
+    rawData,
+    activityType: extra.activityType ?? "running",
+    thresholdPower: extra.thresholdPower === undefined ? 1000 : extra.thresholdPower,
+  });
 
 describe("심박 · 파워 분포는 각자 원본에서", () => {
   it("심박 계산은 파워가 있어도 심박 분포", () => {
@@ -77,9 +81,13 @@ describe("파워 보정 — 정규화 파워 / 역치", () => {
     expect(power({ ...easy, normPower: 190 }, { thresholdPower: 300 })?.intensityLabel).toBe("recovery");
   });
 
-  it("그 사이 · 역치파워 없음 → 보정 없음", () => {
+  it("그 사이 → 보정 없음", () => {
     expect(power({ ...easy, normPower: 230 }, { thresholdPower: 300 })?.intensityLabel).toBe("easy");
-    expect(power({ ...easy, normPower: 400 }, { thresholdPower: null })?.intensityLabel).toBe("easy");
+  });
+
+  // 회귀: #570 사전 리뷰 major 3 — 역치파워 없이 계산된 값이 싱크로 저장돼 굳었다
+  it("역치파워 없음 → 계산하지 않는다 (null)", () => {
+    expect(power({ ...easy, normPower: 400 }, { thresholdPower: null })).toBeNull();
   });
 });
 

@@ -69,7 +69,8 @@ describe("selectIntensity — 자동 (심박을 믿기 어려운 상황에만 �
   });
 
   it("상황이어도 파워가 없으면 심박", () => {
-    expect(selectIntensity(HR_ONLY, ctx("auto", [{ start: "2030-01-01", end: null }]))).toMatchObject({ basis: "hr", reason: "normal" });
+    expect(selectIntensity(HR_ONLY, ctx("auto", [{ start: "2030-01-01", end: null }]))).toMatchObject({ basis: "hr", reason: "no_power" });
+    expect(selectIntensity(HR_ONLY, ctx("auto"))).toMatchObject({ basis: "hr", reason: "normal" });
   });
 
   it("심박이 없고 파워만 있으면 파워", () => {
@@ -105,5 +106,16 @@ describe("selectIntensityLabel", () => {
     expect(selectIntensityLabel(row, ctx("auto"))).toEqual({ label: "threshold", basis: "power" });
     expect(selectIntensityLabel({ ...row, weatherApparentTempC: 20 }, ctx("auto"))).toEqual({ label: "tempo", basis: "hr" });
     expect(selectIntensityLabel({ ...row, powerIntensityLabel: null }, ctx("power"))).toEqual({ label: "tempo", basis: "hr" });
+  });
+});
+
+// 회귀: #570 사전 리뷰 major 1 — 파워 존을 심박 존 그대로 합산해 80/20 · 고강도 분이 어긋났다
+describe("toComparableZones", () => {
+  it("파워 → 심박 등가 (Z1→Z2 · Z2→Z3 · Z3→Z4 · Z4+Z5→Z5) · 심박은 그대로", async () => {
+    const { toComparableZones } = await import("../intensity");
+    const d = { z1: 10, z2: 20, z3: 30, z4: 40, z5: 5 };
+    expect(toComparableZones(d, "power")).toEqual({ z1: 0, z2: 10, z3: 20, z4: 30, z5: 45 });
+    expect(toComparableZones(d, "hr")).toBe(d);
+    expect(toComparableZones(d, null)).toBe(d);
   });
 });

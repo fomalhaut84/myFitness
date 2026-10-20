@@ -34,9 +34,12 @@ export interface ZoneDistribution {
   z5: number;
 }
 
-/** 프로필 설정 — power = 러닝 파워 기준 값이 있으면 파워, 없으면 심박 · auto = (정의 결정 대기 — 현재 power 와 같음) */
+/**
+ * 프로필 설정 (UserProfile.intensityBasis) — hr = 심박 · power = 파워 우선 (없으면 심박) ·
+ * auto = 심박 영향 복약 기간 · 더위의 러닝만 파워 (intensity-select.ts decideBasis)
+ */
 export type IntensityBasisSetting = "hr" | "power" | "auto";
-/** 강도 값을 실제로 만든 기준 (Activity.intensityBasis) */
+/** 읽을 때 고른 값의 기준 (applyIntensityBasis 의 intensityBasis) */
 export type IntensityBasis = "hr" | "power";
 
 export const INTENSITY_BASIS_SETTINGS = ["hr", "power", "auto"] as const;
@@ -278,6 +281,8 @@ export function computeIntensityFromRawData(args: {
  * #570: 러닝 파워 기준 분류 (Activity 의 power* 컬럼). 심박 기준과 따로 저장한다.
  * 역치파워 · 파워 존은 Garmin RUNNING 프로필이라 러닝 계열에만 — 사이클 등은 null
  * (PR #571 Codex P2: 자전거 파워를 러닝 역치와 비교하지 않게). 파워 존 데이터가 없어도 null.
+ * 역치파워가 없어도 null — 보정 없는 값이 저장돼 굳지 않게 (스펙 §2-7 · 사전 리뷰 major 3: 일일 싱크는 activities 가
+ * user_profile 보다 먼저라 배포 첫날 역치파워 없이 계산됐다). 싱크 · 채우기 모두 이 규칙 하나를 따른다.
  */
 export function computePowerIntensityFromRawData(args: {
   rawData: Record<string, unknown> | null | undefined;
@@ -285,6 +290,7 @@ export function computePowerIntensityFromRawData(args: {
   thresholdPower?: number | null;
 }): IntensityClassification | null {
   if (!args.rawData || !isRunningType(args.activityType)) return null;
+  if (!args.thresholdPower || args.thresholdPower <= 0) return null;
   const dist = extractPowerZoneDistribution(args.rawData);
   if (!dist) return null;
   return classifyPowerIntensity({
@@ -292,4 +298,14 @@ export function computePowerIntensityFromRawData(args: {
     power: representativePower(args.rawData),
     thresholdPower: args.thresholdPower,
   });
+}
+
+/**
+ * #570: 집계용 존 — 파워 존 분포를 심박 존 등가로 옮긴다 (Z1 이지 → 심박 Z2 · Z2 → Z3 · Z3 역치 → Z4 · Z4 + Z5 → Z5).
+ * 80/20 (easy = Z1+Z2 · hard = Z4+Z5) · 고강도 분 (Z4+Z5) · 월별 존 비율이 기준이 섞여도 같은 뜻이 되게 (사전 리뷰 major 1).
+ * 활동 하나의 존 표시 (W 구간) 에는 쓰지 않는다. 심박 · 기준 없음은 그대로.
+ */
+export function toComparableZones(dist: ZoneDistribution, basis: IntensityBasis | null | undefined): ZoneDistribution {
+  if (basis !== "power") return dist;
+  return { z1: 0, z2: dist.z1, z3: dist.z2, z4: dist.z3, z5: dist.z4 + dist.z5 };
 }

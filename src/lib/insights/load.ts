@@ -1,7 +1,7 @@
 // #397 F2: 러닝 활동 조회 1회 — 4 패널이 같은 배열을 쓴다. 서버 전용 (prisma). 캐시 래퍼는 `history/cache.ts`.
 import prisma from "@/lib/prisma";
 import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
-import type { ZoneDistribution } from "@/lib/fitness/intensity";
+import { toComparableZones, type ZoneDistribution } from "@/lib/fitness/intensity";
 import { INTENSITY_SELECT, selectIntensity } from "@/lib/fitness/intensity-select";
 import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { RACE_EVENT_TYPE } from "@/lib/garmin/parse-event-type";
@@ -15,6 +15,10 @@ function toZones(raw: unknown): ZoneDistribution | null {
   const pick = (k: string) => (typeof z[k] === "number" && Number.isFinite(z[k] as number) ? (z[k] as number) : 0);
   const zones = { z1: pick("z1"), z2: pick("z2"), z3: pick("z3"), z4: pick("z4"), z5: pick("z5") };
   return zones.z1 + zones.z2 + zones.z3 + zones.z4 + zones.z5 > 0 ? zones : null;
+}
+
+function comparable(zones: ZoneDistribution | null, basis: "hr" | "power" | null): ZoneDistribution | null {
+  return zones === null ? null : toComparableZones(zones, basis);
 }
 
 export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]> {
@@ -57,7 +61,8 @@ export async function loadInsightRuns(ctx: InsightContext): Promise<InsightRun[]
       avgHR: r.avgHR,
       tempC: r.weatherTempC,
       humidityPct: r.weatherHumidityPct,
-      zones: toZones(intensity.zoneDistribution),
+      // #570: 월별 존 비율은 기준이 섞이므로 파워 존을 심박 등가로 (toComparableZones)
+      zones: comparable(toZones(intensity.zoneDistribution), intensity.basis),
       zoneBasis: intensity.basis,
       race: r.eventType === RACE_EVENT_TYPE,
       hrr2: r.hrr2,

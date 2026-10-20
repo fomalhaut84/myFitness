@@ -46,7 +46,8 @@ export const HR_ONLY_CONTEXT: IntensityContext = { setting: "hr", hrAffectedPeri
 /**
  * 고른 이유 — 화면 · AI 가 "왜 파워 / 심박" 인지 설명한다.
  * setting = 설정 그대로 · no_power = 파워 기준인데 파워 값이 없어 심박 · medication · heat = 자동이 파워를 고른 상황 ·
- * no_hr = 심박 값이 없어 파워 · normal = 자동이 심박을 고름 (특이 상황 없음)
+ * no_hr = 심박 값이 없어 파워 · normal = 자동이 심박을 고름 (특이 상황 없음) ·
+ * no_power 는 자동에서도 — 복약 · 더위 상황인데 파워 값이 없어 심박 (사전 리뷰 info: "특이 상황 없음" 으로 오해하지 않게)
  */
 export type IntensityBasisReason = "setting" | "no_power" | "medication" | "heat" | "no_hr" | "normal";
 
@@ -115,12 +116,12 @@ export function decideBasis(
     return has.power ? { basis: "power", reason: "setting" } : { basis: "hr", reason: "no_power" };
   }
   // auto
+  const disturbance = hrDisturbance(row, ctx.hrAffectedPeriods);
   if (has.power) {
-    const disturbance = hrDisturbance(row, ctx.hrAffectedPeriods);
     if (disturbance) return { basis: "power", reason: disturbance };
     if (!has.hr) return { basis: "power", reason: "no_hr" };
   }
-  return has.hr ? { basis: "hr", reason: "normal" } : { basis: null, reason: null };
+  return { basis: "hr", reason: disturbance ? "no_power" : "normal" };
 }
 
 export function selectIntensity(row: StoredIntensity, ctx: IntensityContext): SelectedIntensity {

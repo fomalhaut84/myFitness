@@ -25,25 +25,27 @@ export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
   if (thresholdPower === null) return { scanned: 0, filled: 0 };
   let scanned = 0;
   let filled = 0;
-  let cursor: string | undefined;
+  let lastId: string | undefined;
 
   for (;;) {
+    // 커서는 id > 마지막 id 로 — Prisma cursor + skip 1 은 방금 채워 필터에서 빠진 행을 기준으로 다음 행 하나를
+    // 건너뛰었다 (사전 리뷰 major 2: 배치마다 1행 누락)
     const rows = await prisma.activity.findMany({
       where: {
         AND: [
           RUNNING_ACTIVITY_WHERE,
           { powerZoneDistribution: { equals: Prisma.DbNull } },
           { rawData: { path: ["powerTimeInZone_1"], gte: 0 } },
+          ...(lastId ? [{ id: { gt: lastId } }] : []),
         ],
       },
       select: { id: true, activityType: true, rawData: true },
       orderBy: { id: "asc" },
       take: BATCH_SIZE,
-      ...(cursor ? { skip: 1, cursor: { id: cursor } } : {}),
     });
     if (rows.length === 0) break;
     scanned += rows.length;
-    cursor = rows[rows.length - 1].id;
+    lastId = rows[rows.length - 1].id;
 
     const updates = rows.flatMap((row) => {
       const intensity = computePowerIntensityFromRawData({

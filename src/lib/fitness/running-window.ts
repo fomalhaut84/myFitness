@@ -1,7 +1,7 @@
 // #444 F2: 러닝 창 요약 — 존 시간 합 · 80/20 (polarized) 비율 · 2분 HRR 중앙값. 순수 (prisma · Date 없음).
 // `get_activities` daily 응답의 envelope 에 실려 주간 리포트가 "이번 주 vs 직전 4주" 를 같은 정의로 비교한다.
 import { isRunningType } from "@/lib/activity/running-types";
-import { parseZoneDistribution, type ZoneDistribution } from "@/lib/fitness/intensity";
+import { parseZoneDistribution, toComparableZones, type ZoneDistribution } from "@/lib/fitness/intensity";
 import { median } from "@/lib/insights/stats";
 import { strideMeters } from "./stride";
 
@@ -110,7 +110,9 @@ export function summarizeRunningWindow(rows: readonly RunningWindowRow[]): Runni
   const runs = rows.filter((r) => isRunningType(r.activityType));
   const zoned = runs.flatMap((r) => {
     const z = usableZones(r.zoneDistribution);
-    return z === null ? [] : [{ z, basis: r.intensityBasis === "power" ? "power" : "hr" }];
+    const basis = r.intensityBasis === "power" ? "power" : "hr";
+    // #570: 파워 존은 심박 존 등가로 옮겨 합산 — easyPct · hardPct 가 기준이 섞여도 같은 뜻
+    return z === null ? [] : [{ z: toComparableZones(z, basis), basis }];
   });
   const zones = zoned.map((x) => x.z);
   const totals = zones.length > 0 ? roundZones(zones.reduce(addZones, EMPTY_ZONES)) : null;

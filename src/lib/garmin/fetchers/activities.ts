@@ -104,6 +104,7 @@ export async function syncActivities(
         lthr,
       });
       // #570: 러닝 파워 기준 (powerTimeInZone_1~5) — 같은 규칙으로 별도 컬럼. 러닝 아닌 활동은 null.
+      // 역치파워가 없으면 null (computePowerIntensityFromRawData) — 그 러닝은 프로필 싱크 뒤 fillMissingPowerIntensity 가 채운다.
       const powerIntensity = computePowerIntensityFromRawData({
         rawData: raw,
         activityType: data.activityType,

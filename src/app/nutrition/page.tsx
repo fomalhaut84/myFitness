@@ -6,7 +6,7 @@ import { todayKSTString } from "@/lib/garmin/utils";
 import { aggregateRecentMacros, averageMacros, averageCompleteMacros } from "@/lib/nutrition/daily-macros";
 import { MAX_NUTRITION_ATTEMPTS } from "@/lib/nutrition/backfill";
 import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
-import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { parseZoneDistribution, toComparableZones } from "@/lib/fitness/intensity";
 import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
 import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import MacroDonut from "@/components/nutrition/MacroDonut";
@@ -143,7 +143,9 @@ export default async function NutritionPage(props: {
   const activities7d = activityRows.map((r) => applyIntensityBasis(r, intensityContext));
   let missingZone = 0;
   const highIntensitySeconds = activities7d.reduce((s, a) => {
-    const dist = parseZoneDistribution(a.zoneDistribution);
+    // #570: 파워 존은 심박 등가로 (파워 Z3 역치부터 고강도)
+    const parsed = parseZoneDistribution(a.zoneDistribution);
+    const dist = parsed && toComparableZones(parsed, a.intensityBasis);
     if (!dist) {
       missingZone++;
       return s;

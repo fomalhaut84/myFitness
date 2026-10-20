@@ -3,7 +3,7 @@ import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-s
 import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { aggregateRecentMacros, averageMacros } from "@/lib/nutrition/daily-macros";
 import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
-import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { parseZoneDistribution, toComparableZones } from "@/lib/fitness/intensity";
 import { ymdKST } from "@/lib/garmin/utils";
 
 const KST_OFFSET_MS = 9 * 60 * 60 * 1000;
@@ -82,6 +82,7 @@ export function toActivityRow(a: {
   startTime: Date;
   intensityLabel: string | null;
   estimatedZone: number | null;
+  intensityBasis?: string | null;
   routeTag: string | null;
 }) {
   return {
@@ -90,6 +91,8 @@ export function toActivityRow(a: {
     date: ymdKST(a.startTime),
     label: a.intensityLabel,
     zone: a.estimatedZone,
+    // #570: zone 이 심박 존인지 러닝 파워 존인지
+    intensityBasis: a.intensityBasis ?? null,
     routeTag: a.routeTag,
   };
 }
@@ -237,7 +240,9 @@ export async function getWeightLossStatus() {
   // 여전히 today 포함 7일 (activitiesRaw) 기준 — 사용자 표시 정책 유지.
   let missingZoneCountRisk = 0;
   const highIntensitySecondsRisk = activitiesCompleted.reduce((s, a) => {
-    const dist = parseZoneDistribution(a.zoneDistribution);
+    // #570: 파워 존은 심박 등가로 (파워 Z3 역치부터 고강도)
+    const parsed = parseZoneDistribution(a.zoneDistribution);
+    const dist = parsed && toComparableZones(parsed, a.intensityBasis);
     if (!dist) {
       missingZoneCountRisk++;
       return s;
@@ -248,7 +253,8 @@ export async function getWeightLossStatus() {
   // 30.33 분 → assessor 가 > 30 true → 점수 반영. 이전엔 Math.round 로 30 → false negative.
   const highIntensityMinutesRiskExact = highIntensitySecondsRisk / 60;
   const highIntensitySecondsDisplay = activitiesRaw.reduce((s, a) => {
-    const dist = parseZoneDistribution(a.zoneDistribution);
+    const parsed = parseZoneDistribution(a.zoneDistribution);
+    const dist = parsed && toComparableZones(parsed, a.intensityBasis);
     if (!dist) return s;
     return s + dist.z4 + dist.z5;
   }, 0);
