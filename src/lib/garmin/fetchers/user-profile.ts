@@ -364,6 +364,26 @@ async function applyAutoSync(args: {
   });
 }
 
+/** 선택 엔드포인트 1개 조회 — 실패는 경고만 남기고 undefined (= 이번 싱크에서 미갱신) */
+async function fetchOptional(client: GarminConnect, url: string, label: string): Promise<unknown> {
+  try {
+    return await withRateLimit(() => client.get<unknown>(url));
+  } catch (err) {
+    console.warn(`[user-profile] ${label} 조회 실패 (파워 필드 미갱신):`, err instanceof Error ? err.message : String(err));
+    return undefined;
+  }
+}
+
+/**
+ * #570: 파워 엔드포인트 — 선택 항목이라 실패해도 프로필 싱크를 실패로 만들지 않는다.
+ * `errors` 에 넣으면 syncUserProfile 이 throw → weekly-report 가 activities 갭 필까지 건너뛴다 (사전 리뷰 major 1).
+ */
+export async function fetchPowerPayload(client: GarminConnect): Promise<{ powerZones: unknown; latest: unknown }> {
+  const powerZones = await fetchOptional(client, POWER_ZONES_URL, "powerZones");
+  const latest = await fetchOptional(client, LATEST_FTP_URL, "latestFunctionalThresholdPower");
+  return { powerZones, latest };
+}
+
 /**
  * Garmin 프로필 동기화. 두 API 호출:
  *   1. /biometric-service/heartRateZones (러닝 sport) - maxHR/LTHR/Zone
@@ -397,23 +417,7 @@ export async function syncUserProfile(
     errors.push({ source: "user-settings", message: msg });
   }
 
-  // #570: 파워 엔드포인트 — 실패는 다른 필드 싱크를 막지 않고 부분 실패로만 노출
-  let powerZones: unknown = undefined;
-  let latestFtp: unknown = undefined;
-  try {
-    powerZones = await withRateLimit(() => client.get<unknown>(POWER_ZONES_URL));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn("[user-profile] powerZones 조회 실패:", msg);
-    errors.push({ source: "powerZones", message: msg });
-  }
-  try {
-    latestFtp = await withRateLimit(() => client.get<unknown>(LATEST_FTP_URL));
-  } catch (err) {
-    const msg = err instanceof Error ? err.message : String(err);
-    console.warn("[user-profile] latestFunctionalThresholdPower 조회 실패:", msg);
-    errors.push({ source: "latestFunctionalThresholdPower", message: msg });
-  }
+  const { powerZones, latest: latestFtp } = await fetchPowerPayload(client);
 
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};

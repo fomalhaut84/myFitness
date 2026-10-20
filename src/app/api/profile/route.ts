@@ -63,6 +63,8 @@ const PATCH_SCHEMA = z.object({
   // #570: 러닝 역치파워 (W) · 강도 평가 기준
   thresholdPower: z.number().int().min(THRESHOLD_POWER_MIN).max(THRESHOLD_POWER_MAX).nullable().optional(),
   intensityBasis: z.enum(INTENSITY_BASIS_SETTINGS).optional(),
+  // 재계산만 다시 요청 (이전 재계산 실패 후 — 기준이 이미 저장돼 있어 값 변경으로는 다시 돌지 않는다)
+  recomputeIntensity: z.literal(true).optional(),
   // #505: 수동 보호(source = manual) 해제 — source 만 "garmin" 으로, 값은 다음 싱크가 갱신.
   revertToGarmin: z.array(z.enum(["maxHR", "lthr", "thresholdPower"])).max(3).optional(),
 });
@@ -313,7 +315,9 @@ export async function PATCH(request: Request) {
 
     // #570: 강도 기준이 바뀌면 전체 활동 강도를 새 기준으로 재계산 (rawData 만 · 요청 안에서 완료).
     // 실패해도 설정은 이미 저장됐다 — 응답에 알리고 다음 변경 · 백필 스크립트로 복구.
-    if (data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis) {
+    const basisChanged =
+      data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis;
+    if (basisChanged || data.recomputeIntensity) {
       try {
         const { updated } = await recomputeAllIntensity();
         return NextResponse.json({ profile, recomputed: updated });
@@ -324,7 +328,7 @@ export async function PATCH(request: Request) {
         );
         return NextResponse.json({
           profile,
-          recomputeError: "설정은 저장됐지만 활동 강도 재계산에 실패했습니다. 잠시 후 기준을 다시 저장해 주세요.",
+          recomputeError: "설정은 저장됐지만 활동 강도 재계산에 실패했습니다. 잠시 후 \"다시 계산\" 을 눌러 주세요.",
         });
       }
     }

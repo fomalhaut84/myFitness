@@ -48,7 +48,7 @@
 - [ ] G1 `powerZones/sports/all` 조회 → `sport === "RUNNING"` 항목 선택 (순수 함수 `pickRunningPowerZones` · 외부 JSON 형태 검증, 다르면 null). `powerZonesRaw` 는 매 싱크 갱신 (수동 보호와 무관 — `heartRateZonesRaw` 와 같다)
 - [ ] G2 `thresholdPower` = RUNNING `functionalThresholdPower`. `canAutoUpdate(thresholdPowerSource)` 일 때만 갱신 · 바뀌면 `MetricChange` (`garmin_initial` / `garmin_auto_detect`)
 - [ ] G3 `latestFunctionalThresholdPower/RUNNING` → `thresholdPowerMeasuredAt` (`calendarDate` 는 naive 로컬 — KST 로 해석, memory `project-garmin-api-naive-tz`). user-settings `ftpAutoDetected` → `thresholdPowerAutoDetected`
-- [ ] G4 엔드포인트별 실패는 지금처럼 `errors` 에 모으고 다른 필드 싱크를 막지 않는다. 파워 엔드포인트 실패 · 빈 페이로드 · RUNNING 없음 = 파워 필드 미갱신 (기존 값 유지 · null 로 덮지 않음)
+- [ ] G4 파워 엔드포인트 실패는 `console.warn` 만 — `errors` 에 넣지 않는다 (넣으면 프로필 싱크 전체가 실패로 기록되고 weekly-report 가 activities 갭 필을 건너뛴다 · 사전 리뷰 major 1). 파워 엔드포인트 실패 · 빈 페이로드 · RUNNING 없음 = 파워 필드 미갱신 (기존 값 유지 · null 로 덮지 않음)
 - [ ] G5 범위 검증: 역치파워 50~1000 W 밖이면 무시 + `console.warn`. 존 하한은 오름차순이어야 함
 
 **강도 계산 (`src/lib/fitness/intensity.ts` · 순수)**
@@ -61,7 +61,7 @@
 **싱크 · 재계산 경로**
 - [ ] P1 `fetchers/activities.ts` — 프로필에서 `lthr` 와 함께 `intensityBasis` · `thresholdPower` 1회 조회 → 계산 → `intensityBasis` 컬럼 함께 저장
 - [ ] P2 `src/lib/fitness/recompute-intensity.ts` — 전체 활동을 현재 설정으로 재계산 (rawData 만 · 배치 update · 같은 프로세스 안 직렬화). 변경된 행 수 반환. `scripts/backfill-intensity.ts` 는 이 함수를 쓰도록 교체 — 바뀐 행만 갱신하므로 반복 실행해도 안전하고, 이전 `--force` 는 이 동작에 포함됐다 (구현 중 변경)
-- [ ] P3 `PATCH /api/profile` — `intensityBasis` (zod enum) · `thresholdPower` (50~1000 정수 · `null` 허용) · `revertToGarmin` enum 에 `thresholdPower` 추가 (`max(3)`). `intensityBasis` 가 실제로 바뀌면 같은 요청에서 P2 재계산 실행 · 응답에 `recomputed: N`. 재계산 실패는 설정 저장을 되돌리지 않고 `{ error }` 대신 `recomputeError` 로 알린다 (설정은 이미 저장 — 다음 싱크/수동 재계산으로 복구)
+- [ ] P3 `PATCH /api/profile` — `intensityBasis` (zod enum) · `thresholdPower` (50~1000 정수 · `null` 허용) · `revertToGarmin` enum 에 `thresholdPower` 추가 (`max(3)`). `intensityBasis` 가 실제로 바뀌면 같은 요청에서 P2 재계산 실행 · 응답에 `recomputed: N`. 실패 후 재시도는 `recomputeIntensity: true` (기준이 이미 저장돼 값 변경으로는 다시 돌지 않는다 · 사전 리뷰 major 2). 재계산 실패는 설정 저장을 되돌리지 않고 `{ error }` 대신 `recomputeError` 로 알린다 (설정은 이미 저장 — 다음 싱크/수동 재계산으로 복구)
 - [ ] P4 동시성: 재계산 중 다른 재계산 요청 (설정 연타) 은 마지막 설정으로 다시 돈다 — 재계산은 실행 시점에 프로필을 다시 읽는다 (idempotent)
 
 **MCP · AI 컨텍스트**

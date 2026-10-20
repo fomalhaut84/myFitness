@@ -1,7 +1,11 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { computeIntensityFromRawData, parseIntensityBasisSetting } from "@/lib/fitness/intensity";
+import {
+  computeIntensityFromRawData,
+  parseIntensityBasisSetting,
+  type IntensityBasisSetting,
+} from "@/lib/fitness/intensity";
 import { shouldClearOnMissing, toIntensityColumns } from "@/lib/fitness/intensity-columns";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
@@ -23,11 +27,15 @@ export async function syncActivities(
   // 실측값이 없으면 LTHR 기반 보정은 건너뛰고 분포만으로 분류.
   const profile = await prisma.userProfile.findFirst();
   const lthr = profile?.lthr ?? null;
-  // #570: 강도 기준 (심박 / 파워 / 자동) + 파워 보정용 역치파워
-  const basis = parseIntensityBasisSetting(profile?.intensityBasis);
-  const thresholdPower = profile?.thresholdPower ?? null;
+  // #570: 강도 기준 (심박 / 파워 / 자동) + 파워 보정용 역치파워 — 페이지마다 다시 읽는다
+  let basis: IntensityBasisSetting;
+  let thresholdPower: number | null;
 
   while (hasMore) {
+    // #570 사전 리뷰 info 3: 긴 싱크 중 기준이 바뀌면 (재계산 뒤) 옛 기준으로 덮어쓰지 않게 페이지마다 다시 읽는다
+    const current = await prisma.userProfile.findFirst({ select: { intensityBasis: true, thresholdPower: true } });
+    basis = parseIntensityBasisSetting(current?.intensityBasis);
+    thresholdPower = current?.thresholdPower ?? null;
     const activities = await withRateLimit(() =>
       client.getActivities(start, PAGE_SIZE)
     );

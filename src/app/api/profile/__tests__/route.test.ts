@@ -86,6 +86,14 @@ describe("PATCH /api/profile #570", () => {
     expect(mocks.recomputeAllIntensity).not.toHaveBeenCalled();
   });
 
+  // 회귀: #570 사전 리뷰 major 2 — 재계산 실패 후 같은 기준을 다시 저장해도 재계산이 돌지 않았다
+  it("기준이 이미 저장된 뒤 재계산만 다시 요청", async () => {
+    mocks.upsert.mockResolvedValue({ ...EXISTING, intensityBasis: "power" });
+    const res = await patch({ intensityBasis: "power", recomputeIntensity: true });
+    expect(mocks.recomputeAllIntensity).toHaveBeenCalledTimes(1);
+    expect(await res.json()).toMatchObject({ recomputed: 4 });
+  });
+
   it("재계산 실패 → 설정은 저장 · recomputeError", async () => {
     mocks.recomputeAllIntensity.mockRejectedValue(new Error("db"));
     const res = await patch({ intensityBasis: "power" });
