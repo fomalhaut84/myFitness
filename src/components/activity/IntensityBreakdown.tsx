@@ -164,7 +164,7 @@ export default function IntensityBreakdown({
             );
           })}
         </div>
-        {power && avgHrNote && <p className="text-[11px] text-dim mt-3">{avgHrNote} — 심박은 참고로만 보여 줍니다.</p>}
+        {power && avgHrNote && !compare && <p className="text-[11px] text-dim mt-3">{avgHrNote} — 심박은 참고로만 보여 줍니다.</p>}
       </div>
 
       {compare && (

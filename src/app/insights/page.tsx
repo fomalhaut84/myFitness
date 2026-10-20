@@ -109,8 +109,9 @@ export default async function InsightsPage() {
   const zoneCmp = zoneShareCompare(zoneMonths, ctx);
   const zoneFrom = zoneMonths[0]?.key.replace("-", ".") ?? null;
   // #570: 존 기준별 러닝 수 — 파워 기준 러닝은 심박 존 등가로 합산 (insights/load.ts)
-  const zonePowerRuns = allRuns.filter((r) => r.zoneBasis === "power").length;
-  const zoneHrRuns = allRuns.filter((r) => r.zoneBasis === "hr").length;
+  const zoneRuns = allRuns.filter((r) => r.zones !== null);
+  const zonePowerRuns = zoneRuns.filter((r) => r.zoneBasis === "power").length;
+  const zoneHrRuns = zoneRuns.filter((r) => r.zoneBasis === "hr").length;
   const zoneBasisNote =
     zonePowerRuns > 0
       ? ` 러닝 파워 기준 러닝 ${zonePowerRuns}건은 같은 강도의 심박 존으로 옮겨 셉니다 (파워 존은 심박 존보다 한 칸 위 · 심박 ${zoneHrRuns}건).`

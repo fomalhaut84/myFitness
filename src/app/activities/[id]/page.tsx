@@ -5,7 +5,7 @@ import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import { applyIntensityBasis, INTENSITY_SELECT, selectIntensityLabel } from "@/lib/fitness/intensity-select";
 import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { resolveProfilePowerZones } from "@/lib/fitness/power-zones";
-import { getZoneRanges, resolveLTHR, resolveMaxHR } from "@/lib/fitness/zones";
+import { resolveLTHR, resolveMaxHR, resolveProfileHrZones } from "@/lib/fitness/zones";
 import type { IntensityExtras } from "./activity-detail-client";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import { isRunningType } from "@/lib/activity/running-types";
@@ -22,7 +22,7 @@ interface PageProps {
 export default async function ActivityDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const [row, basis] = await Promise.all([prisma.activity.findUnique({
+  const [row, basis, profile] = await Promise.all([prisma.activity.findUnique({
     where: { id },
     select: {
       name: true,
@@ -60,10 +60,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       weatherPrecipMm: true,
       weatherCode: true,
     },
-  }), loadIntensityContext(prisma)]);
-  const profile = await prisma.userProfile.findFirst({
-    select: { lthr: true, maxHR: true, birthDate: true, thresholdPower: true, thresholdPowerSource: true, powerZonesRaw: true },
-  });
+  }), loadIntensityContext(prisma), prisma.userProfile.findFirst({ select: PROFILE_ZONE_SELECT })]);
 
   if (!row) {
     notFound();
@@ -137,16 +134,40 @@ export default async function ActivityDetailPage({ params }: PageProps) {
 }
 
 
+const PROFILE_ZONE_SELECT = {
+  lthr: true,
+  maxHR: true,
+  birthDate: true,
+  maxHRSource: true,
+  lthrSource: true,
+  heartRateZonesRaw: true,
+  thresholdPower: true,
+  thresholdPowerSource: true,
+  powerZonesRaw: true,
+} as const;
+
 /**
  * #570: 강도 분석 보조 — 고른 기준의 존 경계 · 역치 · (두 값이 다 있으면) 심박 · 파워 나란히.
- * 존 경계는 현재 프로필 기준 (활동 당시 Garmin 존과 다를 수 있다 — 분포는 Garmin 기록 그대로).
+ * 존 경계는 현재 프로필 기준 — 심박 · 파워 모두 최신 Garmin 존 하한 우선 (분포가 Garmin 존으로 센 시간이라 같은 모델 ·
+ * 사전 리뷰 major), 없거나 뒤처지면 비율 계산. 활동 당시 Garmin 존과는 다를 수 있다.
  */
 function buildIntensityExtras(
   row: { avgHR: number | null; zoneDistribution: unknown; intensityLabel: string | null; intensityScore: number | null; powerZoneDistribution: unknown; powerIntensityLabel: string | null; powerIntensityScore: number | null },
   basis: "hr" | "power" | null,
-  profile: { lthr: number | null; maxHR: number | null; birthDate: Date | null; thresholdPower: number | null; thresholdPowerSource: string | null; powerZonesRaw: unknown } | null
+  profile: {
+    lthr: number | null;
+    maxHR: number | null;
+    birthDate: Date | null;
+    maxHRSource: string | null;
+    lthrSource: string | null;
+    heartRateZonesRaw: unknown;
+    thresholdPower: number | null;
+    thresholdPowerSource: string | null;
+    powerZonesRaw: unknown;
+  } | null
 ): IntensityExtras {
   const lthr = resolveLTHR(profile ?? {});
+  const lthrEstimated = !profile?.lthr;
   const power = profile ? resolveProfilePowerZones(profile) : null;
   const hrDist = parseZoneDistribution(row.zoneDistribution);
   const powerDist = parseZoneDistribution(row.powerZoneDistribution);
@@ -154,11 +175,13 @@ function buildIntensityExtras(
     thresholdText:
       basis === "power"
         ? power ? `역치파워 ${power.thresholdPower} W` : null
-        : `LTHR ${lthr} bpm${profile?.lthr ? "" : " (추정)"}`,
+        : `LTHR ${lthr} bpm${lthrEstimated ? " (추정)" : ""}`,
     ranges:
       basis === "power"
         ? power?.zones ?? null
-        : getZoneRanges(lthr, resolveMaxHR(profile ?? {})),
+        : profile
+          ? resolveProfileHrZones(profile, { maxHR: resolveMaxHR(profile), lthr }).zones
+          : null,
     compare:
       hrDist && powerDist
         ? {
@@ -166,6 +189,8 @@ function buildIntensityExtras(
             power: { dist: powerDist, label: row.powerIntensityLabel, score: row.powerIntensityScore },
           }
         : null,
-    avgHrNote: row.avgHR ? `평균 심박 ${row.avgHR} bpm (LTHR 대비 ${Math.round((row.avgHR / lthr) * 100)}%)` : null,
+    avgHrNote: row.avgHR
+      ? `평균 심박 ${row.avgHR} bpm (${lthrEstimated ? "추정 " : ""}LTHR 대비 ${Math.round((row.avgHR / lthr) * 100)}%)`
+      : null,
   };
 }

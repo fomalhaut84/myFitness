@@ -31,7 +31,7 @@ function ZoneRuler({ zones, thresholdPower }: { zones: PowerZoneRange[]; thresho
   const widths = zones.map((z) => (z.max === null ? thresholdPower * Z5_WIDTH_RATIO : z.max + 1 - z.min));
   const cols = widths.map((w) => `${Math.max(w, 1)}fr`).join(" ");
   return (
-    <div aria-label="러닝 파워 존 경계">
+    <div>
       <div className="grid h-7 rounded-md overflow-hidden" style={{ gridTemplateColumns: cols }}>
         {zones.map((z, i) => (
           <div
@@ -107,7 +107,7 @@ export default function RunningPowerSection({ meta }: { meta: RunningPowerMeta }
       setMessage({ type: "error", text: `역치파워는 ${THRESHOLD_POWER_MIN}~${THRESHOLD_POWER_MAX} W 정수로 입력하세요` });
       return;
     }
-    void run(() => patchProfile({ thresholdPower: parsed }), "역치파워를 저장했습니다");
+    void run(() => patchProfile({ thresholdPower: parsed }), parsed === null ? "역치파워를 비웠습니다" : "역치파워를 저장했습니다");
   }
 
   function handleRevert() {
@@ -164,10 +164,10 @@ export default function RunningPowerSection({ meta }: { meta: RunningPowerMeta }
       )}
 
       <div>
-        <label className="block">
-          <div className="text-xs text-sub mb-1.5">역치파워 (W)</div>
-          <div className="flex flex-wrap items-center gap-2">
+        <label htmlFor="threshold-power" className="block text-xs text-sub mb-1.5">역치파워 (W)</label>
+        <div className="flex flex-wrap items-center gap-2">
             <input
+              id="threshold-power"
               type="number"
               inputMode="numeric"
               min={THRESHOLD_POWER_MIN}
@@ -184,8 +184,7 @@ export default function RunningPowerSection({ meta }: { meta: RunningPowerMeta }
             >
               {busy ? "저장 중..." : "저장"}
             </button>
-          </div>
-        </label>
+        </div>
         <div className="text-[11px] text-dim mt-1">
           수동으로 넣으면 싱크가 덮어쓰지 않습니다. 존 경계는 역치 대비 비율로 계산합니다
           {previewZ3 && previewZ3.max !== null ? ` (Z3 역치 ${previewZ3.min}–${previewZ3.max} W)` : ""}.
