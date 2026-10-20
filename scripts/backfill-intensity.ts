@@ -9,7 +9,7 @@
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
 import { computeIntensityFromRawData } from "../src/lib/fitness/intensity";
-import { fillMissingPowerIntensity } from "../src/lib/fitness/power-intensity-fill";
+import { clearNonRunningPowerIntensity, fillMissingPowerIntensity } from "../src/lib/fitness/power-intensity-fill";
 
 async function backfillHeartRate(force: boolean): Promise<void> {
   const profile = await prisma.userProfile.findFirst();
@@ -56,6 +56,8 @@ async function backfillHeartRate(force: boolean): Promise<void> {
 
 async function main() {
   await backfillHeartRate(process.argv.includes("--force"));
+  const cleared = await clearNonRunningPowerIntensity();
+  console.log(`[파워] 러닝 외 종류의 파워 값 ${cleared}개 정리`);
   const { scanned, filled } = await fillMissingPowerIntensity();
   console.log(`[파워] 대상 ${scanned}개 중 ${filled}개 채움`);
 }
