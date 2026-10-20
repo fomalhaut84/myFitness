@@ -4,6 +4,9 @@ import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
 import { applyIntensityBasis, INTENSITY_SELECT, selectIntensityLabel } from "@/lib/fitness/intensity-select";
 import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
+import { resolveProfilePowerZones } from "@/lib/fitness/power-zones";
+import { getZoneRanges, resolveLTHR, resolveMaxHR } from "@/lib/fitness/zones";
+import type { IntensityExtras } from "./activity-detail-client";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import { isRunningType } from "@/lib/activity/running-types";
 import { loadActivityRecovery } from "@/lib/heart/load-recovery";
@@ -58,11 +61,15 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       weatherCode: true,
     },
   }), loadIntensityContext(prisma)]);
+  const profile = await prisma.userProfile.findFirst({
+    select: { lthr: true, maxHR: true, birthDate: true, thresholdPower: true, thresholdPowerSource: true, powerZonesRaw: true },
+  });
 
   if (!row) {
     notFound();
   }
   const activity = applyIntensityBasis(row, basis);
+  const intensityExtras = buildIntensityExtras(row, activity.intensityBasis, profile);
 
   // #261: 같은 코스 활동 매칭 (GPS 시작점 반경 + 거리 유사, 또는 같은 routeTag).
   // 기존 M4-10 은 activityType + distance ±10% 만 사용 (지역 무관, 오탐 다수) → 대체.
@@ -81,7 +88,10 @@ export default async function ActivityDetailPage({ params }: PageProps) {
     avgHR: a.avgHR,
     duration: a.duration,
     distance: a.distance,
-    intensityLabel: selectIntensityLabel(a, basis).label,
+    ...(() => {
+      const { label, basis: labelBasis } = selectIntensityLabel(a, basis);
+      return { intensityLabel: label, intensityBasis: labelBasis };
+    })(),
     routeTag: a.routeTag,
   }));
 
@@ -117,10 +127,45 @@ export default async function ActivityDetailPage({ params }: PageProps) {
             ? Number((a.distance / 1000).toFixed(2))
             : null,
           intensityLabel: a.intensityLabel,
+          intensityBasis: a.intensityBasis,
           routeTag: a.routeTag,
         }))}
+        intensityExtras={intensityExtras}
       />
     </div>
   );
 }
 
+
+/**
+ * #570: 강도 분석 보조 — 고른 기준의 존 경계 · 역치 · (두 값이 다 있으면) 심박 · 파워 나란히.
+ * 존 경계는 현재 프로필 기준 (활동 당시 Garmin 존과 다를 수 있다 — 분포는 Garmin 기록 그대로).
+ */
+function buildIntensityExtras(
+  row: { avgHR: number | null; zoneDistribution: unknown; intensityLabel: string | null; intensityScore: number | null; powerZoneDistribution: unknown; powerIntensityLabel: string | null; powerIntensityScore: number | null },
+  basis: "hr" | "power" | null,
+  profile: { lthr: number | null; maxHR: number | null; birthDate: Date | null; thresholdPower: number | null; thresholdPowerSource: string | null; powerZonesRaw: unknown } | null
+): IntensityExtras {
+  const lthr = resolveLTHR(profile ?? {});
+  const power = profile ? resolveProfilePowerZones(profile) : null;
+  const hrDist = parseZoneDistribution(row.zoneDistribution);
+  const powerDist = parseZoneDistribution(row.powerZoneDistribution);
+  return {
+    thresholdText:
+      basis === "power"
+        ? power ? `역치파워 ${power.thresholdPower} W` : null
+        : `LTHR ${lthr} bpm${profile?.lthr ? "" : " (추정)"}`,
+    ranges:
+      basis === "power"
+        ? power?.zones ?? null
+        : getZoneRanges(lthr, resolveMaxHR(profile ?? {})),
+    compare:
+      hrDist && powerDist
+        ? {
+            hr: { dist: hrDist, label: row.intensityLabel, score: row.intensityScore },
+            power: { dist: powerDist, label: row.powerIntensityLabel, score: row.powerIntensityScore },
+          }
+        : null,
+    avgHrNote: row.avgHR ? `평균 심박 ${row.avgHR} bpm (LTHR 대비 ${Math.round((row.avgHR / lthr) * 100)}%)` : null,
+  };
+}
