@@ -1,7 +1,8 @@
 /**
  * M4-5 · #570: Activity 강도 필드 backfill.
  *  - 심박 기준: 값이 없는 활동만 분류 (--force: 이미 분류된 활동도 재분류)
- *  - 러닝 파워 기준: 파워 컬럼이 비어 있는 러닝 활동만 채움 (fillMissingPowerIntensity)
+ *  - 러닝 파워 기준: 파워 컬럼이 비어 있는 러닝 활동만 채움 (fillMissingPowerIntensity · --force: 전부 현재 역치파워로 다시)
+ * #572: 싱크는 이미 저장된 강도를 덮어쓰지 않는다 — 역치 (LTHR · 역치파워) 를 바꾼 뒤 과거까지 다시 분류하려면 --force.
  * 프로필 강도 기준 설정은 저장 값을 바꾸지 않는다 — 읽을 때 고른다.
  *
  * 실행: npx tsx scripts/backfill-intensity.ts [--force]
@@ -55,10 +56,11 @@ async function backfillHeartRate(force: boolean): Promise<void> {
 }
 
 async function main() {
-  await backfillHeartRate(process.argv.includes("--force"));
+  const force = process.argv.includes("--force");
+  await backfillHeartRate(force);
   const cleared = await clearNonRunningPowerIntensity();
   console.log(`[파워] 러닝 외 종류의 파워 값 ${cleared}개 정리`);
-  const { scanned, filled } = await fillMissingPowerIntensity();
+  const { scanned, filled } = await fillMissingPowerIntensity({ force });
   console.log(`[파워] 대상 ${scanned}개 중 ${filled}개 채움`);
 }
 

@@ -1,7 +1,8 @@
 /**
  * #570: 러닝 파워 기준 강도가 비어 있는 활동을 rawData 로 채운다 (Garmin 호출 없음).
  * 심박 기준 컬럼은 건드리지 않는다. 대상 = 러닝 계열 · 파워 컬럼 null · rawData 에 파워 존 시간이 있는 활동.
- * 싱크 끝 (syncActivities · syncUserProfile) · scripts/backfill-intensity.ts 가 부른다. 반복 실행해도 안전 (채운 행은 다시 대상이 아니다).
+ * 싱크 끝 (syncActivities · syncUserProfile) · scripts/backfill-intensity.ts 가 부른다. 반복 실행해도 안전 (채운 행은 다시 대상이 아니다 —
+ * `force` 제외: 백필 `--force` 는 채운 행도 현재 역치파워로 다시 분류한다 · #572).
  * 역치파워가 아직 없으면 채우지 않는다 — 일일 싱크는 activities 가 user_profile 보다 먼저라, 배포 첫날 보정 없는 값이
  * 굳지 않게 프로필 싱크가 역치파워를 받은 뒤 채운다.
  */
@@ -52,7 +53,11 @@ export async function clearNonRunningPowerIntensity(): Promise<number> {
   return count;
 }
 
-export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
+/**
+ * @param options.force 이미 채운 러닝도 현재 역치파워로 다시 분류 (`scripts/backfill-intensity.ts --force` · #572) —
+ *   싱크는 저장된 값을 덮어쓰지 않으므로 다시 분류는 이 경로뿐이다
+ */
+export async function fillMissingPowerIntensity(options: { force?: boolean } = {}): Promise<PowerFillResult> {
   const profile = await prisma.userProfile.findFirst({ select: { thresholdPower: true } });
   const thresholdPower = profile?.thresholdPower ?? null;
   if (thresholdPower === null) return { scanned: 0, filled: 0 };
@@ -67,7 +72,7 @@ export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
       where: {
         AND: [
           RUNNING_ACTIVITY_WHERE,
-          { powerZoneDistribution: { equals: Prisma.DbNull } },
+          ...(options.force ? [] : [{ powerZoneDistribution: { equals: Prisma.DbNull } }]),
           { rawData: { path: ["powerTimeInZone_1"], gte: 0 } },
           ...(lastId ? [{ id: { gt: lastId } }] : []),
         ],

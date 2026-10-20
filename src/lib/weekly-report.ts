@@ -31,7 +31,8 @@ import type { ReportJob } from "@/generated/prisma/client";
  *     로 마킹했으므로 이 explicit range 는 gap 을 만들지 않음.
  *
  * `user_profile` 은 activities 앞에 위치 → LTHR/maxHR auto-detect 갱신을 먼저
- * 반영해야 syncActivities 가 정확한 intensityLabel/Zone 산출.
+ * 반영해야 syncActivities 가 정확한 intensityLabel/Zone 산출 (#572: 새 · 아직 분류 안 된 활동만 —
+ * 이미 저장된 강도는 재싱크가 덮어쓰지 않는다).
  */
 async function preSyncForWeekly(
   options?: { notifyBot?: import("grammy").Bot },
@@ -50,7 +51,7 @@ async function preSyncForWeekly(
   // #256: Garmin 재인증 실패 감지 → 관리자 alert (bot 있을 때만). 3 단계 syncAll 에 모두 전달.
   const notifyBot = options?.notifyBot;
   try {
-    // Step 1a: user_profile 을 먼저 sync — activities intensityLabel/Zone 계산
+    // Step 1a: user_profile 을 먼저 sync — activities intensityLabel/Zone 계산 (새 · 미분류 활동, #572)
     // 시 fresh LTHR/maxHR 참조하도록. profile 실패 시 activities 는 step 1b 에서
     // 아예 skip → old zones 로 저장되는 것 원천 차단 (Codex bot P2 #4681816112).
     console.log("[weekly-report] 1a/3 user_profile sync");
