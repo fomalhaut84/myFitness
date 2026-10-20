@@ -9,6 +9,8 @@ export interface RunningWindowRow {
   activityType: string;
   /** Prisma Json — `parseZoneDistribution` 으로 읽는다 */
   zoneDistribution: unknown;
+  /** #570: 강도 값을 만든 기준 (없는 호출자는 생략 가능) */
+  intensityBasis?: string | null;
   hrr2: number | null;
   // #455 F6: 러닝 다이나믹스 (없는 호출자는 생략 가능)
   avgCadence?: number | null;
@@ -42,6 +44,8 @@ export interface RunningWindowSummary {
   easyPct: number | null;
   /** 하드 (Z4+Z5) 시간 비율 % — Z3 은 어느 쪽에도 안 들어간다 */
   hardPct: number | null;
+  /** #570: 존 분포가 있는 활동의 기준별 수 — 둘 다 0 이 아니면 심박 · 파워 존이 섞인 비율 */
+  basisCounts: { hr: number; power: number };
   hrr2: MedianStat | null;
   dynamics: DynamicsSummary;
 }
@@ -104,10 +108,11 @@ function summarizeDynamics(runs: readonly RunningWindowRow[]): DynamicsSummary {
 
 export function summarizeRunningWindow(rows: readonly RunningWindowRow[]): RunningWindowSummary {
   const runs = rows.filter((r) => isRunningType(r.activityType));
-  const zones = runs.flatMap((r) => {
+  const zoned = runs.flatMap((r) => {
     const z = usableZones(r.zoneDistribution);
-    return z === null ? [] : [z];
+    return z === null ? [] : [{ z, basis: r.intensityBasis === "power" ? "power" : "hr" }];
   });
+  const zones = zoned.map((x) => x.z);
   const totals = zones.length > 0 ? roundZones(zones.reduce(addZones, EMPTY_ZONES)) : null;
   const total = totals === null ? 0 : zoneTotal(totals);
   const hrrValues = runs.flatMap((r) => (r.hrr2 === null ? [] : [r.hrr2]));
@@ -118,6 +123,10 @@ export function summarizeRunningWindow(rows: readonly RunningWindowRow[]): Runni
     zoneTotalsSec: totals,
     easyPct: totals === null ? null : pct(totals.z1 + totals.z2, total),
     hardPct: totals === null ? null : pct(totals.z4 + totals.z5, total),
+    basisCounts: {
+      hr: zoned.filter((x) => x.basis === "hr").length,
+      power: zoned.filter((x) => x.basis === "power").length,
+    },
     hrr2: hrrMedian === null ? null : { median: Math.round(hrrMedian), n: hrrValues.length },
     dynamics: summarizeDynamics(runs),
   };

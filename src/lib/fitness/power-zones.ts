@@ -107,3 +107,27 @@ export function calculatePowerZone(power: number, thresholdPower: number): Power
   }
   return 1;
 }
+
+export interface ProfilePowerZones {
+  thresholdPower: number;
+  zones: PowerZoneRange[];
+  source: "garmin" | "calculated";
+}
+
+/**
+ * 프로필의 파워 존 — Garmin 존은 역치파워가 Garmin 값이고 원본 FTP 가 현재 값과 같을 때만 (심박 존 규칙과 같다).
+ * 수동 역치파워 · 원본 불일치면 비율 계산. 역치파워가 없으면 null.
+ */
+export function resolveProfilePowerZones(profile: {
+  thresholdPower: number | null;
+  thresholdPowerSource: string | null;
+  powerZonesRaw: unknown;
+}): ProfilePowerZones | null {
+  const ftp = profile.thresholdPower;
+  if (ftp === null || ftp <= 0) return null;
+  const raw = profile.thresholdPowerSource === "garmin" ? parseRunningPowerZones(profile.powerZonesRaw) : null;
+  if (raw && raw.functionalThresholdPower === ftp) {
+    return { thresholdPower: ftp, zones: garminPowerZoneRanges(raw), source: "garmin" };
+  }
+  return { thresholdPower: ftp, zones: getPowerZoneRanges(ftp), source: "calculated" };
+}

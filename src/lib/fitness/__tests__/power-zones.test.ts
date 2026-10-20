@@ -6,6 +6,7 @@ import {
   getPowerZoneRanges,
   isValidThresholdPower,
   parseRunningPowerZones,
+  resolveProfilePowerZones,
 } from "../power-zones";
 
 const RUNNING = {
@@ -66,5 +67,22 @@ describe("isValidThresholdPower", () => {
     expect(isValidThresholdPower(1001)).toBe(false);
     expect(isValidThresholdPower(300.5)).toBe(false);
     expect(isValidThresholdPower("300")).toBe(false);
+  });
+});
+
+describe("resolveProfilePowerZones", () => {
+  it("Garmin 값 + 원본 일치 → Garmin 존", () => {
+    const r = resolveProfilePowerZones({ thresholdPower: 300, thresholdPowerSource: "garmin", powerZonesRaw: { ...RUNNING, zone1Floor: 190 } });
+    expect(r?.source).toBe("garmin");
+    expect(r?.zones[0].min).toBe(190);
+  });
+
+  it("수동 값 · 원본 불일치 → 계산", () => {
+    expect(resolveProfilePowerZones({ thresholdPower: 300, thresholdPowerSource: "manual", powerZonesRaw: RUNNING })?.source).toBe("calculated");
+    expect(resolveProfilePowerZones({ thresholdPower: 310, thresholdPowerSource: "garmin", powerZonesRaw: RUNNING })?.source).toBe("calculated");
+  });
+
+  it("역치파워 없음 → null", () => {
+    expect(resolveProfilePowerZones({ thresholdPower: null, thresholdPowerSource: null, powerZonesRaw: null })).toBeNull();
   });
 });

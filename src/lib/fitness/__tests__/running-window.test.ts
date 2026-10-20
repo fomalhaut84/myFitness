@@ -107,3 +107,17 @@ describe("stride", () => {
     expect(strideMeters(1.2)).toBe(1.2);
   });
 });
+
+// #570: 존 기준별 활동 수
+describe("summarizeRunningWindow basisCounts", () => {
+  it("존 있는 러닝만 기준별로 센다 (기준 없음 = 심박)", () => {
+    const zd = { z1: 100, z2: 100, z3: 0, z4: 0, z5: 0 };
+    const s = summarizeRunningWindow([
+      { activityType: "running", zoneDistribution: zd, intensityBasis: "power", hrr2: null },
+      { activityType: "running", zoneDistribution: zd, intensityBasis: "hr", hrr2: null },
+      { activityType: "running", zoneDistribution: zd, hrr2: null },
+      { activityType: "running", zoneDistribution: null, intensityBasis: "power", hrr2: null },
+    ]);
+    expect(s.basisCounts).toEqual({ hr: 2, power: 1 });
+  });
+});

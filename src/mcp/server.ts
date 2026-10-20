@@ -540,17 +540,17 @@ server.tool(
 
 server.tool(
   "get_user_profile",
-  "사용자 프로필 + Garmin 자동 동기화된 maxHR/LTHR/Zone/VO2max 통합 조회. 각 값에 source 표시.",
+  "사용자 프로필 + Garmin 자동 동기화된 maxHR/LTHR/Zone/VO2max · 러닝 역치파워/파워 존 · 강도 평가 기준(심박/파워/자동) 통합 조회. 각 값에 source 표시.",
   {},
   async () => getUserProfile()
 );
 
 server.tool(
   "get_metric_history",
-  "프로필 메트릭(maxHR/lthr/lthrPace/vo2maxRunning/restingHRBase) 변경 이력 조회. 시간 경과에 따른 피트니스 변화 추적.",
+  "프로필 메트릭(maxHR/lthr/lthrPace/vo2maxRunning/restingHRBase/thresholdPower) 변경 이력 조회. 시간 경과에 따른 피트니스 변화 추적.",
   {
     field: z
-      .enum(["maxHR", "lthr", "lthrPace", "vo2maxRunning", "restingHRBase"])
+      .enum(["maxHR", "lthr", "lthrPace", "vo2maxRunning", "restingHRBase", "thresholdPower"])
       .optional()
       .describe("필드 필터. 생략하면 모든 필드"),
     days: z
