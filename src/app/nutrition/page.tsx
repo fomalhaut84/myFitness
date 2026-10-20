@@ -7,6 +7,8 @@ import { aggregateRecentMacros, averageMacros, averageCompleteMacros } from "@/l
 import { MAX_NUTRITION_ATTEMPTS } from "@/lib/nutrition/backfill";
 import { assessMuscleLossRisk, HIGH_INTENSITY_THRESHOLD_MIN } from "@/lib/fitness/muscle-loss-risk";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import MacroDonut from "@/components/nutrition/MacroDonut";
 import ProteinTrend from "@/components/nutrition/ProteinTrend";
 import MuscleLossBanner from "@/components/nutrition/MuscleLossBanner";
@@ -47,7 +49,7 @@ export default async function NutritionPage(props: {
   const eightDaysAgo = new Date(todayStart.getTime() - 7 * 24 * 60 * 60 * 1000);
 
   // 병렬 fetch
-  const [selectedLogs, macros8d, latestWeight, latestBalances, activities7d, profile] =
+  const [selectedLogs, macros8d, latestWeight, latestBalances, activityRows, profile] =
     await Promise.all([
       prisma.foodLog.findMany({
         where: { date: { gte: selectedStart, lt: selectedEnd } },
@@ -85,8 +87,8 @@ export default async function NutritionPage(props: {
         // 단백질 · 결손 입력은 이미 오늘 필터 (validBalancesCompleted / macros7dCompleted) 인데
         // 활동만 8일/mixed window 라 판정이 일관되지 않았음.
         where: { startTime: { gte: eightDaysAgo, lt: todayStart } },
-        // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해야 함.
-        select: { zoneDistribution: true },
+        // Codex P2 (PR #300): 실제 Z4+Z5 초를 합해야 함. #570: 존 분포는 프로필 강도 기준 값
+        select: { ...INTENSITY_SELECT, startTime: true, weatherApparentTempC: true },
       }),
       prisma.userProfile.findFirst({
         select: { proteinTargetPerKg: true },
@@ -137,6 +139,8 @@ export default async function NutritionPage(props: {
   // Codex P2 (PR #300 11회차): zone 데이터 누락 활동 있으면 risk 에 null 전달.
   // Codex P2 (PR #300 13회차): measured lower bound 가 이미 threshold 초과면 known — missing
   // 이 얼마든 결론 바뀌지 않으므로 그 값 그대로 사용 (blanket null 로 HIGH downgrade 방지).
+  const intensityContext = await loadIntensityContext(prisma);
+  const activities7d = activityRows.map((r) => applyIntensityBasis(r, intensityContext));
   let missingZone = 0;
   const highIntensitySeconds = activities7d.reduce((s, a) => {
     const dist = parseZoneDistribution(a.zoneDistribution);

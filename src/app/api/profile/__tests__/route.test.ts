@@ -1,11 +1,11 @@
-// #570: 프로필 PATCH — 역치파워 · 강도 기준 · 재계산
+// #570: 프로필 PATCH — 역치파워 · 강도 기준
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
 const mocks = vi.hoisted(() => ({
   upsert: vi.fn(),
   update: vi.fn(),
   recordMetricChange: vi.fn(),
-  recomputeAllIntensity: vi.fn(),
+  bump: vi.fn(),
 }));
 
 vi.mock("@/lib/prisma", () => ({
@@ -15,8 +15,8 @@ vi.mock("@/lib/prisma", () => ({
   },
 }));
 vi.mock("@/lib/fitness/profile-history", () => ({ recordMetricChange: mocks.recordMetricChange }));
-vi.mock("@/lib/fitness/recompute-intensity", () => ({ recomputeAllIntensity: mocks.recomputeAllIntensity }));
 vi.mock("@/lib/fitness/calorie-balance", () => ({ recalculateAllCalorieBalances: vi.fn() }));
+vi.mock("@/lib/history/cache", () => ({ bumpHistoryCacheVersion: mocks.bump }));
 
 import { PATCH } from "../route";
 
@@ -42,7 +42,7 @@ beforeEach(() => {
   mocks.upsert.mockReset().mockResolvedValue(EXISTING);
   mocks.update.mockReset().mockImplementation(({ data }) => ({ ...EXISTING, ...data }));
   mocks.recordMetricChange.mockReset();
-  mocks.recomputeAllIntensity.mockReset().mockResolvedValue({ total: 10, updated: 4 });
+  mocks.bump.mockReset();
 });
 
 describe("PATCH /api/profile #570", () => {
@@ -75,32 +75,15 @@ describe("PATCH /api/profile #570", () => {
     expect(mocks.update.mock.calls[0][0].data.thresholdPowerSource).toBe("garmin");
   });
 
-  it("기준 변경 → 재계산 · 건수 응답", async () => {
+  it("기준 변경은 설정만 저장한다 (강도 값 덮어쓰기 없음)", async () => {
     const res = await patch({ intensityBasis: "auto" });
-    expect(mocks.recomputeAllIntensity).toHaveBeenCalledTimes(1);
-    expect(await res.json()).toMatchObject({ recomputed: 4 });
-  });
-
-  it("기준 그대로면 재계산하지 않는다", async () => {
-    await patch({ intensityBasis: "hr" });
-    expect(mocks.recomputeAllIntensity).not.toHaveBeenCalled();
-  });
-
-  // 회귀: #570 사전 리뷰 major 2 — 재계산 실패 후 같은 기준을 다시 저장해도 재계산이 돌지 않았다
-  it("기준이 이미 저장된 뒤 재계산만 다시 요청", async () => {
-    mocks.upsert.mockResolvedValue({ ...EXISTING, intensityBasis: "power" });
-    const res = await patch({ intensityBasis: "power", recomputeIntensity: true });
-    expect(mocks.recomputeAllIntensity).toHaveBeenCalledTimes(1);
-    expect(await res.json()).toMatchObject({ recomputed: 4 });
-  });
-
-  it("재계산 실패 → 설정은 저장 · recomputeError", async () => {
-    mocks.recomputeAllIntensity.mockRejectedValue(new Error("db"));
-    const res = await patch({ intensityBasis: "power" });
     expect(res.status).toBe(200);
-    expect(mocks.update).toHaveBeenCalled();
-    const json = await res.json();
-    expect(json.recomputeError).toBeTruthy();
-    expect(json.recomputed).toBeUndefined();
+    expect(mocks.update.mock.calls[0][0].data).toEqual({ intensityBasis: "auto" });
+    expect(mocks.bump).toHaveBeenCalledTimes(1);
+  });
+
+  it("기준 그대로면 캐시를 건드리지 않는다", async () => {
+    await patch({ intensityBasis: "hr" });
+    expect(mocks.bump).not.toHaveBeenCalled();
   });
 });

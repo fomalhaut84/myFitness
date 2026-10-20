@@ -2,6 +2,8 @@ import { notFound } from "next/navigation";
 import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import { parseZoneDistribution } from "@/lib/fitness/intensity";
+import { applyIntensityBasis, INTENSITY_SELECT, selectIntensityLabel } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import { findSimilarActivities } from "@/lib/activity/similar-activities";
 import { isRunningType } from "@/lib/activity/running-types";
 import { loadActivityRecovery } from "@/lib/heart/load-recovery";
@@ -17,7 +19,7 @@ interface PageProps {
 export default async function ActivityDetailPage({ params }: PageProps) {
   const { id } = await params;
 
-  const activity = await prisma.activity.findUnique({
+  const [row, basis] = await Promise.all([prisma.activity.findUnique({
     where: { id },
     select: {
       name: true,
@@ -41,11 +43,8 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       anaerobicTE: true,
       avgRespirationRate: true,
       lapCount: true,
-      // M4-5: 강도 자동 분류
-      zoneDistribution: true,
-      estimatedZone: true,
-      intensityScore: true,
-      intensityLabel: true,
+      // M4-5: 강도 자동 분류 · #570 러닝 파워 기준 (프로필 기준으로 고른다)
+      ...INTENSITY_SELECT,
       // #261: 사용자 커스텀 코스명 태그
       routeTag: true,
       // #269: 손목 온도 (Garmin) + 외부 기상 (Open-Meteo)
@@ -58,11 +57,12 @@ export default async function ActivityDetailPage({ params }: PageProps) {
       weatherPrecipMm: true,
       weatherCode: true,
     },
-  });
+  }), loadIntensityContext(prisma)]);
 
-  if (!activity) {
+  if (!row) {
     notFound();
   }
+  const activity = applyIntensityBasis(row, basis);
 
   // #261: 같은 코스 활동 매칭 (GPS 시작점 반경 + 거리 유사, 또는 같은 routeTag).
   // 기존 M4-10 은 activityType + distance ±10% 만 사용 (지역 무관, 오탐 다수) → 대체.
@@ -81,7 +81,7 @@ export default async function ActivityDetailPage({ params }: PageProps) {
     avgHR: a.avgHR,
     duration: a.duration,
     distance: a.distance,
-    intensityLabel: a.intensityLabel,
+    intensityLabel: selectIntensityLabel(a, basis).label,
     routeTag: a.routeTag,
   }));
 

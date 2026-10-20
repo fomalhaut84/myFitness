@@ -5,9 +5,9 @@ import prisma from "@/lib/prisma";
 import { parseDateOnlyKST } from "@/lib/date-input";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { INTENSITY_BASIS_SETTINGS } from "@/lib/fitness/intensity";
 import { THRESHOLD_POWER_MAX, THRESHOLD_POWER_MIN } from "@/lib/fitness/power-zones";
-import { recomputeAllIntensity } from "@/lib/fitness/recompute-intensity";
 import {
   recordMetricChange,
   type MetricField,
@@ -60,11 +60,9 @@ const PATCH_SCHEMA = z.object({
   personalGoalNote: z.string().trim().max(500).nullable().optional(),
   // M13 Phase 1 (#243): auto-adjust 사전 알림 토글.
   autoAdjustEnabled: z.boolean().optional(),
-  // #570: 러닝 역치파워 (W) · 강도 평가 기준
+  // #570: 러닝 역치파워 (W) · 강도 평가 기준 (읽을 때 고르는 기준 — 저장된 강도 값은 바뀌지 않는다)
   thresholdPower: z.number().int().min(THRESHOLD_POWER_MIN).max(THRESHOLD_POWER_MAX).nullable().optional(),
   intensityBasis: z.enum(INTENSITY_BASIS_SETTINGS).optional(),
-  // 재계산만 다시 요청 (이전 재계산 실패 후 — 기준이 이미 저장돼 있어 값 변경으로는 다시 돌지 않는다)
-  recomputeIntensity: z.literal(true).optional(),
   // #505: 수동 보호(source = manual) 해제 — source 만 "garmin" 으로, 값은 다음 싱크가 갱신.
   revertToGarmin: z.array(z.enum(["maxHR", "lthr", "thresholdPower"])).max(3).optional(),
 });
@@ -292,6 +290,11 @@ export async function PATCH(request: Request) {
       return updated;
     });
 
+    // #570: 강도 기준이 바뀌면 인사이트 캐시 (존 분포) 를 새 기준으로 — 저장된 강도 값은 그대로, 읽는 쪽만 바뀐다
+    if (data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis) {
+      bumpHistoryCacheVersion();
+    }
+
     // M4-2: targetCalories 변경 시 모든 DailySummary의 칼로리 밸런스 재계산.
     // 히스토리가 수백 건이면 수 초 이상 걸릴 수 있으므로 fire-and-forget으로 백그라운드 실행.
     // (Node 런타임에서 프로세스가 계속 살아있으므로 완료 보장, 실패해도 다음 싱크/수동 재계산으로 복구)
@@ -311,26 +314,6 @@ export async function PATCH(request: Request) {
             err instanceof Error ? err.message : String(err)
           );
         });
-    }
-
-    // #570: 강도 기준이 바뀌면 전체 활동 강도를 새 기준으로 재계산 (rawData 만 · 요청 안에서 완료).
-    // 실패해도 설정은 이미 저장됐다 — 응답에 알리고 다음 변경 · 백필 스크립트로 복구.
-    const basisChanged =
-      data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis;
-    if (basisChanged || data.recomputeIntensity) {
-      try {
-        const { updated } = await recomputeAllIntensity();
-        return NextResponse.json({ profile, recomputed: updated });
-      } catch (err) {
-        console.error(
-          "[profile] 강도 기준 변경 후 재계산 실패:",
-          err instanceof Error ? err.message : String(err)
-        );
-        return NextResponse.json({
-          profile,
-          recomputeError: "설정은 저장됐지만 활동 강도 재계산에 실패했습니다. 잠시 후 \"다시 계산\" 을 눌러 주세요.",
-        });
-      }
     }
 
     return NextResponse.json({ profile });

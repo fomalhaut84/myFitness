@@ -9,8 +9,8 @@ describe("buildPowerSection", () => {
     const text = buildPowerSection(BASE).join("\n");
     expect(text).toContain("강도 평가 기준: 자동");
     expect(text).toContain("역치파워 300 W · 역치 대비 계산");
-    expect(text).toContain("Zone 4 (역치): 300-344 W");
-    expect(text).toContain("Zone 5 (VO2max): 345+ W");
+    expect(text).toContain("Zone 3 (역치): 270-299 W");
+    expect(text).toContain("Zone 5 (반복): 345+ W");
   });
 
   it("프로필 없음 → 심박 기준만", () => {

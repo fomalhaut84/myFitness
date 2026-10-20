@@ -92,8 +92,9 @@ export async function getUserProfile() {
     _context:
       "사용자 프로필 + Garmin 자동 동기화된 maxHR/LTHR/Zone. " +
       "각 값에 source가 표시됨 (manual=사용자 수동, garmin=자동, activity=DB 추정, estimated=공식). " +
-      "intensityBasis = 활동 강도(라벨 · 존 분포 · 점수) 계산 기준: hr=심박 존, power=러닝 파워 존, auto=파워 데이터 있으면 파워. " +
-      "활동별 실제 기준은 get_activities 의 intensityBasis.",
+      "intensityBasis = 활동 강도(라벨 · 존 분포 · 점수)를 읽는 기준: hr=심박 존, power=러닝 파워 존 우선 (파워 없는 활동은 심박), " +
+      "auto=심박 영향 복약 기간 · 더위(체감 28°C+) 의 러닝만 파워, 그 밖엔 심박. 파워 존은 심박 존보다 한 칸 위 (Z3=역치 · Z4=인터벌). " +
+      "활동별 실제 기준 · 이유는 get_activities 의 intensityBasis · intensityBasisReason.",
     name: profile.name,
     // 날짜는 로컬 기준으로 직렬화 (toISOString은 UTC 변환으로 ±1일 어긋남 가능)
     birthDate: profile.birthDate ? formatDateLocal(profile.birthDate) : null,

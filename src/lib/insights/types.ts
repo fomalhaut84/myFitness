@@ -1,5 +1,5 @@
 // #397 (M15-5): `/insights` 입력 행. 러닝 활동 1건 — 4 패널이 같은 배열을 쓴다 (조회 1회).
-import type { ZoneDistribution } from "@/lib/fitness/intensity";
+import type { IntensityBasis, ZoneDistribution } from "@/lib/fitness/intensity";
 
 export interface InsightRun {
   id: string;
@@ -15,6 +15,8 @@ export interface InsightRun {
   tempC: number | null;
   humidityPct: number | null;
   zones: ZoneDistribution | null;
+  /** #570: zones 의 기준 (hr = 심박 존 · power = 러닝 파워 존) — 존 없으면 null */
+  zoneBasis: IntensityBasis | null;
   race: boolean;
   /** #425: 종료 후 2분 HRR (`Activity.hrr2`, 양수 = 회복). 백필 전 · 하루 심박 없음 · 결측이면 null */
   hrr2: number | null;

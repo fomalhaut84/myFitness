@@ -8,8 +8,10 @@ import { resolveProfilePowerZones } from "@/lib/fitness/power-zones";
 
 const BASIS_LINES = {
   hr: "심박 존 (활동 강도 라벨 · 존 분포 · 점수가 심박 기준)",
-  power: "러닝 파워 존 (활동 강도 라벨 · 존 분포 · 점수가 파워 기준 — 파워 없는 활동은 강도 없음). 강도 판단은 파워 우선, 심박은 참고",
-  auto: "자동 — 파워 데이터가 있는 활동은 러닝 파워 존, 없으면 심박 존 (활동별 intensityBasis 확인). 강도 판단은 파워 우선, 심박은 참고",
+  power:
+    "파워 우선 — 러닝 파워 기록이 있는 활동은 러닝 파워 존, 없는 활동 (러닝 외 · 파워 없는 러닝) 은 심박 존. 파워 기준 활동은 심박을 참고로만",
+  auto:
+    "자동 — 심박을 믿기 어려운 상황 (심박 영향 복약 기간 · 체감온도 28°C 이상) 의 러닝만 러닝 파워 존, 그 밖엔 심박 존. 활동별 intensityBasis · intensityBasisReason 확인",
 } as const;
 
 export function buildPowerSection(
