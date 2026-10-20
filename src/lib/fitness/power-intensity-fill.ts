@@ -8,8 +8,8 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
-import { computePowerIntensityFromRawData } from "./intensity";
+import { RUNNING_ACTIVITY_WHERE, isRunningType } from "@/lib/activity/running-types";
+import { computePowerIntensityFromRawData, type IntensityClassification } from "./intensity";
 import { toPowerColumns } from "./intensity-select";
 
 const BATCH_SIZE = 200;
@@ -17,6 +17,39 @@ const BATCH_SIZE = 200;
 export interface PowerFillResult {
   scanned: number;
   filled: number;
+}
+
+const CLEARED_POWER_COLUMNS = {
+  powerZoneDistribution: Prisma.DbNull,
+  powerEstimatedZone: null,
+  powerIntensityScore: null,
+  powerIntensityLabel: null,
+};
+
+/**
+ * 싱크 upsert update 의 파워 컬럼 값.
+ * - 러닝이 아니면 비운다 — Garmin 에서 러닝을 다른 종류로 바꾼 활동에 옛 러닝 파워 값이 남지 않게 (#575 · 릴리즈 PR #574 Codex P2)
+ * - 러닝 + 계산됨 → 그 값 · 러닝 + 계산 불가 (파워 없음 · 역치파워 없음) → 쓰지 않음 (기존 값 유지)
+ */
+export function powerColumnsForSync(
+  activityType: string,
+  intensity: IntensityClassification | null
+): Prisma.ActivityUpdateInput {
+  if (!isRunningType(activityType)) return CLEARED_POWER_COLUMNS;
+  if (!intensity) return {};
+  return {
+    ...toPowerColumns(intensity),
+    powerZoneDistribution: intensity.zoneDistribution as unknown as Prisma.InputJsonValue,
+  };
+}
+
+/** 러닝 외 종류인데 파워 값이 남은 행 정리 (#575 — 수정 전 싱크가 남긴 값). 정리한 행 수 */
+export async function clearNonRunningPowerIntensity(): Promise<number> {
+  const { count } = await prisma.activity.updateMany({
+    where: { AND: [{ NOT: RUNNING_ACTIVITY_WHERE }, { powerIntensityLabel: { not: null } }] },
+    data: CLEARED_POWER_COLUMNS,
+  });
+  return count;
 }
 
 export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
