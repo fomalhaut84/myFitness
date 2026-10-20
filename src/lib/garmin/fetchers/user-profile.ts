@@ -9,10 +9,15 @@ import {
 import { withRateLimit } from "../utils";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { canAutoUpdate, findHrPairConflict } from "../profile-values";
+import { planPowerSync } from "../power-profile";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
 const USER_SETTINGS_URL =
   "https://connectapi.garmin.com/userprofile-service/userprofile/user-settings";
+// #570: 러닝 역치파워 · 파워 존. 단일 종목 경로 (/sports/RUNNING) 는 404 — all 에서 RUNNING 을 고른다.
+const POWER_ZONES_URL = "https://connectapi.garmin.com/biometric-service/powerZones/sports/all";
+const LATEST_FTP_URL =
+  "https://connectapi.garmin.com/biometric-service/biometric/latestFunctionalThresholdPower/RUNNING";
 
 interface GarminHRZone {
   trainingMethod: string;
@@ -36,6 +41,7 @@ interface GarminUserSettings {
     vo2MaxRunning?: number | null;
     thresholdHeartRateAutoDetected?: boolean | null;
     firstbeatRunningLtTimestamp?: number | null;
+    ftpAutoDetected?: boolean | null;
   };
 }
 
@@ -78,6 +84,12 @@ async function applyAutoSync(args: {
   // endpoint 성공 여부
   hrZonesOk: boolean;
   userSettingsOk: boolean;
+  // #570: 파워 엔드포인트 응답 (실패면 undefined)
+  power: {
+    powerZones: unknown;
+    latest: unknown;
+    ftpAutoDetected: boolean | null | undefined;
+  };
 }): Promise<void> {
   // 신규 사용자도 첫 싱크에서 자동 설정되도록 singleton upsert.
   const profile = await prisma.userProfile.upsert({
@@ -317,6 +329,28 @@ async function applyAutoSync(args: {
     updates.heartRateZonesRaw = args.zonesRaw as unknown as Prisma.InputJsonValue;
   }
 
+  // #570: 러닝 역치파워 · 파워 존 — 수동 값만 보호 (planPowerSync)
+  const power = planPowerSync(profile, args.power);
+  for (const w of power.warnings) console.warn(`[user-profile] ${w}`);
+  const { powerZonesRaw, ...powerFields } = power.updates;
+  Object.assign(updates, powerFields);
+  if (powerZonesRaw) updates.powerZonesRaw = powerZonesRaw as unknown as Prisma.InputJsonValue;
+  const powerChange = power.change;
+  if (powerChange) {
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "thresholdPower",
+          oldValue: powerChange.oldValue,
+          newValue: powerChange.newValue,
+          source: "garmin",
+          reason: args.power.ftpAutoDetected ? "garmin_auto_detect" : "garmin_initial",
+        },
+        tx
+      )
+    );
+  }
+
   // UserProfile update + MetricChange 기록을 원자적으로 처리.
   // history 기록 실패 시 profile 변경도 롤백되어 다음 싱크에서 다시 delta 감지 가능.
   await prisma.$transaction(async (tx) => {
@@ -334,6 +368,7 @@ async function applyAutoSync(args: {
  * Garmin 프로필 동기화. 두 API 호출:
  *   1. /biometric-service/heartRateZones (러닝 sport) - maxHR/LTHR/Zone
  *   2. /userprofile-service/userprofile/user-settings - VO2max/lthrPace/메타
+ *   3. #570 /biometric-service/powerZones/sports/all + latestFunctionalThresholdPower/RUNNING - 러닝 역치파워 · 파워 존
  */
 export async function syncUserProfile(
   client: GarminConnect,
@@ -360,6 +395,24 @@ export async function syncUserProfile(
     const msg = err instanceof Error ? err.message : String(err);
     console.warn("[user-profile] user-settings 조회 실패:", msg);
     errors.push({ source: "user-settings", message: msg });
+  }
+
+  // #570: 파워 엔드포인트 — 실패는 다른 필드 싱크를 막지 않고 부분 실패로만 노출
+  let powerZones: unknown = undefined;
+  let latestFtp: unknown = undefined;
+  try {
+    powerZones = await withRateLimit(() => client.get<unknown>(POWER_ZONES_URL));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[user-profile] powerZones 조회 실패:", msg);
+    errors.push({ source: "powerZones", message: msg });
+  }
+  try {
+    latestFtp = await withRateLimit(() => client.get<unknown>(LATEST_FTP_URL));
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    console.warn("[user-profile] latestFunctionalThresholdPower 조회 실패:", msg);
+    errors.push({ source: "latestFunctionalThresholdPower", message: msg });
   }
 
   const runningZones = pickRunningZones(zones);
@@ -437,6 +490,11 @@ export async function syncUserProfile(
     garminLthrMeasuredAt,
     zonesRaw: runningZones,
     changeState: runningZones?.changeState ?? "UNCHANGED",
+    power: {
+      powerZones,
+      latest: latestFtp,
+      ftpAutoDetected: userSettingsOk ? userData.ftpAutoDetected : undefined,
+    },
   });
 
   // 부분 실패도 sync metadata에 노출되도록 throw.

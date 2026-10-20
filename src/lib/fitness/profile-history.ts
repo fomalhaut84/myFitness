@@ -6,7 +6,8 @@ export type MetricField =
   | "lthr"
   | "lthrPace"
   | "vo2maxRunning"
-  | "restingHRBase";
+  | "restingHRBase"
+  | "thresholdPower";
 
 export type MetricSource = "manual" | "garmin";
 export type MetricReason =
