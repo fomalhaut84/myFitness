@@ -15,7 +15,6 @@
  */
 
 import { calculateHRZone } from "./zones";
-import { calculatePowerZone } from "./power-zones";
 import { isRunningType } from "@/lib/activity/running-types";
 
 export type HRZone = 1 | 2 | 3 | 4 | 5;
@@ -35,7 +34,7 @@ export interface ZoneDistribution {
   z5: number;
 }
 
-/** 프로필 설정 — auto = 활동에 파워 존 데이터가 있으면 파워, 없으면 심박 */
+/** 프로필 설정 — power = 러닝 파워 기준 값이 있으면 파워, 없으면 심박 · auto = (정의 결정 대기 — 현재 power 와 같음) */
 export type IntensityBasisSetting = "hr" | "power" | "auto";
 /** 강도 값을 실제로 만든 기준 (Activity.intensityBasis) */
 export type IntensityBasis = "hr" | "power";
@@ -144,17 +143,11 @@ function zonePercents(dist: ZoneDistribution): {
   return { total, pct, weighted };
 }
 
-/**
- * 분포 + 보정 지표(optional) 기반 강도 분류.
- * 보정: 심박 = avgHR 의 LTHR 존, 파워 (#570) = 정규화 파워(없으면 평균)의 역치파워 존 — 존 ≥ 4 면 threshold 이상.
- */
+/** 분포 + avgHR(optional) 기반 강도 분류 (심박 존 — Friel LTHR 구간) */
 export function classifyIntensity(args: {
   zoneDistribution: ZoneDistribution;
   avgHR?: number | null;
   lthr?: number | null;
-  basis?: IntensityBasis;
-  power?: number | null;
-  thresholdPower?: number | null;
 }): IntensityClassification {
   const dist = args.zoneDistribution;
   const { total, pct, weighted } = zonePercents(dist);
@@ -187,11 +180,13 @@ export function classifyIntensity(args: {
     label = "easy";
   }
 
-  // 평균 지표 + 역치가 제공되면 라벨을 보정 (추가 검증)
-  // 평균 기반 zone이 Z4~Z5인데 분포 기반이 낮으면 threshold 이상으로 보정
-  const avgZone = averageZone(args);
-  if (avgZone !== null && avgZone >= 4 && (label === "easy" || label === "tempo")) {
-    label = "threshold";
+  // avgHR + LTHR이 제공되면 라벨을 보정 (추가 검증)
+  if (args.avgHR && args.avgHR > 0 && args.lthr && args.lthr > 0) {
+    const avgZone = calculateHRZone(args.avgHR, args.lthr);
+    // avgHR 기반 zone이 Z4~Z5인데 분포 기반이 낮으면 threshold 이상으로 보정
+    if (avgZone >= 4 && (label === "easy" || label === "tempo")) {
+      label = "threshold";
+    }
   }
 
   return {
@@ -202,23 +197,54 @@ export function classifyIntensity(args: {
   };
 }
 
-function averageZone(args: {
-  avgHR?: number | null;
-  lthr?: number | null;
-  basis?: IntensityBasis;
+/**
+ * #570: 러닝 파워 존은 심박 존보다 의미가 한 칸 위다 (Garmin = Stryd 구간: Z1 이지 65~80% · Z2 중강도 80~90% ·
+ * Z3 역치 90~100% · Z4 인터벌 100~115% · Z5 반복 115%+). 심박 규칙을 그대로 쓰면 이지런이 recovery 로,
+ * 점수가 절반 가까이로 나와 훈련 부하 · ACWR 눈금이 심박 이력과 어긋난다 (로컬 실측).
+ * 점수 가중치는 심박 존 등가 (Z1→2 · Z2→3 · Z3→4 · Z4→5 · Z5→5) — 같은 노력이면 심박 기준과 같은 눈금.
+ * 대표 존은 파워 존 번호 그대로 (화면이 W 구간과 함께 보여준다).
+ */
+const POWER_SCORE_WEIGHTS = [2, 3, 4, 5, 5] as const;
+/** 정규화 파워가 역치 대비 이 비율 미만이면 recovery (Z1 하한 65% 아래) */
+const POWER_RECOVERY_RATIO = 0.65;
+/** 정규화 파워가 역치 대비 이 비율 이상이면 easy/tempo → threshold (Z3 하한) */
+const POWER_THRESHOLD_RATIO = 0.9;
+
+export function classifyPowerIntensity(args: {
+  zoneDistribution: ZoneDistribution;
   power?: number | null;
   thresholdPower?: number | null;
-}): number | null {
-  if (args.basis === "power") {
-    if (args.power && args.power > 0 && args.thresholdPower && args.thresholdPower > 0) {
-      return calculatePowerZone(args.power, args.thresholdPower);
-    }
-    return null;
+}): IntensityClassification {
+  const dist = args.zoneDistribution;
+  const { total, pct, weighted } = zonePercents(dist);
+  const estimatedZone = Math.max(1, Math.min(5, Math.round(weighted))) as HRZone;
+  const values = [dist.z1, dist.z2, dist.z3, dist.z4, dist.z5];
+  const scoreWeighted =
+    total > 0 ? values.reduce((s, v, i) => s + v * POWER_SCORE_WEIGHTS[i], 0) / total : 0;
+  const intensityScore = total > 0 ? Math.min(100, scoreWeighted * 20) : 0;
+
+  let label: IntensityLabel;
+  if (pct.z5 > 0.3) label = "max";
+  else if (pct.z4 + pct.z5 > 0.3) label = "interval";
+  else if (pct.z3 > 0.3) label = "threshold";
+  else if (pct.z2 > 0.3) label = "tempo";
+  else label = "easy";
+
+  const ratio =
+    args.power && args.power > 0 && args.thresholdPower && args.thresholdPower > 0
+      ? args.power / args.thresholdPower
+      : null;
+  if (ratio !== null) {
+    if (ratio >= POWER_THRESHOLD_RATIO && (label === "easy" || label === "tempo")) label = "threshold";
+    else if (ratio < POWER_RECOVERY_RATIO && label === "easy") label = "recovery";
   }
-  if (args.avgHR && args.avgHR > 0 && args.lthr && args.lthr > 0) {
-    return calculateHRZone(args.avgHR, args.lthr);
-  }
-  return null;
+
+  return {
+    zoneDistribution: dist,
+    estimatedZone,
+    intensityScore: Number(intensityScore.toFixed(1)),
+    intensityLabel: label,
+  };
 }
 
 /** rawData 의 정규화 파워 → 평균 파워 순 (양수만) */
@@ -230,60 +256,40 @@ function representativePower(rawData: Record<string, unknown>): number | null {
   return null;
 }
 
-export interface BasisIntensity extends IntensityClassification {
-  basis: IntensityBasis;
-}
-
 /**
- * 이 활동에 적용할 기준. 역치파워 · 파워 존은 Garmin RUNNING 프로필이라 러닝 계열에만 —
- * 사이클 등은 설정과 무관하게 심박 (PR #571 Codex P2: 자전거 파워를 러닝 역치와 비교하지 않게).
- * 종류를 모르는 호출 (activityType 생략) 은 설정 그대로.
- */
-export function effectiveBasisSetting(
-  setting: IntensityBasisSetting,
-  activityType: string | null | undefined
-): IntensityBasisSetting {
-  if (activityType === undefined || activityType === null) return setting;
-  return isRunningType(activityType) ? setting : "hr";
-}
-
-/**
- * Activity.rawData로부터 전체 분류 결과 산출.
- * 기준(#570): hr = 심박 존 · power = 파워 존 (없으면 null — 심박으로 대체하지 않음) · auto = 파워 있으면 파워, 없으면 심박.
- * 러닝이 아닌 활동은 심박 (effectiveBasisSetting). 분포 데이터 없으면 null.
+ * Activity.rawData로부터 심박 기준 분류 결과 산출 (M4-5 — Activity 의 zoneDistribution · estimatedZone · intensityScore · intensityLabel).
+ * 분포 데이터 없으면 null.
  */
 export function computeIntensityFromRawData(args: {
   rawData: Record<string, unknown> | null | undefined;
   avgHR?: number | null;
   lthr?: number | null;
-  basis?: IntensityBasisSetting;
-  thresholdPower?: number | null;
-  activityType?: string | null;
-}): BasisIntensity | null {
-  const setting = effectiveBasisSetting(args.basis ?? "hr", args.activityType);
-  if (setting !== "hr" && args.rawData) {
-    const powerDist = extractPowerZoneDistribution(args.rawData);
-    if (powerDist) {
-      return {
-        ...classifyIntensity({
-          zoneDistribution: powerDist,
-          basis: "power",
-          power: representativePower(args.rawData),
-          thresholdPower: args.thresholdPower,
-        }),
-        basis: "power",
-      };
-    }
-    if (setting === "power") return null;
-  }
+}): IntensityClassification | null {
   const dist = extractZoneDistribution(args.rawData);
   if (!dist) return null;
-  return {
-    ...classifyIntensity({
-      zoneDistribution: dist,
-      avgHR: args.avgHR,
-      lthr: args.lthr,
-    }),
-    basis: "hr",
-  };
+  return classifyIntensity({
+    zoneDistribution: dist,
+    avgHR: args.avgHR,
+    lthr: args.lthr,
+  });
+}
+
+/**
+ * #570: 러닝 파워 기준 분류 (Activity 의 power* 컬럼). 심박 기준과 따로 저장한다.
+ * 역치파워 · 파워 존은 Garmin RUNNING 프로필이라 러닝 계열에만 — 사이클 등은 null
+ * (PR #571 Codex P2: 자전거 파워를 러닝 역치와 비교하지 않게). 파워 존 데이터가 없어도 null.
+ */
+export function computePowerIntensityFromRawData(args: {
+  rawData: Record<string, unknown> | null | undefined;
+  activityType: string;
+  thresholdPower?: number | null;
+}): IntensityClassification | null {
+  if (!args.rawData || !isRunningType(args.activityType)) return null;
+  const dist = extractPowerZoneDistribution(args.rawData);
+  if (!dist) return null;
+  return classifyPowerIntensity({
+    zoneDistribution: dist,
+    power: representativePower(args.rawData),
+    thresholdPower: args.thresholdPower,
+  });
 }

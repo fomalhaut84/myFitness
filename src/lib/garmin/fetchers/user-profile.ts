@@ -10,6 +10,7 @@ import { withRateLimit } from "../utils";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { canAutoUpdate, findHrPairConflict } from "../profile-values";
 import { planPowerSync } from "../power-profile";
+import { fillMissingPowerIntensity } from "@/lib/fitness/power-intensity-fill";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
 const USER_SETTINGS_URL =
@@ -500,6 +501,15 @@ export async function syncUserProfile(
       ftpAutoDetected: userSettingsOk ? userData.ftpAutoDetected : undefined,
     },
   });
+
+  // #570: 역치파워를 받은 뒤 비어 있는 과거 러닝의 파워 기준 강도를 채운다 (대상 없으면 즉시 끝)
+  try {
+    await fillMissingPowerIntensity();
+  } catch (err) {
+    console.warn(
+      `[user-profile] 파워 기준 강도 채우기 실패 (다음 싱크에서 재시도): ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 
   // 부분 실패도 sync metadata에 노출되도록 throw.
   // 데이터는 이미 apply됨 → 다음 retry에서 metadata가 정상 업데이트되며 자연 복구.

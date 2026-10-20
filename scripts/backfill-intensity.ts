@@ -1,22 +1,63 @@
 /**
- * M4-5 · #570: 전체 Activity 강도 필드를 현재 프로필 기준 (심박 / 파워 / 자동) 으로 재계산.
- * 바뀐 행만 update 한다 (반복 실행해도 안전). 이전 --force 옵션은 이 동작에 포함됐다.
+ * M4-5 · #570: Activity 강도 필드 backfill.
+ *  - 심박 기준: 값이 없는 활동만 분류 (--force: 이미 분류된 활동도 재분류)
+ *  - 러닝 파워 기준: 파워 컬럼이 비어 있는 러닝 활동만 채움 (fillMissingPowerIntensity)
+ * 프로필 강도 기준 설정은 저장 값을 바꾸지 않는다 — 읽을 때 고른다.
  *
- * 실행: npx tsx scripts/backfill-intensity.ts
+ * 실행: npx tsx scripts/backfill-intensity.ts [--force]
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
-import { recomputeAllIntensity } from "../src/lib/fitness/recompute-intensity";
+import { computeIntensityFromRawData } from "../src/lib/fitness/intensity";
+import { fillMissingPowerIntensity } from "../src/lib/fitness/power-intensity-fill";
+
+async function backfillHeartRate(force: boolean): Promise<void> {
+  const profile = await prisma.userProfile.findFirst();
+  const lthr = profile?.lthr ?? null;
+  console.log(`[심박] LTHR(실측): ${lthr ?? "없음 (분포 기반 분류만 사용)"} | force=${force}`);
+
+  const activities = await prisma.activity.findMany({
+    select: { id: true, avgHR: true, rawData: true, intensityLabel: true },
+    orderBy: { startTime: "desc" },
+  });
+
+  let withData = 0;
+  let skipped = 0;
+  let alreadyClassified = 0;
+  for (const a of activities) {
+    if (!force && a.intensityLabel !== null) {
+      alreadyClassified++;
+      continue;
+    }
+    const intensity = computeIntensityFromRawData({
+      rawData: a.rawData as Record<string, unknown> | null,
+      avgHR: a.avgHR,
+      lthr,
+    });
+    if (!intensity) {
+      skipped++;
+      continue;
+    }
+    await prisma.activity.update({
+      where: { id: a.id },
+      data: {
+        zoneDistribution: intensity.zoneDistribution as unknown as object,
+        estimatedZone: intensity.estimatedZone,
+        intensityScore: intensity.intensityScore,
+        intensityLabel: intensity.intensityLabel,
+      },
+    });
+    withData++;
+  }
+  console.log(
+    `[심박] 총 ${activities.length}개 중 ${withData}개 분류, ${alreadyClassified}개 기존 분류(skip), ${skipped}개 skip(분포 데이터 없음)`
+  );
+}
 
 async function main() {
-  const profile = await prisma.userProfile.findFirst({
-    select: { lthr: true, thresholdPower: true, intensityBasis: true },
-  });
-  console.log(
-    `기준: ${profile?.intensityBasis ?? "hr"} | LTHR: ${profile?.lthr ?? "없음"} | 역치파워: ${profile?.thresholdPower ?? "없음"}`
-  );
-  const { total, updated } = await recomputeAllIntensity();
-  console.log(`완료: 총 ${total}개 중 ${updated}개 갱신`);
+  await backfillHeartRate(process.argv.includes("--force"));
+  const { scanned, filled } = await fillMissingPowerIntensity();
+  console.log(`[파워] 대상 ${scanned}개 중 ${filled}개 채움`);
 }
 
 main()

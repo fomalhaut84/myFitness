@@ -1,12 +1,13 @@
 /**
  * 러닝 파워 존 (#570) — `zones.ts` (심박 존) 와 대칭.
  *
- * 경계: Garmin 러닝 파워 존 실측 비율 (역치파워 대비, 2026-10-20 powerZones/sports/all)
- * - Zone 1: 65% 이상 (회복)
- * - Zone 2: 80% 이상 (이지런)
- * - Zone 3: 90% 이상 (템포)
- * - Zone 4: 100% 이상 (역치)
- * - Zone 5: 115% 이상 (VO2max)
+ * 경계: Garmin 러닝 파워 존 실측 비율 (역치파워 대비, 2026-10-20 powerZones/sports/all) — Stryd 구간과 같다.
+ * 심박 존 (Friel) 보다 의미가 한 칸 위 — 파워 Z3 이 역치 (intensity.ts classifyPowerIntensity).
+ * - Zone 1: 65% 이상 (이지)
+ * - Zone 2: 80% 이상 (중강도)
+ * - Zone 3: 90% 이상 (역치)
+ * - Zone 4: 100% 이상 (인터벌)
+ * - Zone 5: 115% 이상 (반복)
  */
 
 export type PowerZone = 1 | 2 | 3 | 4 | 5;
@@ -17,7 +18,7 @@ export const POWER_ZONE_FLOOR_RATIOS = [0.65, 0.8, 0.9, 1.0, 1.15] as const;
 export const THRESHOLD_POWER_MIN = 50;
 export const THRESHOLD_POWER_MAX = 1000;
 
-const ZONE_LABELS = ["회복", "이지런", "템포", "역치", "VO2max"] as const;
+export const POWER_ZONE_LABELS = ["이지", "중강도", "역치", "인터벌", "반복"] as const;
 
 export interface PowerZoneRange {
   zone: PowerZone;
@@ -40,7 +41,7 @@ function rangesFromFloors(floors: readonly number[]): PowerZoneRange[] {
     zone: (i + 1) as PowerZone,
     min,
     max: i < floors.length - 1 ? floors[i + 1] - 1 : null,
-    label: ZONE_LABELS[i],
+    label: POWER_ZONE_LABELS[i],
   }));
 }
 

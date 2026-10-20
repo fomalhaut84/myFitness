@@ -1,13 +1,9 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import {
-  computeIntensityFromRawData,
-  effectiveBasisSetting,
-  parseIntensityBasisSetting,
-  type IntensityBasisSetting,
-} from "@/lib/fitness/intensity";
-import { shouldClearOnMissing, toIntensityColumns } from "@/lib/fitness/intensity-columns";
+import { computeIntensityFromRawData, computePowerIntensityFromRawData } from "@/lib/fitness/intensity";
+import { toPowerColumns } from "@/lib/fitness/intensity-select";
+import { fillMissingPowerIntensity } from "@/lib/fitness/power-intensity-fill";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
 import { parseRunningDynamics } from "@/lib/garmin/parse-running-dynamics";
@@ -28,15 +24,10 @@ export async function syncActivities(
   // 실측값이 없으면 LTHR 기반 보정은 건너뛰고 분포만으로 분류.
   const profile = await prisma.userProfile.findFirst();
   const lthr = profile?.lthr ?? null;
-  // #570: 강도 기준 (심박 / 파워 / 자동) + 파워 보정용 역치파워 — 페이지마다 다시 읽는다
-  let basis: IntensityBasisSetting;
-  let thresholdPower: number | null;
+  // #570: 러닝 파워 기준 강도 보정용 역치파워 (파워 기준 값은 심박 기준과 따로 저장 — 설정과 무관하게 둘 다 계산)
+  const thresholdPower = profile?.thresholdPower ?? null;
 
   while (hasMore) {
-    // #570 사전 리뷰 info 3: 긴 싱크 중 기준이 바뀌면 (재계산 뒤) 옛 기준으로 덮어쓰지 않게 페이지마다 다시 읽는다
-    const current = await prisma.userProfile.findFirst({ select: { intensityBasis: true, thresholdPower: true } });
-    basis = parseIntensityBasisSetting(current?.intensityBasis);
-    thresholdPower = current?.thresholdPower ?? null;
     const activities = await withRateLimit(() =>
       client.getActivities(start, PAGE_SIZE)
     );
@@ -105,29 +96,48 @@ export async function syncActivities(
         rawData: raw as Prisma.InputJsonValue,
       };
 
-      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 · #570 파워 기준이면 powerTimeInZone_1~5).
-      // 분포 추출 실패 시 기존 값을 덮어쓰지 않도록 update/create 동작을 분리 — 단 파워 기준은
-      // 비운다 (파워 없는 활동에 심박 값이 남으면 기준이 섞인다 · shouldClearOnMissing).
+      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 기반).
+      // 분포 추출 실패 시 기존 값을 덮어쓰지 않도록 update/create 동작을 분리.
       const intensity = computeIntensityFromRawData({
         rawData: raw,
         avgHR: data.avgHR,
         lthr,
-        basis,
-        thresholdPower,
-        activityType: data.activityType,
       });
-      const columns = toIntensityColumns(intensity);
-      const intensityDataCreate: Record<string, unknown> = {
-        ...columns,
-        zoneDistribution:
-          columns.zoneDistribution === null
-            ? Prisma.DbNull
-            : (columns.zoneDistribution as unknown as Prisma.InputJsonValue),
+      // #570: 러닝 파워 기준 (powerTimeInZone_1~5) — 같은 규칙으로 별도 컬럼. 러닝 아닌 활동은 null.
+      const powerIntensity = computePowerIntensityFromRawData({
+        rawData: raw,
+        activityType: data.activityType,
+        thresholdPower,
+      });
+      const powerData: Record<string, unknown> = powerIntensity
+        ? {
+            ...toPowerColumns(powerIntensity),
+            powerZoneDistribution: powerIntensity.zoneDistribution as unknown as Prisma.InputJsonValue,
+          }
+        : {};
+      const intensityData: Record<string, unknown> = {
+        ...(intensity
+          ? {
+              zoneDistribution: intensity.zoneDistribution as unknown as Prisma.InputJsonValue,
+              estimatedZone: intensity.estimatedZone,
+              intensityScore: intensity.intensityScore,
+              intensityLabel: intensity.intensityLabel,
+            }
+          : {}),
+        ...powerData,
       };
-      const intensityData: Record<string, unknown> =
-        intensity || shouldClearOnMissing(effectiveBasisSetting(basis, data.activityType))
-          ? intensityDataCreate
-          : {};
+      // create 시에만 빈 값 명시 (upsert update에서는 생략하여 기존 값 유지)
+      const intensityDataCreate: Record<string, unknown> = {
+        zoneDistribution: Prisma.DbNull,
+        estimatedZone: null,
+        intensityScore: null,
+        intensityLabel: null,
+        powerZoneDistribution: Prisma.DbNull,
+        powerEstimatedZone: null,
+        powerIntensityScore: null,
+        powerIntensityLabel: null,
+        ...intensityData,
+      };
 
       const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
@@ -151,6 +161,15 @@ export async function syncActivities(
     }
 
     start += PAGE_SIZE;
+  }
+
+  // #570: 파워 기준 값이 비어 있는 과거 러닝 활동 채우기 (배포 후 첫 싱크가 이력을 채운다 · 이후엔 대상 0건)
+  try {
+    await fillMissingPowerIntensity();
+  } catch (err) {
+    console.warn(
+      `[activities] 파워 기준 강도 채우기 실패 (다음 싱크에서 재시도): ${err instanceof Error ? err.message : String(err)}`,
+    );
   }
 
   return synced;
