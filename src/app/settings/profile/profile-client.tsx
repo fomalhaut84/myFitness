@@ -3,6 +3,9 @@
 import { useState } from "react";
 import { useRouter } from "next/navigation";
 import GarminSyncSection, { type GarminMeta } from "./garmin-sync-section";
+import IntensityBasisSection from "./intensity-basis-section";
+import RunningPowerSection, { type RunningPowerMeta } from "./running-power-section";
+import type { IntensityBasisSetting } from "@/lib/fitness/intensity";
 
 interface ProfileValues {
   name: string;
@@ -37,6 +40,9 @@ interface MetricChangeEntry {
 interface ProfileClientProps {
   initial: ProfileValues;
   garminMeta?: GarminMeta;
+  /** #570: 러닝 파워 카드 · 강도 평가 기준 카드 (프로필 폼과 따로 저장) */
+  runningPower?: RunningPowerMeta;
+  intensityBasis?: { current: IntensityBasisSetting; hasThresholdPower: boolean; hrAffectingMedCount: number };
   metricHistory?: MetricChangeEntry[];
 }
 
@@ -46,6 +52,7 @@ const FIELD_LABELS: Record<string, string> = {
   lthrPace: "LTHR 페이스",
   vo2maxRunning: "VO2max",
   restingHRBase: "안정시 심박",
+  thresholdPower: "역치파워",
 };
 
 const FIELD_UNITS: Record<string, string> = {
@@ -54,6 +61,7 @@ const FIELD_UNITS: Record<string, string> = {
   lthrPace: "sec/km",
   vo2maxRunning: "",
   restingHRBase: "bpm",
+  thresholdPower: "W",
 };
 
 const REASON_LABELS: Record<string, string> = {
@@ -94,6 +102,8 @@ function toNumOrNull(v: string): number | null {
 export default function ProfileClient({
   initial,
   garminMeta,
+  runningPower,
+  intensityBasis,
   metricHistory = [],
 }: ProfileClientProps) {
   const router = useRouter();
@@ -224,6 +234,8 @@ export default function ProfileClient({
       </div>
 
       {garminMeta && <GarminSyncSection meta={garminMeta} />}
+      {runningPower && <RunningPowerSection meta={runningPower} />}
+      {intensityBasis && <IntensityBasisSection {...intensityBasis} />}
 
       <form onSubmit={handleSubmit} className="space-y-8">
         {/* 기본 정보 */}

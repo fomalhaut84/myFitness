@@ -128,3 +128,31 @@ export function resolveLTHR(profile: {
   if (profile.lthr && profile.lthr > 0) return profile.lthr;
   return Math.round(resolveMaxHR(profile) * 0.9);
 }
+
+/**
+ * #570: 프로필의 심박 존 — Garmin zone1~5Floor 는 maxHR · LTHR 이 둘 다 Garmin 값이고 원본이 현재 값과 같을 때만
+ * (수동 override 또는 원본이 뒤처지면 LTHR 비율 계산). 저장된 심박 존 시간 (Garmin hrTimeInZone) 옆에 범위를 보여줄 때
+ * 같은 존 모델이어야 한다 — get_user_profile · 활동 상세가 공유 (`resolveProfilePowerZones` 와 대칭).
+ */
+export function resolveProfileHrZones(
+  profile: {
+    maxHR: number | null;
+    lthr: number | null;
+    maxHRSource: string | null;
+    lthrSource: string | null;
+    heartRateZonesRaw: unknown;
+  },
+  fallback: { maxHR: number; lthr: number }
+): { zones: ZoneRange[]; source: "garmin" | "calculated" } {
+  const bothGarminOwned = profile.maxHRSource === "garmin" && profile.lthrSource === "garmin";
+  const raw =
+    typeof profile.heartRateZonesRaw === "object" && profile.heartRateZonesRaw !== null
+      ? (profile.heartRateZonesRaw as GarminZonesRaw & { lactateThresholdHeartRateUsed?: number | null })
+      : null;
+  const fresh =
+    raw !== null && raw.maxHeartRateUsed === profile.maxHR && raw.lactateThresholdHeartRateUsed === profile.lthr;
+  const garmin = bothGarminOwned && fresh && raw ? garminZoneRanges(raw) : null;
+  return garmin
+    ? { zones: garmin, source: "garmin" }
+    : { zones: getZoneRanges(fallback.lthr, fallback.maxHR), source: "calculated" };
+}

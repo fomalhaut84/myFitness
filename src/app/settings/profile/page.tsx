@@ -2,12 +2,14 @@ import prisma from "@/lib/prisma";
 import { formatDateLocal } from "@/lib/format";
 import { extractGarminSyncCandidates, extractGarminZoneValues } from "@/lib/garmin/profile-values";
 import { resolveMaxHR } from "@/lib/fitness/zones";
+import { parseRunningPowerZones, resolveProfilePowerZones } from "@/lib/fitness/power-zones";
+import { parseIntensityBasisSetting } from "@/lib/fitness/intensity";
 import ProfileClient from "./profile-client";
 
 export const dynamic = "force-dynamic";
 
 export default async function ProfilePage() {
-  const [profile, history, latestLthrPace] = await Promise.all([
+  const [profile, history, latestLthrPace, hrAffectingMedCount] = await Promise.all([
     prisma.userProfile.findFirst(),
     prisma.metricChange.findMany({
       orderBy: { changedAt: "desc" },
@@ -19,7 +21,11 @@ export default async function ProfilePage() {
       orderBy: { date: "desc" },
       select: { lthrPace: true, date: true },
     }),
+    // #570: 자동 기준 안내 — "심박에 영향" 표시된 복약 수
+    prisma.medication.count({ where: { affectsHeartRate: true } }),
   ]);
+  // #570: 러닝 파워 — 존 원본은 매 싱크 갱신 (수동 보호와 무관) → 현재 Garmin 역치파워
+  const powerZones = profile ? resolveProfilePowerZones(profile) : null;
   // #505: 러닝 존 원본은 매 싱크 갱신 (수동 보호와 무관) → 현재 Garmin maxHR · LTHR
   const garminZone = extractGarminZoneValues(profile?.heartRateZonesRaw ?? null);
 
@@ -70,6 +76,20 @@ export default async function ProfilePage() {
         ltDetection: latestLthrPace?.lthrPace
           ? { pace: latestLthrPace.lthrPace, date: formatDateLocal(latestLthrPace.date) }
           : null,
+      }}
+      runningPower={{
+        thresholdPower: profile?.thresholdPower ?? null,
+        source: profile?.thresholdPowerSource ?? null,
+        autoDetected: profile?.thresholdPowerAutoDetected ?? null,
+        measuredAt: profile?.thresholdPowerMeasuredAt ? profile.thresholdPowerMeasuredAt.toISOString() : null,
+        garminThresholdPower: parseRunningPowerZones(profile?.powerZonesRaw ?? null)?.functionalThresholdPower ?? null,
+        zones: powerZones?.zones ?? null,
+        zoneSource: powerZones?.source ?? null,
+      }}
+      intensityBasis={{
+        current: parseIntensityBasisSetting(profile?.intensityBasis),
+        hasThresholdPower: (profile?.thresholdPower ?? null) !== null,
+        hrAffectingMedCount,
       }}
       metricHistory={history.map((h) => ({
         id: h.id,

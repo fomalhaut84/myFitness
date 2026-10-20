@@ -6,6 +6,7 @@ import { parseDateOnlyKST } from "@/lib/date-input";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
 import { bumpHistoryCacheVersion } from "@/lib/history/cache";
+import { fillMissingPowerIntensity } from "@/lib/fitness/power-intensity-fill";
 import { INTENSITY_BASIS_SETTINGS } from "@/lib/fitness/intensity";
 import { THRESHOLD_POWER_MAX, THRESHOLD_POWER_MIN } from "@/lib/fitness/power-zones";
 import {
@@ -289,6 +290,20 @@ export async function PATCH(request: Request) {
       }
       return updated;
     });
+
+    // #570: 역치파워가 생기면 (수동 입력) 비어 있는 과거 러닝의 파워 기준 값을 바로 채운다 — 다음 싱크 (06:00) 까지
+    // 파워 기준이 심박으로 조용히 대체되지 않게 (PR #573 Codex P2). 채운 행만 대상이라 반복해도 안전 · 실패는 다음 싱크가 채운다.
+    if (thresholdPowerChanged && data.thresholdPower !== null) {
+      try {
+        const { filled } = await fillMissingPowerIntensity();
+        if (filled > 0) bumpHistoryCacheVersion();
+      } catch (err) {
+        console.error(
+          "[profile] 역치파워 저장 후 파워 기준 강도 채우기 실패 (다음 싱크에서 재시도):",
+          err instanceof Error ? err.message : String(err)
+        );
+      }
+    }
 
     // #570: 강도 기준이 바뀌면 인사이트 캐시 (존 분포) 를 새 기준으로 — 저장된 강도 값은 그대로, 읽는 쪽만 바뀐다
     if (data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis) {

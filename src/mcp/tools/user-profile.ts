@@ -1,10 +1,5 @@
 import prisma from "../prisma";
-import {
-  garminZoneRanges,
-  getZoneRanges,
-  resolveMaxHR,
-  type GarminZonesRaw,
-} from "@/lib/fitness/zones";
+import { resolveMaxHR, resolveProfileHrZones } from "@/lib/fitness/zones";
 import { resolveProfilePowerZones } from "@/lib/fitness/power-zones";
 import { parseIntensityBasisSetting } from "@/lib/fitness/intensity";
 import { formatDateLocal } from "@/lib/format";
@@ -62,29 +57,14 @@ export async function getUserProfile() {
     maxHRSource = "estimated";
   }
 
-  // Zone 결정:
-  // - maxHR/lthr 둘 다 Garmin source일 때만 Garmin zone1~5Floor 사용
-  // - manual override 또는 zonesRaw가 현재 maxHR/lthr와 불일치(stale)면 calculated로 fallback
-  //   (heartRateZones 실패 + user-settings 통한 lthr 갱신 등으로 zonesRaw가 뒤쳐진 경우)
-  const bothGarminOwned =
-    profile.maxHRSource === "garmin" && profile.lthrSource === "garmin";
-  const rawZones = profile.heartRateZonesRaw as unknown as
-    | (GarminZonesRaw & { lactateThresholdHeartRateUsed?: number | null })
-    | null;
-  const zonesRawFresh =
-    rawZones !== null &&
-    rawZones.maxHeartRateUsed === profile.maxHR &&
-    rawZones.lactateThresholdHeartRateUsed === profile.lthr;
-  const garminZones =
-    bothGarminOwned && zonesRawFresh && rawZones
-      ? garminZoneRanges(rawZones)
-      : null;
+  // Zone 결정 (resolveProfileHrZones — 활동 상세와 같은 규칙):
+  // - maxHR/lthr 둘 다 Garmin source + zonesRaw 가 현재 값과 같을 때만 Garmin zone1~5Floor
+  // - manual override 또는 zonesRaw 가 뒤처지면 (heartRateZones 실패 + user-settings 로 lthr 갱신 등) calculated
   const lthrValue =
     profile.lthr && profile.lthr > 0
       ? profile.lthr
       : Math.round(maxHRValue * 0.9);
-  const zones = garminZones ?? getZoneRanges(lthrValue, maxHRValue);
-  const zoneSource: "garmin" | "calculated" = garminZones ? "garmin" : "calculated";
+  const { zones, source: zoneSource } = resolveProfileHrZones(profile, { maxHR: maxHRValue, lthr: lthrValue });
   // #570: 러닝 파워 존 (W) · 강도 평가 기준
   const power = resolveProfilePowerZones(profile);
 
