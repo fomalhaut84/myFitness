@@ -52,7 +52,11 @@ export async function clearNonRunningPowerIntensity(): Promise<number> {
   return count;
 }
 
-export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
+/**
+ * @param options.force 이미 채운 러닝도 현재 역치파워로 다시 분류 (`scripts/backfill-intensity.ts --force` · #572) —
+ *   싱크는 저장된 값을 덮어쓰지 않으므로 다시 분류는 이 경로뿐이다
+ */
+export async function fillMissingPowerIntensity(options: { force?: boolean } = {}): Promise<PowerFillResult> {
   const profile = await prisma.userProfile.findFirst({ select: { thresholdPower: true } });
   const thresholdPower = profile?.thresholdPower ?? null;
   if (thresholdPower === null) return { scanned: 0, filled: 0 };
@@ -67,7 +71,7 @@ export async function fillMissingPowerIntensity(): Promise<PowerFillResult> {
       where: {
         AND: [
           RUNNING_ACTIVITY_WHERE,
-          { powerZoneDistribution: { equals: Prisma.DbNull } },
+          ...(options.force ? [] : [{ powerZoneDistribution: { equals: Prisma.DbNull } }]),
           { rawData: { path: ["powerTimeInZone_1"], gte: 0 } },
           ...(lastId ? [{ id: { gt: lastId } }] : []),
         ],
