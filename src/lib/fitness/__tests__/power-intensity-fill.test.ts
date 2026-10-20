@@ -46,6 +46,7 @@ vi.mock("@/lib/prisma", () => {
 });
 
 import { Prisma } from "@/generated/prisma/client";
+import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
 import { computePowerIntensityFromRawData } from "../intensity";
 import { clearNonRunningPowerIntensity, fillMissingPowerIntensity, powerColumnsForSync } from "../power-intensity-fill";
 
@@ -74,7 +75,7 @@ describe("powerColumnsForSync · clearNonRunningPowerIntensity", () => {
   it("남은 값 정리는 러닝 외 + 파워 값 있는 행만", async () => {
     expect(await clearNonRunningPowerIntensity()).toBe(2);
     const where = (updateManyCalls[0] as { where: { AND: Array<Record<string, unknown>> } }).where;
-    expect(where.AND[0]).toHaveProperty("NOT");
+    expect(where.AND[0]).toEqual({ NOT: RUNNING_ACTIVITY_WHERE });
     expect(where.AND[1]).toEqual({ powerIntensityLabel: { not: null } });
   });
 });

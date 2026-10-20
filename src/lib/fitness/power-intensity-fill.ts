@@ -8,8 +8,7 @@
 
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { RUNNING_ACTIVITY_WHERE } from "@/lib/activity/running-types";
-import { isRunningType } from "@/lib/activity/running-types";
+import { RUNNING_ACTIVITY_WHERE, isRunningType } from "@/lib/activity/running-types";
 import { computePowerIntensityFromRawData, type IntensityClassification } from "./intensity";
 import { toPowerColumns } from "./intensity-select";
 
@@ -35,7 +34,7 @@ const CLEARED_POWER_COLUMNS = {
 export function powerColumnsForSync(
   activityType: string,
   intensity: IntensityClassification | null
-): Record<string, unknown> {
+): Prisma.ActivityUpdateInput {
   if (!isRunningType(activityType)) return CLEARED_POWER_COLUMNS;
   if (!intensity) return {};
   return {
