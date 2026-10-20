@@ -5,6 +5,7 @@
  *   Garmin이 Activity.rawData에 제공하는 hrTimeInZone_1~5 (초 단위).
  *   Garmin 기본 Zone은 %maxHR 기반이지만 사용자가 Garmin Connect에서 LTHR 기반으로
  *   설정해두면 그 값이 그대로 사용됨.
+ *   #570: 파워 기준이면 powerTimeInZone_1~5 (Garmin 러닝 파워 존 · 역치파워 기준).
  *
  * 출력:
  *   - zoneDistribution: {z1..z5} 초 단위 (raw)
@@ -14,6 +15,7 @@
  */
 
 import { calculateHRZone } from "./zones";
+import { calculatePowerZone } from "./power-zones";
 
 export type HRZone = 1 | 2 | 3 | 4 | 5;
 export type IntensityLabel =
@@ -30,6 +32,17 @@ export interface ZoneDistribution {
   z3: number;
   z4: number;
   z5: number;
+}
+
+/** 프로필 설정 — auto = 활동에 파워 존 데이터가 있으면 파워, 없으면 심박 */
+export type IntensityBasisSetting = "hr" | "power" | "auto";
+/** 강도 값을 실제로 만든 기준 (Activity.intensityBasis) */
+export type IntensityBasis = "hr" | "power";
+
+export const INTENSITY_BASIS_SETTINGS = ["hr", "power", "auto"] as const;
+
+export function parseIntensityBasisSetting(value: unknown): IntensityBasisSetting {
+  return value === "power" || value === "auto" ? value : "hr";
 }
 
 export interface IntensityClassification {
@@ -52,20 +65,34 @@ export const MIN_ZONE_TOTAL_SEC = 60;
  * Garmin rawData에서 HR Zone 시간 분포를 추출.
  * 모든 zone이 0이거나 총합이 MIN_ZONE_TOTAL_SEC 이하이면 null 반환.
  */
-export function extractZoneDistribution(
-  rawData: Record<string, unknown> | null | undefined
+function extractDistribution(
+  rawData: Record<string, unknown> | null | undefined,
+  prefix: "hrTimeInZone_" | "powerTimeInZone_"
 ): ZoneDistribution | null {
   if (!rawData) return null;
   const dist: ZoneDistribution = {
-    z1: toNum(rawData.hrTimeInZone_1),
-    z2: toNum(rawData.hrTimeInZone_2),
-    z3: toNum(rawData.hrTimeInZone_3),
-    z4: toNum(rawData.hrTimeInZone_4),
-    z5: toNum(rawData.hrTimeInZone_5),
+    z1: toNum(rawData[`${prefix}1`]),
+    z2: toNum(rawData[`${prefix}2`]),
+    z3: toNum(rawData[`${prefix}3`]),
+    z4: toNum(rawData[`${prefix}4`]),
+    z5: toNum(rawData[`${prefix}5`]),
   };
   const total = dist.z1 + dist.z2 + dist.z3 + dist.z4 + dist.z5;
   if (total <= MIN_ZONE_TOTAL_SEC) return null;
   return dist;
+}
+
+export function extractZoneDistribution(
+  rawData: Record<string, unknown> | null | undefined
+): ZoneDistribution | null {
+  return extractDistribution(rawData, "hrTimeInZone_");
+}
+
+/** #570: Garmin rawData의 파워 존 시간 분포 (powerTimeInZone_1~5). 규칙은 심박과 같다. */
+export function extractPowerZoneDistribution(
+  rawData: Record<string, unknown> | null | undefined
+): ZoneDistribution | null {
+  return extractDistribution(rawData, "powerTimeInZone_");
 }
 
 /** Prisma Json 값이 ZoneDistribution 형태인지 검증 후 타입 안전 캐스팅 */
@@ -116,11 +143,17 @@ function zonePercents(dist: ZoneDistribution): {
   return { total, pct, weighted };
 }
 
-/** 분포 + avgHR(optional) 기반 강도 분류 */
+/**
+ * 분포 + 보정 지표(optional) 기반 강도 분류.
+ * 보정: 심박 = avgHR 의 LTHR 존, 파워 (#570) = 정규화 파워(없으면 평균)의 역치파워 존 — 존 ≥ 4 면 threshold 이상.
+ */
 export function classifyIntensity(args: {
   zoneDistribution: ZoneDistribution;
   avgHR?: number | null;
   lthr?: number | null;
+  basis?: IntensityBasis;
+  power?: number | null;
+  thresholdPower?: number | null;
 }): IntensityClassification {
   const dist = args.zoneDistribution;
   const { total, pct, weighted } = zonePercents(dist);
@@ -153,13 +186,11 @@ export function classifyIntensity(args: {
     label = "easy";
   }
 
-  // avgHR + LTHR이 제공되면 라벨을 보정 (추가 검증)
-  if (args.avgHR && args.avgHR > 0 && args.lthr && args.lthr > 0) {
-    const avgZone = calculateHRZone(args.avgHR, args.lthr);
-    // avgHR 기반 zone이 Z4~Z5인데 분포 기반이 낮으면 threshold 이상으로 보정
-    if (avgZone >= 4 && (label === "easy" || label === "tempo")) {
-      label = "threshold";
-    }
+  // 평균 지표 + 역치가 제공되면 라벨을 보정 (추가 검증)
+  // 평균 기반 zone이 Z4~Z5인데 분포 기반이 낮으면 threshold 이상으로 보정
+  const avgZone = averageZone(args);
+  if (avgZone !== null && avgZone >= 4 && (label === "easy" || label === "tempo")) {
+    label = "threshold";
   }
 
   return {
@@ -170,20 +201,74 @@ export function classifyIntensity(args: {
   };
 }
 
+function averageZone(args: {
+  avgHR?: number | null;
+  lthr?: number | null;
+  basis?: IntensityBasis;
+  power?: number | null;
+  thresholdPower?: number | null;
+}): number | null {
+  if (args.basis === "power") {
+    if (args.power && args.power > 0 && args.thresholdPower && args.thresholdPower > 0) {
+      return calculatePowerZone(args.power, args.thresholdPower);
+    }
+    return null;
+  }
+  if (args.avgHR && args.avgHR > 0 && args.lthr && args.lthr > 0) {
+    return calculateHRZone(args.avgHR, args.lthr);
+  }
+  return null;
+}
+
+/** rawData 의 정규화 파워 → 평균 파워 순 (양수만) */
+function representativePower(rawData: Record<string, unknown>): number | null {
+  for (const key of ["normPower", "avgPower"] as const) {
+    const n = toNum(rawData[key]);
+    if (n > 0) return n;
+  }
+  return null;
+}
+
+export interface BasisIntensity extends IntensityClassification {
+  basis: IntensityBasis;
+}
+
 /**
  * Activity.rawData로부터 전체 분류 결과 산출.
+ * 기준(#570): hr = 심박 존 · power = 파워 존 (없으면 null — 심박으로 대체하지 않음) · auto = 파워 있으면 파워, 없으면 심박.
  * 분포 데이터 없으면 null.
  */
 export function computeIntensityFromRawData(args: {
   rawData: Record<string, unknown> | null | undefined;
   avgHR?: number | null;
   lthr?: number | null;
-}): IntensityClassification | null {
+  basis?: IntensityBasisSetting;
+  thresholdPower?: number | null;
+}): BasisIntensity | null {
+  const setting = args.basis ?? "hr";
+  if (setting !== "hr" && args.rawData) {
+    const powerDist = extractPowerZoneDistribution(args.rawData);
+    if (powerDist) {
+      return {
+        ...classifyIntensity({
+          zoneDistribution: powerDist,
+          basis: "power",
+          power: representativePower(args.rawData),
+          thresholdPower: args.thresholdPower,
+        }),
+        basis: "power",
+      };
+    }
+    if (setting === "power") return null;
+  }
   const dist = extractZoneDistribution(args.rawData);
   if (!dist) return null;
-  return classifyIntensity({
-    zoneDistribution: dist,
-    avgHR: args.avgHR,
-    lthr: args.lthr,
-  });
+  return {
+    ...classifyIntensity({
+      zoneDistribution: dist,
+      avgHR: args.avgHR,
+      lthr: args.lthr,
+    }),
+    basis: "hr",
+  };
 }
