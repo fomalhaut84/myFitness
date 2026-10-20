@@ -1,7 +1,8 @@
 import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
-import { computeIntensityFromRawData } from "@/lib/fitness/intensity";
+import { computeIntensityFromRawData, parseIntensityBasisSetting } from "@/lib/fitness/intensity";
+import { shouldClearOnMissing, toIntensityColumns } from "@/lib/fitness/intensity-columns";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
 import { parseRunningDynamics } from "@/lib/garmin/parse-running-dynamics";
@@ -22,6 +23,9 @@ export async function syncActivities(
   // 실측값이 없으면 LTHR 기반 보정은 건너뛰고 분포만으로 분류.
   const profile = await prisma.userProfile.findFirst();
   const lthr = profile?.lthr ?? null;
+  // #570: 강도 기준 (심박 / 파워 / 자동) + 파워 보정용 역치파워
+  const basis = parseIntensityBasisSetting(profile?.intensityBasis);
+  const thresholdPower = profile?.thresholdPower ?? null;
 
   while (hasMore) {
     const activities = await withRateLimit(() =>
@@ -92,30 +96,26 @@ export async function syncActivities(
         rawData: raw as Prisma.InputJsonValue,
       };
 
-      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 기반).
-      // 분포 추출 실패 시 기존 값을 덮어쓰지 않도록 update/create 동작을 분리.
+      // M4-5: 강도 자동 분류 (hrTimeInZone_1~5 · #570 파워 기준이면 powerTimeInZone_1~5).
+      // 분포 추출 실패 시 기존 값을 덮어쓰지 않도록 update/create 동작을 분리 — 단 파워 기준은
+      // 비운다 (파워 없는 활동에 심박 값이 남으면 기준이 섞인다 · shouldClearOnMissing).
       const intensity = computeIntensityFromRawData({
         rawData: raw,
         avgHR: data.avgHR,
         lthr,
+        basis,
+        thresholdPower,
       });
-      const intensityData: Record<string, unknown> = intensity
-        ? {
-            zoneDistribution: intensity.zoneDistribution as unknown as Prisma.InputJsonValue,
-            estimatedZone: intensity.estimatedZone,
-            intensityScore: intensity.intensityScore,
-            intensityLabel: intensity.intensityLabel,
-          }
-        : {};
-      // create 시에만 빈 값 명시 (upsert update에서는 생략하여 기존 값 유지)
-      const intensityDataCreate: Record<string, unknown> = intensity
-        ? intensityData
-        : {
-            zoneDistribution: Prisma.DbNull,
-            estimatedZone: null,
-            intensityScore: null,
-            intensityLabel: null,
-          };
+      const columns = toIntensityColumns(intensity);
+      const intensityDataCreate: Record<string, unknown> = {
+        ...columns,
+        zoneDistribution:
+          columns.zoneDistribution === null
+            ? Prisma.DbNull
+            : (columns.zoneDistribution as unknown as Prisma.InputJsonValue),
+      };
+      const intensityData: Record<string, unknown> =
+        intensity || shouldClearOnMissing(basis) ? intensityDataCreate : {};
 
       const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },

@@ -5,6 +5,9 @@ import prisma from "@/lib/prisma";
 import { parseDateOnlyKST } from "@/lib/date-input";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { recalculateAllCalorieBalances } from "@/lib/fitness/calorie-balance";
+import { INTENSITY_BASIS_SETTINGS } from "@/lib/fitness/intensity";
+import { THRESHOLD_POWER_MAX, THRESHOLD_POWER_MIN } from "@/lib/fitness/power-zones";
+import { recomputeAllIntensity } from "@/lib/fitness/recompute-intensity";
 import {
   recordMetricChange,
   type MetricField,
@@ -57,8 +60,11 @@ const PATCH_SCHEMA = z.object({
   personalGoalNote: z.string().trim().max(500).nullable().optional(),
   // M13 Phase 1 (#243): auto-adjust 사전 알림 토글.
   autoAdjustEnabled: z.boolean().optional(),
+  // #570: 러닝 역치파워 (W) · 강도 평가 기준
+  thresholdPower: z.number().int().min(THRESHOLD_POWER_MIN).max(THRESHOLD_POWER_MAX).nullable().optional(),
+  intensityBasis: z.enum(INTENSITY_BASIS_SETTINGS).optional(),
   // #505: 수동 보호(source = manual) 해제 — source 만 "garmin" 으로, 값은 다음 싱크가 갱신.
-  revertToGarmin: z.array(z.enum(["maxHR", "lthr"])).max(2).optional(),
+  revertToGarmin: z.array(z.enum(["maxHR", "lthr", "thresholdPower"])).max(3).optional(),
 });
 
 const DEFAULT_NAME = "사용자";
@@ -135,7 +141,13 @@ export async function PATCH(request: Request) {
     const lthrPairChanged =
       (data.lthr !== undefined && data.lthr !== existing.lthr) ||
       (data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace);
-    if ((revert.has("maxHR") && maxHRChanged) || (revert.has("lthr") && lthrPairChanged)) {
+    const thresholdPowerChanged =
+      data.thresholdPower !== undefined && data.thresholdPower !== existing.thresholdPower;
+    if (
+      (revert.has("maxHR") && maxHRChanged) ||
+      (revert.has("lthr") && lthrPairChanged) ||
+      (revert.has("thresholdPower") && thresholdPowerChanged)
+    ) {
       return NextResponse.json(
         { error: "Garmin 자동으로 되돌리는 항목의 값은 같은 요청에서 바꿀 수 없습니다" },
         { status: 400 }
@@ -172,6 +184,14 @@ export async function PATCH(request: Request) {
     }
     if (data.lthr !== undefined) updatePayload.lthr = data.lthr;
     if (data.lthrPace !== undefined) updatePayload.lthrPace = data.lthrPace;
+    // #570: 역치파워 — maxHR 과 같은 규칙 (실제로 바뀔 때만 source 갱신)
+    if (data.thresholdPower !== undefined) {
+      updatePayload.thresholdPower = data.thresholdPower;
+      if (thresholdPowerChanged) {
+        updatePayload.thresholdPowerSource = data.thresholdPower === null ? null : "manual";
+      }
+    }
+    if (data.intensityBasis !== undefined) updatePayload.intensityBasis = data.intensityBasis;
 
     // LTHR / LTHR pace는 한 쌍으로 측정 → lthrSource를 둘의 next state 기반으로 결정
     {
@@ -200,6 +220,7 @@ export async function PATCH(request: Request) {
     // #505: 값 변경 판정 뒤에 적용 — 위 충돌 검사로 같은 필드의 manual 지정과 겹치지 않는다.
     if (revert.has("maxHR")) updatePayload.maxHRSource = "garmin";
     if (revert.has("lthr")) updatePayload.lthrSource = "garmin";
+    if (revert.has("thresholdPower")) updatePayload.thresholdPowerSource = "garmin";
     if (data.targetCalories !== undefined)
       updatePayload.targetCalories = data.targetCalories;
     // M12 (#223): 개인 목표 필드 update passthrough (변경 이력 tracking 대상 아님).
@@ -228,6 +249,13 @@ export async function PATCH(request: Request) {
     }
     if (data.lthrPace !== undefined && data.lthrPace !== existing.lthrPace) {
       trackedFields.push({ field: "lthrPace", old: existing.lthrPace, new: data.lthrPace });
+    }
+    if (thresholdPowerChanged) {
+      trackedFields.push({
+        field: "thresholdPower",
+        old: existing.thresholdPower,
+        new: data.thresholdPower ?? null,
+      });
     }
     if (
       data.restingHRBase !== undefined &&
@@ -281,6 +309,24 @@ export async function PATCH(request: Request) {
             err instanceof Error ? err.message : String(err)
           );
         });
+    }
+
+    // #570: 강도 기준이 바뀌면 전체 활동 강도를 새 기준으로 재계산 (rawData 만 · 요청 안에서 완료).
+    // 실패해도 설정은 이미 저장됐다 — 응답에 알리고 다음 변경 · 백필 스크립트로 복구.
+    if (data.intensityBasis !== undefined && data.intensityBasis !== existing.intensityBasis) {
+      try {
+        const { updated } = await recomputeAllIntensity();
+        return NextResponse.json({ profile, recomputed: updated });
+      } catch (err) {
+        console.error(
+          "[profile] 강도 기준 변경 후 재계산 실패:",
+          err instanceof Error ? err.message : String(err)
+        );
+        return NextResponse.json({
+          profile,
+          recomputeError: "설정은 저장됐지만 활동 강도 재계산에 실패했습니다. 잠시 후 기준을 다시 저장해 주세요.",
+        });
+      }
     }
 
     return NextResponse.json({ profile });
