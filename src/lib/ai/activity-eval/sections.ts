@@ -77,22 +77,28 @@ export function splitLines(laps: readonly EvalLap[]): string[] {
 }
 
 const ZONE_NAMES = ["회복", "이지", "에어로빅", "역치", "VO2max"];
+// #570: 러닝 파워 존 이름 (power-zones.ts 와 같은 구간 — 역치파워 대비 65 · 80 · 90 · 100 · 115%)
+const POWER_ZONE_NAMES = ["회복", "이지", "템포", "역치", "VO2max"];
 
 export function intensityLines(input: EvalInput): string[] {
   const a = input.activity;
   const z = a.zoneDistribution;
   const values = z ? [z.z1, z.z2, z.z3, z.z4, z.z5] : [];
   const total = values.reduce((s, v) => s + v, 0);
+  const isPower = a.intensityBasis === "power";
+  const names = isPower ? POWER_ZONE_NAMES : ZONE_NAMES;
+  const basisLine =
+    total > 0 ? [isPower ? "강도 기준 러닝 파워 존 (역치파워 대비 — 심박은 참고)" : "강도 기준 심박 존"] : [];
   const zoneLine =
     total > 0
-      ? [`존 분포 ${values.map((sec, i) => `Z${i + 1} ${ZONE_NAMES[i]} ${formatClock(sec)} (${Math.round((sec / total) * 100)}%)`).join(" · ")}`]
+      ? [`존 분포 ${values.map((sec, i) => `Z${i + 1} ${names[i]} ${formatClock(sec)} (${Math.round((sec / total) * 100)}%)`).join(" · ")}`]
       : [];
   const label = a.intensityLabel !== null ? [`강도 라벨 ${INTENSITY_LABEL_KO[a.intensityLabel] ?? a.intensityLabel} (${a.intensityLabel})`] : [];
   const score = [
     ...(a.intensityScore !== null ? [`강도 점수 ${Math.round(a.intensityScore)} / 100`] : []),
     ...(a.estimatedZone !== null ? [`추정 대표 존 Z${a.estimatedZone}`] : []),
   ];
-  return [...zoneLine, ...label, ...score];
+  return [...basisLine, ...zoneLine, ...label, ...score];
 }
 
 /** 종료 후 유효 점이 이보다 적으면 곡선을 말할 수 없다 (#418 F9) */

@@ -1,6 +1,7 @@
 import prisma from "@/lib/prisma";
 import { getZoneRanges, resolveLTHR, resolveMaxHR } from "@/lib/fitness/zones";
 import { SYSTEM_PROMPT_DEFAULT } from "@/lib/prompts/defaults/system";
+import { buildPowerSection } from "./power-section";
 
 function formatKSTDateTime(): string {
   const now = new Date();
@@ -63,6 +64,8 @@ async function buildUserProfileSection(): Promise<string> {
           : `${z.min}-${z.max} bpm`;
     lines.push(`- Zone ${z.zone} (${z.label}): ${range}`);
   }
+  // #570: 강도 평가 기준 + 러닝 파워 존
+  lines.push(...buildPowerSection(profile));
 
   return lines.join("\n") + "\n";
 }
