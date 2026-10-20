@@ -2,8 +2,12 @@ import type { GarminConnect } from "@flow-js/garmin-connect";
 import { Prisma } from "@/generated/prisma/client";
 import prisma from "@/lib/prisma";
 import { computeIntensityFromRawData, computePowerIntensityFromRawData } from "@/lib/fitness/intensity";
-import { toPowerColumns } from "@/lib/fitness/intensity-select";
-import { fillMissingPowerIntensity } from "@/lib/fitness/power-intensity-fill";
+import { keepStoredIntensity } from "@/lib/fitness/intensity-sync";
+import {
+  clearNonRunningPowerIntensity,
+  fillMissingPowerIntensity,
+  powerColumnsForSync,
+} from "@/lib/fitness/power-intensity-fill";
 import { withRateLimit } from "../utils";
 import { parseAndSaveWristTemps } from "@/lib/weather/enrich";
 import { parseRunningDynamics } from "@/lib/garmin/parse-running-dynamics";
@@ -36,6 +40,13 @@ export async function syncActivities(
       hasMore = false;
       break;
     }
+
+    // #572: 이미 저장된 강도 값은 재싱크가 덮어쓰지 않는다 (keepStoredIntensity) — 페이지 단위로 기존 라벨 조회
+    const storedRows = await prisma.activity.findMany({
+      where: { garminId: { in: activities.map((x) => BigInt(x.activityId)) } },
+      select: { garminId: true, intensityLabel: true, powerIntensityLabel: true },
+    });
+    const stored = new Map(storedRows.map((r) => [r.garminId.toString(), r]));
 
     for (const a of activities) {
       // Garmin startTimeLocal은 naïve "YYYY-MM-DD HH:mm:ss" 형식.
@@ -110,12 +121,8 @@ export async function syncActivities(
         activityType: data.activityType,
         thresholdPower,
       });
-      const powerData: Record<string, unknown> = powerIntensity
-        ? {
-            ...toPowerColumns(powerIntensity),
-            powerZoneDistribution: powerIntensity.zoneDistribution as unknown as Prisma.InputJsonValue,
-          }
-        : {};
+      // 러닝 외로 종류가 바뀐 활동은 비운다 (#575 · powerColumnsForSync)
+      const powerData = powerColumnsForSync(data.activityType, powerIntensity);
       const intensityData: Record<string, unknown> = {
         ...(intensity
           ? {
@@ -127,7 +134,7 @@ export async function syncActivities(
           : {}),
         ...powerData,
       };
-      // create 시에만 빈 값 명시 (upsert update에서는 생략하여 기존 값 유지)
+      // create 시에만 빈 값 명시 (upsert update에서는 생략하여 기존 값 유지 · #572 이미 분류된 기준도 유지)
       const intensityDataCreate: Record<string, unknown> = {
         zoneDistribution: Prisma.DbNull,
         estimatedZone: null,
@@ -142,7 +149,7 @@ export async function syncActivities(
 
       const saved = await prisma.activity.upsert({
         where: { garminId: BigInt(a.activityId) },
-        update: { ...data, ...intensityData },
+        update: { ...data, ...keepStoredIntensity(intensityData, stored.get(String(a.activityId))) },
         create: { garminId: BigInt(a.activityId), ...data, ...intensityDataCreate },
         select: { id: true },
       });
@@ -166,10 +173,12 @@ export async function syncActivities(
 
   // #570: 파워 기준 값이 비어 있는 과거 러닝 활동 채우기 (배포 후 첫 싱크가 이력을 채운다 · 이후엔 대상 0건)
   try {
+    const cleared = await clearNonRunningPowerIntensity();
+    if (cleared > 0) console.log(`[activities] 러닝 외 종류의 파워 기준 강도 ${cleared}건 정리 (#575)`);
     await fillMissingPowerIntensity();
   } catch (err) {
     console.warn(
-      `[activities] 파워 기준 강도 채우기 실패 (다음 싱크에서 재시도): ${err instanceof Error ? err.message : String(err)}`,
+      `[activities] 파워 기준 강도 정리 · 채우기 실패 (다음 싱크에서 재시도): ${err instanceof Error ? err.message : String(err)}`,
     );
   }
 
