@@ -1,4 +1,6 @@
 import prisma from "../prisma";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import {
   todayKST,
   daysAgoKST,
@@ -107,10 +109,15 @@ export async function getTrainingLoadTrend() {
   const end = new Date(todayInstant);
   end.setUTCDate(end.getUTCDate() + 1);
 
-  const activities = await prisma.activity.findMany({
-    where: { startTime: { gte: start, lt: end } },
-    select: { startTime: true, intensityScore: true },
-  });
+  // #570: 강도 점수는 프로필 기준 (심박 / 파워 / 자동) 값
+  const [rows, basis] = await Promise.all([
+    prisma.activity.findMany({
+      where: { startTime: { gte: start, lt: end } },
+      select: { startTime: true, weatherApparentTempC: true, ...INTENSITY_SELECT },
+    }),
+    loadIntensityContext(prisma),
+  ]);
+  const activities = rows.map((r) => applyIntensityBasis(r, basis));
 
   // 일자별 합계 + 활동 존재 여부 (KST 날짜 기준).
   // intensityScore null인 활동도 activeDays에 표시 → 휴식일과 구분.

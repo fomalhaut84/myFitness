@@ -9,10 +9,16 @@ import {
 import { withRateLimit } from "../utils";
 import { resolveMaxHR } from "@/lib/fitness/zones";
 import { canAutoUpdate, findHrPairConflict } from "../profile-values";
+import { planPowerSync } from "../power-profile";
+import { fillMissingPowerIntensity } from "@/lib/fitness/power-intensity-fill";
 
 const HR_ZONES_URL = "https://connectapi.garmin.com/biometric-service/heartRateZones";
 const USER_SETTINGS_URL =
   "https://connectapi.garmin.com/userprofile-service/userprofile/user-settings";
+// #570: 러닝 역치파워 · 파워 존. 단일 종목 경로 (/sports/RUNNING) 는 404 — all 에서 RUNNING 을 고른다.
+const POWER_ZONES_URL = "https://connectapi.garmin.com/biometric-service/powerZones/sports/all";
+const LATEST_FTP_URL =
+  "https://connectapi.garmin.com/biometric-service/biometric/latestFunctionalThresholdPower/RUNNING";
 
 interface GarminHRZone {
   trainingMethod: string;
@@ -36,6 +42,7 @@ interface GarminUserSettings {
     vo2MaxRunning?: number | null;
     thresholdHeartRateAutoDetected?: boolean | null;
     firstbeatRunningLtTimestamp?: number | null;
+    ftpAutoDetected?: boolean | null;
   };
 }
 
@@ -78,6 +85,12 @@ async function applyAutoSync(args: {
   // endpoint 성공 여부
   hrZonesOk: boolean;
   userSettingsOk: boolean;
+  // #570: 파워 엔드포인트 응답 (실패면 undefined)
+  power: {
+    powerZones: unknown;
+    latest: unknown;
+    ftpAutoDetected: boolean | null | undefined;
+  };
 }): Promise<void> {
   // 신규 사용자도 첫 싱크에서 자동 설정되도록 singleton upsert.
   const profile = await prisma.userProfile.upsert({
@@ -317,6 +330,28 @@ async function applyAutoSync(args: {
     updates.heartRateZonesRaw = args.zonesRaw as unknown as Prisma.InputJsonValue;
   }
 
+  // #570: 러닝 역치파워 · 파워 존 — 수동 값만 보호 (planPowerSync)
+  const power = planPowerSync(profile, args.power);
+  for (const w of power.warnings) console.warn(`[user-profile] ${w}`);
+  const { powerZonesRaw, ...powerFields } = power.updates;
+  Object.assign(updates, powerFields);
+  if (powerZonesRaw) updates.powerZonesRaw = powerZonesRaw as unknown as Prisma.InputJsonValue;
+  const powerChange = power.change;
+  if (powerChange) {
+    historyOps.push((tx) =>
+      recordMetricChange(
+        {
+          field: "thresholdPower",
+          oldValue: powerChange.oldValue,
+          newValue: powerChange.newValue,
+          source: "garmin",
+          reason: args.power.ftpAutoDetected ? "garmin_auto_detect" : "garmin_initial",
+        },
+        tx
+      )
+    );
+  }
+
   // UserProfile update + MetricChange 기록을 원자적으로 처리.
   // history 기록 실패 시 profile 변경도 롤백되어 다음 싱크에서 다시 delta 감지 가능.
   await prisma.$transaction(async (tx) => {
@@ -330,10 +365,31 @@ async function applyAutoSync(args: {
   });
 }
 
+/** 선택 엔드포인트 1개 조회 — 실패는 경고만 남기고 undefined (= 이번 싱크에서 미갱신) */
+async function fetchOptional(client: GarminConnect, url: string, label: string): Promise<unknown> {
+  try {
+    return await withRateLimit(() => client.get<unknown>(url));
+  } catch (err) {
+    console.warn(`[user-profile] ${label} 조회 실패 (파워 필드 미갱신):`, err instanceof Error ? err.message : String(err));
+    return undefined;
+  }
+}
+
+/**
+ * #570: 파워 엔드포인트 — 선택 항목이라 실패해도 프로필 싱크를 실패로 만들지 않는다.
+ * `errors` 에 넣으면 syncUserProfile 이 throw → weekly-report 가 activities 갭 필까지 건너뛴다 (사전 리뷰 major 1).
+ */
+export async function fetchPowerPayload(client: GarminConnect): Promise<{ powerZones: unknown; latest: unknown }> {
+  const powerZones = await fetchOptional(client, POWER_ZONES_URL, "powerZones");
+  const latest = await fetchOptional(client, LATEST_FTP_URL, "latestFunctionalThresholdPower");
+  return { powerZones, latest };
+}
+
 /**
  * Garmin 프로필 동기화. 두 API 호출:
  *   1. /biometric-service/heartRateZones (러닝 sport) - maxHR/LTHR/Zone
  *   2. /userprofile-service/userprofile/user-settings - VO2max/lthrPace/메타
+ *   3. #570 /biometric-service/powerZones/sports/all + latestFunctionalThresholdPower/RUNNING - 러닝 역치파워 · 파워 존
  */
 export async function syncUserProfile(
   client: GarminConnect,
@@ -361,6 +417,8 @@ export async function syncUserProfile(
     console.warn("[user-profile] user-settings 조회 실패:", msg);
     errors.push({ source: "user-settings", message: msg });
   }
+
+  const { powerZones, latest: latestFtp } = await fetchPowerPayload(client);
 
   const runningZones = pickRunningZones(zones);
   const userData = settings?.userData ?? {};
@@ -437,7 +495,21 @@ export async function syncUserProfile(
     garminLthrMeasuredAt,
     zonesRaw: runningZones,
     changeState: runningZones?.changeState ?? "UNCHANGED",
+    power: {
+      powerZones,
+      latest: latestFtp,
+      ftpAutoDetected: userSettingsOk ? userData.ftpAutoDetected : undefined,
+    },
   });
+
+  // #570: 역치파워를 받은 뒤 비어 있는 과거 러닝의 파워 기준 강도를 채운다 (대상 없으면 즉시 끝)
+  try {
+    await fillMissingPowerIntensity();
+  } catch (err) {
+    console.warn(
+      `[user-profile] 파워 기준 강도 채우기 실패 (다음 싱크에서 재시도): ${err instanceof Error ? err.message : String(err)}`
+    );
+  }
 
   // 부분 실패도 sync metadata에 노출되도록 throw.
   // 데이터는 이미 apply됨 → 다음 retry에서 metadata가 정상 업데이트되며 자연 복구.

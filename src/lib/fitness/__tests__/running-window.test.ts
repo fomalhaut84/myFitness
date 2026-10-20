@@ -107,3 +107,28 @@ describe("stride", () => {
     expect(strideMeters(1.2)).toBe(1.2);
   });
 });
+
+// #570: 존 기준별 활동 수
+describe("summarizeRunningWindow basisCounts", () => {
+  it("존 있는 러닝만 기준별로 센다 (기준 없음 = 심박)", () => {
+    const zd = { z1: 100, z2: 100, z3: 0, z4: 0, z5: 0 };
+    const s = summarizeRunningWindow([
+      { activityType: "running", zoneDistribution: zd, intensityBasis: "power", hrr2: null },
+      { activityType: "running", zoneDistribution: zd, intensityBasis: "hr", hrr2: null },
+      { activityType: "running", zoneDistribution: zd, hrr2: null },
+      { activityType: "running", zoneDistribution: null, intensityBasis: "power", hrr2: null },
+    ]);
+    expect(s.basisCounts).toEqual({ hr: 2, power: 1 });
+  });
+});
+
+// 회귀: #570 사전 리뷰 major 1 — 파워 Z3 (역치) 가 hardPct 에서 빠지고 Z2 (중강도) 가 easy 로 세였다
+describe("summarizeRunningWindow 파워 기준 존은 심박 등가로", () => {
+  it("파워 Z1 = easy · 파워 Z3 이상 = hard", () => {
+    const s = summarizeRunningWindow([
+      { activityType: "running", zoneDistribution: { z1: 600, z2: 0, z3: 400, z4: 0, z5: 0 }, intensityBasis: "power", hrr2: null },
+    ]);
+    expect(s.easyPct).toBe(60);
+    expect(s.hardPct).toBe(40);
+  });
+});

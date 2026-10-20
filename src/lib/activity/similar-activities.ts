@@ -71,6 +71,8 @@ export type SimilarActivity = Pick<
   | "avgHR"
   | "avgPace"
   | "intensityLabel"
+  | "powerIntensityLabel"
+  | "weatherApparentTempC"
   | "routeTag"
 >;
 
@@ -135,6 +137,9 @@ const RENDER_SELECT = {
   avgHR: true,
   avgPace: true,
   intensityLabel: true,
+  // #570: 러닝 파워 기준 라벨 — 읽는 쪽이 selectIntensityLabel 로 고른다
+  powerIntensityLabel: true,
+  weatherApparentTempC: true,
   routeTag: true,
 } as const;
 

@@ -2,6 +2,7 @@
 import prisma from "@/lib/prisma";
 import { parseDateOnlyKST } from "@/lib/date-input";
 import { ymdKST } from "@/lib/garmin/utils";
+import { bumpHistoryCacheVersion } from "@/lib/history/cache";
 import { endTodayDecision } from "./period";
 import type { MedicationInput } from "./schema";
 
@@ -19,20 +20,29 @@ function data(input: MedicationInput) {
     prescriber: input.prescriber ?? null,
     note: input.note ?? null,
     relatedItems: input.relatedItems,
+    affectsHeartRate: input.affectsHeartRate,
   };
 }
 
+// #570: 강도 기준 "자동" 은 심박 영향 복약 기간으로 기준을 고른다 — 복약이 바뀌면 인사이트 캐시 (존 비율) 를 새로
+// (사전 리뷰 info · 쓰기는 이 파일만 거친다)
+
 export async function createMedication(input: MedicationInput): Promise<{ id: string }> {
-  return prisma.medication.create({ data: data(input), select: { id: true } });
+  const created = await prisma.medication.create({ data: data(input), select: { id: true } });
+  bumpHistoryCacheVersion();
+  return created;
 }
 
 /** 없는 id 는 P2025 */
 export async function updateMedication(id: string, input: MedicationInput): Promise<{ id: string }> {
-  return prisma.medication.update({ where: { id }, data: data(input), select: { id: true } });
+  const updated = await prisma.medication.update({ where: { id }, data: data(input), select: { id: true } });
+  bumpHistoryCacheVersion();
+  return updated;
 }
 
 export async function deleteMedication(id: string): Promise<void> {
   await prisma.medication.delete({ where: { id } });
+  bumpHistoryCacheVersion();
 }
 
 export type EndResult = "ended" | "not_found" | "already_ended" | "not_started";
@@ -44,5 +54,6 @@ export async function endMedicationToday(id: string, todayYmd: string): Promise<
   const decision = endTodayDecision({ startDate: ymdKST(med.startDate), endDate: med.endDate ? ymdKST(med.endDate) : null }, todayYmd);
   if (decision !== "end") return decision;
   await prisma.medication.update({ where: { id }, data: { endDate: parseDateOnlyKST(todayYmd) } });
+  bumpHistoryCacheVersion();
   return "ended";
 }

@@ -1,4 +1,6 @@
 import prisma from "../prisma";
+import { applyIntensityBasis, INTENSITY_SELECT } from "@/lib/fitness/intensity-select";
+import { loadIntensityContext } from "@/lib/fitness/intensity-setting";
 import {
   todayKST,
   yesterdayKST,
@@ -50,7 +52,7 @@ export async function getReadinessScore() {
   const yesterday = yesterdayKST();
   const sevenDaysAgo = daysAgoKST(7);
 
-  const [todayDaily, recentDaily, todaySleep, recentSleep, yesterdayActivities] =
+  const [todayDaily, recentDaily, todaySleep, recentSleep, yesterdayRows, intensityBasis] =
     await Promise.all([
       prisma.dailySummary.findUnique({
         where: { date: today },
@@ -76,11 +78,15 @@ export async function getReadinessScore() {
         where: { startTime: { gte: yesterday, lt: today } },
         select: {
           duration: true,
-          intensityScore: true,
+          // #570: 강도 점수는 프로필 기준 (심박 / 파워 / 자동) 값
+          ...INTENSITY_SELECT,
+          startTime: true,
+          weatherApparentTempC: true,
           aerobicTE: true,
           anaerobicTE: true,
         },
       }),
+      loadIntensityContext(prisma),
     ]);
 
   const score = todayDaily?.bodyBatteryHigh ?? null;
@@ -108,6 +114,7 @@ export async function getReadinessScore() {
   // - empty array → totalIntensityScore=0, totalDurationMin=0 (휴식일 명시)
   // - 활동 있지만 개별 필드 null → 합계/최대 계산에서 그 활동만 제외
   // - max*TE는 활동 없으면 0 (휴식일 = 부하 없음)
+  const yesterdayActivities = yesterdayRows.map((r) => applyIntensityBasis(r, intensityBasis));
   const isRestDay = yesterdayActivities.length === 0;
 
   const intensityValues = yesterdayActivities

@@ -18,6 +18,7 @@ const med = (over: Partial<MedicationDto>): MedicationDto => ({
   prescriber: null,
   note: null,
   relatedItems: [],
+  affectsHeartRate: false,
   ...over,
 });
 

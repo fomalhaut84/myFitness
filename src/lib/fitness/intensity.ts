@@ -5,6 +5,7 @@
  *   Garmin이 Activity.rawData에 제공하는 hrTimeInZone_1~5 (초 단위).
  *   Garmin 기본 Zone은 %maxHR 기반이지만 사용자가 Garmin Connect에서 LTHR 기반으로
  *   설정해두면 그 값이 그대로 사용됨.
+ *   #570: 파워 기준이면 powerTimeInZone_1~5 (Garmin 러닝 파워 존 · 역치파워 기준).
  *
  * 출력:
  *   - zoneDistribution: {z1..z5} 초 단위 (raw)
@@ -14,6 +15,7 @@
  */
 
 import { calculateHRZone } from "./zones";
+import { isRunningType } from "@/lib/activity/running-types";
 
 export type HRZone = 1 | 2 | 3 | 4 | 5;
 export type IntensityLabel =
@@ -30,6 +32,20 @@ export interface ZoneDistribution {
   z3: number;
   z4: number;
   z5: number;
+}
+
+/**
+ * 프로필 설정 (UserProfile.intensityBasis) — hr = 심박 · power = 파워 우선 (없으면 심박) ·
+ * auto = 심박 영향 복약 기간 · 더위의 러닝만 파워 (intensity-select.ts decideBasis)
+ */
+export type IntensityBasisSetting = "hr" | "power" | "auto";
+/** 읽을 때 고른 값의 기준 (applyIntensityBasis 의 intensityBasis) */
+export type IntensityBasis = "hr" | "power";
+
+export const INTENSITY_BASIS_SETTINGS = ["hr", "power", "auto"] as const;
+
+export function parseIntensityBasisSetting(value: unknown): IntensityBasisSetting {
+  return value === "power" || value === "auto" ? value : "hr";
 }
 
 export interface IntensityClassification {
@@ -52,20 +68,34 @@ export const MIN_ZONE_TOTAL_SEC = 60;
  * Garmin rawData에서 HR Zone 시간 분포를 추출.
  * 모든 zone이 0이거나 총합이 MIN_ZONE_TOTAL_SEC 이하이면 null 반환.
  */
-export function extractZoneDistribution(
-  rawData: Record<string, unknown> | null | undefined
+function extractDistribution(
+  rawData: Record<string, unknown> | null | undefined,
+  prefix: "hrTimeInZone_" | "powerTimeInZone_"
 ): ZoneDistribution | null {
   if (!rawData) return null;
   const dist: ZoneDistribution = {
-    z1: toNum(rawData.hrTimeInZone_1),
-    z2: toNum(rawData.hrTimeInZone_2),
-    z3: toNum(rawData.hrTimeInZone_3),
-    z4: toNum(rawData.hrTimeInZone_4),
-    z5: toNum(rawData.hrTimeInZone_5),
+    z1: toNum(rawData[`${prefix}1`]),
+    z2: toNum(rawData[`${prefix}2`]),
+    z3: toNum(rawData[`${prefix}3`]),
+    z4: toNum(rawData[`${prefix}4`]),
+    z5: toNum(rawData[`${prefix}5`]),
   };
   const total = dist.z1 + dist.z2 + dist.z3 + dist.z4 + dist.z5;
   if (total <= MIN_ZONE_TOTAL_SEC) return null;
   return dist;
+}
+
+export function extractZoneDistribution(
+  rawData: Record<string, unknown> | null | undefined
+): ZoneDistribution | null {
+  return extractDistribution(rawData, "hrTimeInZone_");
+}
+
+/** #570: Garmin rawData의 파워 존 시간 분포 (powerTimeInZone_1~5). 규칙은 심박과 같다. */
+export function extractPowerZoneDistribution(
+  rawData: Record<string, unknown> | null | undefined
+): ZoneDistribution | null {
+  return extractDistribution(rawData, "powerTimeInZone_");
 }
 
 /** Prisma Json 값이 ZoneDistribution 형태인지 검증 후 타입 안전 캐스팅 */
@@ -116,7 +146,7 @@ function zonePercents(dist: ZoneDistribution): {
   return { total, pct, weighted };
 }
 
-/** 분포 + avgHR(optional) 기반 강도 분류 */
+/** 분포 + avgHR(optional) 기반 강도 분류 (심박 존 — Friel LTHR 구간) */
 export function classifyIntensity(args: {
   zoneDistribution: ZoneDistribution;
   avgHR?: number | null;
@@ -171,7 +201,66 @@ export function classifyIntensity(args: {
 }
 
 /**
- * Activity.rawData로부터 전체 분류 결과 산출.
+ * #570: 러닝 파워 존은 심박 존보다 의미가 한 칸 위다 (Garmin = Stryd 구간: Z1 이지 65~80% · Z2 중강도 80~90% ·
+ * Z3 역치 90~100% · Z4 인터벌 100~115% · Z5 반복 115%+). 심박 규칙을 그대로 쓰면 이지런이 recovery 로,
+ * 점수가 절반 가까이로 나와 훈련 부하 · ACWR 눈금이 심박 이력과 어긋난다 (로컬 실측).
+ * 점수 가중치는 심박 존 등가 (Z1→2 · Z2→3 · Z3→4 · Z4→5 · Z5→5) — 같은 노력이면 심박 기준과 같은 눈금.
+ * 대표 존은 파워 존 번호 그대로 (화면이 W 구간과 함께 보여준다).
+ */
+const POWER_SCORE_WEIGHTS = [2, 3, 4, 5, 5] as const;
+/** 정규화 파워가 역치 대비 이 비율 미만이면 recovery (Z1 하한 65% 아래) */
+const POWER_RECOVERY_RATIO = 0.65;
+/** 정규화 파워가 역치 대비 이 비율 이상이면 easy/tempo → threshold (Z3 하한) */
+const POWER_THRESHOLD_RATIO = 0.9;
+
+export function classifyPowerIntensity(args: {
+  zoneDistribution: ZoneDistribution;
+  power?: number | null;
+  thresholdPower?: number | null;
+}): IntensityClassification {
+  const dist = args.zoneDistribution;
+  const { total, pct, weighted } = zonePercents(dist);
+  const estimatedZone = Math.max(1, Math.min(5, Math.round(weighted))) as HRZone;
+  const values = [dist.z1, dist.z2, dist.z3, dist.z4, dist.z5];
+  const scoreWeighted =
+    total > 0 ? values.reduce((s, v, i) => s + v * POWER_SCORE_WEIGHTS[i], 0) / total : 0;
+  const intensityScore = total > 0 ? Math.min(100, scoreWeighted * 20) : 0;
+
+  let label: IntensityLabel;
+  if (pct.z5 > 0.3) label = "max";
+  else if (pct.z4 + pct.z5 > 0.3) label = "interval";
+  else if (pct.z3 > 0.3) label = "threshold";
+  else if (pct.z2 > 0.3) label = "tempo";
+  else label = "easy";
+
+  const ratio =
+    args.power && args.power > 0 && args.thresholdPower && args.thresholdPower > 0
+      ? args.power / args.thresholdPower
+      : null;
+  if (ratio !== null) {
+    if (ratio >= POWER_THRESHOLD_RATIO && (label === "easy" || label === "tempo")) label = "threshold";
+    else if (ratio < POWER_RECOVERY_RATIO && label === "easy") label = "recovery";
+  }
+
+  return {
+    zoneDistribution: dist,
+    estimatedZone,
+    intensityScore: Number(intensityScore.toFixed(1)),
+    intensityLabel: label,
+  };
+}
+
+/** rawData 의 정규화 파워 → 평균 파워 순 (양수만) */
+function representativePower(rawData: Record<string, unknown>): number | null {
+  for (const key of ["normPower", "avgPower"] as const) {
+    const n = toNum(rawData[key]);
+    if (n > 0) return n;
+  }
+  return null;
+}
+
+/**
+ * Activity.rawData로부터 심박 기준 분류 결과 산출 (M4-5 — Activity 의 zoneDistribution · estimatedZone · intensityScore · intensityLabel).
  * 분포 데이터 없으면 null.
  */
 export function computeIntensityFromRawData(args: {
@@ -186,4 +275,37 @@ export function computeIntensityFromRawData(args: {
     avgHR: args.avgHR,
     lthr: args.lthr,
   });
+}
+
+/**
+ * #570: 러닝 파워 기준 분류 (Activity 의 power* 컬럼). 심박 기준과 따로 저장한다.
+ * 역치파워 · 파워 존은 Garmin RUNNING 프로필이라 러닝 계열에만 — 사이클 등은 null
+ * (PR #571 Codex P2: 자전거 파워를 러닝 역치와 비교하지 않게). 파워 존 데이터가 없어도 null.
+ * 역치파워가 없어도 null — 보정 없는 값이 저장돼 굳지 않게 (스펙 §2-7 · 사전 리뷰 major 3: 일일 싱크는 activities 가
+ * user_profile 보다 먼저라 배포 첫날 역치파워 없이 계산됐다). 싱크 · 채우기 모두 이 규칙 하나를 따른다.
+ */
+export function computePowerIntensityFromRawData(args: {
+  rawData: Record<string, unknown> | null | undefined;
+  activityType: string;
+  thresholdPower?: number | null;
+}): IntensityClassification | null {
+  if (!args.rawData || !isRunningType(args.activityType)) return null;
+  if (!args.thresholdPower || args.thresholdPower <= 0) return null;
+  const dist = extractPowerZoneDistribution(args.rawData);
+  if (!dist) return null;
+  return classifyPowerIntensity({
+    zoneDistribution: dist,
+    power: representativePower(args.rawData),
+    thresholdPower: args.thresholdPower,
+  });
+}
+
+/**
+ * #570: 집계용 존 — 파워 존 분포를 심박 존 등가로 옮긴다 (Z1 이지 → 심박 Z2 · Z2 → Z3 · Z3 역치 → Z4 · Z4 + Z5 → Z5).
+ * 80/20 (easy = Z1+Z2 · hard = Z4+Z5) · 고강도 분 (Z4+Z5) · 월별 존 비율이 기준이 섞여도 같은 뜻이 되게 (사전 리뷰 major 1).
+ * 활동 하나의 존 표시 (W 구간) 에는 쓰지 않는다. 심박 · 기준 없음은 그대로.
+ */
+export function toComparableZones(dist: ZoneDistribution, basis: IntensityBasis | null | undefined): ZoneDistribution {
+  if (basis !== "power") return dist;
+  return { z1: 0, z2: dist.z1, z3: dist.z2, z4: dist.z3, z5: dist.z4 + dist.z5 };
 }

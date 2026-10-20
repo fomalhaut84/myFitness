@@ -1,59 +1,43 @@
 /**
- * M4-5: 기존 Activity에 대해 intensity 필드 backfill.
+ * M4-5 · #570: Activity 강도 필드 backfill.
+ *  - 심박 기준: 값이 없는 활동만 분류 (--force: 이미 분류된 활동도 재분류)
+ *  - 러닝 파워 기준: 파워 컬럼이 비어 있는 러닝 활동만 채움 (fillMissingPowerIntensity)
+ * 프로필 강도 기준 설정은 저장 값을 바꾸지 않는다 — 읽을 때 고른다.
  *
- * 실행: npx tsx scripts/backfill-intensity.ts
+ * 실행: npx tsx scripts/backfill-intensity.ts [--force]
  */
 import "dotenv/config";
 import prisma from "../src/lib/prisma";
 import { computeIntensityFromRawData } from "../src/lib/fitness/intensity";
+import { fillMissingPowerIntensity } from "../src/lib/fitness/power-intensity-fill";
 
-/**
- * 옵션:
- *   --force: 이미 분류된 활동도 재분류 (기본: 이미 값 있으면 skip)
- */
-async function main() {
-  const force = process.argv.includes("--force");
+async function backfillHeartRate(force: boolean): Promise<void> {
   const profile = await prisma.userProfile.findFirst();
   const lthr = profile?.lthr ?? null;
-  console.log(
-    `LTHR(실측): ${lthr ?? "없음 (분포 기반 분류만 사용)"} | force=${force}`
-  );
+  console.log(`[심박] LTHR(실측): ${lthr ?? "없음 (분포 기반 분류만 사용)"} | force=${force}`);
 
   const activities = await prisma.activity.findMany({
-    select: {
-      id: true,
-      garminId: true,
-      avgHR: true,
-      rawData: true,
-      name: true,
-      intensityLabel: true,
-    },
+    select: { id: true, avgHR: true, rawData: true, intensityLabel: true },
     orderBy: { startTime: "desc" },
   });
-
-  console.log(`총 ${activities.length}개 활동 처리 시작...\n`);
 
   let withData = 0;
   let skipped = 0;
   let alreadyClassified = 0;
-
   for (const a of activities) {
     if (!force && a.intensityLabel !== null) {
       alreadyClassified++;
       continue;
     }
-
     const intensity = computeIntensityFromRawData({
       rawData: a.rawData as Record<string, unknown> | null,
       avgHR: a.avgHR,
       lthr,
     });
-
     if (!intensity) {
       skipped++;
       continue;
     }
-
     await prisma.activity.update({
       where: { id: a.id },
       data: {
@@ -64,17 +48,16 @@ async function main() {
       },
     });
     withData++;
-
-    console.log(
-      `  ✅ ${a.name} (${a.garminId}) → Zone ${intensity.estimatedZone}, ` +
-        `${intensity.intensityLabel}, score ${intensity.intensityScore}`
-    );
   }
-
   console.log(
-    `\n완료: 총 ${activities.length}개 중 ${withData}개 분류, ` +
-      `${alreadyClassified}개 기존 분류(skip), ${skipped}개 skip(분포 데이터 없음)`
+    `[심박] 총 ${activities.length}개 중 ${withData}개 분류, ${alreadyClassified}개 기존 분류(skip), ${skipped}개 skip(분포 데이터 없음)`
   );
+}
+
+async function main() {
+  await backfillHeartRate(process.argv.includes("--force"));
+  const { scanned, filled } = await fillMissingPowerIntensity();
+  console.log(`[파워] 대상 ${scanned}개 중 ${filled}개 채움`);
 }
 
 main()
